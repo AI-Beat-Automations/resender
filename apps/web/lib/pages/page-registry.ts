@@ -172,6 +172,19 @@ export async function getActivePageTokenForTenant(
   return decryptSecret(row.page_access_token_encrypted)
 }
 
+export async function getActivePageByMetaPageId(metaPageId: string) {
+  const sql = getSql()
+  const [row] = await sql<ConnectedPageRow[]>`
+    select id, tenant_id, meta_page_id, name, status, webhook_url,
+      connected_at, disconnected_at, created_at, updated_at
+    from connected_pages
+    where meta_page_id = ${metaPageId} and status = 'active'
+    limit 1
+  `
+
+  return row ? mapConnectedPage(row) : null
+}
+
 function mapConnectedPage(row: ConnectedPageRow): ConnectedPageRecord {
   return {
     id: row.id,
