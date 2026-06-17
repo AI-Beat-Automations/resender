@@ -17,10 +17,10 @@ const BUFFER_MAX = 100
 
 // Anclado en globalThis para sobrevivir al HMR de dev y ser un único singleton
 // compartido entre el route del webhook (POST) y el de SSE (GET).
-const g = globalThis as unknown as { __echoMessages?: Store }
+const g = globalThis as unknown as { __resenderMessages?: Store }
 const store: Store =
-  g.__echoMessages ??
-  (g.__echoMessages = { buffer: [], subscribers: new Set() })
+  g.__resenderMessages ??
+  (g.__resenderMessages = { buffer: [], subscribers: new Set() })
 
 export function addMessage(m: IncomingMessage) {
   store.buffer.push(m)
