@@ -21,7 +21,7 @@ export default async function ProductLayout({
       <header className="border-b border-border bg-background">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-4">
           <Link href="/connections" className="font-semibold tracking-tight">
-            Resender
+            resender.dev
           </Link>
           <nav className="flex items-center gap-1">
             {navItems.map((item) => (

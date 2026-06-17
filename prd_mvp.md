@@ -1,14 +1,14 @@
 ## Problem Statement
 
-Resender ya puede completar el flujo base de Meta a nivel técnico, pero todavía no existe un MVP de producto usable para tenants reales. Hoy no hay autenticación propia, no existe persistencia, los page access tokens y los mensajes viven en memoria, la API externa de salida no está protegida, y la app no separa claramente onboarding, conexiones y bitácora. Desde la perspectiva del usuario, esto significa que todavía no puede crear una cuenta, iniciar sesión, conectar sus páginas de forma durable, configurar su automatización externa con credenciales seguras ni consultar un historial confiable de mensajes entrantes y salientes.
+resender.dev ya puede completar el flujo base de Meta a nivel técnico, pero todavía no existe un MVP de producto usable para tenants reales. Hoy no hay autenticación propia, no existe persistencia, los page access tokens y los mensajes viven en memoria, la API externa de salida no está protegida, y la app no separa claramente onboarding, conexiones y bitácora. Desde la perspectiva del usuario, esto significa que todavía no puede crear una cuenta, iniciar sesión, conectar sus páginas de forma durable, configurar su automatización externa con credenciales seguras ni consultar un historial confiable de mensajes entrantes y salientes.
 
 ## Solution
 
-Construir un MVP multi-tenant donde cada usuario pueda registrarse con email y password, iniciar sesión con Auth.js, conectar una o varias páginas de Facebook desde una pantalla dedicada de Connections, configurar por página una `webhookUrl` para push de mensajes entrantes, administrar API keys opacas desde Settings para que su sistema externo pueda responder, y consultar una bitácora persistente de conversaciones en Messages. El producto debe preservar el modelo de Resender como gateway + bitácora: recibir y persistir mensajes, reenviarlos al sistema externo, aceptar respuestas vía API externa segura, y mostrar toda la conversación con dirección y estado.
+Construir un MVP multi-tenant donde cada usuario pueda registrarse con email y password, iniciar sesión con Auth.js, conectar una o varias páginas de Facebook desde una pantalla dedicada de Connections, configurar por página una `webhookUrl` para push de mensajes entrantes, administrar API keys opacas desde Settings para que su sistema externo pueda responder, y consultar una bitácora persistente de conversaciones en Messages. El producto debe preservar el modelo de resender.dev como gateway + bitácora: recibir y persistir mensajes, reenviarlos al sistema externo, aceptar respuestas vía API externa segura, y mostrar toda la conversación con dirección y estado.
 
 ## User Stories
 
-1. As a prospective customer, I want a public landing page, so that I can understand what Resender does before creating an account.
+1. As a prospective customer, I want a public landing page, so that I can understand what resender.dev does before creating an account.
 2. As a prospective customer, I want clear Login and Register entry points, so that I can access the product without confusion.
 3. As a new customer, I want to register with only email and password, so that I can start onboarding quickly.
 4. As a new customer, I want to enter the product immediately after register, so that I do not need email verification during the MVP.
@@ -20,18 +20,18 @@ Construir un MVP multi-tenant donde cada usuario pueda registrarse con email y p
 10. As a newly authenticated customer, I want to land in Connections, so that I can complete the next mandatory step of connecting Facebook.
 11. As a customer, I want a dedicated Connections screen, so that Meta onboarding is separated from general account settings.
 12. As a customer, I want to connect Facebook from Connections, so that I can authorize my pages with one clear flow.
-13. As a customer who administers multiple Facebook pages, I want Resender to connect all authorized pages automatically, so that onboarding is fast and does not require a second selection step.
-14. As a customer, I want Resender to remember my connected pages after restart or redeploy, so that I do not lose access tokens or configuration.
+13. As a customer who administers multiple Facebook pages, I want resender.dev to connect all authorized pages automatically, so that onboarding is fast and does not require a second selection step.
+14. As a customer, I want resender.dev to remember my connected pages after restart or redeploy, so that I do not lose access tokens or configuration.
 15. As a customer, I want an existing page reconnection to refresh its token and metadata, so that reconnecting repairs credentials without duplicating data.
-16. As a customer, I want Resender to block connecting a page that already belongs to another tenant, so that cross-tenant takeover is impossible.
+16. As a customer, I want resender.dev to block connecting a page that already belongs to another tenant, so that cross-tenant takeover is impossible.
 17. As a customer, I want to see all pages I have connected, so that I understand which channels are active.
 18. As a customer, I want to configure a separate `webhookUrl` per page, so that each page can route inbound traffic to the correct external automation.
 19. As a customer, I want page webhook configuration to save only when I press Guardar, so that partial or accidental URLs are not persisted.
 20. As a customer, I want to disconnect a page with an explicit confirmation, so that I do not accidentally stop message traffic.
-21. As a customer, I want disconnecting a page to preserve its historical messages, so that Resender remains a durable bitácora.
+21. As a customer, I want disconnecting a page to preserve its historical messages, so that resender.dev remains a durable bitácora.
 22. As a customer, I want inbound messages to be persisted even if no external `webhookUrl` is configured, so that I never lose the message log.
-23. As a customer, I want Resender to push inbound messages to my external system after persisting them, so that my automation can react in near real time.
-24. As a customer, I want Resender to respond quickly to Meta even if my external webhook is slow or broken, so that Messenger delivery stays healthy.
+23. As a customer, I want resender.dev to push inbound messages to my external system after persisting them, so that my automation can react in near real time.
+24. As a customer, I want resender.dev to respond quickly to Meta even if my external webhook is slow or broken, so that Messenger delivery stays healthy.
 25. As a customer, I want push failures to my external system not to delete inbound messages, so that my historical record stays trustworthy.
 26. As an external automation, I want a rich inbound payload with tenant, page, conversation, and message context, so that I can process messages without extra lookups.
 27. As a customer, I want a dedicated Settings screen for account and API keys, so that I can manage credentials without mixing them with Meta connections.
@@ -42,9 +42,9 @@ Construir un MVP multi-tenant donde cada usuario pueda registrarse con email y p
 32. As a customer, I want to see metadata such as label, visible prefix, creation date, last use, and status for each API key, so that I can manage them confidently.
 33. As an external automation, I want to authenticate using a simple opaque API key, so that integration with N8N or custom logic is straightforward.
 34. As an external automation, I want the same API key to work across all pages of the same tenant, so that I do not need per-page credentials in the MVP.
-35. As an external automation, I want to call a protected send endpoint with `pageId`, `recipientId`, and `reply`, so that I can send Messenger responses through Resender.
-36. As an external automation, I want to send an optional `conversationId`, so that Resender can persist outgoing messages with better traceability.
-37. As an external automation, I want Resender to reject inconsistent `conversationId` values, so that bugs are caught early instead of corrupting message history.
+35. As an external automation, I want to call a protected send endpoint with `pageId`, `recipientId`, and `reply`, so that I can send Messenger responses through resender.dev.
+36. As an external automation, I want to send an optional `conversationId`, so that resender.dev can persist outgoing messages with better traceability.
+37. As an external automation, I want resender.dev to reject inconsistent `conversationId` values, so that bugs are caught early instead of corrupting message history.
 38. As a customer, I want outgoing responses to be persisted whether Meta accepts or rejects them, so that the bitácora includes both successes and failures.
 39. As a customer, I want outgoing failed messages to remain visually identifiable as outbound while still showing failure state, so that I can distinguish direction from delivery result.
 40. As a customer, I want a Messages screen organized by conversation and thread, so that the bitácora scales beyond a flat event log.
@@ -52,8 +52,8 @@ Construir un MVP multi-tenant donde cada usuario pueda registrarse con email y p
 42. As a customer, I want the most recent conversation to open automatically, so that I start with the most relevant context.
 43. As a customer with multiple pages, I want Messages to show all conversations by default with a page filter, so that I can operate globally or focus per page.
 44. As a customer, I want each conversation to show which page it belongs to, so that multi-page operation stays understandable.
-45. As a customer, I want Resender to identify contacts by PSID when no real contact name is available, so that the conversation list still works before profile enrichment exists.
-46. As a customer, I want Resender to preserve the gateway + bitácora model, so that I do not need an interactive agent UI to operate the product.
+45. As a customer, I want resender.dev to identify contacts by PSID when no real contact name is available, so that the conversation list still works before profile enrichment exists.
+46. As a customer, I want resender.dev to preserve the gateway + bitácora model, so that I do not need an interactive agent UI to operate the product.
 47. As a product owner, I want the MVP to use minimal user profile data, so that the auth model stays simple and easy to evolve.
 48. As a product owner, I want the external API auth model to be revocable centrally, so that leaked credentials can be invalidated quickly.
 49. As a product owner, I want the data model to separate users, pages, conversations, messages, and API keys, so that future changes stay modular.
@@ -77,7 +77,7 @@ Construir un MVP multi-tenant donde cada usuario pueda registrarse con email y p
 - If a user reconnects a page they already own, the operation is idempotent and refreshes the encrypted token and page metadata.
 - If another tenant attempts to connect an already-owned page, the operation is blocked rather than transferred automatically.
 - A tenant may connect multiple Facebook pages in the MVP.
-- When Meta returns multiple authorized pages during callback, Resender connects all of them automatically for that same tenant.
+- When Meta returns multiple authorized pages during callback, resender.dev connects all of them automatically for that same tenant.
 - Page management lives in Connections, not in Settings.
 - Settings is reserved for account-level concerns and API key management.
 - Each page can store its own `webhookUrl` for outbound push to the external system.
@@ -85,8 +85,8 @@ Construir un MVP multi-tenant donde cada usuario pueda registrarse con email y p
 - Disconnecting a page requires confirmation and stops future traffic for that page while preserving historical conversations and messages.
 - Inbound message delivery to the external system uses push, not polling, in the MVP.
 - The inbound workflow is: verify Meta request, resolve tenant by page, persist conversation/message state, acknowledge Meta quickly, then attempt non-blocking push to the page-specific external `webhookUrl`.
-- If a page has no `webhookUrl`, Resender still persists the message and exposes it in Messages.
-- If the external push fails, Resender records the failure but does not retry automatically in the MVP.
+- If a page has no `webhookUrl`, resender.dev still persists the message and exposes it in Messages.
+- If the external push fails, resender.dev records the failure but does not retry automatically in the MVP.
 - The external inbound payload includes minimal but rich context for tenant, page, conversation, and message.
 - External outbound authentication does not use JWT. It uses opaque API keys only.
 - API keys are created and revoked in Settings.
@@ -148,6 +148,6 @@ Construir un MVP multi-tenant donde cada usuario pueda registrarse con email y p
 - The current repository already contains working Meta OAuth by redirection, webhook signature verification, a live-event stream, and a temporary send endpoint, but all durable state is still missing.
 - The current implementation stores page tokens and messages only in memory, so persistence is the largest architectural gap between the current codebase and the MVP.
 - The previous product draft assumed JWT authentication for the external send API; this PRD supersedes that assumption and standardizes on opaque API keys for machine-to-machine access.
-- The Messages surface remains a bitácora, not an interactive operator console. Outgoing messages continue to originate from the external system through Resender's API.
+- The Messages surface remains a bitácora, not an interactive operator console. Outgoing messages continue to originate from the external system through resender.dev's API.
 - The MVP should preserve quick acknowledgment to Meta as a non-negotiable operational requirement.
 - Node-runtime compatibility remains important for crypto-backed token encryption and other server-only concerns.

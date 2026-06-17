@@ -1,6 +1,6 @@
-# Resender
+# resender.dev
 
-Resender is a Messenger gateway and durable log for external automations.
+resender.dev is a Messenger gateway and durable log for external automations.
 
 ## MVP environment
 

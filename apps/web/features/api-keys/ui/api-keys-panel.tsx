@@ -32,7 +32,7 @@ export function ApiKeysPanel({ apiKeys }: { apiKeys: ApiKeyView[] }) {
         <h2 className="font-medium">Crear API key</h2>
         <p className="mt-2 text-sm text-muted-foreground">
           Usa API keys opacas para que N8N o tu backend llamen la API externa
-          de Resender. El secreto completo se muestra solo una vez.
+          de resender.dev. El secreto completo se muestra solo una vez.
         </p>
         <form action={createAction} className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
           <input
