@@ -1,17 +1,24 @@
 import { type NextRequest } from "next/server"
 
-import { auth } from "@/auth"
-import { getActivePageTokenForTenant } from "@/lib/pages/page-registry"
+import { authenticateApiKey } from "@/lib/api-keys/api-keys"
+import {
+  getConversationById,
+  insertOutboundMessage,
+  upsertConversation,
+} from "@/lib/messages/message-log"
+import { getActivePageWithTokenForTenant } from "@/lib/pages/page-registry"
+import { extractMetaMessageId, sendMetaTextMessage } from "@/lib/outbound/meta-send"
+import { getBearerToken, parseOutboundSendInput } from "@/lib/outbound/send-request"
 
-const GRAPH = "https://graph.facebook.com/v23.0"
-
-// Envía una respuesta al contacto. Body: { pageId, recipientId, reply }.
+// Envía una respuesta al contacto.
+// Body: { pageId, recipientId, reply, conversationId? }.
 // El page access token se resuelve en el servidor por pageId (no viaja en el curl).
 export const runtime = "nodejs"
 
 export async function POST(request: NextRequest) {
-  const session = await auth()
-  if (!session?.user?.id) {
+  const bearer = getBearerToken(request.headers.get("authorization"))
+  const apiKey = await authenticateApiKey(bearer)
+  if (!apiKey) {
     return Response.json({ error: "unauthorized" }, { status: 401 })
   }
 
@@ -26,24 +33,16 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "invalid body" }, { status: 400 })
   }
 
-  const { pageId, recipientId, reply } = body as Record<string, unknown>
-
-  if (
-    typeof pageId !== "string" ||
-    typeof recipientId !== "string" ||
-    typeof reply !== "string" ||
-    !pageId.trim() ||
-    !recipientId.trim() ||
-    !reply.trim()
-  ) {
-    return Response.json(
-      { error: "missing pageId, recipientId or reply" },
-      { status: 400 }
-    )
+  const input = parseOutboundSendInput(body)
+  if (!input.ok) {
+    return Response.json({ error: input.error }, { status: 400 })
   }
 
-  const token = await getActivePageTokenForTenant(session.user.id, pageId.trim())
-  if (!token) {
+  const connectedPage = await getActivePageWithTokenForTenant(
+    apiKey.tenantId,
+    input.value.pageId
+  )
+  if (!connectedPage) {
     return Response.json(
       {
         error: "page is not connected for this tenant",
@@ -52,21 +51,64 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  // Ventana de 24h: messaging_type RESPONSE solo funciona dentro de las 24h del
-  // último mensaje del usuario. Fuera de eso se requiere el tag human_agent.
-  const res = await fetch(
-    `${GRAPH}/${pageId.trim()}/messages?access_token=${encodeURIComponent(token)}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        recipient: { id: recipientId.trim() },
-        messaging_type: "RESPONSE",
-        message: { text: reply.trim() },
-      }),
-    }
-  )
+  let conversation = input.value.conversationId
+    ? await getConversationById(apiKey.tenantId, input.value.conversationId)
+    : null
 
-  const data = await res.json()
-  return Response.json(data, { status: res.status })
+  if (input.value.conversationId) {
+    if (
+      !conversation ||
+      conversation.connectedPageId !== connectedPage.page.id ||
+      conversation.contactId !== input.value.recipientId
+    ) {
+      return Response.json(
+        { error: "conversationId does not match pageId and recipientId" },
+        { status: 400 }
+      )
+    }
+  } else {
+    conversation = await upsertConversation({
+      tenantId: apiKey.tenantId,
+      connectedPageId: connectedPage.page.id,
+      contactId: input.value.recipientId,
+      lastMessageAt: new Date(),
+    })
+  }
+
+  if (!conversation) {
+    return Response.json({ error: "conversation not found" }, { status: 400 })
+  }
+
+  const sentAt = new Date()
+  const metaResult = await sendMetaTextMessage({
+    pageId: input.value.pageId,
+    pageAccessToken: connectedPage.pageAccessToken,
+    recipientId: input.value.recipientId,
+    text: input.value.reply,
+  })
+
+  const message = await insertOutboundMessage({
+    tenantId: apiKey.tenantId,
+    conversationId: conversation.id,
+    connectedPageId: connectedPage.page.id,
+    contactId: input.value.recipientId,
+    text: input.value.reply,
+    status: metaResult.ok ? "sent" : "failed",
+    metaMessageId: extractMetaMessageId(metaResult.data),
+    error: metaResult.error,
+    providerResponse: metaResult.data,
+    createdAt: sentAt,
+  })
+
+  return Response.json(
+    {
+      meta: metaResult.data,
+      echo: {
+        conversationId: conversation.id,
+        messageId: message.id,
+        status: message.status,
+      },
+    },
+    { status: metaResult.status }
+  )
 }
