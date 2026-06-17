@@ -9,6 +9,7 @@ Echo is a Messenger gateway and durable log for external automations.
 ```bash
 APP_URL="https://your-public-origin.example"
 AUTH_SECRET="generate-a-long-random-secret"
+API_KEY_PEPPER="optional-separate-api-key-pepper"
 DATABASE_URL="postgres://user:password@host:5432/db"
 TOKEN_ENCRYPTION_KEY="generate-with-openssl-rand-hex-32"
 META_APP_SECRET="meta-app-secret"
