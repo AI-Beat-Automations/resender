@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
   return Response.json(
     {
       meta: metaResult.data,
-      echo: {
+      resender: {
         conversationId: conversation.id,
         messageId: message.id,
         status: message.status,

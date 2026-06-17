@@ -16,7 +16,7 @@ describe("opaque API keys", () => {
     vi.unstubAllEnvs()
   })
 
-  it("recognizes only Echo API key format", () => {
+  it("recognizes only Resender API key format", () => {
     expect(isApiKeyFormat("pk_live_abc")).toBe(true)
     expect(isApiKeyFormat("jwt.token.value")).toBe(false)
     expect(isApiKeyFormat(undefined)).toBe(false)
