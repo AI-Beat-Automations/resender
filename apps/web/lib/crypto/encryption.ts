@@ -2,6 +2,13 @@ import { createCipheriv, createDecipheriv, randomBytes } from "crypto"
 
 const ALGORITHM = "aes-256-gcm"
 
+export class SecretEncryptionConfigError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "SecretEncryptionConfigError"
+  }
+}
+
 export function encryptSecret(plainText: string) {
   const key = getEncryptionKey()
   const iv = randomBytes(12)
@@ -36,11 +43,15 @@ export function decryptSecret(cipherText: string) {
 
 function getEncryptionKey() {
   const raw = process.env.TOKEN_ENCRYPTION_KEY
-  if (!raw) throw new Error("TOKEN_ENCRYPTION_KEY is required")
+  if (!raw) {
+    throw new SecretEncryptionConfigError("TOKEN_ENCRYPTION_KEY is required")
+  }
 
   const key = Buffer.from(raw, raw.length === 64 ? "hex" : "base64")
   if (key.length !== 32) {
-    throw new Error("TOKEN_ENCRYPTION_KEY must decode to 32 bytes")
+    throw new SecretEncryptionConfigError(
+      "TOKEN_ENCRYPTION_KEY must decode to 32 bytes"
+    )
   }
 
   return key

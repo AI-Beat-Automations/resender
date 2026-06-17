@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 
 import { auth } from "@/auth"
+import { SecretEncryptionConfigError } from "@/lib/crypto/encryption"
 import {
   APP_URL,
   STATE_COOKIE,
@@ -69,6 +70,10 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     if (error instanceof PageOwnershipError) {
       return fail(`page_owned:${error.metaPageId}`)
+    }
+    console.error("meta connection failed", error)
+    if (error instanceof SecretEncryptionConfigError) {
+      return fail("configuration_failed")
     }
     return fail("exchange_failed")
   }

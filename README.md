@@ -10,7 +10,7 @@ Echo is a Messenger gateway and durable log for external automations.
 APP_URL="https://your-public-origin.example"
 AUTH_SECRET="generate-a-long-random-secret"
 DATABASE_URL="postgres://user:password@host:5432/db"
-TOKEN_ENCRYPTION_KEY="32-byte-key-as-hex-or-base64"
+TOKEN_ENCRYPTION_KEY="generate-with-openssl-rand-hex-32"
 META_APP_SECRET="meta-app-secret"
 META_VERIFY_TOKEN="meta-webhook-verify-token"
 NEXT_PUBLIC_META_APP_ID="meta-app-id"
@@ -21,6 +21,12 @@ Run database migrations manually after setting `DATABASE_URL`:
 
 ```bash
 npm --workspace web run db:migrate
+```
+
+Generate `TOKEN_ENCRYPTION_KEY` with:
+
+```bash
+openssl rand -hex 32
 ```
 
 ## Validation
