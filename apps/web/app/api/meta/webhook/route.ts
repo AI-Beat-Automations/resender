@@ -1,8 +1,8 @@
 import crypto from "crypto"
 
-import { type NextRequest } from "next/server"
+import { after, type NextRequest } from "next/server"
 
-import { addMessage } from "@/lib/message-store"
+import { ingestMetaWebhookPayload } from "@/lib/inbound/inbound-ingestion"
 
 const VERIFY_TOKEN = process.env.META_VERIFY_TOKEN!
 const APP_SECRET = process.env.META_APP_SECRET!
@@ -21,6 +21,8 @@ export async function GET(request: NextRequest) {
 
 // POST = recepción de eventos. Responde 200 SIEMPRE y rápido (si no, Meta
 // reintenta y termina desactivando el webhook).
+export const runtime = "nodejs"
+
 export async function POST(request: NextRequest) {
   const raw = await request.text()
 
@@ -35,19 +37,12 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = JSON.parse(raw)
-    for (const entry of body.entry ?? []) {
-      const pageId = entry.id // llave de ruteo -> tenant (futuro)
-      for (const ev of entry.messaging ?? []) {
-        const text = ev.message?.text
-        if (!text) continue // ignoramos delivery/read/postbacks por ahora
-        addMessage({
-          id: ev.message?.mid ?? crypto.randomUUID(),
-          pageId,
-          senderId: ev.sender?.id ?? "unknown",
-          text,
-          at: ev.timestamp ?? Date.now(),
-        })
-      }
+    const ingested = await ingestMetaWebhookPayload(body)
+
+    for (const item of ingested) {
+      after(async () => {
+        await item.pushJob()
+      })
     }
   } catch (e) {
     console.error("webhook parse error", e)
