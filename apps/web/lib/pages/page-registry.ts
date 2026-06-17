@@ -32,6 +32,10 @@ type ConnectedPageRow = {
   updated_at: Date
 }
 
+type ConnectedPageWithTokenRow = ConnectedPageRow & {
+  page_access_token_encrypted: string
+}
+
 export class PageOwnershipError extends Error {
   constructor(public readonly metaPageId: string) {
     super("page already belongs to another tenant")
@@ -170,6 +174,30 @@ export async function getActivePageTokenForTenant(
 
   if (!row) return null
   return decryptSecret(row.page_access_token_encrypted)
+}
+
+export async function getActivePageWithTokenForTenant(
+  tenantId: string,
+  metaPageId: string
+) {
+  const sql = getSql()
+  const [row] = await sql<ConnectedPageWithTokenRow[]>`
+    select id, tenant_id, meta_page_id, name, status, webhook_url,
+      connected_at, disconnected_at, created_at, updated_at,
+      page_access_token_encrypted
+    from connected_pages
+    where tenant_id = ${tenantId}
+      and meta_page_id = ${metaPageId}
+      and status = 'active'
+    limit 1
+  `
+
+  if (!row) return null
+
+  return {
+    page: mapConnectedPage(row),
+    pageAccessToken: decryptSecret(row.page_access_token_encrypted),
+  }
 }
 
 export async function getActivePageByMetaPageId(metaPageId: string) {
