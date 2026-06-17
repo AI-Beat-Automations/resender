@@ -1,0 +1,62 @@
+"use server"
+
+import { revalidatePath } from "next/cache"
+
+import { auth } from "@/auth"
+import {
+  createApiKey,
+  InvalidApiKeyLabelError,
+  revokeApiKey,
+} from "@/lib/api-keys/api-keys"
+
+export type CreateApiKeyState = {
+  error?: string
+  apiKey?: string
+  message?: string
+}
+
+export type RevokeApiKeyState = {
+  error?: string
+  message?: string
+}
+
+export async function createApiKeyAction(
+  _state: CreateApiKeyState,
+  formData: FormData
+): Promise<CreateApiKeyState> {
+  const session = await auth()
+  if (!session?.user?.id) return { error: "No autenticado." }
+
+  try {
+    const created = await createApiKey(session.user.id, formData.get("label"))
+    revalidatePath("/settings")
+    return {
+      apiKey: created.apiKey,
+      message: "API key creada. Copiala ahora; no volvera a mostrarse.",
+    }
+  } catch (error) {
+    if (error instanceof InvalidApiKeyLabelError) {
+      return { error: error.message }
+    }
+    throw error
+  }
+}
+
+export async function revokeApiKeyAction(
+  _state: RevokeApiKeyState,
+  formData: FormData
+): Promise<RevokeApiKeyState> {
+  const session = await auth()
+  if (!session?.user?.id) return { error: "No autenticado." }
+
+  const apiKeyId = formData.get("apiKeyId")
+  if (typeof apiKeyId !== "string" || !apiKeyId) {
+    return { error: "API key invalida." }
+  }
+
+  const revoked = await revokeApiKey(session.user.id, apiKeyId)
+  if (!revoked) return { error: "API key no encontrada." }
+
+  revalidatePath("/settings")
+  return { message: "API key revocada." }
+}
