@@ -1,4 +1,18 @@
+import { auth } from "@/auth"
+import {
+  ApiKeysPanel,
+  type ApiKeyView,
+} from "@/features/api-keys/ui/api-keys-panel"
+import { listApiKeys } from "@/lib/api-keys/api-keys"
+
 export default function SettingsPage() {
+  return <SettingsContent />
+}
+
+async function SettingsContent() {
+  const session = await auth()
+  const apiKeys = session?.user?.id ? await listApiKeys(session.user.id) : []
+
   return (
     <div className="grid gap-6">
       <div>
@@ -7,9 +21,28 @@ export default function SettingsPage() {
           Administra tu cuenta y las API keys de integracion externa.
         </p>
       </div>
-      <section className="rounded-2xl border border-dashed border-border bg-card p-8 text-sm text-muted-foreground">
-        La gestion de API keys llega en el siguiente corte dedicado de Settings.
+      <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+        <h2 className="font-medium">Cuenta</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Tenant ID: {session?.user?.id}
+        </p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Email: {session?.user?.email}
+        </p>
       </section>
+      <ApiKeysPanel apiKeys={apiKeys.map(toApiKeyView)} />
     </div>
   )
+}
+
+function toApiKeyView(apiKey: Awaited<ReturnType<typeof listApiKeys>>[number]): ApiKeyView {
+  return {
+    id: apiKey.id,
+    label: apiKey.label,
+    visiblePrefix: apiKey.visiblePrefix,
+    status: apiKey.status,
+    createdAt: apiKey.createdAt.toISOString(),
+    lastUsedAt: apiKey.lastUsedAt?.toISOString() ?? null,
+    revokedAt: apiKey.revokedAt?.toISOString() ?? null,
+  }
 }
