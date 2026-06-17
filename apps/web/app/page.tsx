@@ -8,7 +8,7 @@ export default function Page() {
       <div className="mx-auto flex min-h-svh w-full max-w-6xl flex-col px-6 py-8">
         <header className="flex items-center justify-between">
           <Link href="/" className="text-sm font-semibold tracking-tight">
-            Echo
+            Resender
           </Link>
           <nav className="flex items-center gap-2">
             <Button asChild variant="ghost">
@@ -29,7 +29,7 @@ export default function Page() {
               Recibe mensajes de Facebook y responde desde tu automatizacion.
             </h1>
             <p className="mt-6 max-w-xl text-lg leading-8 text-muted-foreground">
-              Echo conecta tus paginas, guarda cada conversacion y entrega los
+              Resender conecta tus paginas, guarda cada conversacion y entrega los
               mensajes a tu sistema externo con credenciales revocables.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
@@ -53,7 +53,7 @@ export default function Page() {
               </div>
               <div className="my-4 h-px bg-border" />
               <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-950 dark:border-yellow-900/50 dark:bg-yellow-950/30 dark:text-yellow-100">
-                Tu automatizacion responde por la API segura de Echo.
+                Tu automatizacion responde por la API segura de Resender.
               </div>
             </div>
           </div>

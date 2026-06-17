@@ -1,6 +1,6 @@
-# Echo
+# Resender
 
-Echo is a Messenger gateway and durable log for external automations.
+Resender is a Messenger gateway and durable log for external automations.
 
 ## MVP environment
 
