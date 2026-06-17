@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server"
 
 import { auth } from "@/auth"
-import { getPageToken } from "@/lib/page-store"
+import { getActivePageTokenForTenant } from "@/lib/pages/page-registry"
 
 const GRAPH = "https://graph.facebook.com/v23.0"
 
@@ -15,21 +15,38 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "unauthorized" }, { status: 401 })
   }
 
-  const { pageId, recipientId, reply } = await request.json()
+  let body: unknown
+  try {
+    body = await request.json()
+  } catch {
+    return Response.json({ error: "invalid json" }, { status: 400 })
+  }
 
-  if (!pageId || !recipientId || !reply) {
+  if (!body || typeof body !== "object") {
+    return Response.json({ error: "invalid body" }, { status: 400 })
+  }
+
+  const { pageId, recipientId, reply } = body as Record<string, unknown>
+
+  if (
+    typeof pageId !== "string" ||
+    typeof recipientId !== "string" ||
+    typeof reply !== "string" ||
+    !pageId.trim() ||
+    !recipientId.trim() ||
+    !reply.trim()
+  ) {
     return Response.json(
       { error: "missing pageId, recipientId or reply" },
       { status: 400 }
     )
   }
 
-  const token = getPageToken(pageId)
+  const token = await getActivePageTokenForTenant(session.user.id, pageId.trim())
   if (!token) {
     return Response.json(
       {
-        error:
-          "page token no está en memoria — reconecta la página (buffer temporal; Fase 3 lo persiste)",
+        error: "page is not connected for this tenant",
       },
       { status: 404 }
     )
@@ -38,14 +55,14 @@ export async function POST(request: NextRequest) {
   // Ventana de 24h: messaging_type RESPONSE solo funciona dentro de las 24h del
   // último mensaje del usuario. Fuera de eso se requiere el tag human_agent.
   const res = await fetch(
-    `${GRAPH}/${pageId}/messages?access_token=${encodeURIComponent(token)}`,
+    `${GRAPH}/${pageId.trim()}/messages?access_token=${encodeURIComponent(token)}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        recipient: { id: recipientId },
+        recipient: { id: recipientId.trim() },
         messaging_type: "RESPONSE",
-        message: { text: reply },
+        message: { text: reply.trim() },
       }),
     }
   )

@@ -1,4 +1,10 @@
 import { ConnectFacebookButton } from "@/features/connect-meta/ui/connect-facebook-button"
+import {
+  ConnectedPageCard,
+  type ConnectedPageView,
+} from "@/features/connections/ui/connected-page-card"
+import { auth } from "@/auth"
+import { listTenantPages } from "@/lib/pages/page-registry"
 
 type ConnectedPage = { id: string; name: string }
 
@@ -9,14 +15,18 @@ export default async function ConnectionsPage({
 }) {
   const { meta, pages, reason } = await searchParams
   const connected = parseConnectedPages(pages)
+  const session = await auth()
+  const tenantPages = session?.user?.id
+    ? await listTenantPages(session.user.id)
+    : []
 
   return (
     <div className="grid gap-6">
       <div>
         <h1 className="text-3xl font-semibold tracking-tight">Connections</h1>
         <p className="mt-2 max-w-2xl text-muted-foreground">
-          Conecta tus paginas de Facebook. La persistencia de paginas y
-          configuracion por pagina llega en el siguiente PR del stack.
+          Conecta tus paginas de Facebook, configura un webhook por pagina y
+          desconecta canales sin borrar el historial.
         </p>
       </div>
       <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
@@ -51,8 +61,39 @@ export default async function ConnectionsPage({
           </p>
         )}
       </section>
+      <section className="grid gap-3">
+        <div>
+          <h2 className="font-medium">Paginas conectadas</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Las reconexiones actualizan token y metadata sin duplicar paginas.
+          </p>
+        </div>
+        {tenantPages.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-border bg-card p-8 text-sm text-muted-foreground">
+            Todavia no hay paginas conectadas para este tenant.
+          </div>
+        ) : (
+          <div className="grid gap-3">
+            {tenantPages.map((page) => (
+              <ConnectedPageCard key={page.id} page={toPageView(page)} />
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   )
+}
+
+function toPageView(page: Awaited<ReturnType<typeof listTenantPages>>[number]): ConnectedPageView {
+  return {
+    id: page.id,
+    metaPageId: page.metaPageId,
+    name: page.name,
+    status: page.status,
+    webhookUrl: page.webhookUrl,
+    connectedAt: page.connectedAt.toISOString(),
+    disconnectedAt: page.disconnectedAt?.toISOString() ?? null,
+  }
 }
 
 function parseConnectedPages(pages?: string): ConnectedPage[] {
