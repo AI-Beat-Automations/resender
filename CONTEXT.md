@@ -3,7 +3,7 @@
 ## Canonical Terms
 
 ### Auth.js
-La autenticación web de Echo en Next.js se implementa con `Auth.js`.
+La autenticación web de Resender en Next.js se implementa con `Auth.js`.
 El MVP expone páginas separadas de autenticación: `/login` y `/register`.
 Tras `login` o `register`, el usuario aterriza en `/connections` para continuar el onboarding conectando Facebook.
 Las rutas protegidas redirigen a `/login` cuando el usuario no esta autenticado.
@@ -16,7 +16,7 @@ La ruta `/` sigue siendo una landing pública simple con la propuesta de valor y
 En el MVP, el registro con email y password deja entrar al usuario inmediatamente. No se exige verificación de email antes de usar la app.
 
 ### API Token
-La integración externa (N8N/IA) no reutiliza la sesión web. Se autentica con una API key opaca separada emitida por Echo para el tenant.
+La integración externa (N8N/IA) no reutiliza la sesión web. Se autentica con una API key opaca separada emitida por Resender para el tenant.
 
 ### API Tokens en Settings
 Las API keys opacas se crean y gestionan desde `Settings`. En el MVP puede haber múltiples tokens por tenant y cada uno tiene un `label` descriptivo elegido por el usuario.
@@ -48,7 +48,7 @@ Si una página ya conectada pertenece al mismo tenant y se vuelve a autorizar en
 Desconectar una página elimina o desactiva la conexión para futuros envíos y recepciones, pero conserva el historial de conversaciones y mensajes como bitácora.
 
 ### Entrega de entrantes al sistema externo
-El MVP usa `push`: tras persistir un mensaje entrante, Echo lo reenvía de forma no bloqueante al sistema externo del tenant.
+El MVP usa `push`: tras persistir un mensaje entrante, Resender lo reenvía de forma no bloqueante al sistema externo del tenant.
 La URL de destino externo se configura por página. Si una página no tiene `webhookUrl`, el mensaje entrante se persiste igual y aparece en la bitácora, pero no se reenvía.
 El payload reenviado al sistema externo incluye contexto minimo pero rico de `tenant`, `page`, `conversation` y `message`.
 
