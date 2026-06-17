@@ -36,6 +36,7 @@ describe("inbound push payload", () => {
         text: "hola",
         metaMessageId: "mid-1",
         error: null,
+        providerResponse: null,
         createdAt: new Date("2026-01-02T00:00:00.000Z"),
       },
     })
