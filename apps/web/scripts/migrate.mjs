@@ -1,7 +1,12 @@
 import { readdir, readFile } from "node:fs/promises"
 import path from "node:path"
 import process from "node:process"
+import { fileURLToPath } from "node:url"
 import postgres from "postgres"
+
+const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
+
+await loadEnvFile(path.join(appDir, ".env"))
 
 const databaseUrl = process.env.DATABASE_URL
 
@@ -12,6 +17,45 @@ if (!databaseUrl) {
 
 const sql = postgres(databaseUrl, { max: 1 })
 const migrationsDir = path.join(process.cwd(), "db", "migrations")
+
+async function loadEnvFile(filePath) {
+  let contents
+
+  try {
+    contents = await readFile(filePath, "utf8")
+  } catch (error) {
+    if (error?.code === "ENOENT") return
+    throw error
+  }
+
+  for (const line of contents.split(/\r?\n/)) {
+    const trimmed = line.trim()
+
+    if (!trimmed || trimmed.startsWith("#")) continue
+
+    const separator = trimmed.indexOf("=")
+    if (separator === -1) continue
+
+    const key = trimmed.slice(0, separator).replace(/^export\s+/, "").trim()
+
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) || process.env[key] !== undefined) {
+      continue
+    }
+
+    let value = trimmed.slice(separator + 1).trim()
+    const quote = value[0]
+
+    if ((quote === '"' || quote === "'") && value.endsWith(quote)) {
+      value = value.slice(1, -1)
+
+      if (quote === '"') {
+        value = value.replace(/\\n/g, "\n").replace(/\\r/g, "\r")
+      }
+    }
+
+    process.env[key] = value
+  }
+}
 
 try {
   await sql`
