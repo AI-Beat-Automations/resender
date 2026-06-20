@@ -1,4 +1,5 @@
 import { auth } from "@/auth"
+import { DeleteAccountPanel } from "@/features/account/ui/delete-account-panel"
 import {
   ApiKeysPanel,
   type ApiKeyView,
@@ -31,6 +32,9 @@ async function SettingsContent() {
         </p>
       </section>
       <ApiKeysPanel apiKeys={apiKeys.map(toApiKeyView)} />
+      {session?.user?.email && (
+        <DeleteAccountPanel email={session.user.email} />
+      )}
     </div>
   )
 }
