@@ -108,3 +108,22 @@ export async function subscribeToWebhook(
   }
   return true
 }
+
+// Desuscribe una página del webhook del app. Se usa best-effort al eliminar la
+// cuenta del tenant: si falla, el borrado de datos continúa igual.
+export async function unsubscribeFromWebhook(
+  pageId: string,
+  pageAccessToken: string
+): Promise<boolean> {
+  // Graph espera el access_token como query param en DELETE; algunos stacks
+  // descartan el body de una request DELETE.
+  const url = new URL(`${GRAPH}/${pageId}/subscribed_apps`)
+  url.searchParams.set("access_token", pageAccessToken)
+  const res = await fetch(url, { method: "DELETE" })
+  const data = await res.json()
+  if (!res.ok || !data.success) {
+    console.error("subscribed_apps unsubscribe failed", pageId, data)
+    return false
+  }
+  return true
+}
