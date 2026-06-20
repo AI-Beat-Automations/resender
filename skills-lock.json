@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "apply-prd": {
+      "source": "arturxdev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/apply-prd/SKILL.md",
+      "computedHash": "f2ce9afb11352a77b02049d0e4dcfe4a6e25e20dcd24fe741e83e82eaeafcc66"
+    },
     "grill-with-docs": {
       "source": "arturxdev/skills",
       "sourceType": "github",
