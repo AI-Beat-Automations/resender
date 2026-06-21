@@ -17,6 +17,8 @@ const payload = {
   message: {
     id: "message-1",
     metaMessageId: "mid-1",
+    eventType: "message" as const,
+    postbackPayload: null,
     direction: "inbound" as const,
     status: "received" as const,
     text: "hola",
@@ -39,6 +41,9 @@ describe("inbound push payload", () => {
         metaPageId: "meta-page",
         name: "Main Page",
         status: "active",
+        tokenStatus: "valid",
+        tokenError: null,
+        tokenErrorAt: null,
         webhookUrl: "https://example.com/hook",
         connectedAt: new Date("2026-01-01T00:00:00.000Z"),
         disconnectedAt: null,
@@ -67,6 +72,8 @@ describe("inbound push payload", () => {
         providerResponse: null,
         createdAt: new Date("2026-01-02T00:00:00.000Z"),
       },
+      eventType: "message",
+      postbackPayload: null,
     })
 
     expect(result).toEqual(payload)

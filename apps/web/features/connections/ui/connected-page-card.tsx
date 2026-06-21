@@ -14,6 +14,9 @@ export type ConnectedPageView = {
   metaPageId: string
   name: string
   status: "active" | "disconnected"
+  tokenStatus: "valid" | "invalid"
+  tokenError: string | null
+  tokenErrorAt: string | null
   webhookUrl: string | null
   connectedAt: string
   disconnectedAt: string | null
@@ -57,6 +60,24 @@ export function ConnectedPageCard({ page }: { page: ConnectedPageView }) {
 
       {active ? (
         <div className="mt-5 grid gap-4">
+          {page.tokenStatus === "invalid" && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              <p className="font-medium">Esta Page necesita reconexion.</p>
+              <p className="mt-1">
+                Meta rechazo el token de la Page. Reconectala desde Facebook para
+                renovar permisos antes de volver a enviar respuestas.
+              </p>
+              {page.tokenError && (
+                <p className="mt-2 text-xs opacity-85">{page.tokenError}</p>
+              )}
+              {page.tokenErrorAt && (
+                <p className="mt-1 text-xs opacity-75">
+                  Detectado: {new Date(page.tokenErrorAt).toLocaleString()}
+                </p>
+              )}
+            </div>
+          )}
+
           <form action={saveAction} className="grid gap-2">
             <input type="hidden" name="connectionId" value={page.id} />
             <label className="text-sm font-medium" htmlFor={`webhook-${page.id}`}>

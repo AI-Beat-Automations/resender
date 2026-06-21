@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { subscribePagesToWebhook, WebhookSubscriptionError } from "./meta"
+import {
+  META_WEBHOOK_SUBSCRIBED_FIELDS,
+  subscribePagesToWebhook,
+  WebhookSubscriptionError,
+} from "./meta"
 
 const page = (pageId: string) => ({
   pageId,
@@ -26,7 +30,7 @@ describe("Meta webhook subscription", () => {
     const body = fetchMock.mock.calls[0]?.[1]?.body
     expect(body).toBeInstanceOf(URLSearchParams)
     expect((body as URLSearchParams).get("subscribed_fields")).toBe(
-      "messages,messaging_postbacks"
+      META_WEBHOOK_SUBSCRIBED_FIELDS
     )
   })
 

@@ -5,6 +5,7 @@ import { getSql } from "@/lib/db"
 import { normalizeWebhookUrl } from "./webhook-url"
 
 export type PageStatus = "active" | "disconnected"
+export type PageTokenStatus = "valid" | "invalid"
 
 export type ConnectedPageRecord = {
   id: string
@@ -12,6 +13,9 @@ export type ConnectedPageRecord = {
   metaPageId: string
   name: string
   status: PageStatus
+  tokenStatus: PageTokenStatus
+  tokenError: string | null
+  tokenErrorAt: Date | null
   webhookUrl: string | null
   connectedAt: Date
   disconnectedAt: Date | null
@@ -25,6 +29,9 @@ type ConnectedPageRow = {
   meta_page_id: string
   name: string
   status: PageStatus
+  token_status: PageTokenStatus
+  token_error: string | null
+  token_error_at: Date | null
   webhook_url: string | null
   connected_at: Date
   disconnected_at: Date | null
@@ -64,8 +71,9 @@ export async function connectAuthorizedPages(
     for (const page of pages) {
       const encryptedToken = encryptSecret(page.pageAccessToken)
       const [existing] = await tx<ConnectedPageRow[]>`
-        select id, tenant_id, meta_page_id, name, status, webhook_url,
-          connected_at, disconnected_at, created_at, updated_at
+        select id, tenant_id, meta_page_id, name, status, token_status,
+          token_error, token_error_at, webhook_url, connected_at,
+          disconnected_at, created_at, updated_at
         from connected_pages
         where meta_page_id = ${page.pageId}
         limit 1
@@ -80,13 +88,17 @@ export async function connectAuthorizedPages(
           update connected_pages
           set name = ${page.name},
               status = 'active',
+              token_status = 'valid',
+              token_error = null,
+              token_error_at = null,
               page_access_token_encrypted = ${encryptedToken},
               connected_at = now(),
               disconnected_at = null,
               updated_at = now()
           where id = ${existing.id} and tenant_id = ${tenantId}
-          returning id, tenant_id, meta_page_id, name, status, webhook_url,
-            connected_at, disconnected_at, created_at, updated_at
+          returning id, tenant_id, meta_page_id, name, status, token_status,
+            token_error, token_error_at, webhook_url, connected_at,
+            disconnected_at, created_at, updated_at
         `
         if (updated) connected.push(mapConnectedPage(updated))
         continue
@@ -100,8 +112,9 @@ export async function connectAuthorizedPages(
           page_access_token_encrypted
         )
         values (${tenantId}, ${page.pageId}, ${page.name}, ${encryptedToken})
-        returning id, tenant_id, meta_page_id, name, status, webhook_url,
-          connected_at, disconnected_at, created_at, updated_at
+        returning id, tenant_id, meta_page_id, name, status, token_status,
+          token_error, token_error_at, webhook_url, connected_at,
+          disconnected_at, created_at, updated_at
       `
       if (inserted) connected.push(mapConnectedPage(inserted))
     }
@@ -137,8 +150,9 @@ export async function assertPagesConnectable(
 export async function listTenantPages(tenantId: string) {
   const sql = getSql()
   const rows = await sql<ConnectedPageRow[]>`
-    select id, tenant_id, meta_page_id, name, status, webhook_url,
-      connected_at, disconnected_at, created_at, updated_at
+    select id, tenant_id, meta_page_id, name, status, token_status,
+      token_error, token_error_at, webhook_url, connected_at, disconnected_at,
+      created_at, updated_at
     from connected_pages
     where tenant_id = ${tenantId}
     order by case when status = 'active' then 0 else 1 end, updated_at desc
@@ -160,8 +174,9 @@ export async function updatePageWebhookUrl(
     update connected_pages
     set webhook_url = ${normalized.value}, updated_at = now()
     where id = ${connectionId} and tenant_id = ${tenantId} and status = 'active'
-    returning id, tenant_id, meta_page_id, name, status, webhook_url,
-      connected_at, disconnected_at, created_at, updated_at
+    returning id, tenant_id, meta_page_id, name, status, token_status,
+      token_error, token_error_at, webhook_url, connected_at, disconnected_at,
+      created_at, updated_at
   `
 
   return row ? mapConnectedPage(row) : null
@@ -175,8 +190,9 @@ export async function disconnectPage(tenantId: string, connectionId: string) {
         disconnected_at = coalesce(disconnected_at, now()),
         updated_at = now()
     where id = ${connectionId} and tenant_id = ${tenantId}
-    returning id, tenant_id, meta_page_id, name, status, webhook_url,
-      connected_at, disconnected_at, created_at, updated_at
+    returning id, tenant_id, meta_page_id, name, status, token_status,
+      token_error, token_error_at, webhook_url, connected_at, disconnected_at,
+      created_at, updated_at
   `
 
   return row ? mapConnectedPage(row) : null
@@ -206,8 +222,9 @@ export async function getActivePageWithTokenForTenant(
 ) {
   const sql = getSql()
   const [row] = await sql<ConnectedPageWithTokenRow[]>`
-    select id, tenant_id, meta_page_id, name, status, webhook_url,
-      connected_at, disconnected_at, created_at, updated_at,
+    select id, tenant_id, meta_page_id, name, status, token_status,
+      token_error, token_error_at, webhook_url, connected_at, disconnected_at,
+      created_at, updated_at,
       page_access_token_encrypted
     from connected_pages
     where tenant_id = ${tenantId}
@@ -230,8 +247,9 @@ export async function getActivePageWithTokenByConnectionId(
 ) {
   const sql = getSql()
   const [row] = await sql<ConnectedPageWithTokenRow[]>`
-    select id, tenant_id, meta_page_id, name, status, webhook_url,
-      connected_at, disconnected_at, created_at, updated_at,
+    select id, tenant_id, meta_page_id, name, status, token_status,
+      token_error, token_error_at, webhook_url, connected_at, disconnected_at,
+      created_at, updated_at,
       page_access_token_encrypted
     from connected_pages
     where id = ${connectionId}
@@ -251,11 +269,35 @@ export async function getActivePageWithTokenByConnectionId(
 export async function getActivePageByMetaPageId(metaPageId: string) {
   const sql = getSql()
   const [row] = await sql<ConnectedPageRow[]>`
-    select id, tenant_id, meta_page_id, name, status, webhook_url,
-      connected_at, disconnected_at, created_at, updated_at
+    select id, tenant_id, meta_page_id, name, status, token_status,
+      token_error, token_error_at, webhook_url, connected_at, disconnected_at,
+      created_at, updated_at
     from connected_pages
     where meta_page_id = ${metaPageId} and status = 'active'
     limit 1
+  `
+
+  return row ? mapConnectedPage(row) : null
+}
+
+export async function markPageTokenInvalid(input: {
+  tenantId: string
+  connectionId: string
+  error: string
+}) {
+  const sql = getSql()
+  const [row] = await sql<ConnectedPageRow[]>`
+    update connected_pages
+    set token_status = 'invalid',
+        token_error = ${input.error},
+        token_error_at = now(),
+        updated_at = now()
+    where id = ${input.connectionId}
+      and tenant_id = ${input.tenantId}
+      and status = 'active'
+    returning id, tenant_id, meta_page_id, name, status, token_status,
+      token_error, token_error_at, webhook_url, connected_at, disconnected_at,
+      created_at, updated_at
   `
 
   return row ? mapConnectedPage(row) : null
@@ -268,6 +310,9 @@ function mapConnectedPage(row: ConnectedPageRow): ConnectedPageRecord {
     metaPageId: row.meta_page_id,
     name: row.name,
     status: row.status,
+    tokenStatus: row.token_status,
+    tokenError: row.token_error,
+    tokenErrorAt: row.token_error_at,
     webhookUrl: row.webhook_url,
     connectedAt: row.connected_at,
     disconnectedAt: row.disconnected_at,

@@ -14,7 +14,7 @@ import {
   pushInboundMessage,
   recordSkippedDelivery,
 } from "./external-push"
-import { extractInboundTextMessages } from "./meta-webhook"
+import { extractInboundEvents } from "./meta-webhook"
 
 export type InboundPushJob = () => Promise<void>
 
@@ -25,7 +25,7 @@ export type IngestedInboundMessage = {
 }
 
 export async function ingestMetaWebhookPayload(body: unknown) {
-  const incoming = extractInboundTextMessages(body)
+  const incoming = extractInboundEvents(body)
   const ingested: IngestedInboundMessage[] = []
 
   for (const event of incoming) {
@@ -55,10 +55,18 @@ export async function ingestMetaWebhookPayload(body: unknown) {
       pageId: page.metaPageId,
       senderId: message.contactId,
       text: message.text,
+      eventType: event.eventType,
+      postbackPayload: event.postbackPayload,
       at: message.createdAt.getTime(),
     })
 
-    const payload = buildInboundPushPayload({ page, conversation, message })
+    const payload = buildInboundPushPayload({
+      page,
+      conversation,
+      message,
+      eventType: event.eventType,
+      postbackPayload: event.postbackPayload,
+    })
     const webhookUrl = page.webhookUrl
     const pushJob = webhookUrl
       ? () =>
