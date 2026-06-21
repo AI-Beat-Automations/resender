@@ -19,7 +19,9 @@ export function encryptSecret(plainText: string) {
   ])
   const tag = cipher.getAuthTag()
 
-  return [iv, tag, encrypted].map((part) => part.toString("base64url")).join(".")
+  return [iv, tag, encrypted]
+    .map((part) => part.toString("base64url"))
+    .join(".")
 }
 
 export function decryptSecret(cipherText: string) {
@@ -39,6 +41,10 @@ export function decryptSecret(cipherText: string) {
     decipher.update(Buffer.from(encryptedText, "base64url")),
     decipher.final(),
   ]).toString("utf8")
+}
+
+export function assertSecretEncryptionConfigured() {
+  getEncryptionKey()
 }
 
 function getEncryptionKey() {

@@ -1,112 +1,142 @@
-# Handoff — Resender: Guía actual para Meta App Review
+# Handoff — Resender: Auditoria actualizada para Meta App Review (Messenger)
 
-> **Propósito:** Que un agente nuevo continúe el trabajo de llevar la app **Resender** (canal Messenger) a aprobar **Meta App Review** para `pages_messaging`.
-> **Fecha del análisis original:** 2026-06-17 · **Actualización:** 2026-06-21 · **Repo:** `/Users/arturo/git/resender` · **Branch:** `codex/meta-review-webhook-hygiene`
-> **Idioma de trabajo del usuario:** Español.
+> **Proposito:** Dejar un estado confiable para preparar **Resender** para **Meta App Review** del permiso `pages_messaging`.
+> **Analisis original:** 2026-06-17 · **Actualizacion:** 2026-06-21 · **Repo:** `/Users/arturo/git/resender` · **Branch:** `codex/meta-review-webhook-hygiene`
+> **Idioma de trabajo del usuario:** Espanol.
 
 ---
 
 ## 1. Contexto en una frase
+Resender es un **gateway + bitacora** para Facebook Messenger: recibe webhooks de Meta, persiste conversaciones/mensajes, los reenvia al `webhookUrl` externo del tenant (N8N/IA) y permite responder via API con una API key opaca. **No es un bot conversacional con UI propia**; las respuestas llegan desde el sistema externo del cliente. Esto sigue siendo el mayor riesgo practico para App Review.
 
-Resender es un **gateway + bitácora** para Facebook Messenger (multi-tenant, Next.js en `apps/web`): recibe webhooks de Meta, persiste conversaciones/mensajes, los reenvía al `webhookUrl` externo del tenant (N8N/IA) y permite responder vía API con una API key opaca. **NO es un bot conversacional con UI propia** — las respuestas llegan desde el sistema externo del cliente. Esto es central para entender el riesgo de revisión (sección 5).
+## 2. Veredicto actualizado
+**Estado: aun no listo para enviar a App Review.**
 
-## 2. Estado: qué se analizó y conclusión
+El nucleo tecnico esta sano y varias piezas que antes faltaban ya fueron implementadas. Esta rama cierra dos riesgos de higiene que quedaban abiertos: `webhookUrl` insegura y desconexion local sin desuscripcion en Meta. Lo que queda no es tanto "el webhook no funciona", sino preparacion de revision: demo end-to-end, configuracion del panel Meta y algunos riesgos de comportamiento silencioso.
 
-Se hizo una **auditoría real del código** (no de los PRDs) cruzada contra requisitos de Meta App Review para Messenger y contra el estado actual del repo.
+Validacion local ejecutada el 2026-06-20 en `main`:
 
-**Veredicto: ⚠️ Aún no enviaría a App Review.** El núcleo técnico está mejor cubierto y esta rama cierra dos riesgos de higiene: `webhookUrl` insegura y desconexión sin desuscribir en Meta. Lo que queda es principalmente preparación de revisión: cuenta/demo end-to-end, configuración del panel Meta y Terms de Servicio.
+```bash
+npm run test:run
+npm run typecheck
+npm run lint
+npm run build
+```
 
-- **Solo Messenger está implementado.** Instagram (`prd_instagram.md`) es **solo plan, NO existe en código** (sin `lib/instagram.ts`, sin rutas `app/api/instagram/*`, sin migración `0002`, sin columna `channel`). → **No solicitar permisos `instagram_business_*` en la revisión.**
-- Los permisos van en el `config_id` de **Facebook Login for Business** (`NEXT_PUBLIC_META_CONFIG_ID`), **no en el código**. Confirmar en el panel que pide exactamente `pages_messaging`, `pages_manage_metadata`, `pages_show_list` y nada más.
+Resultado: todo verde.
 
-## 3. Lo que YA cumple (no tocar, está bien)
+## 3. Lo que YA esta implementado
+| Requisito / pieza                                                 |         Estado actual | Evidencia                                                                                                 |
+| ----------------------------------------------------------------- | --------------------: | --------------------------------------------------------------------------------------------------------- |
+| Webhook Meta responde rapido y valida firma `X-Hub-Signature-256` |              ✅ Hecho | `apps/web/app/api/meta/webhook/route.ts`                                                                  |
+| Verificacion del challenge `hub.challenge`                        |              ✅ Hecho | `apps/web/app/api/meta/webhook/route.ts`                                                                  |
+| OAuth con Facebook Login for Business por `config_id`             |              ✅ Hecho | `apps/web/lib/meta.ts`, `apps/web/app/api/meta/start/route.ts`, `apps/web/app/api/meta/callback/route.ts` |
+| Suscripcion all-or-nothing de Pages al webhook de Meta            |              ✅ Hecho | `apps/web/lib/meta.ts`, `apps/web/app/api/meta/callback/route.ts`, `apps/web/lib/pages/page-registry.ts`  |
+| Tokens de Page cifrados en reposo                                 |              ✅ Hecho | `apps/web/lib/crypto/encryption.ts`, `apps/web/lib/pages/page-registry.ts`                                |
+| API externa de salida con API key opaca                           |              ✅ Hecho | `apps/web/app/api/meta/send/route.ts`, `apps/web/lib/api-keys/*`                                          |
+| Separacion por tenant                                             |              ✅ Hecho | `tenant_id` en migracion `0001_mvp_foundation.sql`                                                        |
+| Politica de privacidad publica                                    |              ✅ Hecho | `apps/web/app/privacy/page.tsx`                                                                           |
+| Instrucciones publicas de eliminacion de datos                    |              ✅ Hecho | `apps/web/app/data-deletion/page.tsx`                                                                     |
+| Borrado self-serve de cuenta                                      |              ✅ Hecho | `apps/web/features/account/ui/delete-account-panel.tsx`, `apps/web/features/account/actions.ts`           |
+| Borrado cascada de tenant/datos                                   |              ✅ Hecho | `apps/web/db/migrations/0002_account_deletion_cascade.sql`                                                |
+| Desuscripcion best-effort al borrar cuenta                        |              ✅ Hecho | `apps/web/features/account/actions.ts`, `apps/web/lib/meta.ts`                                            |
+| Contacto para privacidad/seguridad                                | ✅ Hecho, pero basico | `info@resender.dev` en `/privacy` y footer                                                                |
+| Terms of Service para tenants                                     |              ✅ Hecho | `apps/web/app/terms/page.tsx`; footer publico enlaza Terms                                                |
+| `webhookUrl` segura para destinos reales                          |              ✅ Hecho | `apps/web/lib/pages/webhook-url.ts`; HTTP solo queda para localhost/dev                                   |
+| Defensa de push ante URLs antiguas inseguras                      |              ✅ Hecho | `apps/web/lib/inbound/external-push.ts` vuelve a validar antes de hacer `fetch`                           |
+| Desconexion de Page intenta desuscribir en Meta                   |              ✅ Hecho | `apps/web/features/connections/actions.ts` llama `unsubscribeFromWebhook()` best-effort                   |
 
-| Requisito Meta | Evidencia en código |
-|---|---|
-| Webhook responde **200 OK ≤20 s** | `apps/web/app/api/meta/webhook/route.ts` — responde 200 y difiere push con `after()` |
-| Verificación de firma **X-Hub-Signature-256** | mismo archivo — HMAC-SHA256 con `META_APP_SECRET`, `timingSafeEqual` |
-| Verificación del reto (GET `hub.challenge`) | mismo archivo |
-| **Cifrado de tokens en reposo** | `apps/web/lib/crypto/encryption.ts` (AES-256-GCM) |
-| Token nunca viaja al cliente | `apps/web/app/api/meta/callback/route.ts`, `lib/pages/page-registry.ts` |
-| No pide credenciales de Meta a usuarios | OAuth correcto (`apps/web/lib/meta.ts`) |
-| Datos por tenant separados (Tech Provider) | `tenant_id` en todas las tablas (`apps/web/db/migrations/0001_mvp_foundation.sql`) |
-| Endpoint de envío autenticado | `apps/web/app/api/meta/send/route.ts` — API key Bearer, hash SHA-256 |
-| Política de privacidad pública | `apps/web/app/privacy/page.tsx` |
-| Instrucciones públicas de eliminación de datos | `apps/web/app/data-deletion/page.tsx` |
-| Borrado self-serve de cuenta y tenant | `apps/web/features/account/ui/delete-account-panel.tsx`, `apps/web/features/account/actions.ts`, `apps/web/db/migrations/0002_account_deletion_cascade.sql` |
-| Contacto público de privacidad/seguridad | `info@resender.dev` en `/privacy` y footer público |
-| `webhookUrl` segura para destinos reales | `apps/web/lib/pages/webhook-url.ts` exige HTTPS; HTTP solo queda para localhost en desarrollo |
-| Defensa de push ante URLs antiguas inseguras | `apps/web/lib/inbound/external-push.ts` vuelve a validar antes de hacer `fetch` |
-| Desconexión de Page intenta desuscribir en Meta | `apps/web/features/connections/actions.ts` llama `unsubscribeFromWebhook()` best-effort |
+## 4. Cambio importante respecto al handoff anterior
+El handoff anterior decia que **no existian** `/privacy`, metodo de eliminacion de datos ni borrado de cuenta. Eso ya cambio.
 
-## 4. ❌ Lo que FALTA — la guía de verificación de Meta
+Decision documentada en `CONTEXT.md`: Resender **no usa Data Deletion Callback** de Meta porque el `signed_request` trae un Facebook `user_id` que hoy no se guarda ni mapea al tenant. En su lugar, el panel de Meta debe apuntar a una **Data Deletion Instructions URL** publica: `/data-deletion`. El borrado real ocurre por:
 
-### 🔴 BLOQUEADORES OBLIGATORIOS (sin esto, rechazo automático)
+1. Boton self-serve en `Settings`.
+2. Solicitud por email a `info@resender.dev` en menos de 30 dias.
 
-1. **Cuenta de prueba para el revisor** — la app está detrás de login propio. Entregar usuario/contraseña temporales y explicar que la cuenta ya está preconfigurada.
-2. **Demo end-to-end automatizada** — el revisor debe poder mandar un DM a la Page demo y recibir respuesta automática vía el sistema externo conectado a Resender.
-3. **Screencast final** — grabar login en Resender, Page conectada, DM entrante, push al sistema externo, respuesta por `/api/meta/send` y mensaje saliente en Messenger.
+Si Meta exigiera explicitamente callback para esta app, habria que cambiar arquitectura: guardar el FB user id del autorizante durante OAuth y mapearlo a tenant, o crear un callback que responda instrucciones/confirmacion sin borrar automaticamente.
 
-### 🟠 OBLIGATORIOS / FUERTEMENTE RECOMENDADOS
+## 5. Brechas actuales priorizadas
+| Prioridad | Falta / riesgo                                                                                                                                                                                                                                                                                                                                | Evidencia en codigo                                                                                                                                                                   | Accion recomendada                                                                                                                                                                                                         | ¿Se puede omitir? |
+| --------: | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+|      🔴 1 | **Cuenta de revision + demo automatizada / screencast pendiente**. El revisor no debe hacer onboarding desde cero; debe recibir una cuenta Resender preconfigurada con Page conectada, `webhookUrl` y automatizacion activa. Usuario Messenger de prueba confirmado como tester y relacionado en Resender para grabar el video antes de Live. | Si `webhookUrl` es `null`, se registra delivery `skipped` en `apps/web/lib/inbound/inbound-ingestion.ts`; Meta exige demostrar que `pages_messaging` envia mensajes a Messenger.      | Pendiente operativo: grabar el screencast con la Page de revision y la automatizacion demo respondiendo por `/api/meta/send`. En notas, explicar que la cuenta esta preconfigurada y que no deben conectar una Page nueva. | No                |
+|      ✅ 2 | **Notas, credenciales y screencast para App Review** preparadas. La app esta detras de login propio. Usuario de revision: `demo@resender.dev`; password final definido fuera del repo; screencast disponible en YouTube; Page demo definida.                                                                                                  | Flujo protegido por `auth()` en layout de producto.                                                                                                                                   | Pegar notas finales en Meta App Review. No guardar passwords en archivos versionados y rotar el password al terminar la revision.                                                                                          | No                |
+|      ✅ 3 | **Configuracion del panel Meta (Basic + Login config)** completada. Alcance decidido y corregido: solo Messenger. Dominio canonico: `resender.dev`; URLs legales publicas guardadas; categoria seleccionada: Bots de Messenger para empresas; email real: `info@resender.dev`; App Icon cargado; Page asociada/publicada desde AI Beat.       | Permisos viven en `NEXT_PUBLIC_META_CONFIG_ID`, no en codigo; el `config_id` quedo con `pages_manage_metadata`, `pages_messaging`, `pages_show_list`.                                 | Mantener el `config_id` sin permisos extra y no cambiar las URLs `https://resender.dev/privacy` + `https://resender.dev/data-deletion`.                                                                                    | No                |
+|      ✅ 4 | **La suscripcion al webhook ya no falla silenciosamente**. El onboarding de Pages es all-or-nothing: Resender valida configuracion local y ownership, exige que Meta confirme `subscribed_apps` para todas las paginas devueltas y solo despues las guarda como activas.                                                                        | `apps/web/app/api/meta/callback/route.ts`, `apps/web/lib/meta.ts`, `apps/web/lib/crypto/encryption.ts`, `apps/web/lib/pages/page-registry.ts`, `apps/web/app/(product)/connections/page.tsx`, `apps/web/lib/meta.test.ts`. | Mantener este comportamiento: si falla una suscripcion, mostrar error y no persistir ninguna Page.                                                                                                                         | Hecho             |
+|      ✅ 5 | **Terms of Service para tenants**.                                                                                                                                                                                                                                                                                                            | `apps/web/app/terms/page.tsx`; footer publico enlaza Terms.                                                                                                                           | Mantener `/terms` publicado y alineado con politicas de Meta, uso aceptable, responsabilidades del tenant y contacto legal.                                                                                                | Hecho             |
+|      ✅ 6 | **`webhookUrl` externo ya no acepta HTTP remoto**.                                                                                                                                                                                                                                                                                            | `apps/web/lib/pages/webhook-url.ts`; `apps/web/lib/inbound/external-push.ts`; tests en `apps/web/lib/pages/webhook-url.test.ts` y `apps/web/lib/inbound/external-push.test.ts`.       | Mantener HTTPS para destinos reales; HTTP solo para `localhost`, `127.0.0.1` y `::1` en desarrollo.                                                                                                                        | Hecho             |
+|      ✅ 7 | **Desconectar Page intenta desuscribir en Meta**.                                                                                                                                                                                                                                                                                             | `apps/web/features/connections/actions.ts`, `apps/web/lib/pages/page-registry.ts`, `apps/web/features/connections/actions.test.ts`.                                                   | Mantener best-effort: la desconexion local conserva historial aunque falle Meta, pero intenta `DELETE /{page_id}/subscribed_apps`.                                                                                         | Hecho             |
+|      🟡 8 | **No se suscribe `messaging_policy_enforcement`**.                                                                                                                                                                                                                                                                                            | `subscribed_fields: "messages,messaging_postbacks"` en `apps/web/lib/meta.ts`.                                                                                                        | Agregar `messaging_policy_enforcement` para enterarse de infracciones/avisos.                                                                                                                                              | Si, pero conviene |
+|      🟡 9 | **Se suscribe `messaging_postbacks`, pero no se procesan postbacks/Get Started**.                                                                                                                                                                                                                                                             | `extractInboundTextMessages()` solo procesa `message.text`.                                                                                                                           | Procesar al menos `postback.payload === "GET_STARTED"` o no depender de Get Started en la demo.                                                                                                                            | Si                |
+|     🟡 10 | **No hay greeting/Get Started configurado en Messenger Profile**.                                                                                                                                                                                                                                                                             | No hay helper/ruta para Messenger Profile API.                                                                                                                                        | Configurarlo manualmente en panel/API o dejarlo fuera de la demo.                                                                                                                                                          | Si                |
+|     🟡 11 | **Error 190 / token caducado no notifica al admin**.                                                                                                                                                                                                                                                                                          | `sendMetaTextMessage()` persiste fallo via `providerResponse`, pero no alerta.                                                                                                        | Mostrar alerta en UI o notificacion operativa cuando Meta devuelve token invalido.                                                                                                                                         | Si                |
+|     ✅ 12 | **Footer publico con links legales completos**.                                                                                                                                                                                                                                                                                               | `apps/web/components/site-footer.tsx`.                                                                                                                                                | Footer enlaza `Privacy`, `Data Deletion`, `Terms` y `info@resender.dev`.                                                                                                                                                   | Hecho             |
 
-4. **Términos de Servicio para los tenants** — como **Proveedor de tecnología** conviene prohibir por contrato usos indebidos a tus clientes. En este checkout aún no existe `apps/web/app/terms/page.tsx`.
-5. **Ajustes del panel** (acción del usuario, no código): app icon **1024×1024** sin logos de marca, categoría precisa, email de notificaciones en "Todas las notificaciones excepto…", publicar la **página de Facebook** asociada.
-6. **URLs legales en el panel**: confirmar que Meta apunta a `https://resender.dev/privacy` y a `https://resender.dev/data-deletion`.
+## 6. Checklist recomendado antes de enviar
+### Codigo
+1. `/terms` creado y enlazado en footer.
+2. Suscripcion al webhook all-or-nothing implementada.
+3. `webhookUrl` restringida a HTTPS en destinos reales; HTTP solo para localhost/dev.
+4. Desuscripcion best-effort en Meta cuando el usuario desconecta una Page.
+5. Opcional: agregar `messaging_policy_enforcement`.
+6. Opcional: procesar `GET_STARTED`/postbacks o ajustar la demo para no depender de eso.
 
-### 🟡 RECOMENDADOS (suman puntos, no bloquean)
+### Operacion / panel Meta
+1. Mantener el `config_id` con exactamente los permisos decididos: `pages_manage_metadata`, `pages_messaging`, `pages_show_list`.
+2. Privacy Policy URL publica guardada: `https://resender.dev/privacy` (URL verificada publicamente).
+3. Data Deletion Instructions URL publica guardada: `https://resender.dev/data-deletion` (URL verificada publicamente).
+4. App Icon cargado.
+5. Categoria seleccionada: Bots de Messenger para empresas.
+6. Email de contacto/notificaciones: `info@resender.dev` (buzon real).
+7. Page asociada/publicada desde AI Beat.
+8. Crear cuenta de revision preconfigurada para el revisor.
+9. Conectar una Page de revision real dentro de esa cuenta.
+10. Usuario Messenger de prueba confirmado como tester y relacionado en Resender para que sus DMs lleguen al webhook en modo Development.
+11. Configurar `webhookUrl` de la Page hacia una automatizacion externa que responda automaticamente por `/api/meta/send`.
+12. Screencast end-to-end disponible: `https://www.youtube.com/watch?v=iLLVMWvRhFo`.
+13. Page demo: `https://www.facebook.com/profile.php?id=61584495695858`.
+14. Usuario de revision: `demo@resender.dev`; password final definido fuera del repo.
+15. Notas de revision listas para pegar en Meta App Review. No guardar passwords en archivos versionados y rotar el password al terminar la revision.
 
-7. Procesar botón **"Empezar"** + mensaje de bienvenida (hoy se suscribe `messaging_postbacks` pero no se procesa) — `apps/web/lib/meta.ts` suscribe `messages,messaging_postbacks`.
-8. **Texto de saludo** (greeting, vía API/panel).
-9. Suscribir el evento **`messaging_policy_enforcement`** (avisa de infracciones de política) — añadir a los `subscribed_fields` en `lib/meta.ts`.
-10. Manejo del **error 190** (token caduco) con notificación al admin (hoy se persiste el error pero no se notifica).
+## 7. Riesgo principal de producto
+Meta revisa `pages_messaging` como una experiencia interactiva de Messenger. Resender solo garantiza recepcion, persistencia, reenvio y endpoint de respuesta. Por eso, para App Review hay que demostrar una experiencia completa:
 
-## 5. ⚠️ RIESGO PRINCIPAL — modelo de producto (leer sí o sí)
+1. El revisor inicia sesion en Resender.
+2. Ve una Page conectada.
+3. Envia un DM a la Page.
+4. Resender recibe y registra el mensaje.
+5. La automatizacion externa recibe el push.
+6. La automatizacion responde por `/api/meta/send`.
+7. El revisor recibe la respuesta en Messenger.
 
-La guía de Meta asume una **experiencia interactiva de Messenger** (bot que responde). Resender reenvía a un sistema externo y responde **vía API**. **El revisor enviará un mensaje y esperará respuesta**; si la cuenta de prueba no tiene una automatización conectada respondiendo, verá silencio → **rechazo**.
+Sin esa automatizacion demo, el producto puede estar tecnicamente correcto y aun asi fallar App Review. La cuenta de revision debe estar lista para que el revisor solo inicie sesion en Resender, vea la Page conectada, envie un DM a esa Page y confirme que la conversacion y la respuesta aparecen.
 
-**Mitigación obligatoria para el envío:** dejar una **automatización de demo** (N8N o similar) conectada que responda automáticamente a cualquier DM, y documentar en las notas: *"envía la palabra X → recibirás respuesta automática"*. El **screencast** debe mostrar: login con Facebook for Business → llega un DM → respuesta automática end-to-end.
+## 8. No solicitar permisos fuera de Messenger
+Solo Messenger esta implementado. Instagram (`prd_instagram.md` / `prd_insta_review.md`) sigue siendo plan/documentacion, no codigo productivo completo.
 
-## 6. Cambios cerrados en esta rama
+No solicitar permisos de Instagram en esta revision.
 
-1. `webhookUrl` ahora exige HTTPS para destinos reales. En desarrollo se permite HTTP solo para `localhost`, `127.0.0.1` y `::1`.
-2. El push externo vuelve a validar la `webhookUrl` antes de hacer `fetch`, para proteger contra URLs antiguas en base de datos.
-3. Al desconectar una Page, Resender conserva el historial local y además intenta desuscribir la Page del webhook de Meta con `DELETE /{page_id}/subscribed_apps` vía `unsubscribeFromWebhook()`.
-4. La decisión de dominio quedó documentada en `CONTEXT.md`.
+## 9. Archivos clave para continuar
+- `apps/web/app/privacy/page.tsx`
+- `apps/web/app/data-deletion/page.tsx`
+- `apps/web/app/terms/page.tsx`
+- `apps/web/components/site-footer.tsx`
+- `apps/web/app/api/meta/{start,callback,webhook,send}/route.ts`
+- `apps/web/lib/meta.ts`
+- `apps/web/lib/inbound/meta-webhook.ts`
+- `apps/web/lib/inbound/inbound-ingestion.ts`
+- `apps/web/lib/inbound/external-push.ts`
+- `apps/web/lib/pages/page-registry.ts`
+- `apps/web/lib/pages/webhook-url.ts`
+- `apps/web/features/connections/actions.ts`
+- `apps/web/features/account/actions.ts`
+- `apps/web/db/migrations/0001_mvp_foundation.sql`
+- `apps/web/db/migrations/0002_account_deletion_cascade.sql`
+- `CONTEXT.md`
 
-## 7. Plan de acción sugerido (orden recomendado)
+## 10. Nota sobre fuentes externas
+En la auditoria del 2026-06-20 se intento verificar documentacion actual de Meta con Context7. Context7 solo devolvio documentacion general de Meta Developers, no el detalle fino de Messenger App Review; `developers.facebook.com` respondio 429 desde el entorno. Por eso esta guia se basa en:
 
-**Código (lo hace el agente):**
-1. Crear página `/terms` y enlazarla desde el footer si se quiere que Terms quede visible públicamente.
-2. (Recomendado) Procesar "Empezar" / postbacks o asegurar que la demo no dependa de Get Started.
-3. (Recomendado) Suscribir `messaging_policy_enforcement`.
-4. (Recomendado) Mostrar alerta operativa cuando Meta devuelva error 190 / token inválido.
-
-**Usuario (panel/manual):**
-5. Publicar privacy URL en el panel, app icon 1024×1024, categoría, email de notificaciones.
-6. Publicar la página de Facebook.
-7. Conectar automatización de demo que responda + preparar credenciales/frase de activación para el revisor.
-8. Grabar screencast (login → DM entrante → respuesta automática) y escribir el caso de uso de `pages_messaging` (individual, sin copiar-pegar).
-
-## 8. Artefactos de referencia (no duplicar — abrir si hace falta)
-
-- `prd_mvp.md` — alcance del MVP de Messenger (ya implementado). App review estaba marcado *Out of Scope* (línea 144).
-- `prd_instagram.md` — plan de Instagram (NO implementado). Su sección "Paso 8" describe el App Review de Instagram para referencia futura.
-- `CONTEXT.md` — glosario canónico del producto (tenant, ownership, API keys, etc.).
-- `README.md` — variables de entorno y comandos de validación (`npm run lint/typecheck/test:run/build`).
-- Código clave: `apps/web/app/api/meta/{start,callback,webhook,send}/route.ts`, `apps/web/lib/meta.ts`, `apps/web/lib/crypto/encryption.ts`, `apps/web/lib/pages/page-registry.ts`, `apps/web/db/migrations/0001_mvp_foundation.sql`.
-
-## 9. Notas / gotchas
-
-- developers.facebook.com es una SPA JS → **WebFetch no lee el cuerpo**, solo navegación. Pedir al usuario que pegue el texto, o usar WebSearch.
-- Ya existe la migración `0002_account_deletion_cascade.sql`; ejecutarla en entornos que todavía no tengan el borrado cascada.
-- Repo sin tests previos antes del MVP; seguir el patrón de testing que defina `prd_mvp.md`.
-- NO hay secretos que redactar en este doc; las credenciales viven en `.env` (no versionado) y nunca se mostraron en el chat.
-
-## 10. Skills sugeridas para la próxima sesión
-
-- **`spec-drafter`** (`/spec-drafter`) — antes de implementar privacy/data-deletion/terms, pasar el plan como spec para obtener mapa del codebase + Gherkin + criterios de aceptación. Invocación manual.
-- **`find-docs`** — para la API/forma exacta del **Data Deletion Callback** de Meta y de la *Greeting/Get Started* (Messenger Profile API). No confiar en memoria.
-- **`next-best-practices`** — al crear las rutas `/privacy`, `/terms` y el route handler `/api/meta/data-deletion` (convenciones de App Router, route handlers, metadata).
-- **`verify`** (`/verify`) o **`run`** (`/run`) — para probar el endpoint de borrado y el flujo end-to-end localmente antes de grabar el screencast.
-- **`code-review`** (`/code-review`) — revisar el diff de las piezas nuevas (sobre todo la validación del `signed_request` del callback de borrado) antes de hacer push.
-- **`documenter`** — si el usuario quiere registrar la decisión de cumplimiento/compliance como ADR o en el roadmap del proyecto.
+1. El handoff/requisitos ya extraidos en `fb_requirements.md`.
+2. Auditoria directa del codigo actual.
+3. Requisitos operativos conocidos de App Review que deben confirmarse en el panel Meta antes de enviar.

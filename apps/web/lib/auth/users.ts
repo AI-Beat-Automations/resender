@@ -1,7 +1,7 @@
 import { getSql } from "@/lib/db"
 
 import { hashPassword, verifyPassword } from "./password"
-import { validateAuthInput } from "./validation"
+import { validateAuthInput, validatePasswordInput } from "./validation"
 
 export type UserRecord = {
   id: string
@@ -54,7 +54,8 @@ export async function createUser(emailInput: unknown, passwordInput: unknown) {
 }
 
 export async function getUserByEmail(emailInput: unknown) {
-  const email = typeof emailInput === "string" ? emailInput.trim().toLowerCase() : ""
+  const email =
+    typeof emailInput === "string" ? emailInput.trim().toLowerCase() : ""
   if (!email) return null
 
   const sql = getSql()
@@ -68,7 +69,10 @@ export async function getUserByEmail(emailInput: unknown) {
   return row ? mapUser(row) : null
 }
 
-export async function authenticateUser(emailInput: unknown, passwordInput: unknown) {
+export async function authenticateUser(
+  emailInput: unknown,
+  passwordInput: unknown
+) {
   const input = validateAuthInput(emailInput, passwordInput)
   if (!input.ok) return null
 
@@ -77,6 +81,25 @@ export async function authenticateUser(emailInput: unknown, passwordInput: unkno
 
   const valid = await verifyPassword(input.value.password, user.passwordHash)
   return valid ? user : null
+}
+
+export async function changeUserPassword(
+  userId: string,
+  passwordInput: unknown
+) {
+  const password = validatePasswordInput(passwordInput)
+  if (!password.ok) throw new InvalidAuthInputError(password.error)
+
+  const passwordHash = await hashPassword(password.value)
+  const sql = getSql()
+  const [row] = await sql<UserRow[]>`
+    update users
+    set password_hash = ${passwordHash}, updated_at = now()
+    where id = ${userId}
+    returning id, email, password_hash, created_at
+  `
+
+  return row ? mapUser(row) : null
 }
 
 function mapUser(row: UserRow): UserRecord {

@@ -37,6 +37,13 @@ export type ConnectedPage = {
   pageAccessToken: string
 }
 
+export class WebhookSubscriptionError extends Error {
+  constructor(public readonly failedPageIds: string[]) {
+    super("webhook subscription failed")
+    this.name = "WebhookSubscriptionError"
+  }
+}
+
 // code -> user token (corto) -> token largo -> páginas con su page access token.
 // Lanza Error si algún paso falla (el detalle queda en console.error del servidor).
 export async function exchangeCodeForPages(
@@ -107,6 +114,30 @@ export async function subscribeToWebhook(
     return false
   }
   return true
+}
+
+export async function subscribePagesToWebhook(pages: ConnectedPage[]) {
+  if (pages.length === 0) return
+
+  const results = await Promise.all(
+    pages.map(async (page) => {
+      try {
+        const ok = await subscribeToWebhook(page.pageId, page.pageAccessToken)
+        return { pageId: page.pageId, ok }
+      } catch (error) {
+        console.error("subscribed_apps failed", page.pageId, error)
+        return { pageId: page.pageId, ok: false }
+      }
+    })
+  )
+
+  const failedPageIds = results
+    .filter((result) => !result.ok)
+    .map((result) => result.pageId)
+
+  if (failedPageIds.length > 0) {
+    throw new WebhookSubscriptionError(failedPageIds)
+  }
 }
 
 // Desuscribe una página del webhook del app. Se usa best-effort al eliminar la
