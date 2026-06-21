@@ -30,8 +30,9 @@ En el MVP, `tenantId = userId` de nuestra autenticación.
 
 ### Usuario MVP
 El usuario del MVP tiene un modelo mínimo: `id`, `email`, `passwordHash` y `createdAt`, salvo los campos extra estrictamente necesarios para integrar `Auth.js`.
-El registro MVP valida email y exige solo password con longitud minima de 8 caracteres.
+El registro MVP valida email y exige solo password con longitud minima de 8 caracteres; el cambio de password usa la misma politica minima.
 El MVP no incluye recuperacion de password.
+El usuario autenticado puede cambiar su password desde `Settings` definiendo un password nuevo; esto no exige conocer el password anterior y no equivale a recuperacion de password. Tras cambiarlo, Resender cierra la sesion actual, lo envia a `login` y le indica que debe iniciar sesion con el password nuevo.
 En `login`, los errores son genericos. En `register`, el email duplicado se informa de forma explicita.
 
 ### Ownership de páginas

@@ -1,4 +1,5 @@
 import { auth } from "@/auth"
+import { ChangePasswordPanel } from "@/features/account/ui/change-password-panel"
 import { DeleteAccountPanel } from "@/features/account/ui/delete-account-panel"
 import {
   ApiKeysPanel,
@@ -31,6 +32,7 @@ async function SettingsContent() {
           Email: {session?.user?.email}
         </p>
       </section>
+      <ChangePasswordPanel />
       <ApiKeysPanel apiKeys={apiKeys.map(toApiKeyView)} />
       {session?.user?.email && (
         <DeleteAccountPanel email={session.user.email} />
@@ -39,7 +41,9 @@ async function SettingsContent() {
   )
 }
 
-function toApiKeyView(apiKey: Awaited<ReturnType<typeof listApiKeys>>[number]): ApiKeyView {
+function toApiKeyView(
+  apiKey: Awaited<ReturnType<typeof listApiKeys>>[number]
+): ApiKeyView {
   return {
     id: apiKey.id,
     label: apiKey.label,
