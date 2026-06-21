@@ -5,9 +5,11 @@ import { revalidatePath } from "next/cache"
 import { auth } from "@/auth"
 import {
   disconnectPage,
+  getActivePageWithTokenByConnectionId,
   InvalidWebhookUrlError,
   updatePageWebhookUrl,
 } from "@/lib/pages/page-registry"
+import { unsubscribeFromWebhook } from "@/lib/meta"
 
 export type ConnectionActionState = {
   error?: string
@@ -56,8 +58,35 @@ export async function disconnectPageAction(
     return { error: "Pagina invalida." }
   }
 
+  let pageToUnsubscribe: Awaited<
+    ReturnType<typeof getActivePageWithTokenByConnectionId>
+  > = null
+  try {
+    pageToUnsubscribe = await getActivePageWithTokenByConnectionId(
+      session.user.id,
+      connectionId
+    )
+  } catch (error) {
+    console.error("meta webhook unsubscribe context failed", connectionId, error)
+  }
+
   const disconnected = await disconnectPage(session.user.id, connectionId)
   if (!disconnected) return { error: "Pagina no encontrada." }
+
+  if (pageToUnsubscribe) {
+    try {
+      await unsubscribeFromWebhook(
+        pageToUnsubscribe.page.metaPageId,
+        pageToUnsubscribe.pageAccessToken
+      )
+    } catch (error) {
+      console.error(
+        "meta webhook unsubscribe failed",
+        pageToUnsubscribe.page.metaPageId,
+        error
+      )
+    }
+  }
 
   revalidatePath("/connections")
   return { message: "Pagina desconectada. El historial se conserva." }

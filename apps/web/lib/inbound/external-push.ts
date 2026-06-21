@@ -1,6 +1,7 @@
 import { getSql } from "@/lib/db"
 import type { ConversationRecord, MessageRecord } from "@/lib/messages/message-log"
 import type { ConnectedPageRecord } from "@/lib/pages/page-registry"
+import { normalizeWebhookUrl } from "@/lib/pages/webhook-url"
 
 export type InboundPushPayload = {
   tenant: { id: string }
@@ -58,8 +59,22 @@ export async function pushInboundMessage(input: {
   webhookUrl: string
   payload: InboundPushPayload
 }) {
+  const normalized = normalizeWebhookUrl(input.webhookUrl)
+  if (!normalized.ok || !normalized.value) {
+    await recordDelivery({
+      messageId: input.messageId,
+      webhookUrl: input.webhookUrl,
+      status: "failed",
+      statusCode: null,
+      error: normalized.ok ? "webhookUrl not configured" : normalized.error,
+    })
+    return
+  }
+
+  const webhookUrl = normalized.value
+
   try {
-    const response = await fetch(input.webhookUrl, {
+    const response = await fetch(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input.payload),
@@ -68,7 +83,7 @@ export async function pushInboundMessage(input: {
 
     await recordDelivery({
       messageId: input.messageId,
-      webhookUrl: input.webhookUrl,
+      webhookUrl,
       status: response.ok ? "success" : "failed",
       statusCode: response.status,
       error: response.ok ? null : `HTTP ${response.status}`,
@@ -76,7 +91,7 @@ export async function pushInboundMessage(input: {
   } catch (error) {
     await recordDelivery({
       messageId: input.messageId,
-      webhookUrl: input.webhookUrl,
+      webhookUrl,
       status: "failed",
       statusCode: null,
       error: error instanceof Error ? error.message : "unknown push error",

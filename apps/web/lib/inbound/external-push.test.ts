@@ -1,10 +1,38 @@
-import { describe, expect, it } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 
-import { buildInboundPushPayload } from "./external-push"
+const { sqlMock } = vi.hoisted(() => ({
+  sqlMock: vi.fn(),
+}))
+
+vi.mock("@/lib/db", () => ({
+  getSql: () => sqlMock,
+}))
+
+import { buildInboundPushPayload, pushInboundMessage } from "./external-push"
+
+const payload = {
+  tenant: { id: "tenant-1" },
+  page: { id: "page-row", metaPageId: "meta-page", name: "Main Page" },
+  conversation: { id: "conversation-1", contactId: "psid-1" },
+  message: {
+    id: "message-1",
+    metaMessageId: "mid-1",
+    direction: "inbound" as const,
+    status: "received" as const,
+    text: "hola",
+    createdAt: "2026-01-02T00:00:00.000Z",
+  },
+}
 
 describe("inbound push payload", () => {
+  beforeEach(() => {
+    sqlMock.mockReset()
+    sqlMock.mockResolvedValue([])
+    vi.unstubAllGlobals()
+  })
+
   it("includes tenant, page, conversation and message context", () => {
-    const payload = buildInboundPushPayload({
+    const result = buildInboundPushPayload({
       page: {
         id: "page-row",
         tenantId: "tenant-1",
@@ -41,18 +69,27 @@ describe("inbound push payload", () => {
       },
     })
 
-    expect(payload).toEqual({
-      tenant: { id: "tenant-1" },
-      page: { id: "page-row", metaPageId: "meta-page", name: "Main Page" },
-      conversation: { id: "conversation-1", contactId: "psid-1" },
-      message: {
-        id: "message-1",
-        metaMessageId: "mid-1",
-        direction: "inbound",
-        status: "received",
-        text: "hola",
-        createdAt: "2026-01-02T00:00:00.000Z",
-      },
+    expect(result).toEqual(payload)
+  })
+
+  it("records a failed delivery without fetching unsafe webhook URLs", async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal("fetch", fetchMock)
+
+    await pushInboundMessage({
+      messageId: "message-1",
+      webhookUrl: "http://example.com/hook",
+      payload,
     })
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(sqlMock).toHaveBeenCalledTimes(1)
+    expect(sqlMock.mock.calls[0]?.slice(1)).toEqual([
+      "message-1",
+      "http://example.com/hook",
+      "failed",
+      null,
+      "La URL debe usar HTTPS. HTTP solo se permite para localhost en desarrollo.",
+    ])
   })
 })

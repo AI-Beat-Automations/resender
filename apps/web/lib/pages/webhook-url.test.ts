@@ -7,12 +7,45 @@ describe("webhook URL normalization", () => {
     expect(normalizeWebhookUrl("   ")).toEqual({ ok: true, value: null })
   })
 
-  it("allows http and https URLs", () => {
-    expect(normalizeWebhookUrl("https://example.com/hook")).toEqual({
+  it("allows https URLs in production", () => {
+    expect(
+      normalizeWebhookUrl("https://example.com/hook", { mode: "production" })
+    ).toEqual({
       ok: true,
       value: "https://example.com/hook",
     })
-    expect(normalizeWebhookUrl("http://localhost:3000/hook").ok).toBe(true)
+  })
+
+  it("allows local http URLs in development", () => {
+    expect(
+      normalizeWebhookUrl("http://localhost:3000/hook", {
+        mode: "development",
+      }).ok
+    ).toBe(true)
+    expect(
+      normalizeWebhookUrl("http://127.0.0.1:3000/hook", {
+        mode: "development",
+      }).ok
+    ).toBe(true)
+    expect(
+      normalizeWebhookUrl("http://[::1]:3000/hook", {
+        mode: "development",
+      }).ok
+    ).toBe(true)
+  })
+
+  it("rejects remote http URLs", () => {
+    expect(
+      normalizeWebhookUrl("http://example.com/hook", { mode: "development" }).ok
+    ).toBe(false)
+  })
+
+  it("rejects local http URLs in production", () => {
+    expect(
+      normalizeWebhookUrl("http://localhost:3000/hook", {
+        mode: "production",
+      }).ok
+    ).toBe(false)
   })
 
   it("rejects unsupported or malformed URLs", () => {
