@@ -11,6 +11,12 @@ export function SiteFooter() {
           <Link href="/privacy" className="hover:text-foreground">
             Privacy
           </Link>
+          <Link href="/data-deletion" className="hover:text-foreground">
+            Data Deletion
+          </Link>
+          <Link href="/terms" className="hover:text-foreground">
+            Terms
+          </Link>
           <a
             href="mailto:info@resender.dev"
             className="hover:text-foreground"

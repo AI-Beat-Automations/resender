@@ -1,14 +1,19 @@
 import { NextResponse, type NextRequest } from "next/server"
 
 import { auth } from "@/auth"
-import { SecretEncryptionConfigError } from "@/lib/crypto/encryption"
+import {
+  assertSecretEncryptionConfigured,
+  SecretEncryptionConfigError,
+} from "@/lib/crypto/encryption"
 import {
   APP_URL,
   STATE_COOKIE,
   exchangeCodeForPages,
-  subscribeToWebhook,
+  subscribePagesToWebhook,
+  WebhookSubscriptionError,
 } from "@/lib/meta"
 import {
+  assertPagesConnectable,
   connectAuthorizedPages,
   PageOwnershipError,
 } from "@/lib/pages/page-registry"
@@ -45,12 +50,11 @@ export async function GET(request: NextRequest) {
 
   try {
     const pages = await exchangeCodeForPages(code)
-    const connectedPages = await connectAuthorizedPages(session.user.id, pages)
+    assertSecretEncryptionConfigured()
+    await assertPagesConnectable(session.user.id, pages)
+    await subscribePagesToWebhook(pages)
 
-    // suscribe cada página al webhook del app (messages, messaging_postbacks)
-    await Promise.all(
-      pages.map((p) => subscribeToWebhook(p.pageId, p.pageAccessToken))
-    )
+    const connectedPages = await connectAuthorizedPages(session.user.id, pages)
 
     console.log(
       "connected pages",
@@ -70,6 +74,12 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     if (error instanceof PageOwnershipError) {
       return fail(`page_owned:${error.metaPageId}`)
+    }
+    if (error instanceof WebhookSubscriptionError) {
+      console.error("webhook subscription failed", {
+        pageIds: error.failedPageIds,
+      })
+      return fail("webhook_subscription_failed")
     }
     console.error("meta connection failed", error)
     if (error instanceof SecretEncryptionConfigError) {
