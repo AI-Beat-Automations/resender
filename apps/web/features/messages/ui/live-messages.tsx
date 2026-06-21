@@ -7,6 +7,8 @@ type IncomingMessage = {
   pageId: string
   senderId: string
   text: string
+  eventType: "message" | "postback"
+  postbackPayload: string | null
   at: number
 }
 
@@ -95,7 +97,7 @@ export function LiveMessages() {
               <ReplyDot pageId={m.pageId} recipientId={m.senderId} />
               <div className="min-w-0 flex-1">
                 <div className="text-muted-foreground text-xs">
-                  page {m.pageId} · from {m.senderId} ·{" "}
+                  page {m.pageId} · from {m.senderId} · {m.eventType} ·{" "}
                   {new Date(m.at).toLocaleTimeString()}
                 </div>
                 <div className="break-words">{m.text}</div>

@@ -5,6 +5,8 @@ export type IncomingMessage = {
   pageId: string // página que recibió — futura llave de tenant
   senderId: string // PSID del usuario
   text: string
+  eventType: "message" | "postback"
+  postbackPayload: string | null
   at: number // epoch ms
 }
 

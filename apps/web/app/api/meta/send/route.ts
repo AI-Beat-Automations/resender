@@ -6,8 +6,15 @@ import {
   insertOutboundMessage,
   upsertConversation,
 } from "@/lib/messages/message-log"
-import { getActivePageWithTokenForTenant } from "@/lib/pages/page-registry"
-import { extractMetaMessageId, sendMetaTextMessage } from "@/lib/outbound/meta-send"
+import {
+  getActivePageWithTokenForTenant,
+  markPageTokenInvalid,
+} from "@/lib/pages/page-registry"
+import {
+  extractMetaMessageId,
+  isMetaExpiredTokenError,
+  sendMetaTextMessage,
+} from "@/lib/outbound/meta-send"
 import { getBearerToken, parseOutboundSendInput } from "@/lib/outbound/send-request"
 
 // Envía una respuesta al contacto.
@@ -86,6 +93,24 @@ export async function POST(request: NextRequest) {
     recipientId: input.value.recipientId,
     text: input.value.reply,
   })
+
+  if (!metaResult.ok && isMetaExpiredTokenError(metaResult.data)) {
+    try {
+      await markPageTokenInvalid({
+        tenantId: apiKey.tenantId,
+        connectionId: connectedPage.page.id,
+        error:
+          metaResult.error ??
+          "Meta rejected the Page token. Reconnect the Page in Resender.",
+      })
+    } catch (error) {
+      console.error(
+        "failed to mark page token invalid",
+        connectedPage.page.metaPageId,
+        error
+      )
+    }
+  }
 
   const message = await insertOutboundMessage({
     tenantId: apiKey.tenantId,

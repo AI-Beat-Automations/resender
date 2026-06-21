@@ -2,6 +2,7 @@ import { getSql } from "@/lib/db"
 import type { ConversationRecord, MessageRecord } from "@/lib/messages/message-log"
 import type { ConnectedPageRecord } from "@/lib/pages/page-registry"
 import { normalizeWebhookUrl } from "@/lib/pages/webhook-url"
+import type { InboundMetaEventType } from "./meta-webhook"
 
 export type InboundPushPayload = {
   tenant: { id: string }
@@ -10,6 +11,8 @@ export type InboundPushPayload = {
   message: {
     id: string
     metaMessageId: string | null
+    eventType: InboundMetaEventType
+    postbackPayload: string | null
     direction: "inbound"
     status: "received"
     text: string
@@ -21,6 +24,8 @@ export function buildInboundPushPayload(input: {
   page: ConnectedPageRecord
   conversation: ConversationRecord
   message: MessageRecord
+  eventType: InboundMetaEventType
+  postbackPayload: string | null
 }): InboundPushPayload {
   return {
     tenant: { id: input.message.tenantId },
@@ -36,6 +41,8 @@ export function buildInboundPushPayload(input: {
     message: {
       id: input.message.id,
       metaMessageId: input.message.metaMessageId,
+      eventType: input.eventType,
+      postbackPayload: input.postbackPayload,
       direction: "inbound",
       status: "received",
       text: input.message.text,

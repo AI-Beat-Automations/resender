@@ -7,6 +7,8 @@ const APP_SECRET = process.env.META_APP_SECRET!
 const CONFIG_ID = process.env.NEXT_PUBLIC_META_CONFIG_ID!
 const GRAPH_VERSION = "v23.0"
 const GRAPH = `https://graph.facebook.com/${GRAPH_VERSION}`
+export const META_WEBHOOK_SUBSCRIBED_FIELDS =
+  "messages,messaging_postbacks,messaging_policy_enforcement"
 
 // Origen público de la app (en dev, la URL https de ngrok). Lo usamos para armar
 // el redirect_uri y para volver a la home; así no dependemos de cómo Next infiera
@@ -95,8 +97,8 @@ export async function exchangeCodeForPages(
   }))
 }
 
-// Suscribe una página al webhook del app (campos messages / postbacks). Requiere
-// el page access token y el permiso pages_manage_metadata en el config_id.
+// Suscribe una página al webhook del app. Requiere el page access token y el
+// permiso pages_manage_metadata en el config_id.
 export async function subscribeToWebhook(
   pageId: string,
   pageAccessToken: string
@@ -104,7 +106,7 @@ export async function subscribeToWebhook(
   const res = await fetch(`${GRAPH}/${pageId}/subscribed_apps`, {
     method: "POST",
     body: new URLSearchParams({
-      subscribed_fields: "messages,messaging_postbacks",
+      subscribed_fields: META_WEBHOOK_SUBSCRIBED_FIELDS,
       access_token: pageAccessToken,
     }),
   })
