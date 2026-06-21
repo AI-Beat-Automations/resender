@@ -52,6 +52,7 @@ Desconectar una página elimina o desactiva la conexión para futuros envíos y 
 ### Entrega de entrantes al sistema externo
 El MVP usa `push`: tras persistir un mensaje entrante, Resender lo reenvía de forma no bloqueante al sistema externo del tenant.
 La URL de destino externo se configura por página. Si una página no tiene `webhookUrl`, el mensaje entrante se persiste igual y aparece en la bitácora, pero no se reenvía.
+La `webhookUrl` debe usar HTTPS para destinos reales; HTTP queda reservado a desarrollo local.
 El payload reenviado al sistema externo incluye contexto minimo pero rico de `tenant`, `page`, `conversation` y `message`.
 
 ### API externa de salida
