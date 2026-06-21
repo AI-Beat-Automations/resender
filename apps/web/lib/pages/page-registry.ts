@@ -110,6 +110,30 @@ export async function connectAuthorizedPages(
   })
 }
 
+export async function assertPagesConnectable(
+  tenantId: string,
+  pages: MetaConnectedPage[]
+) {
+  if (pages.length === 0) return
+
+  const sql = getSql()
+
+  for (const page of pages) {
+    const [existing] = await sql<
+      Pick<ConnectedPageRow, "meta_page_id" | "tenant_id">[]
+    >`
+      select meta_page_id, tenant_id
+      from connected_pages
+      where meta_page_id = ${page.pageId}
+      limit 1
+    `
+
+    if (existing && existing.tenant_id !== tenantId) {
+      throw new PageOwnershipError(existing.meta_page_id)
+    }
+  }
+}
+
 export async function listTenantPages(tenantId: string) {
   const sql = getSql()
   const rows = await sql<ConnectedPageRow[]>`

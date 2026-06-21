@@ -41,6 +41,7 @@ Una página de Facebook conectada pertenece a un solo tenant. Si otro usuario in
 ### Páginas conectadas por tenant
 En el MVP, cada usuario/tenant puede conectar múltiples páginas de Facebook.
 Cuando Meta devuelve varias páginas en el callback, el MVP conecta automáticamente todas las páginas autorizadas para ese mismo tenant.
+La conexión OAuth es all-or-nothing: antes de llamar a Meta, Resender verifica que el servidor pueda cifrar tokens y que las páginas sean conectables por ownership local; después exige que Meta confirme la suscripción al webhook para todas las páginas devueltas. Solo entonces persiste las páginas como activas. Si alguna suscripción falla, no se guarda ninguna página como conectada.
 
 ### Reconexión de páginas
 Si una página ya conectada pertenece al mismo tenant y se vuelve a autorizar en Meta, la reconexión es idempotente: actualiza token, nombre y `updatedAt`.
@@ -84,6 +85,18 @@ La lista de API keys muestra `label`, prefijo visible corto, `createdAt`, `lastU
 Una API key revocada sigue visible en la lista con estado `revoked`; deja de autenticar, pero no desaparece del historial operativo.
 Cada API key del MVP autentica acceso a todas las paginas del tenant; no existen restricciones por pagina en esta version.
 
+### Cuenta de revision
+Para Meta App Review, Resender usa una cuenta de revision preconfigurada en lugar de pedirle al revisor que haga onboarding desde cero. Esta cuenta representa un tenant de Resender y debe tener una pagina de Facebook de prueba ya conectada, una `webhookUrl` configurada y una automatizacion demo activa que responda por la API externa de salida. Las credenciales compartidas con Meta son solo de Resender; no se comparten credenciales personales de Meta/Facebook.
+
+### Page de revision
+La Page de revision es la pagina de Facebook conectada dentro de la cuenta de revision. Los mensajes no llegan al usuario de Resender directamente: llegan a esta Page, Resender los persiste en la bitacora y los reenvia al sistema externo configurado. El revisor debe poder enviar un DM a esta Page y ver en Resender que aparece la conversacion, junto con la respuesta enviada de vuelta por Messenger.
+
+### Usuario Messenger de prueba
+El Usuario Messenger de prueba es una cuenta de Facebook controlada por AI Beat/Resender que se usa para grabar el screencast y enviar DMs a la Page de revision mientras la app esta en modo Development o pendiente de aprobacion. Esta cuenta debe tener el rol/relacion necesaria en Meta para que sus mensajes lleguen al webhook antes de que `pages_messaging` este aprobado en Live. No se comparten credenciales personales de Facebook/Messenger con Meta; al revisor se le entrega la cuenta de revision de Resender y pasos claros.
+
+### Automatizacion demo
+La automatizacion demo es el sistema externo conectado al `webhookUrl` de la Page de revision. Su objetivo no es cambiar el modelo de producto ni convertir Resender en bot, sino demostrar durante App Review que el flujo completo de `pages_messaging` funciona: DM entrante, persistencia, push externo, respuesta por `/api/meta/send` y recepcion del mensaje en Messenger.
+
 ### Identidad legal
 La entidad que opera Resender es **AI Beat**. `Resender` es el nombre del producto; `AI Beat` es la empresa responsable que figura en los documentos legales (politica de privacidad, terminos).
 
@@ -96,8 +109,16 @@ La politica de privacidad adopta una linea base pragmatica para clientes de USA 
 ### Contacto legal y de seguridad
 El correo publico unico para privacidad, solicitudes de eliminacion de datos y reporte de vulnerabilidades es `info@resender.dev`. Debe ser un buzon real y monitoreado.
 
+### Terminos de servicio
+La pagina publica `/terms` contiene los Terminos de Servicio de Resender para tenants. Debe dejar claro que el tenant es responsable de sus Pages, automatizaciones externas, contenido de mensajes, cumplimiento de politicas de Meta, consentimiento de usuarios y uso aceptable. Esta pagina complementa `/privacy` y `/data-deletion` como artefacto legal para App Review.
+
 ### Metodo de eliminacion de datos
 Resender NO usa el Data Deletion Callback de Meta (el `signed_request` trae un FB `user_id` que no mapea a nada: el OAuth nunca guarda el FB user_id del que conecta). En su lugar, el campo "Data Deletion" del panel apunta a una **Data Deletion Instructions URL**: una pagina publica `/data-deletion` que explica como borrar los datos. El borrado real ocurre por dos canales: el boton self-serve en `Settings` y el correo `info@resender.dev` (≤30 dias).
+
+### Configuracion de revision Meta
+Para el envio actual a Meta App Review, Resender solicita solo permisos de Messenger: `pages_messaging`, `pages_manage_metadata` y `pages_show_list`. No se solicitan permisos de Instagram, WhatsApp, Business Management ni otros permisos extra en esta revision.
+Los permisos viven en el `config_id` de Facebook Login for Business, no en codigo. El `config_id` usado para esta revision es nuevo y dedicado a este envio de Messenger; quedo configurado solo con `pages_manage_metadata`, `pages_messaging` y `pages_show_list`. En particular, `business_management` queda fuera del alcance de Messenger porque Resender no administra Business Manager, WABAs, cuentas publicitarias ni assets de negocio en este flujo. El panel de Meta debe mantenerse alineado con el alcance real del producto: listar paginas autorizadas, suscribir/desuscribir paginas al webhook y enviar/responder mensajes de Messenger.
+El dominio canonico para el envio es `resender.dev`. Las URLs publicas que deben cargarse en Meta Dashboard son `https://resender.dev/privacy` como Privacy Policy URL y `https://resender.dev/data-deletion` como Data Deletion Instructions URL.
 
 ### Borrado de cuenta (account deletion)
 "Delete account" en `Settings` borra **todo** el tenant (cuenta, paginas, conversaciones, mensajes, API keys); no hay borrado parcial en el MVP. Es inmediato y transaccional en produccion; los backups se purgan en ≤30 dias. Antes de borrar, se intenta best-effort dar de baja cada pagina activa del webhook de Meta. Requiere confirmacion destructiva (reescribir el email de la cuenta). Se implementa con FKs `on delete cascade` (migracion `0002`), que reemplazan el `on delete restrict` original. Cuidado: con cascade, borrar una fila de `connected_pages` arrastraria su historial; hoy nada borra paginas (ver [Desconexión de páginas], que es UPDATE no DELETE).

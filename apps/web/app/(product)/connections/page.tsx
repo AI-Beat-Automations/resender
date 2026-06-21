@@ -15,6 +15,7 @@ export default async function ConnectionsPage({
 }) {
   const { meta, pages, reason } = await searchParams
   const connected = parseConnectedPages(pages)
+  const errorMessage = formatMetaConnectionError(reason)
   const session = await auth()
   const tenantPages = session?.user?.id
     ? await listTenantPages(session.user.id)
@@ -57,7 +58,7 @@ export default async function ConnectionsPage({
         )}
         {meta === "error" && (
           <p className="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-            No se pudo conectar{reason ? `: ${reason}` : ""}.
+            {errorMessage}
           </p>
         )}
       </section>
@@ -84,7 +85,9 @@ export default async function ConnectionsPage({
   )
 }
 
-function toPageView(page: Awaited<ReturnType<typeof listTenantPages>>[number]): ConnectedPageView {
+function toPageView(
+  page: Awaited<ReturnType<typeof listTenantPages>>[number]
+): ConnectedPageView {
   return {
     id: page.id,
     metaPageId: page.metaPageId,
@@ -108,4 +111,25 @@ function parseConnectedPages(pages?: string): ConnectedPage[] {
   } catch {
     return []
   }
+}
+
+function formatMetaConnectionError(reason?: string) {
+  if (reason === "webhook_subscription_failed") {
+    return "No se pudo conectar: Meta no confirmo la suscripcion al webhook para todas las paginas. No se guardo ninguna pagina como conectada."
+  }
+
+  if (reason?.startsWith("page_owned:")) {
+    const pageId = reason.split(":")[1]
+    return `No se pudo conectar: la pagina ${pageId} ya pertenece a otra cuenta de Resender.`
+  }
+
+  if (reason === "configuration_failed") {
+    return "No se pudo conectar: falta configurar el cifrado de secretos del servidor."
+  }
+
+  if (reason === "state_mismatch") {
+    return "No se pudo conectar: la sesion de autorizacion expiro o no coincide. Intentalo de nuevo."
+  }
+
+  return reason ? `No se pudo conectar: ${reason}.` : "No se pudo conectar."
 }
