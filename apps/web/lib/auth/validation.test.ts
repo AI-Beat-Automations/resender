@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest"
 
-import { normalizeEmail, validateAuthInput } from "./validation"
+import {
+  normalizeEmail,
+  validateAuthInput,
+  validatePasswordChangeInput,
+} from "./validation"
 
 describe("auth input validation", () => {
   it("normalizes email before persistence and login", () => {
@@ -13,6 +17,21 @@ describe("auth input validation", () => {
     expect(validateAuthInput("user@example.com", "12345678")).toEqual({
       ok: true,
       value: { email: "user@example.com", password: "12345678" },
+    })
+  })
+
+  it("validates password change confirmation", () => {
+    expect(validatePasswordChangeInput("1234567", "1234567")).toEqual({
+      ok: false,
+      error: "El password debe tener al menos 8 caracteres.",
+    })
+    expect(validatePasswordChangeInput("12345678", "different")).toEqual({
+      ok: false,
+      error: "Los passwords no coinciden.",
+    })
+    expect(validatePasswordChangeInput("12345678", "12345678")).toEqual({
+      ok: true,
+      value: { password: "12345678" },
     })
   })
 })
