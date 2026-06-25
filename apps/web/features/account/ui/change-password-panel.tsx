@@ -16,15 +16,15 @@ export function ChangePasswordPanel() {
 
   return (
     <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-      <h2 className="font-medium">Cambiar password</h2>
+      <h2 className="font-medium">Change password</h2>
       <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-        Define un password nuevo para tu cuenta. Al guardarlo, cerraremos tu
-        sesion y tendras que iniciar sesion de nuevo.
+        Set a new password for your account. When you save it, we&apos;ll sign
+        you out and you&apos;ll have to sign in again.
       </p>
       <form action={action} className="mt-4 grid gap-3 sm:max-w-md">
         <div className="grid gap-2">
           <label className="text-sm font-medium" htmlFor="newPassword">
-            Nuevo password
+            New password
           </label>
           <input
             id="newPassword"
@@ -33,13 +33,13 @@ export function ChangePasswordPanel() {
             autoComplete="new-password"
             required
             minLength={8}
-            placeholder="Minimo 8 caracteres"
+            placeholder="At least 8 characters"
             className="h-10 rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
           />
         </div>
         <div className="grid gap-2">
           <label className="text-sm font-medium" htmlFor="confirmPassword">
-            Confirmar password
+            Confirm password
           </label>
           <input
             id="confirmPassword"
@@ -48,12 +48,12 @@ export function ChangePasswordPanel() {
             autoComplete="new-password"
             required
             minLength={8}
-            placeholder="Repite el password nuevo"
+            placeholder="Repeat the new password"
             className="h-10 rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
           />
         </div>
         <Button type="submit" disabled={pending}>
-          {pending ? "Actualizando..." : "Cambiar password"}
+          {pending ? "Updating..." : "Change password"}
         </Button>
         {state.error ? (
           <p className="text-sm text-destructive">{state.error}</p>

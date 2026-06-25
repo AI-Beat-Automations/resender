@@ -56,7 +56,7 @@ describe("disconnectPageAction", () => {
     formData.set("connectionId", "connection-1")
 
     await expect(disconnectPageAction({}, formData)).resolves.toEqual({
-      message: "Pagina desconectada. El historial se conserva.",
+      message: "Page disconnected. The history is kept.",
     })
 
     expect(mocks.getActivePageWithTokenByConnectionId).toHaveBeenCalledWith(
@@ -86,7 +86,7 @@ describe("disconnectPageAction", () => {
     formData.set("connectionId", "connection-1")
 
     await expect(disconnectPageAction({}, formData)).resolves.toEqual({
-      message: "Pagina desconectada. El historial se conserva.",
+      message: "Page disconnected. The history is kept.",
     })
 
     expect(mocks.disconnectPage).toHaveBeenCalledWith(
@@ -108,7 +108,7 @@ describe("disconnectPageAction", () => {
     formData.set("connectionId", "connection-1")
 
     await expect(disconnectPageAction({}, formData)).resolves.toEqual({
-      message: "Pagina desconectada. El historial se conserva.",
+      message: "Page disconnected. The history is kept.",
     })
 
     expect(mocks.disconnectPage).toHaveBeenCalledWith(
@@ -128,7 +128,7 @@ describe("disconnectPageAction", () => {
     formData.set("connectionId", "connection-1")
 
     await expect(disconnectPageAction({}, formData)).resolves.toEqual({
-      message: "Pagina desconectada. El historial se conserva.",
+      message: "Page disconnected. The history is kept.",
     })
 
     expect(mocks.unsubscribeFromWebhook).not.toHaveBeenCalled()

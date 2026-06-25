@@ -28,7 +28,7 @@ function ReplyDot({
     const body = JSON.stringify({
       pageId,
       recipientId,
-      reply: "Tu respuesta aquí",
+      reply: "Your reply here",
     })
     const curl = `curl -X POST '${endpoint}' \\
   -H 'Content-Type: application/json' \\
@@ -47,8 +47,8 @@ function ReplyDot({
     <button
       type="button"
       onClick={copy}
-      title={copied ? "¡Copiado!" : "Copiar curl para responder a este mensaje"}
-      aria-label="Copiar curl para responder a este mensaje"
+      title={copied ? "Copied!" : "Copy curl to reply to this message"}
+      aria-label="Copy curl to reply to this message"
       className={`mt-1 size-4 shrink-0 rounded-full transition-colors ${
         copied ? "bg-green-500" : "bg-primary hover:bg-primary/80"
       }`}
@@ -77,15 +77,15 @@ export function LiveMessages() {
   return (
     <section>
       <div className="flex items-center gap-2">
-        <h2 className="font-medium">Mensajes en vivo</h2>
+        <h2 className="font-medium">Live messages</h2>
         <span
           className={`size-2 rounded-full ${connected ? "bg-green-500" : "bg-muted-foreground"}`}
-          aria-label={connected ? "conectado" : "desconectado"}
+          aria-label={connected ? "connected" : "disconnected"}
         />
       </div>
       {messages.length === 0 ? (
         <p className="mt-2 text-muted-foreground">
-          Esperando mensajes… escríbele a tu página conectada.
+          Waiting for messages… message your connected Page.
         </p>
       ) : (
         <ul className="mt-2 flex flex-col gap-2">

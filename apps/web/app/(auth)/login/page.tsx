@@ -22,12 +22,12 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           <div className="mb-6">
             <h1 className="text-2xl font-semibold tracking-tight">Login</h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              Entra para administrar tus conexiones y bitacora.
+              Sign in to manage your connections and message log.
             </p>
           </div>
           {passwordChanged ? (
             <p className="mb-4 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-900 dark:border-green-900/50 dark:bg-green-950/30 dark:text-green-100">
-              Password actualizado. Inicia sesion con tu nueva contrasena.
+              Password updated. Sign in with your new password.
             </p>
           ) : null}
           <AuthForm action={loginAction} mode="login" />

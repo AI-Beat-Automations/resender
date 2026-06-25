@@ -45,8 +45,8 @@ export default async function MessagesPage({
       <div>
         <h1 className="text-3xl font-semibold tracking-tight">Messages</h1>
         <p className="mt-2 max-w-2xl text-muted-foreground">
-          Bitacora persistente organizada por conversacion. Los salientes se
-          originan desde la API externa; esta pantalla es solo lectura.
+          Durable message log organized by conversation. Outbound messages
+          originate from the external API; this screen is read-only.
         </p>
       </div>
       <PageFilter
@@ -75,7 +75,7 @@ function PageFilter({
   return (
     <div className="flex flex-wrap gap-2">
       <FilterLink href="/messages" active={!selectedPageId}>
-        Todas las paginas
+        All Pages
       </FilterLink>
       {pages.map((page) => (
         <FilterLink
@@ -125,14 +125,14 @@ function ConversationList({
   return (
     <aside className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
       <div className="border-b border-border p-4">
-        <h2 className="font-medium">Conversaciones</h2>
+        <h2 className="font-medium">Conversations</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Ordenadas por actividad reciente.
+          Sorted by recent activity.
         </p>
       </div>
       {conversations.length === 0 ? (
         <p className="p-4 text-sm text-muted-foreground">
-          No hay conversaciones para este filtro.
+          No conversations for this filter.
         </p>
       ) : (
         <div className="divide-y divide-border">
@@ -183,7 +183,7 @@ function ConversationLink({
       </p>
       {conversation.latestMessage && (
         <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">
-          {conversation.latestMessage.direction === "outbound" ? "Tu: " : ""}
+          {conversation.latestMessage.direction === "outbound" ? "You: " : ""}
           {conversation.latestMessage.text}
         </p>
       )}
@@ -201,7 +201,7 @@ function Thread({
   if (!conversation) {
     return (
       <section className="rounded-2xl border border-dashed border-border bg-card p-8 text-sm text-muted-foreground">
-        Todavia no hay conversaciones persistidas para mostrar.
+        No stored conversations to show yet.
       </section>
     )
   }
@@ -243,7 +243,7 @@ function MessageBubble({ message }: { message: ThreadMessage }) {
           <span>{message.createdAt.toLocaleString()}</span>
           <span>{message.direction}</span>
           <span>{message.status}</span>
-          {failed && <span className="font-medium text-destructive">fallo</span>}
+          {failed && <span className="font-medium text-destructive">failed</span>}
         </div>
         {failed && message.error && (
           <p className="mt-2 text-xs text-destructive">{message.error}</p>

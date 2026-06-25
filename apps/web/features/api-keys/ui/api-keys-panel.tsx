@@ -29,21 +29,21 @@ export function ApiKeysPanel({ apiKeys }: { apiKeys: ApiKeyView[] }) {
   return (
     <div className="grid gap-6">
       <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-        <h2 className="font-medium">Crear API key</h2>
+        <h2 className="font-medium">Create API key</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          Usa API keys opacas para que N8N o tu backend llamen la API externa
-          de Resender. El secreto completo se muestra solo una vez.
+          Use opaque API keys so N8N or your backend can call Resender&apos;s
+          external API. The full secret is shown only once.
         </p>
         <form action={createAction} className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
           <input
             name="label"
             required
             maxLength={80}
-            placeholder="N8N produccion"
+            placeholder="N8N production"
             className="h-10 rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
           />
           <Button type="submit" disabled={createPending}>
-            {createPending ? "Creando..." : "Crear key"}
+            {createPending ? "Creating..." : "Create key"}
           </Button>
         </form>
         {createState.error && (
@@ -63,7 +63,7 @@ export function ApiKeysPanel({ apiKeys }: { apiKeys: ApiKeyView[] }) {
         <h2 className="font-medium">API keys</h2>
         {apiKeys.length === 0 ? (
           <p className="mt-3 text-sm text-muted-foreground">
-            Todavia no creaste API keys.
+            You haven&apos;t created any API keys yet.
           </p>
         ) : (
           <div className="mt-4 grid gap-3">
@@ -102,12 +102,12 @@ function ApiKeyRow({ apiKey }: { apiKey: ApiKeyView }) {
           </div>
           <dl className="mt-2 grid gap-1 text-sm text-muted-foreground">
             <div>Prefix: {apiKey.visiblePrefix}...</div>
-            <div>Creada: {new Date(apiKey.createdAt).toLocaleString()}</div>
+            <div>Created: {new Date(apiKey.createdAt).toLocaleString()}</div>
             <div>
-              Ultimo uso: {apiKey.lastUsedAt ? new Date(apiKey.lastUsedAt).toLocaleString() : "nunca"}
+              Last used: {apiKey.lastUsedAt ? new Date(apiKey.lastUsedAt).toLocaleString() : "never"}
             </div>
             {apiKey.revokedAt && (
-              <div>Revocada: {new Date(apiKey.revokedAt).toLocaleString()}</div>
+              <div>Revoked: {new Date(apiKey.revokedAt).toLocaleString()}</div>
             )}
           </dl>
         </div>
@@ -115,12 +115,12 @@ function ApiKeyRow({ apiKey }: { apiKey: ApiKeyView }) {
           <form
             action={action}
             onSubmit={(event) => {
-              if (!window.confirm("Revocar esta API key?")) event.preventDefault()
+              if (!window.confirm("Revoke this API key?")) event.preventDefault()
             }}
           >
             <input type="hidden" name="apiKeyId" value={apiKey.id} />
             <Button type="submit" variant="destructive" disabled={pending}>
-              {pending ? "Revocando..." : "Revocar"}
+              {pending ? "Revoking..." : "Revoke"}
             </Button>
           </form>
         )}

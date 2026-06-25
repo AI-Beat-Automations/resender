@@ -19,7 +19,7 @@ export async function loginAction(
   formData: FormData
 ): Promise<AuthFormState> {
   const input = validateAuthInput(formData.get("email"), formData.get("password"))
-  if (!input.ok) return { error: "Email o password incorrectos." }
+  if (!input.ok) return { error: "Incorrect email or password." }
 
   try {
     await signIn("credentials", {
@@ -29,7 +29,7 @@ export async function loginAction(
     })
   } catch (error) {
     if (error instanceof AuthError) {
-      return { error: "Email o password incorrectos." }
+      return { error: "Incorrect email or password." }
     }
     throw error
   }
@@ -48,7 +48,7 @@ export async function registerAction(
     await createUser(email, password)
   } catch (error) {
     if (error instanceof DuplicateEmailError) {
-      return { error: "Ese email ya esta registrado. Inicia sesion." }
+      return { error: "That email is already registered. Sign in." }
     }
     if (error instanceof InvalidAuthInputError) {
       return { error: error.message }
@@ -64,7 +64,7 @@ export async function registerAction(
     })
   } catch (error) {
     if (error instanceof AuthError) {
-      return { error: "La cuenta se creo, pero no se pudo iniciar sesion." }
+      return { error: "The account was created, but we couldn't sign you in." }
     }
     throw error
   }

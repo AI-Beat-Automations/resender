@@ -53,7 +53,7 @@ export function ConnectedPageCard({ page }: { page: ConnectedPageView }) {
             Page ID: {page.metaPageId}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Conectada: {new Date(page.connectedAt).toLocaleString()}
+            Connected: {new Date(page.connectedAt).toLocaleString()}
           </p>
         </div>
       </div>
@@ -62,17 +62,17 @@ export function ConnectedPageCard({ page }: { page: ConnectedPageView }) {
         <div className="mt-5 grid gap-4">
           {page.tokenStatus === "invalid" && (
             <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-              <p className="font-medium">Esta Page necesita reconexion.</p>
+              <p className="font-medium">This Page needs to be reconnected.</p>
               <p className="mt-1">
-                Meta rechazo el token de la Page. Reconectala desde Facebook para
-                renovar permisos antes de volver a enviar respuestas.
+                Meta rejected the Page token. Reconnect it from Facebook to renew
+                permissions before sending replies again.
               </p>
               {page.tokenError && (
                 <p className="mt-2 text-xs opacity-85">{page.tokenError}</p>
               )}
               {page.tokenErrorAt && (
                 <p className="mt-1 text-xs opacity-75">
-                  Detectado: {new Date(page.tokenErrorAt).toLocaleString()}
+                  Detected: {new Date(page.tokenErrorAt).toLocaleString()}
                 </p>
               )}
             </div>
@@ -89,11 +89,11 @@ export function ConnectedPageCard({ page }: { page: ConnectedPageView }) {
                 name="webhookUrl"
                 type="url"
                 defaultValue={page.webhookUrl ?? ""}
-                placeholder="https://tu-automatizacion.example/webhook"
+                placeholder="https://your-automation.example/webhook"
                 className="h-10 flex-1 rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
               />
               <Button type="submit" disabled={savePending}>
-                {savePending ? "Guardando..." : "Guardar"}
+                {savePending ? "Saving..." : "Save"}
               </Button>
             </div>
             <ActionMessage state={saveState} />
@@ -103,25 +103,25 @@ export function ConnectedPageCard({ page }: { page: ConnectedPageView }) {
             action={disconnectAction}
             onSubmit={(event) => {
               const ok = window.confirm(
-                "Desconectar esta pagina detendra trafico futuro, pero conserva el historial. Continuar?"
+                "Disconnecting this Page will stop future traffic but keeps the history. Continue?"
               )
               if (!ok) event.preventDefault()
             }}
           >
             <input type="hidden" name="connectionId" value={page.id} />
             <Button type="submit" variant="destructive" disabled={disconnectPending}>
-              {disconnectPending ? "Desconectando..." : "Desconectar"}
+              {disconnectPending ? "Disconnecting..." : "Disconnect"}
             </Button>
             <ActionMessage state={disconnectState} />
           </form>
         </div>
       ) : (
         <p className="mt-4 rounded-lg bg-muted p-3 text-sm text-muted-foreground">
-          Desconectada
+          Disconnected
           {page.disconnectedAt
-            ? ` el ${new Date(page.disconnectedAt).toLocaleString()}`
+            ? ` on ${new Date(page.disconnectedAt).toLocaleString()}`
             : ""}
-          . El historial permanece disponible para la bitacora.
+          . The history remains available in the message log.
         </p>
       )}
     </article>

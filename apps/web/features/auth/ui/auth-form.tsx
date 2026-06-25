@@ -33,7 +33,7 @@ export function AuthForm({ action, mode }: AuthFormProps) {
           autoComplete="email"
           required
           className="h-10 rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
-          placeholder="tu@empresa.com"
+          placeholder="you@company.com"
         />
       </div>
       <div className="grid gap-2">
@@ -48,7 +48,7 @@ export function AuthForm({ action, mode }: AuthFormProps) {
           required
           minLength={8}
           className="h-10 rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
-          placeholder="Minimo 8 caracteres"
+          placeholder="At least 8 characters"
         />
       </div>
       {state.error && (
@@ -57,15 +57,15 @@ export function AuthForm({ action, mode }: AuthFormProps) {
         </p>
       )}
       <Button type="submit" size="lg" disabled={pending}>
-        {pending ? "Procesando..." : isLogin ? "Entrar" : "Crear cuenta"}
+        {pending ? "Processing..." : isLogin ? "Sign in" : "Create account"}
       </Button>
       <p className="text-center text-sm text-muted-foreground">
-        {isLogin ? "No tienes cuenta?" : "Ya tienes cuenta?"} {" "}
+        {isLogin ? "Don't have an account?" : "Already have an account?"} {" "}
         <Link
           href={isLogin ? "/register" : "/login"}
           className="font-medium text-foreground underline-offset-4 hover:underline"
         >
-          {isLogin ? "Registrate" : "Inicia sesion"}
+          {isLogin ? "Sign up" : "Sign in"}
         </Link>
       </p>
     </form>

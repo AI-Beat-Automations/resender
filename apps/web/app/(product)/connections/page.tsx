@@ -26,14 +26,14 @@ export default async function ConnectionsPage({
       <div>
         <h1 className="text-3xl font-semibold tracking-tight">Connections</h1>
         <p className="mt-2 max-w-2xl text-muted-foreground">
-          Conecta tus paginas de Facebook, configura un webhook por pagina y
-          desconecta canales sin borrar el historial.
+          Connect your Facebook Pages, configure a webhook per Page, and
+          disconnect channels without deleting history.
         </p>
       </div>
       <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
         <h2 className="font-medium">Facebook</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          Autoriza tus paginas desde Meta para empezar el onboarding.
+          Authorize your Pages from Meta to start onboarding.
         </p>
         <div className="mt-4">
           <ConnectFacebookButton />
@@ -41,8 +41,8 @@ export default async function ConnectionsPage({
         {meta === "connected" && (
           <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-950 dark:border-green-900/50 dark:bg-green-950/30 dark:text-green-100">
             <p>
-              Conectado: {connected.length} pagina
-              {connected.length === 1 ? "" : "s"} autorizada
+              Connected: {connected.length} Page
+              {connected.length === 1 ? "" : "s"} authorized
               {connected.length > 0 ? ":" : "."}
             </p>
             {connected.length > 0 && (
@@ -64,14 +64,14 @@ export default async function ConnectionsPage({
       </section>
       <section className="grid gap-3">
         <div>
-          <h2 className="font-medium">Paginas conectadas</h2>
+          <h2 className="font-medium">Connected Pages</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Las reconexiones actualizan token y metadata sin duplicar paginas.
+            Reconnections update token and metadata without duplicating Pages.
           </p>
         </div>
         {tenantPages.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border bg-card p-8 text-sm text-muted-foreground">
-            Todavia no hay paginas conectadas para este tenant.
+            No Pages connected for this tenant yet.
           </div>
         ) : (
           <div className="grid gap-3">
@@ -118,21 +118,21 @@ function parseConnectedPages(pages?: string): ConnectedPage[] {
 
 function formatMetaConnectionError(reason?: string) {
   if (reason === "webhook_subscription_failed") {
-    return "No se pudo conectar: Meta no confirmo la suscripcion al webhook para todas las paginas. No se guardo ninguna pagina como conectada."
+    return "Couldn't connect: Meta didn't confirm the webhook subscription for all Pages. No Page was saved as connected."
   }
 
   if (reason?.startsWith("page_owned:")) {
     const pageId = reason.split(":")[1]
-    return `No se pudo conectar: la pagina ${pageId} ya pertenece a otra cuenta de Resender.`
+    return `Couldn't connect: Page ${pageId} already belongs to another Resender account.`
   }
 
   if (reason === "configuration_failed") {
-    return "No se pudo conectar: falta configurar el cifrado de secretos del servidor."
+    return "Couldn't connect: server secret encryption isn't configured."
   }
 
   if (reason === "state_mismatch") {
-    return "No se pudo conectar: la sesion de autorizacion expiro o no coincide. Intentalo de nuevo."
+    return "Couldn't connect: the authorization session expired or doesn't match. Please try again."
   }
 
-  return reason ? `No se pudo conectar: ${reason}.` : "No se pudo conectar."
+  return reason ? `Couldn't connect: ${reason}.` : "Couldn't connect."
 }

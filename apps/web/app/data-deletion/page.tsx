@@ -48,9 +48,9 @@ export default function DataDeletionPage() {
                 Go to <strong className="text-foreground">Settings</strong>.
               </li>
               <li>
-                In the <strong className="text-foreground">Eliminar cuenta</strong>{" "}
-                (Delete account) section, retype your account email to confirm and
-                press the button.
+                In the <strong className="text-foreground">Delete account</strong>{" "}
+                section, retype your account email to confirm and press the
+                button.
               </li>
             </ol>
             <p className="mt-3">

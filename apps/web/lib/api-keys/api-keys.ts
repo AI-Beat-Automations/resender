@@ -122,10 +122,10 @@ export async function authenticateApiKey(apiKey: unknown) {
 function normalizeLabel(labelInput: unknown) {
   const label = typeof labelInput === "string" ? labelInput.trim() : ""
   if (label.length < 1) {
-    throw new InvalidApiKeyLabelError("El label es obligatorio.")
+    throw new InvalidApiKeyLabelError("Label is required.")
   }
   if (label.length > 80) {
-    throw new InvalidApiKeyLabelError("El label no puede superar 80 caracteres.")
+    throw new InvalidApiKeyLabelError("Label can't exceed 80 characters.")
   }
   return label
 }
