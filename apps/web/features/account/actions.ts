@@ -32,11 +32,11 @@ export async function changePasswordAction(
   if (!input.ok) return { error: input.error }
 
   const session = await auth()
-  if (!session?.user?.id) return { error: "No autenticado." }
+  if (!session?.user?.id) return { error: "Not authenticated." }
 
   try {
     const user = await changeUserPassword(session.user.id, input.value.password)
-    if (!user) return { error: "Cuenta no encontrada." }
+    if (!user) return { error: "Account not found." }
   } catch (error) {
     if (error instanceof InvalidAuthInputError) {
       return { error: error.message }
@@ -55,10 +55,10 @@ export async function deleteAccountAction(
   formData: FormData
 ): Promise<DeleteAccountState> {
   const session = await auth()
-  if (!session?.user?.id) return { error: "No autenticado." }
+  if (!session?.user?.id) return { error: "Not authenticated." }
 
   const context = await loadTenantDeletionContext(session.user.id)
-  if (!context) return { error: "Cuenta no encontrada." }
+  if (!context) return { error: "Account not found." }
 
   if (
     !accountDeletionConfirmationMatches(
@@ -67,7 +67,7 @@ export async function deleteAccountAction(
     )
   ) {
     return {
-      error: "El email no coincide. Escribe tu email exacto para confirmar.",
+      error: "The email doesn't match. Type your exact email to confirm.",
     }
   }
 

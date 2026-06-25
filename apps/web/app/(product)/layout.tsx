@@ -37,7 +37,7 @@ export default async function ProductLayout({
             }}
           >
             <Button type="submit" variant="outline">
-              Salir
+              Sign out
             </Button>
           </form>
         </div>

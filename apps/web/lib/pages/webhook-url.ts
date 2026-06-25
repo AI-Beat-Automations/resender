@@ -34,10 +34,10 @@ export function normalizeWebhookUrl(
     return {
       ok: false,
       error:
-        "La URL debe usar HTTPS. HTTP solo se permite para localhost en desarrollo.",
+        "The URL must use HTTPS. HTTP is only allowed for localhost in development.",
     }
   } catch {
-    return { ok: false, error: "Ingresa una URL valida." }
+    return { ok: false, error: "Enter a valid URL." }
   }
 }
 

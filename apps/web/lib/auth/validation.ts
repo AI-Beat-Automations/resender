@@ -34,7 +34,7 @@ export function validateAuthInput(
   const email = normalizeEmail(emailInput)
 
   if (!EMAIL_RE.test(email)) {
-    return { ok: false, error: "Ingresa un email valido." }
+    return { ok: false, error: "Enter a valid email." }
   }
 
   const password = validatePasswordInput(passwordInput)
@@ -49,7 +49,7 @@ export function validatePasswordInput(
   const password = typeof passwordInput === "string" ? passwordInput : ""
 
   if (password.length < PASSWORD_MIN_LENGTH) {
-    return { ok: false, error: "El password debe tener al menos 8 caracteres." }
+    return { ok: false, error: "Password must be at least 8 characters." }
   }
 
   return { ok: true, value: password }
@@ -65,7 +65,7 @@ export function validatePasswordChangeInput(
   const confirmPassword =
     typeof confirmPasswordInput === "string" ? confirmPasswordInput : ""
   if (password.value !== confirmPassword) {
-    return { ok: false, error: "Los passwords no coinciden." }
+    return { ok: false, error: "Passwords don't match." }
   }
 
   return { ok: true, value: { password: password.value } }

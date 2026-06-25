@@ -6,7 +6,7 @@ import { Button } from "@workspace/ui/components/button"
 export function ConnectFacebookButton() {
   return (
     <Button asChild>
-      <a href="/api/meta/start">Conectar Facebook</a>
+      <a href="/api/meta/start">Connect Facebook</a>
     </Button>
   )
 }

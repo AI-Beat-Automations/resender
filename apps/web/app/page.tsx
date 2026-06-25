@@ -25,21 +25,22 @@ export default function Page() {
           <section className="grid flex-1 items-center gap-10 py-20 md:grid-cols-[1.1fr_0.9fr]">
             <div className="max-w-2xl">
               <p className="mb-4 text-sm font-medium text-muted-foreground">
-                Gateway + bitacora para Messenger
+                Gateway + message log for Messenger
               </p>
               <h1 className="text-4xl font-semibold tracking-tight md:text-6xl">
-                Recibe mensajes de Facebook y responde desde tu automatizacion.
+                Receive Facebook messages and reply from your automation.
               </h1>
               <p className="mt-6 max-w-xl text-lg leading-8 text-muted-foreground">
-                Resender conecta tus paginas, guarda cada conversacion y entrega
-                los mensajes a tu sistema externo con credenciales revocables.
+                Resender connects your Pages, stores every conversation, and
+                delivers messages to your external system with revocable
+                credentials.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
                 <Button asChild size="lg">
-                  <Link href="/register">Crear cuenta</Link>
+                  <Link href="/register">Create account</Link>
                 </Button>
                 <Button asChild size="lg" variant="outline">
-                  <Link href="/login">Ya tengo cuenta</Link>
+                  <Link href="/login">I already have an account</Link>
                 </Button>
               </div>
             </div>
@@ -47,15 +48,15 @@ export default function Page() {
             <div className="rounded-3xl border border-border bg-card p-5 shadow-sm">
               <div className="rounded-2xl bg-muted p-4">
                 <div className="mb-5 flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Mensaje entrante</span>
-                  <span>persistido</span>
+                  <span>Incoming message</span>
+                  <span>stored</span>
                 </div>
                 <div className="rounded-2xl border border-green-200 bg-green-50 p-4 text-sm text-green-950 dark:border-green-900/50 dark:bg-green-950/30 dark:text-green-100">
-                  Hola, quiero saber si tienen disponibilidad para hoy.
+                  Hi, I&apos;d like to know if you have availability today.
                 </div>
                 <div className="my-4 h-px bg-border" />
                 <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-950 dark:border-yellow-900/50 dark:bg-yellow-950/30 dark:text-yellow-100">
-                  Tu automatizacion responde por la API segura de Resender.
+                  Your automation replies through Resender&apos;s secure API.
                 </div>
               </div>
             </div>

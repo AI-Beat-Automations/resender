@@ -21,11 +21,11 @@ export async function saveWebhookUrlAction(
   formData: FormData
 ): Promise<ConnectionActionState> {
   const session = await auth()
-  if (!session?.user?.id) return { error: "No autenticado." }
+  if (!session?.user?.id) return { error: "Not authenticated." }
 
   const connectionId = formData.get("connectionId")
   if (typeof connectionId !== "string" || !connectionId) {
-    return { error: "Pagina invalida." }
+    return { error: "Invalid Page." }
   }
 
   try {
@@ -35,9 +35,9 @@ export async function saveWebhookUrlAction(
       formData.get("webhookUrl")
     )
 
-    if (!updated) return { error: "Pagina no encontrada." }
+    if (!updated) return { error: "Page not found." }
     revalidatePath("/connections")
-    return { message: "Webhook guardado." }
+    return { message: "Webhook saved." }
   } catch (error) {
     if (error instanceof InvalidWebhookUrlError) {
       return { error: error.message }
@@ -51,11 +51,11 @@ export async function disconnectPageAction(
   formData: FormData
 ): Promise<ConnectionActionState> {
   const session = await auth()
-  if (!session?.user?.id) return { error: "No autenticado." }
+  if (!session?.user?.id) return { error: "Not authenticated." }
 
   const connectionId = formData.get("connectionId")
   if (typeof connectionId !== "string" || !connectionId) {
-    return { error: "Pagina invalida." }
+    return { error: "Invalid Page." }
   }
 
   let pageToUnsubscribe: Awaited<
@@ -71,7 +71,7 @@ export async function disconnectPageAction(
   }
 
   const disconnected = await disconnectPage(session.user.id, connectionId)
-  if (!disconnected) return { error: "Pagina no encontrada." }
+  if (!disconnected) return { error: "Page not found." }
 
   if (pageToUnsubscribe) {
     try {
@@ -89,5 +89,5 @@ export async function disconnectPageAction(
   }
 
   revalidatePath("/connections")
-  return { message: "Pagina desconectada. El historial se conserva." }
+  return { message: "Page disconnected. The history is kept." }
 }

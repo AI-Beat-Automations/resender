@@ -96,7 +96,7 @@ describe("inbound push payload", () => {
       "http://example.com/hook",
       "failed",
       null,
-      "La URL debe usar HTTPS. HTTP solo se permite para localhost en desarrollo.",
+      "The URL must use HTTPS. HTTP is only allowed for localhost in development.",
     ])
   })
 })

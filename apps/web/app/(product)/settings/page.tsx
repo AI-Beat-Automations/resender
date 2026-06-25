@@ -20,11 +20,11 @@ async function SettingsContent() {
       <div>
         <h1 className="text-3xl font-semibold tracking-tight">Settings</h1>
         <p className="mt-2 max-w-2xl text-muted-foreground">
-          Administra tu cuenta y las API keys de integracion externa.
+          Manage your account and external integration API keys.
         </p>
       </div>
       <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-        <h2 className="font-medium">Cuenta</h2>
+        <h2 className="font-medium">Account</h2>
         <p className="mt-2 text-sm text-muted-foreground">
           Tenant ID: {session?.user?.id}
         </p>

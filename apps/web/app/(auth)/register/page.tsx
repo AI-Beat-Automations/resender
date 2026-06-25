@@ -16,8 +16,8 @@ export default async function RegisterPage() {
           <div className="mb-6">
             <h1 className="text-2xl font-semibold tracking-tight">Register</h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              Crea una cuenta con email y password. No hay verificacion de email
-              en el MVP.
+              Create an account with email and password. There&apos;s no email
+              verification in the MVP.
             </p>
           </div>
           <AuthForm action={registerAction} mode="register" />
