@@ -1,0 +1,132 @@
+{/*
+  Public integration docs. Authored in MDX so this can grow into a docs section
+  (see docs/adr/0001-mdx-for-docs.md). Examples are NOT invented — they are
+  drawn from the real source-of-truth files and annotated below each one so they
+  can be re-verified when the flow changes:
+    - Inbound payload: apps/web/lib/inbound/external-push.ts (buildInboundPushPayload / InboundPushPayload)
+    - Reply endpoint:  apps/web/app/api/meta/send/route.ts + apps/web/lib/outbound/send-request.ts
+  Vocabulary (per CONTEXT.md): channel = a connected Facebook Page; inbound
+  message = a customer's message Resender POSTs to your webhook; reply = your
+  answer via the endpoint. All examples use obvious placeholders, never real
+  secrets or tokens.
+*/}
+
+# Integrate with Resender
+
+Resender is a gateway and message log for Facebook Messenger. This page documents the integration flow end-to-end so you can build against it without asking us. No login is required to read it.
+
+The flow has three steps:
+
+1. **Connect a channel** — connect your Facebook Page and point it at your webhook.
+2. **Receive inbound messages** — Resender POSTs each customer message to your webhook.
+3. **Send a reply** — answer the customer through the reply endpoint.
+
+A few terms used throughout:
+
+- **Channel** — a connected Facebook Page.
+- **Inbound message** — a customer's message that Resender delivers (POSTs) to your webhook. It carries `direction: "inbound"` and `status: "received"`.
+- **Reply** — your answer to the customer, sent via the reply endpoint.
+
+## Step 1 — Connect a channel
+
+1. Sign in to Resender and open **Connections**.
+2. Connect your Facebook Page. Once connected, the Page becomes a channel that Resender receives messages on.
+3. On that Page, set its **webhook URL** — the endpoint Resender will POST inbound messages to.
+
+> The webhook URL **must be HTTPS**. Plain HTTP is rejected for real destinations and is only allowed for `localhost` during local development.
+
+## Step 2 — Receive inbound messages at your webhook
+
+When a customer messages your connected Page, Resender persists the message and then POSTs a JSON body to your Page's webhook URL. The request is a `POST` with `Content-Type: application/json`.
+
+Here is a faithful example of the body for a `message` event:
+
+```json
+{
+  "tenant": { "id": "<tenant-id>" },
+  "page": {
+    "id": "<internal-page-id>",
+    "metaPageId": "<your-facebook-page-id>",
+    "name": "Acme Support"
+  },
+  "conversation": {
+    "id": "<conversation-id>",
+    "contactId": "<messenger-psid>"
+  },
+  "message": {
+    "id": "<message-id>",
+    "metaMessageId": "<meta-message-id>",
+    "eventType": "message",
+    "postbackPayload": null,
+    "direction": "inbound",
+    "status": "received",
+    "text": "Hi, do you have availability today?",
+    "createdAt": "2026-06-25T17:42:05.000Z"
+  }
+}
+```
+
+_Source of truth: `apps/web/lib/inbound/external-push.ts` (`buildInboundPushPayload` / `InboundPushPayload`)._
+
+Two fields are the ones you echo back when you reply — keep them:
+
+- **`page.metaPageId`** — your Facebook Page ID. You send this back as `pageId` (see Step 3).
+- **`conversation.contactId`** — the customer's Messenger ID (PSID). You send this back as `recipientId`.
+
+`eventType` can also be `"postback"` (for example, when a customer taps a button). In that case `postbackPayload` is the button's payload **string** instead of `null`; the rest of the shape is the same.
+
+### Delivery details
+
+These reflect the current behavior — code against them, don't assume more:
+
+- **HTTPS only.** The webhook URL must be HTTPS for real destinations (HTTP is allowed only for `localhost` in development).
+- **5-second timeout.** Resender aborts the delivery if your endpoint hasn't responded within 5 seconds, so respond quickly and do any heavy work asynchronously.
+- **No retries.** A failed or timed-out delivery is **not** retried. Do not assume at-least-once delivery in this version.
+- **Not signed.** Deliveries carry no signature header. Protect your webhook with an unguessable URL plus HTTPS rather than relying on signature verification.
+
+## Step 3 — Send a reply
+
+Replies go through the reply endpoint, authenticated with an API key.
+
+1. In Resender, open **Settings** and create an **API key**. Use it as a Bearer token.
+2. **The key's secret is shown only once, at creation.** Copy and store it immediately — you cannot retrieve it again afterwards.
+3. Call the endpoint with the `Authorization: Bearer` header:
+
+```bash
+curl -X POST https://resender.dev/api/meta/send \
+  -H "Authorization: Bearer pk_live_<your-api-key-secret>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "pageId": "<your-facebook-page-id>",
+    "recipientId": "<messenger-psid>",
+    "reply": "Yes — we have slots at 3pm and 5pm today."
+  }'
+```
+
+_Source of truth: `apps/web/app/api/meta/send/route.ts` and `apps/web/lib/outbound/send-request.ts`._
+
+The request body fields:
+
+- **`pageId`** — the Page's `metaPageId` from the inbound payload, **not** the internal `page.id`. Resender matches this value against the Page's Meta ID, so sending `page.id` will fail to resolve the channel.
+- **`recipientId`** — the `conversation.contactId` from the inbound payload, so your reply reaches the right customer.
+- **`reply`** — the text to send back.
+- **`conversationId`** _(optional)_ — if you include it, it must match the same `pageId` and `recipientId`; a mismatch returns `400`. If you omit it, Resender resolves (or creates) the conversation for you.
+
+A successful call responds with a `{ meta, resender }` body:
+
+```json
+{
+  "meta": {
+    "recipient_id": "<messenger-psid>",
+    "message_id": "<meta-reply-message-id>"
+  },
+  "resender": {
+    "conversationId": "<conversation-id>",
+    "messageId": "<resender-message-id>",
+    "status": "sent"
+  }
+}
+```
+
+- **`meta`** is Meta's raw passthrough response — Resender does not own or reshape it, so treat it as Meta's contract.
+- **`resender`** is Resender's own record of the reply. Log `resender.messageId` and `resender.status` (`"sent"` on success, `"failed"` otherwise) to track delivery on your side.

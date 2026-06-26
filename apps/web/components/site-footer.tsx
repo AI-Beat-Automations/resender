@@ -8,6 +8,9 @@ export function SiteFooter() {
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-2 px-6 py-6 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
         <p>© AI Beat · Resender</p>
         <nav className="flex flex-wrap items-center gap-4">
+          <Link href="/docs" className="hover:text-foreground">
+            Docs
+          </Link>
           <Link href="/privacy" className="hover:text-foreground">
             Privacy
           </Link>

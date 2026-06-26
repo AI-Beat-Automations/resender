@@ -14,6 +14,9 @@ export default function Page() {
             </Link>
             <nav className="flex items-center gap-2">
               <Button asChild variant="ghost">
+                <Link href="/docs">Docs</Link>
+              </Button>
+              <Button asChild variant="ghost">
                 <Link href="/login">Login</Link>
               </Button>
               <Button asChild>
