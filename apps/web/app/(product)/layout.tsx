@@ -8,6 +8,7 @@ const navItems = [
   { href: "/connections", label: "Connections" },
   { href: "/messages", label: "Messages" },
   { href: "/settings", label: "Settings" },
+  { href: "/docs", label: "Docs" },
 ]
 
 export default async function ProductLayout({
