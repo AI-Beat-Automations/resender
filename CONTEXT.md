@@ -15,6 +15,12 @@ La ruta `/` sigue siendo una landing pública simple con la propuesta de valor y
 ### Registro MVP
 En el MVP, el registro con email y password deja entrar al usuario inmediatamente. No se exige verificación de email antes de usar la app.
 
+### Waitlist
+El registro esta abierto, pero el acceso al producto esta cerrado por una bandera `users.waitlisted`. Una cuenta nueva nace con `waitlisted = true` y aterriza en la pantalla `/waitlist`, que le indica que le avisaremos por email cuando su acceso este listo. Solo con `waitlisted = false` el usuario entra a `Connections`, `Messages` y `Settings`.
+La bandera se lee de base de datos en cada request (no vive en el JWT), asi que sacar a alguien de la waitlist surte efecto sin pedirle volver a iniciar sesion. El criterio es fail-closed: si no se puede confirmar la bandera, no hay acceso.
+Las cuentas que ya existian cuando se introdujo la waitlist quedan con `waitlisted = false`, para no bloquear la cuenta de revision de Meta. Aprobar a un usuario es hoy una operacion manual por SQL; no hay panel de administracion en esta version.
+La waitlist tambien cierra las puertas fuera de la UI: el OAuth de Meta (`/api/meta/start` y `/api/meta/callback`) redirige a `/waitlist` y la API externa de salida responde `403` si el tenant esta en waitlist.
+
 ### API Token
 La integración externa (N8N/IA) no reutiliza la sesión web. Se autentica con una API key opaca separada emitida por Resender para el tenant.
 
