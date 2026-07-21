@@ -1,6 +1,8 @@
 # Resender
 
 Agreado
+
+hola lori
 Resender is a Messenger gateway and durable log for external automations.
 
 ## MVP environment
