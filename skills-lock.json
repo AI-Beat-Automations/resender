@@ -8,16 +8,16 @@
       "computedHash": "f2ce9afb11352a77b02049d0e4dcfe4a6e25e20dcd24fe741e83e82eaeafcc66"
     },
     "grill-with-docs": {
-      "source": "arturxdev/skills",
+      "source": "mattpocock/skills",
       "sourceType": "github",
-      "skillPath": "skills/grill-with-docs/SKILL.md",
-      "computedHash": "6137d3828f180a9f9199fa084440a3fc1562f978195514156b3cf29730db9677"
+      "skillPath": "skills/engineering/grill-with-docs/SKILL.md",
+      "computedHash": "9c460cbd94fd3c63cdef967dbdb6e66ca687103cdc380cd37834e4d10b738f78"
     },
     "handoff": {
       "source": "mattpocock/skills",
       "sourceType": "github",
       "skillPath": "skills/productivity/handoff/SKILL.md",
-      "computedHash": "5d0f81e38abe6b984e1feaa731927de5291d040982106ac513cf54ec240e00ec"
+      "computedHash": "ad03e8d4ea3cbbff66420eb7ba3cc375b5cbe1821a2449b53e863256cf5b5cde"
     },
     "to-prd": {
       "source": "mattpocock/skills",
