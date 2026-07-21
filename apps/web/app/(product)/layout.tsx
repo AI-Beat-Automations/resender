@@ -2,6 +2,7 @@ import Link from "next/link"
 import { redirect } from "next/navigation"
 
 import { auth, signOut } from "@/auth"
+import { isUserWaitlisted } from "@/lib/auth/waitlist"
 import { Button } from "@workspace/ui/components/button"
 
 const navItems = [
@@ -16,6 +17,7 @@ export default async function ProductLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   const session = await auth()
   if (!session?.user?.id) redirect("/login")
+  if (await isUserWaitlisted(session.user.id)) redirect("/waitlist")
 
   return (
     <div className="min-h-svh bg-muted/30">

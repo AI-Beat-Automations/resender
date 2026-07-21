@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 
 import { auth } from "@/auth"
+import { isUserWaitlisted } from "@/lib/auth/waitlist"
 import {
   assertSecretEncryptionConfigured,
   SecretEncryptionConfigError,
@@ -25,6 +26,10 @@ export async function GET(request: NextRequest) {
   const session = await auth()
   if (!session?.user?.id) {
     return NextResponse.redirect(new URL("/login", APP_URL))
+  }
+
+  if (await isUserWaitlisted(session.user.id)) {
+    return NextResponse.redirect(new URL("/waitlist", APP_URL))
   }
 
   const params = request.nextUrl.searchParams

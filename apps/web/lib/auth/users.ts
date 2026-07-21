@@ -7,6 +7,7 @@ export type UserRecord = {
   id: string
   email: string
   passwordHash: string
+  waitlisted: boolean
   createdAt: Date
 }
 
@@ -14,6 +15,7 @@ type UserRow = {
   id: string
   email: string
   password_hash: string
+  waitlisted: boolean
   created_at: Date
 }
 
@@ -42,7 +44,7 @@ export async function createUser(emailInput: unknown, passwordInput: unknown) {
     const [row] = await sql<UserRow[]>`
       insert into users (email, password_hash)
       values (${input.value.email}, ${passwordHash})
-      returning id, email, password_hash, created_at
+      returning id, email, password_hash, waitlisted, created_at
     `
 
     if (!row) throw new Error("user insert failed")
@@ -60,7 +62,7 @@ export async function getUserByEmail(emailInput: unknown) {
 
   const sql = getSql()
   const [row] = await sql<UserRow[]>`
-    select id, email, password_hash, created_at
+    select id, email, password_hash, waitlisted, created_at
     from users
     where email = ${email}
     limit 1
@@ -96,7 +98,7 @@ export async function changeUserPassword(
     update users
     set password_hash = ${passwordHash}, updated_at = now()
     where id = ${userId}
-    returning id, email, password_hash, created_at
+    returning id, email, password_hash, waitlisted, created_at
   `
 
   return row ? mapUser(row) : null
@@ -107,6 +109,7 @@ function mapUser(row: UserRow): UserRecord {
     id: row.id,
     email: row.email,
     passwordHash: row.password_hash,
+    waitlisted: row.waitlisted,
     createdAt: row.created_at,
   }
 }

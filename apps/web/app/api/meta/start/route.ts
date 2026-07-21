@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 
 import { auth } from "@/auth"
+import { isUserWaitlisted } from "@/lib/auth/waitlist"
 import { STATE_COOKIE, buildDialogUrl } from "@/lib/meta"
 
 // Arranca el OAuth: genera un `state` (CSRF), lo guarda en cookie httpOnly y
@@ -11,6 +12,10 @@ export async function GET(request: NextRequest) {
   const session = await auth()
   if (!session?.user?.id) {
     return NextResponse.redirect(new URL("/login", request.url))
+  }
+
+  if (await isUserWaitlisted(session.user.id)) {
+    return NextResponse.redirect(new URL("/waitlist", request.url))
   }
 
   const state = crypto.randomUUID()
