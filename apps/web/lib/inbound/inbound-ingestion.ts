@@ -1,3 +1,4 @@
+import { hasActiveSubscription } from "@/lib/billing/subscription"
 import { addMessage } from "@/lib/message-store"
 import {
   insertInboundMessage,
@@ -31,6 +32,11 @@ export async function ingestMetaWebhookPayload(body: unknown) {
   for (const event of incoming) {
     const page = await getActivePageByMetaPageId(event.metaPageId)
     if (!page) continue
+
+    // Bloqueo total sin suscripción activa (ADR 0002): el entrante del tenant
+    // se descarta sin persistir ni reenviar; esos mensajes se pierden a
+    // propósito. El webhook responde 200 a Meta igualmente.
+    if (!(await hasActiveSubscription(page.tenantId))) continue
 
     const conversation = await upsertConversation({
       tenantId: page.tenantId,

@@ -11,6 +11,7 @@ import {
 } from "@/lib/account/account-repository"
 import { changeUserPassword, InvalidAuthInputError } from "@/lib/auth/users"
 import { validatePasswordChangeInput } from "@/lib/auth/validation"
+import { getStripe } from "@/lib/billing/stripe"
 import { unsubscribeFromWebhook } from "@/lib/meta"
 
 export type DeleteAccountState = {
@@ -79,6 +80,21 @@ export async function deleteAccountAction(
       unsubscribeFromWebhook(page.metaPageId, page.pageAccessToken)
     )
   )
+
+  // Best-effort: cancelar la suscripción en Stripe antes de borrar; la fila de
+  // `subscriptions` cae por cascade, pero sin esto Stripe seguiría cobrando a
+  // una cuenta que ya no existe. Un fallo aquí tampoco bloquea el borrado.
+  if (context.stripeSubscriptionId) {
+    try {
+      await getStripe().subscriptions.cancel(context.stripeSubscriptionId)
+    } catch (error) {
+      console.error(
+        "stripe subscription cancel failed",
+        context.stripeSubscriptionId,
+        error
+      )
+    }
+  }
 
   await deleteTenant(session.user.id)
 

@@ -5,7 +5,13 @@ import {
   ApiKeysPanel,
   type ApiKeyView,
 } from "@/features/api-keys/ui/api-keys-panel"
+import {
+  SubscriptionPanel,
+  type SubscriptionView,
+} from "@/features/billing/ui/subscription-panel"
 import { listApiKeys } from "@/lib/api-keys/api-keys"
+import { getPlanByLookupKey } from "@/lib/billing/plans"
+import { getSubscriptionByTenantId } from "@/lib/billing/subscription"
 
 export default function SettingsPage() {
   return <SettingsContent />
@@ -14,6 +20,9 @@ export default function SettingsPage() {
 async function SettingsContent() {
   const session = await auth()
   const apiKeys = session?.user?.id ? await listApiKeys(session.user.id) : []
+  const subscription = session?.user?.id
+    ? await getSubscriptionByTenantId(session.user.id)
+    : null
 
   return (
     <div className="grid gap-6">
@@ -32,6 +41,9 @@ async function SettingsContent() {
           Email: {session?.user?.email}
         </p>
       </section>
+      <SubscriptionPanel
+        subscription={subscription ? toSubscriptionView(subscription) : null}
+      />
       <ChangePasswordPanel />
       <ApiKeysPanel apiKeys={apiKeys.map(toApiKeyView)} />
       {session?.user?.email && (
@@ -39,6 +51,21 @@ async function SettingsContent() {
       )}
     </div>
   )
+}
+
+function toSubscriptionView(
+  subscription: NonNullable<
+    Awaited<ReturnType<typeof getSubscriptionByTenantId>>
+  >
+): SubscriptionView {
+  return {
+    planName:
+      getPlanByLookupKey(subscription.priceLookupKey)?.name ??
+      subscription.priceLookupKey,
+    status: subscription.status,
+    currentPeriodEnd: subscription.currentPeriodEnd?.toISOString() ?? null,
+    cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+  }
 }
 
 function toApiKeyView(
