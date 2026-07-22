@@ -12,7 +12,11 @@ import {
   setStripeCustomerId,
 } from "@/lib/billing/subscription"
 
-const APP_URL = process.env.APP_URL!
+function getAppUrl(): string {
+  const appUrl = process.env.APP_URL
+  if (!appUrl) throw new Error("APP_URL is required")
+  return appUrl
+}
 
 // Crea la Checkout Session hosteada por Stripe para el plan elegido y
 // redirige. El primer cobro ocurre dentro del propio Checkout (sin trial).
@@ -44,14 +48,18 @@ export async function startCheckout(lookupKey: string): Promise<void> {
     throw new Error(`No Stripe price found for lookup key ${lookupKey}`)
   }
 
+  // `session_id` permite a /billing/success verificar server-side que el
+  // Checkout es de este usuario y está completado (no abre acceso: eso sigue
+  // siendo del webhook).
+  const appUrl = getAppUrl()
   const checkout = await stripe.checkout.sessions.create({
     mode: "subscription",
     customer: customerId,
     line_items: [{ price: price.id, quantity: 1 }],
     metadata: { tenantId: session.user.id },
     subscription_data: { metadata: { tenantId: session.user.id } },
-    success_url: `${APP_URL}/billing/success`,
-    cancel_url: `${APP_URL}/billing`,
+    success_url: `${appUrl}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${appUrl}/billing`,
   })
   if (!checkout.url) throw new Error("Stripe Checkout session has no URL")
 
@@ -69,7 +77,7 @@ export async function openPortal(): Promise<void> {
 
   const portal = await getStripe().billingPortal.sessions.create({
     customer: customerId,
-    return_url: `${APP_URL}/settings`,
+    return_url: `${getAppUrl()}/settings`,
   })
 
   redirect(portal.url)
@@ -84,10 +92,15 @@ async function ensureStripeCustomer(
   const existing = await getStripeCustomerId(userId)
   if (existing) return existing
 
-  const customer = await getStripe().customers.create({
-    email,
-    metadata: { tenantId: userId },
-  })
+  // La idempotency key estable por usuario hace que dos requests concurrentes
+  // (doble click, dos pestañas) reciban el mismo Customer en vez de crear dos.
+  const customer = await getStripe().customers.create(
+    {
+      email,
+      metadata: { tenantId: userId },
+    },
+    { idempotencyKey: `customer-create-${userId}` }
+  )
   await setStripeCustomerId(userId, customer.id)
   return customer.id
 }

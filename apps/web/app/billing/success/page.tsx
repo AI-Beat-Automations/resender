@@ -5,15 +5,29 @@ import { LoaderCircle } from "lucide-react"
 import { auth } from "@/auth"
 import { SiteFooter } from "@/components/site-footer"
 import { ActivationPoller } from "@/features/billing/ui/activation-poller"
+import { getStripe } from "@/lib/billing/stripe"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
+
+type BillingSuccessPageProps = {
+  searchParams: Promise<{ session_id?: string }>
+}
 
 // Página de vuelta desde Stripe Checkout. No abre acceso por sí misma: el
 // acceso real lo abre el webhook al replicar la suscripción en Postgres, así
-// que aquí solo se espera (con refresh ligero) a que el gate la vea.
-export default async function BillingSuccessPage() {
-  const session = await auth()
+// que aquí solo se espera (con refresh ligero) a que el gate la vea. El
+// `session_id` del redirect solo se usa para verificar que quien llega tiene
+// un Checkout propio y completado; sin él (o con el de otro usuario) se
+// rebota al pricing.
+export default async function BillingSuccessPage({
+  searchParams,
+}: BillingSuccessPageProps) {
+  const [session, params] = await Promise.all([auth(), searchParams])
   if (!session?.user?.id) redirect("/login")
   if (await hasActiveSubscription(session.user.id)) redirect("/connections")
+
+  if (!(await isOwnCompletedCheckout(params.session_id, session.user.id))) {
+    redirect("/billing")
+  }
 
   return (
     <div className="flex min-h-svh flex-col bg-[radial-gradient(circle_at_top_left,theme(colors.muted),transparent_34rem)]">
@@ -58,4 +72,20 @@ export default async function BillingSuccessPage() {
       <ActivationPoller />
     </div>
   )
+}
+
+async function isOwnCompletedCheckout(
+  sessionId: string | undefined,
+  userId: string
+): Promise<boolean> {
+  if (!sessionId) return false
+  try {
+    const checkout = await getStripe().checkout.sessions.retrieve(sessionId)
+    return (
+      checkout.metadata?.tenantId === userId && checkout.status === "complete"
+    )
+  } catch (error) {
+    console.error("checkout session verification failed", sessionId, error)
+    return false
+  }
 }

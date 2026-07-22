@@ -11,6 +11,7 @@ export type SubscriptionRow = {
   price_lookup_key: string
   current_period_end: Date | null
   cancel_at_period_end: boolean
+  last_stripe_event_at: Date | null
 }
 
 export type SubscriptionRecord = {
@@ -20,6 +21,7 @@ export type SubscriptionRecord = {
   priceLookupKey: string
   currentPeriodEnd: Date | null
   cancelAtPeriodEnd: boolean
+  lastStripeEventAt: Date | null
 }
 
 export function mapSubscription(row: SubscriptionRow): SubscriptionRecord {
@@ -30,6 +32,7 @@ export function mapSubscription(row: SubscriptionRow): SubscriptionRecord {
     priceLookupKey: row.price_lookup_key,
     currentPeriodEnd: row.current_period_end,
     cancelAtPeriodEnd: row.cancel_at_period_end,
+    lastStripeEventAt: row.last_stripe_event_at,
   }
 }
 
@@ -63,7 +66,7 @@ export async function getSubscriptionByTenantId(
   const sql = getSql()
   const [row] = await sql<SubscriptionRow[]>`
     select tenant_id, stripe_subscription_id, status, price_lookup_key,
-      current_period_end, cancel_at_period_end
+      current_period_end, cancel_at_period_end, last_stripe_event_at
     from subscriptions
     where tenant_id = ${tenantId}
     limit 1
@@ -78,34 +81,70 @@ export type SubscriptionUpsertInput = {
   priceLookupKey: string
   currentPeriodEnd: Date | null
   cancelAtPeriodEnd: boolean
+  // `created` del evento de Stripe que trae este snapshot: es lo que ordena
+  // eventos repetidos o fuera de orden, incluso dentro del mismo período.
+  lastStripeEventAt: Date
 }
 
 // Estados en los que una suscripción ya no puede volver a la vida. Una baja
 // tardía de una suscripción vieja no debe pisar la fila de una nueva.
 const TERMINAL_STATUSES = ["canceled", "incomplete_expired"]
 
+function isLiveStatus(status: string): boolean {
+  return !TERMINAL_STATUSES.includes(status)
+}
+
 // Decisión pura del upsert (testeable sin DB). Los webhooks de Stripe pueden
-// llegar repetidos o fuera de orden y cada evento trae un snapshot completo:
-// - misma suscripción: se aplica el snapshot, salvo que traiga un
-//   `current_period_end` más viejo que el guardado (evento rezagado de un
-//   período anterior);
-// - suscripción distinta: reemplaza solo si viene viva; un
-//   `customer.subscription.deleted` tardío de la suscripción anterior no debe
-//   sobreescribir la suscripción vigente del tenant.
+// llegar repetidos o fuera de orden y cada evento trae un snapshot completo,
+// así que el orden real lo da `event.created` (guardado en la fila):
+// - fila sin marca (anterior a la migración 0006) → aplicar;
+// - misma suscripción: aplicar solo si el evento no es más viejo que el
+//   aplicado (un `updated(active)` rezagado no debe pisar un `past_due` o un
+//   `deleted` posteriores);
+// - suscripción distinta: reemplaza solo si viene viva Y con evento más
+//   nuevo; ni un `deleted` tardío ni un `created` rezagado de la suscripción
+//   anterior deben sobreescribir la vigente.
 export function shouldApplySubscriptionEvent(
   existing: SubscriptionRecord | null,
   incoming: SubscriptionUpsertInput
 ): boolean {
   if (!existing) return true
+  if (!existing.lastStripeEventAt) return true
+
+  const isNewerOrSame =
+    incoming.lastStripeEventAt.getTime() >= existing.lastStripeEventAt.getTime()
 
   if (existing.stripeSubscriptionId === incoming.stripeSubscriptionId) {
-    if (!existing.currentPeriodEnd || !incoming.currentPeriodEnd) return true
-    return (
-      incoming.currentPeriodEnd.getTime() >= existing.currentPeriodEnd.getTime()
-    )
+    return isNewerOrSame
   }
 
-  return !TERMINAL_STATUSES.includes(incoming.status)
+  return isLiveStatus(incoming.status) && isNewerOrSame
+}
+
+// Detección pura de suscripciones duplicadas (dos Checkouts completados en
+// paralelo): si la fila y el snapshot apuntan a suscripciones distintas y
+// ambas siguen vivas, una de las dos sobra en Stripe — la que pierde según el
+// orden de eventos. El webhook la cancela y reembolsa (decisión de producto).
+export function findSupersededSubscriptionId(
+  existing: SubscriptionRecord | null,
+  incoming: SubscriptionUpsertInput
+): string | null {
+  if (!existing) return null
+  if (existing.stripeSubscriptionId === incoming.stripeSubscriptionId)
+    return null
+  if (!isLiveStatus(existing.status) || !isLiveStatus(incoming.status))
+    return null
+
+  return shouldApplySubscriptionEvent(existing, incoming)
+    ? existing.stripeSubscriptionId
+    : incoming.stripeSubscriptionId
+}
+
+export type SubscriptionUpsertResult = {
+  applied: boolean
+  // Suscripción viva que quedó fuera de la fila del tenant (duplicado por
+  // doble Checkout); el caller debe cancelarla en Stripe.
+  supersededSubscriptionId: string | null
 }
 
 // Upsert idempotente por tenant (una fila por tenant, PK = tenant_id). El
@@ -113,19 +152,23 @@ export function shouldApplySubscriptionEvent(
 // Stripe reintenta: el último evento válido reconcilia el estado.
 export async function upsertSubscription(
   input: SubscriptionUpsertInput
-): Promise<void> {
+): Promise<SubscriptionUpsertResult> {
   const existing = await getSubscriptionByTenantId(input.tenantId)
-  if (!shouldApplySubscriptionEvent(existing, input)) return
+  const supersededSubscriptionId = findSupersededSubscriptionId(existing, input)
+
+  if (!shouldApplySubscriptionEvent(existing, input)) {
+    return { applied: false, supersededSubscriptionId }
+  }
 
   const sql = getSql()
   await sql`
     insert into subscriptions (
       tenant_id, stripe_subscription_id, status, price_lookup_key,
-      current_period_end, cancel_at_period_end
+      current_period_end, cancel_at_period_end, last_stripe_event_at
     ) values (
       ${input.tenantId}, ${input.stripeSubscriptionId}, ${input.status},
       ${input.priceLookupKey}, ${input.currentPeriodEnd},
-      ${input.cancelAtPeriodEnd}
+      ${input.cancelAtPeriodEnd}, ${input.lastStripeEventAt}
     )
     on conflict (tenant_id) do update set
       stripe_subscription_id = excluded.stripe_subscription_id,
@@ -133,8 +176,10 @@ export async function upsertSubscription(
       price_lookup_key = excluded.price_lookup_key,
       current_period_end = excluded.current_period_end,
       cancel_at_period_end = excluded.cancel_at_period_end,
+      last_stripe_event_at = excluded.last_stripe_event_at,
       updated_at = now()
   `
+  return { applied: true, supersededSubscriptionId }
 }
 
 type TenantIdCandidates = {

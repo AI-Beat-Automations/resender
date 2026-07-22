@@ -10,9 +10,11 @@ import {
 } from "@/lib/billing/subscription"
 
 // Replica el estado de las suscripciones de Stripe en Postgres. Espejo del
-// webhook de Meta: firma verificada sobre el body crudo antes de parsear y
-// respuesta 200 rápida (el upsert es idempotente y el siguiente evento
-// reconcilia el estado si algo falla).
+// webhook de Meta: firma verificada sobre el body crudo antes de parsear.
+// A diferencia del de Meta, un fallo de procesamiento responde 500: Stripe
+// reintenta con backoff hasta ~3 días y el upsert idempotente reconcilia;
+// tras un `customer.subscription.deleted` perdido no llega ningún evento
+// posterior que corrija el estado, así que el retry es la única red.
 export const runtime = "nodejs"
 
 export async function POST(request: NextRequest) {
@@ -36,6 +38,7 @@ export async function POST(request: NextRequest) {
     await handleEvent(event)
   } catch (error) {
     console.error("stripe webhook processing failed", event.type, error)
+    return new Response("processing failed", { status: 500 })
   }
 
   return Response.json({ ok: true })
@@ -51,7 +54,7 @@ async function handleEvent(event: Stripe.Event) {
     case "customer.subscription.deleted":
       // En `deleted` el snapshot ya viene con status `canceled`: el mismo
       // upsert cierra el acceso sin lógica especial por tipo de evento.
-      await applySubscriptionSnapshot(event.data.object)
+      await applySubscriptionSnapshot(event)
       break
   }
 }
@@ -65,7 +68,8 @@ async function linkCustomerToTenant(session: Stripe.Checkout.Session) {
   await setStripeCustomerId(tenantId, customerId)
 }
 
-async function applySubscriptionSnapshot(subscription: Stripe.Subscription) {
+async function applySubscriptionSnapshot(event: Stripe.Event) {
+  const subscription = event.data.object as Stripe.Subscription
   const customerId = stripeId(subscription.customer)
   const metadataTenantId = subscription.metadata?.tenantId
   const tenantId = resolveTenantId({
@@ -76,17 +80,18 @@ async function applySubscriptionSnapshot(subscription: Stripe.Subscription) {
         : null,
   })
   if (!tenantId) {
-    console.error("stripe subscription without resolvable tenant", {
-      subscriptionId: subscription.id,
-      customerId,
-    })
-    return
+    // Lanzar (→ 500 → retry de Stripe) es autocurativo cuando este evento
+    // llegó antes que el `checkout.session.completed` que vincula el
+    // customer con el tenant.
+    throw new Error(
+      `stripe subscription without resolvable tenant: ${subscription.id} (customer ${customerId})`
+    )
   }
 
   // En la API 2025+ de Stripe el período vive en cada subscription item; con
   // un solo price por suscripción, el primer item es la suscripción entera.
   const item = subscription.items.data[0]
-  await upsertSubscription({
+  const { supersededSubscriptionId } = await upsertSubscription({
     tenantId,
     stripeSubscriptionId: subscription.id,
     status: subscription.status,
@@ -95,7 +100,58 @@ async function applySubscriptionSnapshot(subscription: Stripe.Subscription) {
       ? new Date(item.current_period_end * 1000)
       : null,
     cancelAtPeriodEnd: subscription.cancel_at_period_end,
+    lastStripeEventAt: new Date(event.created * 1000),
   })
+
+  if (supersededSubscriptionId) {
+    await cancelSupersededSubscription(tenantId, supersededSubscriptionId)
+  }
+}
+
+// Dos Checkouts completados en paralelo dejan al tenant con dos suscripciones
+// vivas; solo una cabe en la fila. La sobrante se cancela y se reembolsa su
+// último cobro (decisión de producto: el usuario nunca paga doble).
+// Best-effort: un fallo aquí no debe fallar el webhook — el retry del evento
+// (upsert idempotente) volverá a intentarlo, y `subscriptions.cancel` sobre
+// una suscripción ya cancelada no se reintenta gracias al retrieve previo.
+async function cancelSupersededSubscription(
+  tenantId: string,
+  subscriptionId: string
+) {
+  try {
+    const stripe = getStripe()
+    const current = await stripe.subscriptions.retrieve(subscriptionId, {
+      expand: ["latest_invoice.payments"],
+    })
+    if (current.status === "canceled") return
+
+    await stripe.subscriptions.cancel(subscriptionId)
+    console.log("canceled duplicate stripe subscription", {
+      tenantId,
+      subscriptionId,
+    })
+
+    const invoice = current.latest_invoice
+    const payments =
+      invoice && typeof invoice !== "string" ? (invoice.payments?.data ?? []) : []
+    const paymentIntentId = payments
+      .map((p) => stripeId(p.payment.payment_intent))
+      .find(Boolean)
+    if (paymentIntentId) {
+      await stripe.refunds.create({ payment_intent: paymentIntentId })
+      console.log("refunded duplicate stripe subscription charge", {
+        tenantId,
+        subscriptionId,
+        paymentIntentId,
+      })
+    }
+  } catch (error) {
+    console.error("failed to cancel duplicate stripe subscription", {
+      tenantId,
+      subscriptionId,
+      error,
+    })
+  }
 }
 
 function stripeId(

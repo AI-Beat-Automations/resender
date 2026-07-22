@@ -104,8 +104,8 @@ Todo lo de esta sección ocurre en el Dashboard de Stripe o en tu terminal, no e
 
 | Valor | Dónde lo obtienes | Formato | Dónde va |
 |---|---|---|---|
-| Secret key (test) | Dashboard → Developers → API keys | `sk_test_…` | `apps/web/.env` → `STRIPE_SECRET_KEY` |
-| Secret key (live) | Igual, con test mode apagado | `sk_live_…` | Env vars de producción → `STRIPE_SECRET_KEY` |
+| Restricted key (test) | Dashboard → Developers → API keys → Create restricted key | `rk_test_…` | `apps/web/.env` → `STRIPE_SECRET_KEY` |
+| Restricted key (live) | Igual, con test mode apagado | `rk_live_…` | Env vars de producción → `STRIPE_SECRET_KEY` |
 | Webhook secret (local) | Lo imprime `stripe listen` al arrancar | `whsec_…` | `apps/web/.env` → `STRIPE_WEBHOOK_SECRET` |
 | Webhook secret (producción) | Dashboard → Developers → Webhooks → tu endpoint → "Signing secret" | `whsec_…` | Env vars de producción → `STRIPE_WEBHOOK_SECRET` |
 | Lookup keys de los 3 prices | Los defines tú al crear cada price (paso 2) | `starter_monthly`, `pro_monthly`, `business_monthly` | Constantes en `lib/billing/plans.ts` (no son secretos, no van en env) |
@@ -130,7 +130,7 @@ Notas:
    - Activa **Cancel subscriptions** con modo **At end of billing period** (no inmediato).
    - Desactiva pausar suscripciones. Guarda.
 4. **Emails de cliente** (Settings → Emails): activa **Successful payments** (recibos) y **Failed payments**.
-5. **API keys** (Developers → API keys): copia la **Secret key** de test (`sk_test_…`) a `apps/web/.env` como `STRIPE_SECRET_KEY`.
+5. **API key restringida** (Developers → API keys → **+ Create restricted key**): crea una key llamada `resender-web` con solo estos permisos (el resto en "None"): **Customers** Write, **Checkout Sessions** Write, **Prices** Read, **Subscriptions** Write, **Customer portal** Write, **Invoices** Read, **Refunds** Write. Copia la `rk_test_…` a `apps/web/.env` como `STRIPE_SECRET_KEY` (misma env var; nunca usar la secret key completa `sk_…`).
 6. **Stripe CLI para el webhook local**:
    ```sh
    brew install stripe/stripe-cli/stripe
@@ -148,5 +148,5 @@ Notas:
    - URL: `https://resender.dev/api/stripe/webhook`
    - Eventos: `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted` (solo esos 4; no "todos los eventos").
    - Tras crearlo, revela su **Signing secret** (`whsec_…`) → env var `STRIPE_WEBHOOK_SECRET` de producción.
-4. **API key live** (Developers → API keys, test mode apagado): `sk_live_…` → env var `STRIPE_SECRET_KEY` de producción.
+4. **API key restringida live** (Developers → API keys, test mode apagado): repite la restricted key con los mismos permisos del paso 5 de test → `rk_live_…` → env var `STRIPE_SECRET_KEY` de producción.
 5. **Prueba de humo en live** con una tarjeta real: suscribirse, verificar que el acceso se abre, cambiar de plan en el Portal, cancelar y verificar acceso hasta fin de período. Puedes reembolsarte el cobro desde el Dashboard después.
