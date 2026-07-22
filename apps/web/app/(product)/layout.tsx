@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 
 import { auth, signOut } from "@/auth"
 import { isUserWaitlisted } from "@/lib/auth/waitlist"
+import { hasActiveSubscription } from "@/lib/billing/subscription"
 import { Button } from "@workspace/ui/components/button"
 
 const navItems = [
@@ -18,6 +19,7 @@ export default async function ProductLayout({
   const session = await auth()
   if (!session?.user?.id) redirect("/login")
   if (await isUserWaitlisted(session.user.id)) redirect("/waitlist")
+  if (!(await hasActiveSubscription(session.user.id))) redirect("/billing")
 
   return (
     <div className="min-h-svh bg-muted/30">

@@ -7,6 +7,7 @@ import type { DeletionPage } from "./account-deletion"
 export type TenantDeletionContext = {
   email: string
   pages: DeletionPage[]
+  stripeSubscriptionId: string | null
 }
 
 type ConnectedPageDeletionRow = {
@@ -16,8 +17,9 @@ type ConnectedPageDeletionRow = {
 }
 
 // Loads everything the deletion flow needs before the tenant row is wiped: the
-// account email (for the confirmation check) and the connected pages with their
-// decrypted tokens (to plan best-effort Meta webhook unsubscribes).
+// account email (for the confirmation check), the connected pages with their
+// decrypted tokens (to plan best-effort Meta webhook unsubscribes) and the
+// Stripe subscription id (to cancel it best-effort before the cascade delete).
 export async function loadTenantDeletionContext(
   tenantId: string
 ): Promise<TenantDeletionContext | null> {
@@ -34,6 +36,13 @@ export async function loadTenantDeletionContext(
     where tenant_id = ${tenantId}
   `
 
+  const [subscription] = await sql<{ stripe_subscription_id: string }[]>`
+    select stripe_subscription_id
+    from subscriptions
+    where tenant_id = ${tenantId}
+    limit 1
+  `
+
   return {
     email: user.email,
     pages: rows.map((row) => ({
@@ -41,6 +50,7 @@ export async function loadTenantDeletionContext(
       status: row.status,
       pageAccessToken: decryptSecret(row.page_access_token_encrypted),
     })),
+    stripeSubscriptionId: subscription?.stripe_subscription_id ?? null,
   }
 }
 
