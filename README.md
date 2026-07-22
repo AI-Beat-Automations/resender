@@ -16,7 +16,18 @@ META_APP_SECRET="meta-app-secret"
 META_VERIFY_TOKEN="meta-webhook-verify-token"
 NEXT_PUBLIC_META_APP_ID="meta-app-id"
 NEXT_PUBLIC_META_CONFIG_ID="meta-login-config-id"
+STRIPE_SECRET_KEY="rk_test_your-stripe-restricted-key"
+STRIPE_WEBHOOK_SECRET="whsec_your-stripe-webhook-signing-secret"
 ```
+
+`STRIPE_SECRET_KEY` should be a restricted API key (`rk_…`, Dashboard →
+Developers → API keys → Create restricted key) with only: Customers (write),
+Checkout Sessions (write), Prices (read), Subscriptions (write), Customer
+portal (write), Invoices (read), Refunds (write). A full secret key (`sk_…`)
+works but is discouraged.
+
+`STRIPE_WEBHOOK_SECRET` comes from `stripe listen` in development (see the
+Stripe CLI) or from the webhook endpoint's signing secret in production.
 
 Run database migrations manually after setting `DATABASE_URL`:
 
