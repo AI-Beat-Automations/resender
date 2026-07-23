@@ -14,7 +14,7 @@ export default async function RegisterPage() {
       <main className="flex flex-1 items-center justify-center px-6 py-12">
         <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-sm">
           <div className="mb-6">
-            <h1 className="text-2xl font-semibold tracking-tight">Register</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Register</h1>
             <p className="mt-2 text-sm text-muted-foreground">
               Create an account with email and password. There&apos;s no email
               verification in the MVP.

@@ -20,7 +20,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       <main className="flex flex-1 items-center justify-center px-6 py-12">
         <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-sm">
           <div className="mb-6">
-            <h1 className="text-2xl font-semibold tracking-tight">Login</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Login</h1>
             <p className="mt-2 text-sm text-muted-foreground">
               Sign in to manage your connections and message log.
             </p>

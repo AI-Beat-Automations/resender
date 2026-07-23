@@ -5,6 +5,8 @@ import { auth, signOut } from "@/auth"
 import { isUserWaitlisted } from "@/lib/auth/waitlist"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
 import { Button } from "@workspace/ui/components/button"
+import { SiteLogo } from "@/components/site-logo"
+import { ThemeToggle } from "@/components/theme-toggle"
 
 const navItems = [
   { href: "/connections", label: "Connections" },
@@ -23,28 +25,29 @@ export default async function ProductLayout({
 
   return (
     <div className="min-h-svh bg-muted/30">
-      <header className="border-b border-border bg-background">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-4">
-          <Link href="/connections" className="font-semibold tracking-tight">
-            Resender
-          </Link>
+      <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-6">
+          <SiteLogo href="/connections" />
           <nav className="flex items-center gap-1">
             {navItems.map((item) => (
-              <Button key={item.href} asChild variant="ghost">
+              <Button key={item.href} asChild variant="ghost" size="sm">
                 <Link href={item.href}>{item.label}</Link>
               </Button>
             ))}
           </nav>
-          <form
-            action={async () => {
-              "use server"
-              await signOut({ redirectTo: "/" })
-            }}
-          >
-            <Button type="submit" variant="outline">
-              Sign out
-            </Button>
-          </form>
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
+            <form
+              action={async () => {
+                "use server"
+                await signOut({ redirectTo: "/" })
+              }}
+            >
+              <Button type="submit" variant="outline" size="sm">
+                Sign out
+              </Button>
+            </form>
+          </div>
         </div>
       </header>
       <main className="mx-auto w-full max-w-6xl px-6 py-8">{children}</main>
