@@ -12,6 +12,7 @@ import {
 
 import { SiteHeader } from "@/components/site-header"
 import { SiteFooter } from "@/components/site-footer"
+import { SiteBackground } from "@/components/site-background"
 import { Section, SectionHeading } from "@/features/marketing/ui/section"
 import { getPublishedPosts, CATEGORY_LABELS, formatDate } from "@/lib/blog"
 
@@ -26,6 +27,7 @@ export default function BlogPage() {
 
   return (
     <div className="flex min-h-svh flex-col">
+      <SiteBackground />
       <SiteHeader />
       <main className="flex-1">
         <Section>

@@ -2,7 +2,10 @@ import Link from "next/link"
 
 import { Button } from "@workspace/ui/components/button"
 
-// CTA final reutilizable (landing y pricing).
+// CTA final reutilizable (landing y pricing). Sección destacada con color de
+// contraste: `bg-foreground`/`text-background`, así en modo claro se ve con el
+// morado oscuro de la marca y en modo oscuro con el crema — invirtiendo el tono
+// respecto del resto de la página.
 export function FinalCta({
   title,
   subtitle,
@@ -13,10 +16,10 @@ export function FinalCta({
   cta: string
 }) {
   return (
-    <section className="border-b border-border/60">
+    <section className="bg-foreground text-background">
       <div className="mx-auto w-full max-w-4xl px-6 py-24 text-center">
         <h2 className="text-3xl font-bold tracking-tight md:text-5xl">{title}</h2>
-        <p className="mx-auto mt-4 max-w-xl text-lg text-muted-foreground">
+        <p className="mx-auto mt-4 max-w-xl text-lg text-background/70">
           {subtitle}
         </p>
         <div className="mt-8">

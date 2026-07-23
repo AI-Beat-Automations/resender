@@ -3,7 +3,8 @@ import Link from "next/link"
 import { SiteLogo } from "@/components/site-logo"
 
 // Footer compartido de la superficie pública (landing, pricing, blog, auth y
-// páginas legales). No se monta en el área de producto autenticada.
+// páginas legales). Destacado con color de contraste (`bg-foreground` /
+// `text-background`): morado oscuro en modo claro, crema en modo oscuro.
 const columns = [
   {
     title: "Producto",
@@ -33,12 +34,12 @@ const columns = [
 
 export function SiteFooter() {
   return (
-    <footer className="border-t border-border bg-background">
+    <footer className="bg-foreground text-background">
       <div className="mx-auto w-full max-w-6xl px-6 py-12">
         <div className="grid gap-8 sm:grid-cols-2 md:grid-cols-4">
           <div className="space-y-3">
             <SiteLogo />
-            <p className="max-w-xs text-sm text-muted-foreground">
+            <p className="max-w-xs text-sm text-background/70">
               La API relay para mensajes de Meta. Simple y developer-first.
             </p>
           </div>
@@ -46,13 +47,13 @@ export function SiteFooter() {
           {columns.map((column) => (
             <div key={column.title}>
               <h3 className="mb-3 text-sm font-semibold">{column.title}</h3>
-              <ul className="space-y-2 text-sm text-muted-foreground">
+              <ul className="space-y-2 text-sm text-background/70">
                 {column.links.map((link) =>
                   link.external ? (
                     <li key={link.href}>
                       <a
                         href={link.href}
-                        className="transition-colors hover:text-foreground"
+                        className="transition-colors hover:text-background"
                         target={link.href.startsWith("http") ? "_blank" : undefined}
                         rel={
                           link.href.startsWith("http")
@@ -67,7 +68,7 @@ export function SiteFooter() {
                     <li key={link.href}>
                       <Link
                         href={link.href}
-                        className="transition-colors hover:text-foreground"
+                        className="transition-colors hover:text-background"
                       >
                         {link.label}
                       </Link>
@@ -79,7 +80,7 @@ export function SiteFooter() {
           ))}
         </div>
 
-        <div className="mt-10 border-t border-border pt-6 text-sm text-muted-foreground">
+        <div className="mt-10 border-t border-background/20 pt-6 text-sm text-background/70">
           <p>© {new Date().getFullYear()} AI Beat · Resender</p>
         </div>
       </div>

@@ -1,20 +1,20 @@
-import { Wallet, Boxes, Unplug, type LucideIcon } from "lucide-react"
+import { Wallet, Unplug, Users, Zap, type LucideIcon } from "lucide-react"
 
 import { Card } from "@workspace/ui/components/card"
 
 import { Section, SectionHeading } from "@/features/marketing/ui/section"
 import { Reveal } from "@/features/marketing/ui/reveal"
+import { QuestionMarquee } from "@/features/marketing/ui/question-marquee"
 import { dict } from "@/content/i18n/es"
 
 // Registro de iconos para los pain points (mapeados por `icon` en es.ts).
 const icons: Record<string, LucideIcon> = {
   wallet: Wallet,
-  boxes: Boxes,
   unplug: Unplug,
+  users: Users,
+  zap: Zap,
 }
 
-// Pain points como cards verticales que aparecen (fade + slide-up) a medida que
-// se scrollea. Reemplaza el bloque de texto anterior.
 export function PainPoint() {
   return (
     <Section tone="muted">
@@ -23,12 +23,19 @@ export function PainPoint() {
         title={dict.pain.title}
         subtitle={dict.pain.subtitle}
       />
-      <div className="mx-auto mt-16 flex max-w-2xl flex-col gap-6">
+
+      {/* Preguntas/quejas reales que se mueven (2 renglones). */}
+      <div className="mt-12">
+        <QuestionMarquee questions={dict.pain.questions} />
+      </div>
+
+      {/* Pain points en cards horizontales (2×2). */}
+      <div className="mx-auto mt-12 grid max-w-4xl gap-4 sm:grid-cols-2">
         {dict.pain.items.map((item, i) => {
           const Icon = icons[item.icon] ?? Wallet
           return (
-            <Reveal key={item.title} delay={i * 100}>
-              <Card className="flex-row items-start gap-4 p-6">
+            <Reveal key={item.title} delay={i * 80}>
+              <Card className="h-full flex-row items-start gap-4 p-6">
                 <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
                   <Icon className="size-5" />
                 </div>

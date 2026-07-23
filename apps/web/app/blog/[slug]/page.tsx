@@ -10,6 +10,7 @@ import { Button } from "@workspace/ui/components/button"
 
 import { SiteHeader } from "@/components/site-header"
 import { SiteFooter } from "@/components/site-footer"
+import { SiteBackground } from "@/components/site-background"
 import {
   getPostBySlug,
   getPostSlugs,
@@ -69,6 +70,7 @@ export default async function BlogPostPage({
 
   return (
     <div className="flex min-h-svh flex-col">
+      <SiteBackground />
       <SiteHeader />
       <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-12 md:py-16">
         <Link

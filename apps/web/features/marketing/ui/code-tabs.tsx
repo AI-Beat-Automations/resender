@@ -1,5 +1,8 @@
 "use client"
 
+import * as React from "react"
+import { Check, Copy } from "lucide-react"
+
 import {
   Tabs,
   TabsList,
@@ -8,12 +11,28 @@ import {
 } from "@workspace/ui/components/tabs"
 
 // Tabs de lenguaje para el panel de código. Recibe el HTML ya resaltado por
-// shiki (en el server) y lo inyecta. El client solo alterna qué snippet se ve.
-export type Snippet = { id: string; label: string; html: string }
+// shiki (en el server) y lo inyecta. El client alterna el snippet visible; el
+// ícono de portapapeles (arriba a la derecha del código) copia el tab activo.
+export type Snippet = { id: string; label: string; html: string; code: string }
 
 export function CodeTabs({ snippets }: { snippets: Snippet[] }) {
+  const [active, setActive] = React.useState(snippets[0]?.id ?? "")
+  const [copied, setCopied] = React.useState(false)
+
+  const activeCode = snippets.find((s) => s.id === active)?.code ?? ""
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(activeCode)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // Clipboard no disponible: no hacemos nada.
+    }
+  }
+
   return (
-    <Tabs defaultValue={snippets[0]?.id} className="gap-0">
+    <Tabs value={active} onValueChange={setActive} className="gap-0">
       <TabsList className="h-auto w-full justify-start rounded-none border-b border-border/70 bg-transparent p-0">
         {snippets.map((s) => (
           <TabsTrigger
@@ -25,15 +44,30 @@ export function CodeTabs({ snippets }: { snippets: Snippet[] }) {
           </TabsTrigger>
         ))}
       </TabsList>
-      {snippets.map((s) => (
-        <TabsContent
-          key={s.id}
-          value={s.id}
-          className="code-panel overflow-x-auto p-4 text-sm"
+
+      <div className="relative">
+        <button
+          type="button"
+          onClick={copy}
+          aria-label={copied ? "Copiado" : "Copiar código"}
+          className="absolute right-2 top-2 z-10 flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
-          <div dangerouslySetInnerHTML={{ __html: s.html }} />
-        </TabsContent>
-      ))}
+          {copied ? (
+            <Check className="size-4 text-primary" />
+          ) : (
+            <Copy className="size-4" />
+          )}
+        </button>
+        {snippets.map((s) => (
+          <TabsContent
+            key={s.id}
+            value={s.id}
+            className="code-panel overflow-x-auto p-4 text-sm"
+          >
+            <div dangerouslySetInnerHTML={{ __html: s.html }} />
+          </TabsContent>
+        ))}
+      </div>
     </Tabs>
   )
 }

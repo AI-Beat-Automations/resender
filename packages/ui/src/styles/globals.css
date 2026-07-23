@@ -137,9 +137,11 @@
 
 /* rehype-pretty-code: temas duales de Shiki. Los tokens exponen --shiki-light /
    --shiki-dark y alternamos según la clase .dark (blog MDX). */
+.shiki,
 .shiki span {
   color: var(--shiki-light);
 }
+.dark .shiki,
 .dark .shiki span {
   color: var(--shiki-dark);
 }
@@ -151,6 +153,50 @@
 }
 .caret-blink {
   animation: caret-blink 1.1s steps(1) infinite;
+}
+
+/* FlowMock: animaciones de la secuencia (burbujas, nodo, conectores).
+   Se disparan con `animation-delay` por elemento; el contenedor se remonta por
+   ciclo para reproducirlas en loop. `both` mantiene el estado inicial/final. */
+@keyframes msg-pop {
+  from { opacity: 0; transform: scale(0.8) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes node-pop {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes connector-draw {
+  from { transform: scaleY(0); }
+  to   { transform: scaleY(1); }
+}
+@keyframes connector-pulse {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 1; }
+}
+/* Spinner del nodo: da una vuelta y se desvanece (para dar paso al tilde). */
+@keyframes spin-done {
+  0%   { transform: rotate(0deg); opacity: 1; }
+  80%  { transform: rotate(360deg); opacity: 1; }
+  100% { transform: rotate(360deg); opacity: 0; }
+}
+/* Tilde "terminó": aparece con un pop cuando el spinner completó la vuelta. */
+@keyframes check-pop {
+  0%   { opacity: 0; transform: scale(0.4); }
+  60%  { opacity: 1; transform: scale(1.15); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* Marquee horizontal de preguntas (sección "El dolor de siempre"). El track
+   duplica su contenido; trasladar -50% cierra el loop sin salto. */
+@keyframes marquee {
+  to { transform: translateX(-50%); }
+}
+.animate-marquee {
+  animation: marquee 45s linear infinite;
+}
+.animate-marquee-reverse {
+  animation: marquee 45s linear infinite reverse;
 }
 
 /* Panel de código (showpiece Quickstart): fondo transparente para heredar el

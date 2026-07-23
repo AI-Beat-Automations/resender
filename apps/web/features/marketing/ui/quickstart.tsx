@@ -62,9 +62,14 @@ export async function Quickstart() {
     SNIPPETS.map(async (s) => ({
       id: s.id,
       label: s.label,
+      code: s.code,
       html: await codeToHtml(s.code, {
         lang: s.lang,
         themes: { light: "github-light", dark: "github-dark" },
+        // Sin color inline: los tokens quedan como CSS vars y alternamos por
+        // tema (.dark) desde globals.css. Si no, el color claro quedaba fijo e
+        // ilegible en modo oscuro.
+        defaultColor: false,
       }),
     }))
   )

@@ -15,27 +15,40 @@ export const dict = {
     ctaSecondary: "Ver cómo funciona",
   },
 
-  // Cards verticales que aparecen al scrollear. `icon` mapea a un registro en
-  // el componente PainPoints. Sin ángulo de precio como valor; sí el dolor de
-  // pagar por features que no usás y de integrar con Meta.
+  // Sección "El dolor de siempre": un marquee de preguntas/quejas reales que se
+  // mueven, y debajo las cards horizontales de pain points. `icon` mapea a un
+  // registro en el componente PainPoints.
   pain: {
     title: "El dolor de siempre",
     subtitle: "Si ya intentaste procesar mensajes de Meta, sabés de qué hablamos.",
+    // Preguntas/comentarios que se mueven en el marquee (2 renglones).
+    questions: [
+      "¿Cómo conecto mi n8n a Meta?",
+      "Conectar cualquier automatización a Meta es un dolor de cabeza",
+      "Solamente necesito la API, ¿alguien conoce algo más barato?",
+      "Quiero algo donde pueda manejar los agentes de todos mis clientes",
+      "Necesito algo sencillo y rápido para conectarme a la página del cliente",
+    ],
     items: [
       {
         icon: "wallet",
         title: "Pagás por funciones que ni abrís",
-        body: "Los planes caros vienen con drag & drop builders, templates visuales y analytics de engagement. Vos solo querés recibir y responder mensajes.",
-      },
-      {
-        icon: "boxes",
-        title: "Terminás con una plataforma entera",
-        body: "Solo necesitabas una API, pero te vendieron un producto no-code enorme, lleno de features que nunca vas a tocar.",
+        body: "Los planes caros vienen con builders, templates y analytics de engagement. Vos solo querés recibir y responder mensajes.",
       },
       {
         icon: "unplug",
         title: "Conectar con Meta es un laberinto",
         body: "Reviewers, tokens que expiran, permisos y webhooks. Capaz ya lo intentaste directo y quedaste en el camino.",
+      },
+      {
+        icon: "users",
+        title: "Malabares con varios clientes",
+        body: "Sos agencia y cada cliente es otra página, otra automatización y otra cuenta que mantener en orden.",
+      },
+      {
+        icon: "zap",
+        title: "Necesitás algo simple y rápido",
+        body: "Conectarte a la página de un cliente debería tomar minutos, no una tarde entera de configuración.",
       },
     ],
   },

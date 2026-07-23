@@ -3,6 +3,7 @@ import type { Metadata } from "next"
 
 import { SiteHeader } from "@/components/site-header"
 import { SiteFooter } from "@/components/site-footer"
+import { SiteBackground } from "@/components/site-background"
 
 export const metadata: Metadata = {
   title: "Terms of Service · Resender",
@@ -16,6 +17,7 @@ const CONTACT_EMAIL = "info@resender.dev"
 export default function TermsPage() {
   return (
     <div className="flex min-h-svh flex-col">
+      <SiteBackground />
       <SiteHeader />
       <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-12">
         <header className="mb-10">

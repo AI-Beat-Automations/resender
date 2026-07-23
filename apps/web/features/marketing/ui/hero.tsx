@@ -7,7 +7,7 @@ import { dict } from "@/content/i18n/es"
 
 export function Hero() {
   return (
-    <section className="border-b border-border/60 bg-[radial-gradient(circle_at_top_left,var(--color-muted),transparent_38rem)]">
+    <section className="bg-[radial-gradient(circle_at_top_left,var(--color-muted),transparent_38rem)]">
       <div className="mx-auto grid w-full max-w-6xl items-center gap-12 px-6 py-20 md:grid-cols-[1.1fr_0.9fr] md:py-28">
         <div className="max-w-2xl">
           <p className="mb-4 font-mono text-sm text-primary">

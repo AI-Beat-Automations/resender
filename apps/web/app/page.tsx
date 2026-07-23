@@ -2,13 +2,12 @@ import type { Metadata } from "next"
 
 import { SiteHeader } from "@/components/site-header"
 import { SiteFooter } from "@/components/site-footer"
+import { SiteBackground } from "@/components/site-background"
 import { Hero } from "@/features/marketing/ui/hero"
 import { PainPoint } from "@/features/marketing/ui/pain-point"
 import { HowItWorks } from "@/features/marketing/ui/how-it-works"
 import { Quickstart } from "@/features/marketing/ui/quickstart"
-import { FeaturesGrid } from "@/features/marketing/ui/features-grid"
 import { PricingPreview } from "@/features/marketing/ui/pricing-preview"
-import { About } from "@/features/marketing/ui/about"
 import { FaqSection } from "@/features/marketing/ui/faq-section"
 import { FinalCta } from "@/features/marketing/ui/final-cta"
 import { dict } from "@/content/i18n/es"
@@ -28,15 +27,14 @@ export const metadata: Metadata = {
 export default function HomePage() {
   return (
     <div className="flex min-h-svh flex-col">
+      <SiteBackground />
       <SiteHeader />
       <main className="flex-1">
         <Hero />
         <PainPoint />
         <HowItWorks />
         <Quickstart />
-        <FeaturesGrid />
         <PricingPreview />
-        <About />
         <FaqSection id="faq" title={dict.faq.title} items={dict.faq.items} />
         <FinalCta
           title={dict.finalCta.title}
