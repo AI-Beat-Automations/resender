@@ -16,6 +16,7 @@ import {
   recordSkippedDelivery,
 } from "./external-push"
 import { extractInboundEvents } from "./meta-webhook"
+import { posthog } from "@/lib/posthog"
 
 export type InboundPushJob = () => Promise<void>
 
@@ -55,6 +56,20 @@ export async function ingestMetaWebhookPayload(body: unknown) {
     })
 
     if (!inserted) continue
+
+    if (posthog) {
+      posthog.capture({
+        distinctId: page.tenantId,
+        event: "message received",
+        properties: {
+          message_id: message.id,
+          conversation_id: conversation.id,
+          page_id: page.metaPageId,
+          event_type: event.eventType,
+        },
+      })
+      await posthog.flush()
+    }
 
     addMessage({
       id: message.metaMessageId ?? message.id,

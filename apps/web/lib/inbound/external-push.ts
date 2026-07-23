@@ -1,7 +1,11 @@
 import { getSql } from "@/lib/db"
-import type { ConversationRecord, MessageRecord } from "@/lib/messages/message-log"
+import type {
+  ConversationRecord,
+  MessageRecord,
+} from "@/lib/messages/message-log"
 import type { ConnectedPageRecord } from "@/lib/pages/page-registry"
 import { normalizeWebhookUrl } from "@/lib/pages/webhook-url"
+import { posthog } from "@/lib/posthog"
 import type { InboundMetaEventType } from "./meta-webhook"
 
 export type InboundPushPayload = {
@@ -68,13 +72,24 @@ export async function pushInboundMessage(input: {
 }) {
   const normalized = normalizeWebhookUrl(input.webhookUrl)
   if (!normalized.ok || !normalized.value) {
+    const deliveryError = normalized.ok
+      ? "webhookUrl not configured"
+      : normalized.error
     await recordDelivery({
       messageId: input.messageId,
       webhookUrl: input.webhookUrl,
       status: "failed",
       statusCode: null,
-      error: normalized.ok ? "webhookUrl not configured" : normalized.error,
+      error: deliveryError,
     })
+    if (posthog) {
+      posthog.capture({
+        distinctId: input.payload.tenant.id,
+        event: "message delivery failed",
+        properties: { message_id: input.messageId, reason: deliveryError },
+      })
+      await posthog.flush()
+    }
     return
   }
 
@@ -95,14 +110,37 @@ export async function pushInboundMessage(input: {
       statusCode: response.status,
       error: response.ok ? null : `HTTP ${response.status}`,
     })
+
+    if (!response.ok && posthog) {
+      posthog.capture({
+        distinctId: input.payload.tenant.id,
+        event: "message delivery failed",
+        properties: {
+          message_id: input.messageId,
+          status_code: response.status,
+          reason: `HTTP ${response.status}`,
+        },
+      })
+      await posthog.flush()
+    }
   } catch (error) {
+    const deliveryError =
+      error instanceof Error ? error.message : "unknown push error"
     await recordDelivery({
       messageId: input.messageId,
       webhookUrl,
       status: "failed",
       statusCode: null,
-      error: error instanceof Error ? error.message : "unknown push error",
+      error: deliveryError,
     })
+    if (posthog) {
+      posthog.capture({
+        distinctId: input.payload.tenant.id,
+        event: "message delivery failed",
+        properties: { message_id: input.messageId, reason: deliveryError },
+      })
+      await posthog.flush()
+    }
   }
 }
 

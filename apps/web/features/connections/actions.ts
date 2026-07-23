@@ -10,6 +10,7 @@ import {
   updatePageWebhookUrl,
 } from "@/lib/pages/page-registry"
 import { unsubscribeFromWebhook } from "@/lib/meta"
+import { posthog } from "@/lib/posthog"
 
 export type ConnectionActionState = {
   error?: string
@@ -36,6 +37,19 @@ export async function saveWebhookUrlAction(
     )
 
     if (!updated) return { error: "Page not found." }
+
+    if (posthog) {
+      posthog.capture({
+        distinctId: session.user.id,
+        event: "webhook url saved",
+        properties: {
+          connection_id: connectionId,
+          page_id: updated.metaPageId,
+        },
+      })
+      await posthog.flush()
+    }
+
     revalidatePath("/connections")
     return { message: "Webhook saved." }
   } catch (error) {
@@ -67,11 +81,28 @@ export async function disconnectPageAction(
       connectionId
     )
   } catch (error) {
-    console.error("meta webhook unsubscribe context failed", connectionId, error)
+    console.error(
+      "meta webhook unsubscribe context failed",
+      connectionId,
+      error
+    )
   }
 
   const disconnected = await disconnectPage(session.user.id, connectionId)
   if (!disconnected) return { error: "Page not found." }
+
+  if (posthog) {
+    posthog.capture({
+      distinctId: session.user.id,
+      event: "page disconnected",
+      properties: {
+        connection_id: connectionId,
+        page_id: disconnected.metaPageId,
+        page_name: disconnected.name,
+      },
+    })
+    await posthog.flush()
+  }
 
   if (pageToUnsubscribe) {
     try {
