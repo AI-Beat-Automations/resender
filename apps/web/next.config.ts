@@ -1,5 +1,9 @@
+import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare"
 import createMDX from "@next/mdx"
 import type { NextConfig } from "next"
+
+// Permite acceder a bindings de Cloudflare durante `next dev`.
+initOpenNextCloudflareForDev()
 
 const nextConfig: NextConfig = {
   transpilePackages: ["@workspace/ui"],

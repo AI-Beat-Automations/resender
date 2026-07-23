@@ -5,8 +5,10 @@ import { isUserWaitlisted } from "@/lib/auth/waitlist"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
 import {
   getConversationById,
+  getOutboundMessageByIdempotencyKey,
   insertOutboundMessage,
   upsertConversation,
+  type MessageRecord,
 } from "@/lib/messages/message-log"
 import {
   getActivePageWithTokenForTenant,
@@ -21,6 +23,8 @@ import { getBearerToken, parseOutboundSendInput } from "@/lib/outbound/send-requ
 
 // Envía una respuesta al contacto.
 // Body: { pageId, recipientId, reply, conversationId? }.
+// Header opcional `Idempotency-Key`: si se repite, se devuelve el resultado
+// almacenado sin reenviar a Meta.
 // El page access token se resuelve en el servidor por pageId (no viaja en el curl).
 export const runtime = "nodejs"
 
@@ -29,6 +33,15 @@ export async function POST(request: NextRequest) {
   const apiKey = await authenticateApiKey(bearer)
   if (!apiKey) {
     return Response.json({ error: "unauthorized" }, { status: 401 })
+  }
+
+  const idempotencyHeader = request.headers.get("idempotency-key")
+  const idempotencyKey = idempotencyHeader?.trim() ?? null
+  if (idempotencyHeader !== null && (!idempotencyKey || idempotencyKey.length > 200)) {
+    return Response.json(
+      { error: "Idempotency-Key must be a non-empty string of at most 200 characters" },
+      { status: 400 }
+    )
   }
 
   if (await isUserWaitlisted(apiKey.tenantId)) {
@@ -53,6 +66,14 @@ export async function POST(request: NextRequest) {
   const input = parseOutboundSendInput(body)
   if (!input.ok) {
     return Response.json({ error: input.error }, { status: 400 })
+  }
+
+  if (idempotencyKey) {
+    const existing = await getOutboundMessageByIdempotencyKey(
+      apiKey.tenantId,
+      idempotencyKey
+    )
+    if (existing) return idempotentReplayResponse(existing)
   }
 
   const connectedPage = await getActivePageWithTokenForTenant(
@@ -122,21 +143,39 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const message = await insertOutboundMessage({
-    tenantId: apiKey.tenantId,
-    conversationId: conversation.id,
-    connectedPageId: connectedPage.page.id,
-    contactId: input.value.recipientId,
-    text: input.value.reply,
-    status: metaResult.ok ? "sent" : "failed",
-    metaMessageId: extractMetaMessageId(metaResult.data),
-    error: metaResult.error,
-    providerResponse: metaResult.data,
-    createdAt: sentAt,
-  })
+  let message: MessageRecord
+  try {
+    message = await insertOutboundMessage({
+      tenantId: apiKey.tenantId,
+      conversationId: conversation.id,
+      connectedPageId: connectedPage.page.id,
+      contactId: input.value.recipientId,
+      text: input.value.reply,
+      status: metaResult.ok ? "sent" : "failed",
+      metaMessageId: extractMetaMessageId(metaResult.data),
+      idempotencyKey,
+      // Se persiste el motivo traducido; el error crudo de Meta queda en
+      // provider_response.
+      error: metaResult.reason ?? metaResult.error,
+      providerResponse: metaResult.data,
+      createdAt: sentAt,
+    })
+  } catch (error) {
+    // Carrera de dos requests con la misma Idempotency-Key: el índice único
+    // rechaza el segundo insert y devolvemos el mensaje ya almacenado.
+    if (idempotencyKey && isUniqueViolation(error)) {
+      const existing = await getOutboundMessageByIdempotencyKey(
+        apiKey.tenantId,
+        idempotencyKey
+      )
+      if (existing) return idempotentReplayResponse(existing)
+    }
+    throw error
+  }
 
   return Response.json(
     {
+      ...(metaResult.ok ? {} : { error: metaResult.reason ?? metaResult.error }),
       meta: metaResult.data,
       resender: {
         conversationId: conversation.id,
@@ -145,5 +184,28 @@ export async function POST(request: NextRequest) {
       },
     },
     { status: metaResult.status }
+  )
+}
+
+function idempotentReplayResponse(message: MessageRecord) {
+  return Response.json({
+    ...(message.status === "failed" && message.error
+      ? { error: message.error }
+      : {}),
+    meta: message.providerResponse,
+    resender: {
+      conversationId: message.conversationId,
+      messageId: message.id,
+      status: message.status,
+      idempotentReplay: true,
+    },
+  })
+}
+
+function isUniqueViolation(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: unknown }).code === "23505"
   )
 }

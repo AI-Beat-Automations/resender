@@ -28,7 +28,8 @@ export async function POST(request: NextRequest) {
 
   let event: Stripe.Event
   try {
-    event = getStripe().webhooks.constructEvent(raw, signature, secret)
+    // constructEventAsync usa WebCrypto: requerido en Cloudflare Workers.
+    event = await getStripe().webhooks.constructEventAsync(raw, signature, secret)
   } catch (error) {
     console.error("stripe webhook signature verification failed", error)
     return new Response("bad signature", { status: 400 })

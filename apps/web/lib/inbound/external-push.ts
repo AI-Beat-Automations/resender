@@ -58,8 +58,14 @@ export async function recordSkippedDelivery(messageId: string) {
     status: "skipped",
     statusCode: null,
     error: "webhookUrl not configured",
+    attempt: 1,
   })
 }
+
+// Reintentos solo ante fallos transitorios (red, timeout, 408/429/5xx); un 4xx
+// del endpoint del usuario no se reintenta. Cada intento queda en el log.
+const MAX_ATTEMPTS = 3
+const RETRY_DELAYS_MS = [1000, 3000]
 
 export async function pushInboundMessage(input: {
   messageId: string
@@ -74,35 +80,59 @@ export async function pushInboundMessage(input: {
       status: "failed",
       statusCode: null,
       error: normalized.ok ? "webhookUrl not configured" : normalized.error,
+      attempt: 1,
     })
     return
   }
 
   const webhookUrl = normalized.value
 
-  try {
-    const response = await fetch(webhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input.payload),
-      signal: AbortSignal.timeout(5000),
-    })
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const result = await attemptPush(webhookUrl, input.payload)
 
     await recordDelivery({
       messageId: input.messageId,
       webhookUrl,
-      status: response.ok ? "success" : "failed",
+      status: result.ok ? "success" : "failed",
+      statusCode: result.statusCode,
+      error: result.error,
+      attempt,
+    })
+
+    if (result.ok || !result.retryable) return
+
+    const delay = RETRY_DELAYS_MS[attempt - 1]
+    if (attempt < MAX_ATTEMPTS && delay) {
+      await new Promise((resolve) => setTimeout(resolve, delay))
+    }
+  }
+}
+
+async function attemptPush(webhookUrl: string, payload: InboundPushPayload) {
+  try {
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(5000),
+    })
+
+    return {
+      ok: response.ok,
       statusCode: response.status,
       error: response.ok ? null : `HTTP ${response.status}`,
-    })
+      retryable:
+        response.status === 408 ||
+        response.status === 429 ||
+        response.status >= 500,
+    }
   } catch (error) {
-    await recordDelivery({
-      messageId: input.messageId,
-      webhookUrl,
-      status: "failed",
+    return {
+      ok: false,
       statusCode: null,
       error: error instanceof Error ? error.message : "unknown push error",
-    })
+      retryable: true,
+    }
   }
 }
 
@@ -112,6 +142,7 @@ async function recordDelivery(input: {
   status: "skipped" | "success" | "failed"
   statusCode: number | null
   error: string | null
+  attempt: number
 }) {
   const sql = getSql()
   await sql`
@@ -120,14 +151,16 @@ async function recordDelivery(input: {
       webhook_url,
       status,
       status_code,
-      error
+      error,
+      attempt
     )
     values (
       ${input.messageId},
       ${input.webhookUrl},
       ${input.status},
       ${input.statusCode},
-      ${input.error}
+      ${input.error},
+      ${input.attempt}
     )
   `
 }

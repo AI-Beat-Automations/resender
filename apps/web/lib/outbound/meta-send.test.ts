@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 
 import {
+  explainMetaError,
   extractMetaErrorCode,
   extractMetaErrorMessage,
   isMetaExpiredTokenError,
@@ -52,5 +53,29 @@ describe("Meta send helpers", () => {
     })
 
     vi.restoreAllMocks()
+  })
+
+  it("translates the closed 24-hour window error", () => {
+    const response = {
+      error: {
+        message: "This message is sent outside of allowed window.",
+        type: "OAuthException",
+        code: 10,
+        error_subcode: 2018278,
+      },
+    }
+
+    expect(explainMetaError(response)).toMatch(/24-hour window/)
+  })
+
+  it("translates expired token and unavailable person errors", () => {
+    expect(explainMetaError({ error: { code: 190 } })).toMatch(/Reconnect the Page/)
+    expect(explainMetaError({ error: { code: 551 } })).toMatch(/isn't available/)
+    expect(explainMetaError({ error: { code: 613 } })).toMatch(/rate limit/)
+  })
+
+  it("returns null for unknown errors so the raw Meta message is used", () => {
+    expect(explainMetaError({ error: { code: 999999 } })).toBeNull()
+    expect(explainMetaError(null)).toBeNull()
   })
 })

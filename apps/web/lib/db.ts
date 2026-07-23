@@ -1,23 +1,24 @@
-import postgres from "postgres"
+import { neon } from "@neondatabase/serverless"
 
-let client: ReturnType<typeof postgres> | undefined
+// Driver HTTP de Neon (stateless, apto para Cloudflare Workers) expuesto con
+// la firma del tag de postgres.js (`sql<Row[]>`) para no tocar los call sites.
+// Las queries sin await son lazy: se pueden agrupar en `sql.transaction([...])`,
+// que ejecuta el batch de forma atómica (no interactiva).
+export type Sql = (<T extends readonly unknown[] = Record<string, unknown>[]>(
+  strings: TemplateStringsArray,
+  ...params: unknown[]
+) => Promise<T>) & {
+  transaction(queries: Promise<unknown>[]): Promise<unknown[]>
+}
 
-export function getSql() {
+let client: Sql | undefined
+
+export function getSql(): Sql {
   const databaseUrl = process.env.DATABASE_URL
   if (!databaseUrl) {
     throw new Error("DATABASE_URL is required")
   }
 
-  client ??= postgres(databaseUrl, {
-    max: 10,
-    prepare: false,
-  })
-
+  client ??= neon(databaseUrl) as unknown as Sql
   return client
-}
-
-export async function closeSql() {
-  if (!client) return
-  await client.end()
-  client = undefined
 }

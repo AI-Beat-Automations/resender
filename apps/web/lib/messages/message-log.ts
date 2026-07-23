@@ -22,6 +22,7 @@ export type MessageRecord = {
   status: MessageStatus
   text: string
   metaMessageId: string | null
+  idempotencyKey: string | null
   error: string | null
   providerResponse: unknown | null
   createdAt: Date
@@ -46,6 +47,7 @@ type MessageRow = {
   status: MessageStatus
   text: string
   meta_message_id: string | null
+  idempotency_key: string | null
   error: string | null
   provider_response: unknown | null
   created_at: Date
@@ -120,7 +122,7 @@ export async function insertInboundMessage(input: {
       where meta_message_id is not null and direction = 'inbound'
     do nothing
     returning id, tenant_id, conversation_id, connected_page_id, contact_id,
-      direction, status, text, meta_message_id, error, provider_response, created_at
+      direction, status, text, meta_message_id, idempotency_key, error, provider_response, created_at
   `
 
   if (row) return { message: mapMessage(row), inserted: true }
@@ -128,7 +130,7 @@ export async function insertInboundMessage(input: {
   if (input.metaMessageId) {
     const [existing] = await sql<MessageRow[]>`
       select id, tenant_id, conversation_id, connected_page_id, contact_id,
-        direction, status, text, meta_message_id, error, provider_response, created_at
+        direction, status, text, meta_message_id, idempotency_key, error, provider_response, created_at
       from messages
       where connected_page_id = ${input.connectedPageId}
         and meta_message_id = ${input.metaMessageId}
@@ -162,59 +164,80 @@ export async function insertOutboundMessage(input: {
   text: string
   status: "sent" | "failed"
   metaMessageId: string | null
+  idempotencyKey: string | null
   error: string | null
   providerResponse: unknown
   createdAt: Date
 }) {
   const sql = getSql()
   const providerResponse =
-    input.providerResponse == null
-      ? null
-      : JSON.parse(JSON.stringify(input.providerResponse))
+    input.providerResponse == null ? null : JSON.stringify(input.providerResponse)
 
-  return sql.begin(async (tx) => {
-    const [row] = await tx<MessageRow[]>`
-      insert into messages (
-        tenant_id,
-        conversation_id,
-        connected_page_id,
-        contact_id,
-        direction,
-        status,
-        text,
-        meta_message_id,
-        error,
-        provider_response,
-        created_at
-      )
-      values (
-        ${input.tenantId},
-        ${input.conversationId},
-        ${input.connectedPageId},
-        ${input.contactId},
-        'outbound',
-        ${input.status},
-        ${input.text},
-        ${input.metaMessageId},
-        ${input.error},
-        ${providerResponse == null ? null : tx.json(providerResponse)},
-        ${input.createdAt}
-      )
-      returning id, tenant_id, conversation_id, connected_page_id, contact_id,
-        direction, status, text, meta_message_id, error, provider_response, created_at
-    `
+  // Batch atómico (driver HTTP de Neon): las queries se crean sin await y se
+  // ejecutan juntas en una transacción no interactiva.
+  const insertMessage = sql<MessageRow[]>`
+    insert into messages (
+      tenant_id,
+      conversation_id,
+      connected_page_id,
+      contact_id,
+      direction,
+      status,
+      text,
+      meta_message_id,
+      idempotency_key,
+      error,
+      provider_response,
+      created_at
+    )
+    values (
+      ${input.tenantId},
+      ${input.conversationId},
+      ${input.connectedPageId},
+      ${input.contactId},
+      'outbound',
+      ${input.status},
+      ${input.text},
+      ${input.metaMessageId},
+      ${input.idempotencyKey},
+      ${input.error},
+      ${providerResponse}::jsonb,
+      ${input.createdAt}
+    )
+    returning id, tenant_id, conversation_id, connected_page_id, contact_id,
+      direction, status, text, meta_message_id, idempotency_key, error, provider_response, created_at
+  `
 
-    if (!row) throw new Error("outbound message insert failed")
+  const touchConversation = sql`
+    update conversations
+    set last_message_at = greatest(last_message_at, ${input.createdAt}),
+      updated_at = now()
+    where id = ${input.conversationId} and tenant_id = ${input.tenantId}
+  `
 
-    await tx`
-      update conversations
-      set last_message_at = greatest(last_message_at, ${input.createdAt}),
-        updated_at = now()
-      where id = ${input.conversationId} and tenant_id = ${input.tenantId}
-    `
+  const [insertedRows] = await sql.transaction([insertMessage, touchConversation])
+  const row = (insertedRows as MessageRow[])[0]
+  if (!row) throw new Error("outbound message insert failed")
 
-    return mapMessage(row)
-  })
+  return mapMessage(row)
+}
+
+export async function getOutboundMessageByIdempotencyKey(
+  tenantId: string,
+  idempotencyKey: string
+) {
+  const sql = getSql()
+  const [row] = await sql<MessageRow[]>`
+    select id, tenant_id, conversation_id, connected_page_id, contact_id,
+      direction, status, text, meta_message_id, idempotency_key, error, provider_response, created_at
+    from messages
+    where tenant_id = ${tenantId}
+      and idempotency_key = ${idempotencyKey}
+      and direction = 'outbound'
+    limit 1
+  `
+
+  return row ? mapMessage(row) : null
 }
 
 function mapConversation(row: ConversationRow): ConversationRecord {
@@ -239,6 +262,7 @@ function mapMessage(row: MessageRow): MessageRecord {
     status: row.status,
     text: row.text,
     metaMessageId: row.meta_message_id,
+    idempotencyKey: row.idempotency_key,
     error: row.error,
     providerResponse: row.provider_response,
     createdAt: row.created_at,
