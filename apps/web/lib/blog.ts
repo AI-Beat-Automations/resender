@@ -4,21 +4,27 @@ import fs from "node:fs"
 import path from "node:path"
 
 import matter from "gray-matter"
+import GithubSlugger from "github-slugger"
 
 // Loader del blog. Módulo NUEVO (no toca la lógica de dominio en lib/).
-// Los posts se escriben como .mdx en content/blog con frontmatter (ver
-// resender-website-spec.md §3.3) y se renderizan en build time (SSG).
+// Los posts se escriben como .md/.mdx en content/blog y se renderizan en build
+// time (SSG). El frontmatter YAML es OPCIONAL: si falta, todo se deriva del
+// propio texto del archivo (ver resender-website-spec.md §3.3):
+//   # Título            -> primer encabezado H1
+//   *23 de julio de 2026*  -> primera línea en cursiva que parezca fecha
+//   Primer párrafo      -> abstract
+// El nombre del archivo define la URL (slug). Ver content/blog/_COMO-PUBLICAR.md.
 
 export type BlogCategory = "tutorial" | "actualizacion"
 
 export type BlogFrontmatter = {
   title: string
   abstract: string
-  category: BlogCategory
+  category?: BlogCategory
   isPublished: boolean
   publishedOn: string
   updatedOn?: string
-  author: string
+  author?: string
   lang: string
 }
 
@@ -27,39 +33,207 @@ export type BlogPost = BlogFrontmatter & {
   content: string
 }
 
+export type BlogHeading = {
+  depth: number
+  text: string
+  id: string
+}
+
 const BLOG_DIR = path.join(process.cwd(), "content", "blog")
+
+const SPANISH_MONTHS: Record<string, number> = {
+  enero: 1,
+  febrero: 2,
+  marzo: 3,
+  abril: 4,
+  mayo: 5,
+  junio: 6,
+  julio: 7,
+  agosto: 8,
+  septiembre: 9,
+  setiembre: 9,
+  octubre: 10,
+  noviembre: 11,
+  diciembre: 12,
+}
+
+// Parsea una fecha en español ("23 de julio de 2026"), ISO ("2026-07-23") o
+// "23/07/2026". Devuelve YYYY-MM-DD, o null si no matchea ningún formato.
+export function parseSpanishDate(value: string): string | null {
+  const raw = value.trim()
+
+  const es = raw.match(/(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+de\s+(\d{4})/i)
+  if (es) {
+    const day = Number(es[1])
+    const month = SPANISH_MONTHS[(es[2] ?? "").toLowerCase()]
+    const year = Number(es[3])
+    if (month) return toIso(year, month, day)
+  }
+
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (iso) return toIso(Number(iso[1]), Number(iso[2]), Number(iso[3]))
+
+  const dmy = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (dmy) return toIso(Number(dmy[3]), Number(dmy[2]), Number(dmy[1]))
+
+  return null
+}
+
+function toIso(year: number, month: number, day: number): string {
+  const mm = String(month).padStart(2, "0")
+  const dd = String(day).padStart(2, "0")
+  return `${year}-${mm}-${dd}`
+}
+
+// Mapea el texto de una categoría escrita por el autor ("Tutorial",
+// "Actualizaciones", con o sin acentos) al valor interno. Devuelve null si no
+// coincide con ninguna categoría conocida.
+export function parseCategoryLabel(text: string): BlogCategory | null {
+  const norm = text
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .trim()
+  if (norm === "tutorial" || norm === "tutoriales") return "tutorial"
+  if (norm === "actualizacion" || norm === "actualizaciones")
+    return "actualizacion"
+  return null
+}
+
+// Parsea la línea "meta" en cursiva del post. Acepta solo fecha
+// ("23 de julio de 2026") o categoría + fecha separadas por · • o |
+// ("Tutorial · 23 de julio de 2026"), en cualquier orden.
+function parseMetaLine(inner: string): {
+  date?: string
+  category?: BlogCategory
+} {
+  const parts = inner
+    .split(/[·•|]/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+
+  let date: string | undefined
+  let category: BlogCategory | undefined
+  for (const part of parts) {
+    const asDate = parseSpanishDate(part)
+    if (asDate) {
+      date = asDate
+      continue
+    }
+    const asCategory = parseCategoryLabel(part)
+    if (asCategory) category = asCategory
+  }
+  return { date, category }
+}
 
 function normalizeDate(value: unknown): string {
   if (value instanceof Date) return value.toISOString().slice(0, 10)
   return String(value)
 }
 
-function readPost(fileName: string): BlogPost | null {
-  const slug = fileName.replace(/\.mdx?$/, "")
-  const raw = fs.readFileSync(path.join(BLOG_DIR, fileName), "utf-8")
+// Derivación desde markdown puro (sin frontmatter). Extrae el título (primer H1)
+// y la fecha (primera línea en cursiva que parezca fecha) y los QUITA del cuerpo
+// para que la página no los duplique.
+function deriveFromBody(body: string): {
+  title?: string
+  publishedOn?: string
+  category?: BlogCategory
+  abstract?: string
+  content: string
+} {
+  const lines = body.split("\n")
+  let title: string | undefined
+  let publishedOn: string | undefined
+  let category: BlogCategory | undefined
+  const kept: string[] = []
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+
+    if (!title) {
+      const h1 = trimmed.match(/^#\s+(.+)$/)
+      if (h1?.[1]) {
+        title = h1[1].trim()
+        continue
+      }
+    }
+
+    // Línea en cursiva completa (*...* o _..._) con la fecha y, opcionalmente,
+    // la categoría ("Tutorial · 23 de julio de 2026"). Solo se consume si trae
+    // fecha, para no confundirla con una cursiva cualquiera del texto.
+    if (!publishedOn) {
+      const italic = trimmed.match(/^[*_](.+?)[*_]$/)
+      if (italic?.[1]) {
+        const meta = parseMetaLine(italic[1])
+        if (meta.date) {
+          publishedOn = meta.date
+          category = meta.category
+          continue
+        }
+      }
+    }
+
+    kept.push(line)
+  }
+
+  const content = kept.join("\n").replace(/^\n+/, "")
+  const abstract = firstParagraph(content)
+
+  return { title, publishedOn, category, abstract, content }
+}
+
+// Primer párrafo de texto plano: salta encabezados, imágenes y líneas vacías.
+function firstParagraph(content: string): string | undefined {
+  for (const block of content.split(/\n\s*\n/)) {
+    const text = block.trim()
+    if (!text) continue
+    if (text.startsWith("#")) continue
+    if (text.startsWith("!")) continue
+    return text.replace(/\s+/g, " ").trim()
+  }
+  return undefined
+}
+
+// Parseo puro (sin filesystem): útil para tests. Acepta frontmatter YAML o
+// markdown puro con título/fecha derivados del cuerpo.
+export function parsePost(raw: string, slug: string): BlogPost | null {
   const { data, content } = matter(raw)
 
-  if (!data.title) return null
+  const derived: ReturnType<typeof deriveFromBody> = data.title
+    ? { content }
+    : deriveFromBody(content)
+
+  const title = data.title ? String(data.title) : derived.title
+  if (!title) return null
+
+  const publishedOnRaw = data.publishedOn ?? derived.publishedOn
+  const abstract = data.abstract ?? derived.abstract ?? ""
 
   return {
     slug,
-    title: String(data.title),
-    abstract: String(data.abstract ?? ""),
-    category: (data.category as BlogCategory) ?? "tutorial",
+    title,
+    abstract: String(abstract),
+    category: (data.category as BlogCategory) ?? derived.category ?? undefined,
     isPublished: data.isPublished !== false,
-    publishedOn: normalizeDate(data.publishedOn),
+    publishedOn: publishedOnRaw ? normalizeDate(publishedOnRaw) : "",
     updatedOn: data.updatedOn ? normalizeDate(data.updatedOn) : undefined,
-    author: String(data.author ?? ""),
+    author: data.author ? String(data.author) : undefined,
     lang: String(data.lang ?? "es"),
-    content,
+    content: derived.content,
   }
+}
+
+function readPost(fileName: string): BlogPost | null {
+  const slug = fileName.replace(/\.mdx?$/, "")
+  const raw = fs.readFileSync(path.join(BLOG_DIR, fileName), "utf-8")
+  return parsePost(raw, slug)
 }
 
 function readAllPosts(): BlogPost[] {
   if (!fs.existsSync(BLOG_DIR)) return []
   return fs
     .readdirSync(BLOG_DIR)
-    .filter((f) => /\.mdx?$/.test(f))
+    .filter((f) => /\.mdx?$/.test(f) && !f.startsWith("_"))
     .map(readPost)
     .filter((p): p is BlogPost => p !== null)
 }
@@ -82,6 +256,32 @@ export function getPostBySlug(slug: string): BlogPost | null {
   return post && post.isPublished ? post : null
 }
 
+// Encabezados H2/H3 del cuerpo para la tabla de contenidos. Los ids coinciden
+// con los que genera rehype-slug al renderizar el MDX.
+export function getHeadings(content: string): BlogHeading[] {
+  const headings: BlogHeading[] = []
+  // Misma instancia y orden que rehype-slug para que los ids (y el dedupe de
+  // encabezados repetidos) coincidan exactamente con el HTML renderizado.
+  const slugger = new GithubSlugger()
+  let inFence = false
+
+  for (const line of content.split("\n")) {
+    if (/^\s*(```|~~~)/.test(line)) {
+      inFence = !inFence
+      continue
+    }
+    if (inFence) continue
+
+    const match = line.match(/^(#{2,3})\s+(.+?)\s*#*\s*$/)
+    if (!match?.[1] || !match[2]) continue
+
+    const text = match[2].replace(/[*_`]/g, "").trim()
+    headings.push({ depth: match[1].length, text, id: slugger.slug(text) })
+  }
+
+  return headings
+}
+
 export const CATEGORY_LABELS: Record<BlogCategory, string> = {
   tutorial: "Tutorial",
   actualizacion: "Actualización",
@@ -90,9 +290,12 @@ export const CATEGORY_LABELS: Record<BlogCategory, string> = {
 export function formatDate(iso: string, lang = "es"): string {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return iso
+  // La fecha es YYYY-MM-DD (medianoche UTC). Formateamos en UTC para que el día
+  // mostrado coincida con el ISO sin importar la zona horaria del servidor.
   return date.toLocaleDateString(lang === "es" ? "es-AR" : "en-US", {
     year: "numeric",
     month: "long",
     day: "numeric",
+    timeZone: "UTC",
   })
 }
