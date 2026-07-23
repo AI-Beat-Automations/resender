@@ -24,7 +24,7 @@ export default async function ConnectionsPage({
   return (
     <div className="grid gap-6">
       <div>
-        <h1 className="text-3xl font-semibold tracking-tight">Connections</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Connections</h1>
         <p className="mt-2 max-w-2xl text-muted-foreground">
           Connect your Facebook Pages, configure a webhook per Page, and
           disconnect channels without deleting history.

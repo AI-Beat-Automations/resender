@@ -3,11 +3,18 @@ import Link from "next/link"
 import { cn } from "@workspace/ui/lib/utils"
 
 // Logo de marca: "Resender" en HK Grotesk Bold + ".dev" en Space Mono Bold
-// (ver resender-website-spec.md §4).
-export function SiteLogo({ className }: { className?: string }) {
+// (ver resender-website-spec.md §4). `href` permite reusarlo dentro del app
+// (apuntando a la home del producto) además del website.
+export function SiteLogo({
+  className,
+  href = "/",
+}: {
+  className?: string
+  href?: string
+}) {
   return (
     <Link
-      href="/"
+      href={href}
       className={cn("inline-flex items-baseline tracking-tight", className)}
       aria-label="Resender.dev — inicio"
     >

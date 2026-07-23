@@ -15,7 +15,7 @@ export function PricingPreview() {
         subtitle={dict.pricingPreview.subtitle}
       />
       <div className="mt-16">
-        <PlanCards showFeatures={false} />
+        <PlanCards />
       </div>
       <div className="mt-10 text-center">
         <Button asChild variant="outline" size="lg">

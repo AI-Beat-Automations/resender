@@ -6,7 +6,7 @@
 
 export const dict = {
   hero: {
-    eyebrow: "Recibí y respondé mensajes de Facebook por API",
+    eyebrow: "recibí y respondé mensajes de Facebook por API",
     title: "La API relay para mensajes de Meta.",
     titleAccent: "Developer-first.",
     subtitle:
@@ -172,7 +172,6 @@ export const dict = {
     title: "Precios",
     subtitle:
       "Un plan para cada etapa. Sin contratos, sin sorpresas. Cancelás cuando quieras.",
-    // TODO: definir límites reales de mensajes y páginas por tier (ver spec §3.2).
     plans: [
       {
         name: "Starter",
@@ -183,10 +182,9 @@ export const dict = {
         badge: null,
         cta: "Empezar con Starter",
         features: [
-          "TODO: X mensajes / mes",
-          "TODO: X páginas de Facebook",
-          "Mensajes de Facebook Messenger",
-          "Soporte por email",
+          "50.000 mensajes por mes",
+          "2 páginas de Facebook",
+          "Soporte por email + Discord",
         ],
       },
       {
@@ -198,25 +196,9 @@ export const dict = {
         badge: "Recomendado",
         cta: "Empezar con Pro",
         features: [
-          "TODO: X mensajes / mes",
-          "TODO: X páginas de Facebook",
-          "Mensajes de Facebook Messenger",
-          "Soporte por email + Discord prioritario",
-        ],
-      },
-      {
-        name: "Business",
-        price: "$60",
-        period: "/mes",
-        description: "Para operaciones de alto volumen.",
-        featured: false,
-        badge: null,
-        cta: "Empezar con Business",
-        features: [
-          "TODO: X mensajes / mes",
-          "Páginas de Facebook ilimitadas",
-          "Mensajes de Facebook Messenger",
-          "Soporte premium",
+          "100.000 mensajes por mes",
+          "5 páginas de Facebook",
+          "Soporte por email + Discord",
         ],
       },
     ],

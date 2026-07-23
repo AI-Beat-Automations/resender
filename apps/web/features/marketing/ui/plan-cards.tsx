@@ -19,7 +19,7 @@ import { dict } from "@/content/i18n/es"
 // `showFeatures` controla si se listan los features (full) o no (preview).
 export function PlanCards({ showFeatures = true }: { showFeatures?: boolean }) {
   return (
-    <div className="grid gap-6 lg:grid-cols-3">
+    <div className="mx-auto grid max-w-3xl gap-6 sm:grid-cols-2">
       {dict.pricing.plans.map((plan) => (
         <Card
           key={plan.name}

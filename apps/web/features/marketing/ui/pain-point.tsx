@@ -17,7 +17,7 @@ const icons: Record<string, LucideIcon> = {
 
 export function PainPoint() {
   return (
-    <Section tone="muted">
+    <Section>
       <SectionHeading
         kicker="el problema"
         title={dict.pain.title}

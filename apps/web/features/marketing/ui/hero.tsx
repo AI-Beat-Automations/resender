@@ -3,6 +3,7 @@ import Link from "next/link"
 import { Button } from "@workspace/ui/components/button"
 
 import { FlowMock } from "@/features/marketing/ui/flow-mock"
+import { Typewriter } from "@/features/marketing/ui/typewriter"
 import { dict } from "@/content/i18n/es"
 
 export function Hero() {
@@ -15,8 +16,9 @@ export function Hero() {
             {dict.hero.eyebrow}
           </p>
           <h1 className="text-4xl font-bold tracking-tight md:text-6xl">
-            {dict.hero.title}{" "}
-            <span className="text-primary">{dict.hero.titleAccent}</span>
+            {dict.hero.title}
+            <br />
+            <Typewriter className="text-primary" text={dict.hero.titleAccent} />
             <span
               aria-hidden
               className="caret-blink ml-1 inline-block h-[0.85em] w-[3px] translate-y-[1px] rounded-[1px] bg-primary align-baseline"
