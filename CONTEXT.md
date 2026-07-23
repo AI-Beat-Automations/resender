@@ -15,6 +15,12 @@ La ruta `/` sigue siendo una landing pública simple con la propuesta de valor y
 ### Registro MVP
 En el MVP, el registro con email y password deja entrar al usuario inmediatamente. No se exige verificación de email antes de usar la app.
 
+### Waitlist
+El registro esta abierto, pero el acceso al producto esta cerrado por una bandera `users.waitlisted`. Una cuenta nueva nace con `waitlisted = true` y aterriza en la pantalla `/waitlist`, que le indica que le avisaremos por email cuando su acceso este listo. Solo con `waitlisted = false` el usuario entra a `Connections`, `Messages` y `Settings`.
+La bandera se lee de base de datos en cada request (no vive en el JWT), asi que sacar a alguien de la waitlist surte efecto sin pedirle volver a iniciar sesion. El criterio es fail-closed: si no se puede confirmar la bandera, no hay acceso.
+Las cuentas que ya existian cuando se introdujo la waitlist quedan con `waitlisted = false`, para no bloquear la cuenta de revision de Meta. Aprobar a un usuario es hoy una operacion manual por SQL; no hay panel de administracion en esta version.
+La waitlist tambien cierra las puertas fuera de la UI: el OAuth de Meta (`/api/meta/start` y `/api/meta/callback`) redirige a `/waitlist` y la API externa de salida responde `403` si el tenant esta en waitlist.
+
 ### API Token
 La integración externa (N8N/IA) no reutiliza la sesión web. Se autentica con una API key opaca separada emitida por Resender para el tenant.
 
@@ -131,3 +137,18 @@ Gotcha documentado: el campo `pageId` de `POST /api/meta/send` se matchea contra
 
 ### Borrado de cuenta (account deletion)
 "Delete account" en `Settings` borra **todo** el tenant (cuenta, paginas, conversaciones, mensajes, API keys); no hay borrado parcial en el MVP. Es inmediato y transaccional en produccion; los backups se purgan en ≤30 dias. Antes de borrar, se intenta best-effort dar de baja cada pagina activa del webhook de Meta. Requiere confirmacion destructiva (reescribir el email de la cuenta). Se implementa con FKs `on delete cascade` (migracion `0002`), que reemplazan el `on delete restrict` original. Cuidado: con cascade, borrar una fila de `connected_pages` arrastraria su historial; hoy nada borra paginas (ver [Desconexión de páginas], que es UPDATE no DELETE).
+
+### Suscripcion (billing)
+El uso del producto requiere una suscripcion de pago gestionada por Stripe. Hay 3 planes mensuales en USD: **Starter $15**, **Pro $25** y **Business $60**. Solo ciclo mensual. La diferenciacion funcional entre planes aun no esta definida: el entitlement actual es binario (suscripcion activa si/no) y el plan contratado solo se persiste para diferenciar features en el futuro. Decision registrada en `docs/adr/0002-stripe-checkout-subscriptions.md`.
+
+### Gate de suscripcion
+Segundo gate en serie despues de la [Waitlist]: la waitlist decide quien puede entrar, la suscripcion decide quien puede usar. Un usuario con `waitlisted = false` pero sin suscripcion activa aterriza en la pagina de pricing. El acceso existe solo con status `active` en la tabla `subscriptions`; cualquier otro estado es **bloqueo total**: dashboard, OAuth de Meta y `POST /api/meta/send` (403) quedan cerrados, y los webhooks entrantes de Meta del tenant se descartan sin persistir (respondiendo `200` a Meta para no degradar la app). Mismo patron que la waitlist: se lee de base de datos en cada request, fail-closed, nunca del JWT ni de la API de Stripe en el hot path.
+
+### Sin trial
+No hay periodo de prueba: para usar el producto hay que pagar. El primer cobro ocurre dentro del propio Stripe Checkout y no existe logica de trial en ninguna capa (ni `trial_period_days` en Checkout ni flags propios en base de datos).
+
+### Stripe Checkout y Customer Portal
+Resender no maneja datos de tarjeta: la compra se hace en la pagina de Checkout hosteada por Stripe (redirect) y toda la gestion posterior (cambiar plan, actualizar tarjeta, cancelar) ocurre en el Customer Portal de Stripe, enlazado desde `Settings`. La cancelacion es `cancel_at_period_end`: quien pago el mes lo usa completo. El servidor solo crea sesiones de Checkout/Portal via API con la secret key.
+
+### Webhook de Stripe
+El estado de las suscripciones se replica en Postgres consumiendo webhooks firmados de Stripe en `app/api/stripe/webhook` (verificacion con `STRIPE_WEBHOOK_SECRET`, espejo del patron HMAC del webhook de Meta). Eventos relevantes: `checkout.session.completed` y `customer.subscription.created/updated/deleted`, procesados con upsert idempotente sobre la tabla `subscriptions`. En desarrollo se usa `stripe listen` (Stripe CLI) para recibirlos en local.

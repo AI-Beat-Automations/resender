@@ -1,6 +1,8 @@
 import { type NextRequest } from "next/server"
 
 import { authenticateApiKey } from "@/lib/api-keys/api-keys"
+import { isUserWaitlisted } from "@/lib/auth/waitlist"
+import { hasActiveSubscription } from "@/lib/billing/subscription"
 import {
   getConversationById,
   insertOutboundMessage,
@@ -27,6 +29,14 @@ export async function POST(request: NextRequest) {
   const apiKey = await authenticateApiKey(bearer)
   if (!apiKey) {
     return Response.json({ error: "unauthorized" }, { status: 401 })
+  }
+
+  if (await isUserWaitlisted(apiKey.tenantId)) {
+    return Response.json({ error: "account is on the waitlist" }, { status: 403 })
+  }
+
+  if (!(await hasActiveSubscription(apiKey.tenantId))) {
+    return Response.json({ error: "no active subscription" }, { status: 403 })
   }
 
   let body: unknown
