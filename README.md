@@ -1,7 +1,7 @@
 # Resender
 
 Resender is a Messenger gateway and durable log for external automations.
-
+lori crack
 ## MVP environment
 
 `apps/web` expects these variables for the MVP stack:
