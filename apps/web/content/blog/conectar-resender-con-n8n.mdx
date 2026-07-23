@@ -1,0 +1,53 @@
+---
+title: "Cómo conectar Resender con n8n"
+abstract: "Guía paso a paso para configurar tu primer flujo de mensajes de Meta con n8n y Resender."
+category: "tutorial"
+isPublished: true
+publishedOn: 2026-07-21
+author: "Equipo Resender"
+lang: "es"
+---
+
+En este tutorial vas a conectar una página de Facebook a **Resender** y armar un flujo en **n8n** que reciba los mensajes entrantes y responda automáticamente. Todo en menos de 15 minutos.
+
+## Lo que vas a necesitar
+
+- Una cuenta de Resender con una página de Facebook conectada.
+- Una instancia de n8n (cloud o self-hosted).
+- Una API key de Resender (la creás desde **Settings**).
+
+## Paso 1 — Recibir mensajes en n8n
+
+Creá un nodo **Webhook** en n8n y copiá su URL pública. En Resender, entrá a **Connections**, elegí tu página y pegá esa URL en el campo **webhook URL**.
+
+A partir de ahora, cada mensaje entrante llega a n8n como JSON:
+
+```json
+{
+  "tenant": { "id": "ten_123" },
+  "page": { "id": "pg_456", "metaPageId": "102938475610111" },
+  "conversation": { "id": "conv_789", "contactId": "6543210987654321" },
+  "message": { "direction": "inbound", "status": "received", "text": "Hola!" }
+}
+```
+
+## Paso 2 — Responder por la API
+
+Agregá un nodo **HTTP Request** apuntando al endpoint de salida de Resender:
+
+```bash
+curl -X POST https://resender.dev/api/meta/send \
+  -H "Authorization: Bearer pk_live_tu_secreto" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "pageId": "102938475610111",
+    "recipientId": "6543210987654321",
+    "reply": "¡Gracias por escribirnos! ¿En qué te ayudamos?"
+  }'
+```
+
+> Ojo: `pageId` es el `page.metaPageId` del payload entrante (no el `page.id` interno), y `recipientId` es el `conversation.contactId`.
+
+## Listo
+
+Con esos dos nodos ya tenés un bot funcionando sobre Messenger, sin pagar por features que no usás. En el próximo tutorial vamos a ver cómo ramificar respuestas según el contenido del mensaje.

@@ -1,7 +1,9 @@
 import Link from "next/link"
 import type { Metadata } from "next"
 
+import { SiteHeader } from "@/components/site-header"
 import { SiteFooter } from "@/components/site-footer"
+import { SiteBackground } from "@/components/site-background"
 
 export const metadata: Metadata = {
   title: "Privacy Policy · Resender",
@@ -15,15 +17,11 @@ const CONTACT_EMAIL = "info@resender.dev"
 export default function PrivacyPage() {
   return (
     <div className="flex min-h-svh flex-col">
+      <SiteBackground />
+      <SiteHeader />
       <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-12">
         <header className="mb-10">
-          <Link
-            href="/"
-            className="text-sm font-semibold tracking-tight text-muted-foreground hover:text-foreground"
-          >
-            Resender
-          </Link>
-          <h1 className="mt-6 text-3xl font-semibold tracking-tight">
+          <h1 className="text-3xl font-semibold tracking-tight">
             Privacy Policy
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">

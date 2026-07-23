@@ -43,7 +43,7 @@ export default async function MessagesPage({
   return (
     <div className="grid gap-6">
       <div>
-        <h1 className="text-3xl font-semibold tracking-tight">Messages</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Messages</h1>
         <p className="mt-2 max-w-2xl text-muted-foreground">
           Durable message log organized by conversation. Outbound messages
           originate from the external API; this screen is read-only.

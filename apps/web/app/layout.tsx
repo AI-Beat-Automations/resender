@@ -1,14 +1,27 @@
-import { Geist, Geist_Mono } from "next/font/google"
+import { Inter, Space_Mono } from "next/font/google"
+import localFont from "next/font/local"
 
 import "@workspace/ui/globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { cn } from "@workspace/ui/lib/utils"
 
-const geist = Geist({ subsets: ["latin"], variable: "--font-sans" })
+// Body: Inter (default de shadcn). Código y ".dev" del logo: Space Mono.
+const fontSans = Inter({ subsets: ["latin"], variable: "--font-sans" })
 
-const fontMono = Geist_Mono({
+const fontMono = Space_Mono({
   subsets: ["latin"],
+  weight: ["400", "700"],
   variable: "--font-mono",
+})
+
+// Headings y logo "Resender": HK Grotesk Pro (fuente local de marca).
+const fontHeading = localFont({
+  variable: "--font-hk",
+  src: [
+    { path: "./fonts/HKGroteskPro-Medium.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/HKGroteskPro-SemiBold.woff2", weight: "600", style: "normal" },
+    { path: "./fonts/HKGroteskPro-Bold.woff2", weight: "700", style: "normal" },
+  ],
 })
 
 export default function RootLayout({
@@ -18,12 +31,13 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
+      lang="es"
       suppressHydrationWarning
       className={cn(
         "font-sans antialiased",
+        fontSans.variable,
         fontMono.variable,
-        geist.variable
+        fontHeading.variable
       )}
     >
       <body>
