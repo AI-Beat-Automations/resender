@@ -1,0 +1,24 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "web",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-07-01",
+  "compatibility_flags": ["nodejs_compat"],
+  // workers.dev sirve para smoke tests; cuando el custom domain esté activo
+  // se puede poner en false para que solo responda resender.dev.
+  "workers_dev": true,
+  "preview_urls": true,
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "observability": {
+    "enabled": true
+  }
+  // Los secretos (DATABASE_URL, AUTH_SECRET, etc.) NO van aquí: se cargan con
+  // `wrangler secret put <NAME>` en producción y en `.dev.vars` para preview local.
+  //
+  // Custom domain: cuando la zona resender.dev esté activa en Cloudflare,
+  // descomentar y ajustar:
+  // "routes": [{ "pattern": "resender.dev", "custom_domain": true }]
+}

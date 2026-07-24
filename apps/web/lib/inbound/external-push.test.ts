@@ -68,6 +68,7 @@ describe("inbound push payload", () => {
         status: "received",
         text: "hola",
         metaMessageId: "mid-1",
+        idempotencyKey: null,
         error: null,
         providerResponse: null,
         createdAt: new Date("2026-01-02T00:00:00.000Z"),
@@ -97,6 +98,7 @@ describe("inbound push payload", () => {
       "failed",
       null,
       "The URL must use HTTPS. HTTP is only allowed for localhost in development.",
+      1,
     ])
   })
 })

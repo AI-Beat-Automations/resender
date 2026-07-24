@@ -65,62 +65,61 @@ export async function connectAuthorizedPages(
 
   const sql = getSql()
 
-  return sql.begin(async (tx) => {
-    const connected: ConnectedPageRecord[] = []
+  // Fase de lectura (verifica propiedad) + batch atómico de escrituras: el
+  // driver HTTP de Neon no soporta transacciones interactivas. Las guardas
+  // `tenant_id = ${tenantId}` en el update y el unique de `meta_page_id` en el
+  // insert cubren la carrera entre ambas fases.
+  const writes: Promise<unknown>[] = []
+  for (const page of pages) {
+    const encryptedToken = encryptSecret(page.pageAccessToken)
+    const [existing] = await sql<Pick<ConnectedPageRow, "id" | "tenant_id">[]>`
+      select id, tenant_id
+      from connected_pages
+      where meta_page_id = ${page.pageId}
+      limit 1
+    `
 
-    for (const page of pages) {
-      const encryptedToken = encryptSecret(page.pageAccessToken)
-      const [existing] = await tx<ConnectedPageRow[]>`
-        select id, tenant_id, meta_page_id, name, status, token_status,
-          token_error, token_error_at, webhook_url, connected_at,
-          disconnected_at, created_at, updated_at
-        from connected_pages
-        where meta_page_id = ${page.pageId}
-        limit 1
-      `
-
-      if (existing && existing.tenant_id !== tenantId) {
-        throw new PageOwnershipError(page.pageId)
-      }
-
-      if (existing) {
-        const [updated] = await tx<ConnectedPageRow[]>`
-          update connected_pages
-          set name = ${page.name},
-              status = 'active',
-              token_status = 'valid',
-              token_error = null,
-              token_error_at = null,
-              page_access_token_encrypted = ${encryptedToken},
-              connected_at = now(),
-              disconnected_at = null,
-              updated_at = now()
-          where id = ${existing.id} and tenant_id = ${tenantId}
-          returning id, tenant_id, meta_page_id, name, status, token_status,
-            token_error, token_error_at, webhook_url, connected_at,
-            disconnected_at, created_at, updated_at
-        `
-        if (updated) connected.push(mapConnectedPage(updated))
-        continue
-      }
-
-      const [inserted] = await tx<ConnectedPageRow[]>`
-        insert into connected_pages (
-          tenant_id,
-          meta_page_id,
-          name,
-          page_access_token_encrypted
-        )
-        values (${tenantId}, ${page.pageId}, ${page.name}, ${encryptedToken})
-        returning id, tenant_id, meta_page_id, name, status, token_status,
-          token_error, token_error_at, webhook_url, connected_at,
-          disconnected_at, created_at, updated_at
-      `
-      if (inserted) connected.push(mapConnectedPage(inserted))
+    if (existing && existing.tenant_id !== tenantId) {
+      throw new PageOwnershipError(page.pageId)
     }
 
-    return connected
-  })
+    writes.push(
+      existing
+        ? sql`
+            update connected_pages
+            set name = ${page.name},
+                status = 'active',
+                token_status = 'valid',
+                token_error = null,
+                token_error_at = null,
+                page_access_token_encrypted = ${encryptedToken},
+                connected_at = now(),
+                disconnected_at = null,
+                updated_at = now()
+            where id = ${existing.id} and tenant_id = ${tenantId}
+            returning id, tenant_id, meta_page_id, name, status, token_status,
+              token_error, token_error_at, webhook_url, connected_at,
+              disconnected_at, created_at, updated_at
+          `
+        : sql`
+            insert into connected_pages (
+              tenant_id,
+              meta_page_id,
+              name,
+              page_access_token_encrypted
+            )
+            values (${tenantId}, ${page.pageId}, ${page.name}, ${encryptedToken})
+            returning id, tenant_id, meta_page_id, name, status, token_status,
+              token_error, token_error_at, webhook_url, connected_at,
+              disconnected_at, created_at, updated_at
+          `
+    )
+  }
+
+  const results = await sql.transaction(writes)
+  return results.flatMap((rows) =>
+    (rows as ConnectedPageRow[]).map(mapConnectedPage)
+  )
 }
 
 export async function assertPagesConnectable(

@@ -1,5 +1,4 @@
 import { hasActiveSubscription } from "@/lib/billing/subscription"
-import { addMessage } from "@/lib/message-store"
 import {
   insertInboundMessage,
   upsertConversation,
@@ -70,16 +69,6 @@ export async function ingestMetaWebhookPayload(body: unknown) {
       })
       await posthog.flush()
     }
-
-    addMessage({
-      id: message.metaMessageId ?? message.id,
-      pageId: page.metaPageId,
-      senderId: message.contactId,
-      text: message.text,
-      eventType: event.eventType,
-      postbackPayload: event.postbackPayload,
-      at: message.createdAt.getTime(),
-    })
 
     const payload = buildInboundPushPayload({
       page,

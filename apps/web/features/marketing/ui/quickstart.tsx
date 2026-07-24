@@ -1,4 +1,4 @@
-import { codeToHtml } from "shiki"
+import { codeToHtml } from "@/lib/highlighter"
 
 import { Section, SectionHeading } from "@/features/marketing/ui/section"
 import { EditorChrome } from "@/features/marketing/ui/editor-chrome"

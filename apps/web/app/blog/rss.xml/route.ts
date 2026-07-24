@@ -1,5 +1,9 @@
 import { getPublishedPosts } from "@/lib/blog"
 
+// Prerenderizado en build: el worker no tiene los .mdx en su filesystem, así
+// que en runtime el feed saldría vacío.
+export const dynamic = "force-static"
+
 const BASE_URL = "https://resender.dev"
 
 function escapeXml(value: string): string {
