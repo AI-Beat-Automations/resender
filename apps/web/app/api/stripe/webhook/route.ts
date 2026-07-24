@@ -8,6 +8,7 @@ import {
   setStripeCustomerId,
   upsertSubscription,
 } from "@/lib/billing/subscription"
+import { posthog } from "@/lib/posthog"
 
 // Replica el estado de las suscripciones de Stripe en Postgres. Espejo del
 // webhook de Meta: firma verificada sobre el body crudo antes de parsear.
@@ -67,6 +68,15 @@ async function linkCustomerToTenant(session: Stripe.Checkout.Session) {
   const customerId = stripeId(session.customer)
   if (!tenantId || !customerId) return
   await setStripeCustomerId(tenantId, customerId)
+
+  if (posthog) {
+    posthog.capture({
+      distinctId: tenantId,
+      event: "checkout completed",
+      properties: { stripe_customer_id: customerId },
+    })
+    await posthog.flush()
+  }
 }
 
 async function applySubscriptionSnapshot(event: Stripe.Event) {
@@ -107,6 +117,24 @@ async function applySubscriptionSnapshot(event: Stripe.Event) {
   if (supersededSubscriptionId) {
     await cancelSupersededSubscription(tenantId, supersededSubscriptionId)
   }
+
+  if (posthog) {
+    const isCanceled = subscription.status === "canceled"
+    const isNew = event.type === "customer.subscription.created"
+    if (isNew || isCanceled) {
+      posthog.capture({
+        distinctId: tenantId,
+        event: isCanceled ? "subscription canceled" : "subscription started",
+        properties: {
+          stripe_subscription_id: subscription.id,
+          status: subscription.status,
+          price_lookup_key:
+            item?.price.lookup_key ?? item?.price.id ?? "unknown",
+        },
+      })
+      await posthog.flush()
+    }
+  }
 }
 
 // Dos Checkouts completados en paralelo dejan al tenant con dos suscripciones
@@ -134,7 +162,9 @@ async function cancelSupersededSubscription(
 
     const invoice = current.latest_invoice
     const payments =
-      invoice && typeof invoice !== "string" ? (invoice.payments?.data ?? []) : []
+      invoice && typeof invoice !== "string"
+        ? (invoice.payments?.data ?? [])
+        : []
     const paymentIntentId = payments
       .map((p) => stripeId(p.payment.payment_intent))
       .find(Boolean)

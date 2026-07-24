@@ -2,6 +2,7 @@ import NextAuth from "next-auth"
 import Credentials from "next-auth/providers/credentials"
 
 import { authenticateUser } from "@/lib/auth/users"
+import { posthog } from "@/lib/posthog"
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: "jwt" },
@@ -21,6 +22,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         )
 
         if (!user) return null
+
+        if (posthog) {
+          posthog.identify({
+            distinctId: user.id,
+            properties: { $set: { email: user.email } },
+          })
+          posthog.capture({ distinctId: user.id, event: "user logged in" })
+          await posthog.flush()
+        }
 
         return {
           id: user.id,

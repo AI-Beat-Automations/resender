@@ -19,6 +19,7 @@ import {
   connectAuthorizedPages,
   PageOwnershipError,
 } from "@/lib/pages/page-registry"
+import { posthog } from "@/lib/posthog"
 
 // Meta redirige aquí con ?code=...&state=... tras aprobar el diálogo.
 export const runtime = "nodejs"
@@ -71,6 +72,17 @@ export async function GET(request: NextRequest) {
       connectedPages.map((p) => ({ pageId: p.metaPageId, name: p.name }))
     )
 
+    if (posthog) {
+      for (const page of connectedPages) {
+        posthog.capture({
+          distinctId: session.user.id,
+          event: "page connected",
+          properties: { page_id: page.metaPageId, page_name: page.name },
+        })
+      }
+      await posthog.flush()
+    }
+
     // Solo exponemos id + name en la URL; el token queda cifrado en Postgres.
     const publicPages = connectedPages.map((p) => ({
       id: p.metaPageId,
@@ -82,6 +94,7 @@ export async function GET(request: NextRequest) {
     res.cookies.delete(STATE_COOKIE)
     return res
   } catch (error) {
+    if (posthog) posthog.captureException(error, session.user.id)
     if (error instanceof PageOwnershipError) {
       return fail(`page_owned:${error.metaPageId}`)
     }

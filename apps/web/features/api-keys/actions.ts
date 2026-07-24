@@ -8,6 +8,7 @@ import {
   InvalidApiKeyLabelError,
   revokeApiKey,
 } from "@/lib/api-keys/api-keys"
+import { posthog } from "@/lib/posthog"
 
 export type CreateApiKeyState = {
   error?: string
@@ -29,6 +30,19 @@ export async function createApiKeyAction(
 
   try {
     const created = await createApiKey(session.user.id, formData.get("label"))
+
+    if (posthog) {
+      posthog.capture({
+        distinctId: session.user.id,
+        event: "api key created",
+        properties: {
+          api_key_id: created.record.id,
+          label: created.record.label,
+        },
+      })
+      await posthog.flush()
+    }
+
     revalidatePath("/settings")
     return {
       apiKey: created.apiKey,
@@ -56,6 +70,15 @@ export async function revokeApiKeyAction(
 
   const revoked = await revokeApiKey(session.user.id, apiKeyId)
   if (!revoked) return { error: "API key not found." }
+
+  if (posthog) {
+    posthog.capture({
+      distinctId: session.user.id,
+      event: "api key revoked",
+      properties: { api_key_id: revoked.id, label: revoked.label },
+    })
+    await posthog.flush()
+  }
 
   revalidatePath("/settings")
   return { message: "API key revoked." }

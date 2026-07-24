@@ -1,20 +1,11 @@
 import type { Metadata } from "next"
-import Link from "next/link"
-
-import { Badge } from "@workspace/ui/components/badge"
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardFooter,
-} from "@workspace/ui/components/card"
 
 import { SiteHeader } from "@/components/site-header"
 import { SiteFooter } from "@/components/site-footer"
 import { SiteBackground } from "@/components/site-background"
 import { Section, SectionHeading } from "@/features/marketing/ui/section"
-import { getPublishedPosts, CATEGORY_LABELS, formatDate } from "@/lib/blog"
+import { getPublishedPosts, formatDate } from "@/lib/blog"
+import { BlogList, type BlogListItem } from "./blog-list"
 
 export const metadata: Metadata = {
   title: "Blog — Resender",
@@ -23,7 +14,14 @@ export const metadata: Metadata = {
 }
 
 export default function BlogPage() {
-  const posts = getPublishedPosts("es")
+  const posts: BlogListItem[] = getPublishedPosts("es").map((post) => ({
+    slug: post.slug,
+    title: post.title,
+    abstract: post.abstract,
+    category: post.category,
+    publishedOn: post.publishedOn,
+    dateLabel: post.publishedOn ? formatDate(post.publishedOn) : "",
+  }))
 
   return (
     <div className="flex min-h-svh flex-col">
@@ -41,28 +39,7 @@ export default function BlogPage() {
               Todavía no hay posts publicados.
             </p>
           ) : (
-            <div className="mx-auto mt-16 grid max-w-4xl gap-6 sm:grid-cols-2">
-              {posts.map((post) => (
-                <Link key={post.slug} href={`/blog/${post.slug}`} className="group">
-                  <Card className="h-full transition-colors group-hover:ring-primary/40">
-                    <CardHeader>
-                      <Badge variant="secondary" className="w-fit">
-                        {CATEGORY_LABELS[post.category]}
-                      </Badge>
-                      <CardTitle className="mt-2 transition-colors group-hover:text-primary">
-                        {post.title}
-                      </CardTitle>
-                      <CardDescription>{post.abstract}</CardDescription>
-                    </CardHeader>
-                    <CardFooter className="text-sm text-muted-foreground">
-                      <time dateTime={post.publishedOn}>
-                        {formatDate(post.publishedOn)}
-                      </time>
-                    </CardFooter>
-                  </Card>
-                </Link>
-              ))}
-            </div>
+            <BlogList posts={posts} />
           )}
         </Section>
       </main>

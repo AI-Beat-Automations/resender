@@ -1,7 +1,11 @@
 import { getSql } from "@/lib/db"
-import type { ConversationRecord, MessageRecord } from "@/lib/messages/message-log"
+import type {
+  ConversationRecord,
+  MessageRecord,
+} from "@/lib/messages/message-log"
 import type { ConnectedPageRecord } from "@/lib/pages/page-registry"
 import { normalizeWebhookUrl } from "@/lib/pages/webhook-url"
+import { posthog } from "@/lib/posthog"
 import type { InboundMetaEventType } from "./meta-webhook"
 
 export type InboundPushPayload = {
@@ -74,13 +78,20 @@ export async function pushInboundMessage(input: {
 }) {
   const normalized = normalizeWebhookUrl(input.webhookUrl)
   if (!normalized.ok || !normalized.value) {
+    const deliveryError = normalized.ok
+      ? "webhookUrl not configured"
+      : normalized.error
     await recordDelivery({
       messageId: input.messageId,
       webhookUrl: input.webhookUrl,
       status: "failed",
       statusCode: null,
-      error: normalized.ok ? "webhookUrl not configured" : normalized.error,
+      error: deliveryError,
       attempt: 1,
+    })
+    await captureDeliveryFailed(input.payload.tenant.id, {
+      message_id: input.messageId,
+      reason: deliveryError,
     })
     return
   }
@@ -99,10 +110,21 @@ export async function pushInboundMessage(input: {
       attempt,
     })
 
-    if (result.ok || !result.retryable) return
+    if (result.ok) return
+
+    // Se reporta a PostHog solo el fallo definitivo, no cada intento.
+    if (!result.retryable || attempt === MAX_ATTEMPTS) {
+      await captureDeliveryFailed(input.payload.tenant.id, {
+        message_id: input.messageId,
+        status_code: result.statusCode,
+        reason: result.error,
+        attempt,
+      })
+      return
+    }
 
     const delay = RETRY_DELAYS_MS[attempt - 1]
-    if (attempt < MAX_ATTEMPTS && delay) {
+    if (delay) {
       await new Promise((resolve) => setTimeout(resolve, delay))
     }
   }
@@ -134,6 +156,19 @@ async function attemptPush(webhookUrl: string, payload: InboundPushPayload) {
       retryable: true,
     }
   }
+}
+
+async function captureDeliveryFailed(
+  tenantId: string,
+  properties: Record<string, unknown>
+) {
+  if (!posthog) return
+  posthog.capture({
+    distinctId: tenantId,
+    event: "message delivery failed",
+    properties,
+  })
+  await posthog.flush()
 }
 
 async function recordDelivery(input: {

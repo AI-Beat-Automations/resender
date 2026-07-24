@@ -18,10 +18,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
     lastModified: new Date(),
   }))
 
-  const postRoutes = getPublishedPosts("es").map((post) => ({
-    url: `${BASE_URL}/blog/${post.slug}`,
-    lastModified: new Date(post.updatedOn ?? post.publishedOn),
-  }))
+  const postRoutes = getPublishedPosts("es").map((post) => {
+    const date = new Date(post.updatedOn ?? post.publishedOn)
+    return {
+      url: `${BASE_URL}/blog/${post.slug}`,
+      lastModified: Number.isNaN(date.getTime()) ? new Date() : date,
+    }
+  })
 
   return [...staticRoutes, ...postRoutes]
 }

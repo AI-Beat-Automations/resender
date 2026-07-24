@@ -19,7 +19,11 @@ import {
   isMetaExpiredTokenError,
   sendMetaTextMessage,
 } from "@/lib/outbound/meta-send"
-import { getBearerToken, parseOutboundSendInput } from "@/lib/outbound/send-request"
+import {
+  getBearerToken,
+  parseOutboundSendInput,
+} from "@/lib/outbound/send-request"
+import { posthog } from "@/lib/posthog"
 
 // Envía una respuesta al contacto.
 // Body: { pageId, recipientId, reply, conversationId? }.
@@ -45,7 +49,10 @@ export async function POST(request: NextRequest) {
   }
 
   if (await isUserWaitlisted(apiKey.tenantId)) {
-    return Response.json({ error: "account is on the waitlist" }, { status: 403 })
+    return Response.json(
+      { error: "account is on the waitlist" },
+      { status: 403 }
+    )
   }
 
   if (!(await hasActiveSubscription(apiKey.tenantId))) {
@@ -171,6 +178,21 @@ export async function POST(request: NextRequest) {
       if (existing) return idempotentReplayResponse(existing)
     }
     throw error
+  }
+
+  if (posthog) {
+    posthog.capture({
+      distinctId: apiKey.tenantId,
+      event: "message sent",
+      properties: {
+        message_id: message.id,
+        conversation_id: conversation.id,
+        page_id: input.value.pageId,
+        status: message.status,
+        meta_ok: metaResult.ok,
+      },
+    })
+    await posthog.flush()
   }
 
   return Response.json(

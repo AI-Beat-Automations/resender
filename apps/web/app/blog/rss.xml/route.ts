@@ -15,6 +15,13 @@ function escapeXml(value: string): string {
     .replace(/'/g, "&apos;")
 }
 
+// Omite <pubDate> si la fecha es inválida o falta (evita "Invalid Date").
+function pubDate(iso: string): string {
+  const date = new Date(iso)
+  if (!iso || Number.isNaN(date.getTime())) return ""
+  return `\n      <pubDate>${date.toUTCString()}</pubDate>`
+}
+
 // RSS feed del blog (SEO, opcional pero recomendado en el spec §5).
 export function GET() {
   const posts = getPublishedPosts("es")
@@ -25,8 +32,9 @@ export function GET() {
       <title>${escapeXml(post.title)}</title>
       <link>${BASE_URL}/blog/${post.slug}</link>
       <guid>${BASE_URL}/blog/${post.slug}</guid>
-      <description>${escapeXml(post.abstract)}</description>
-      <pubDate>${new Date(post.publishedOn).toUTCString()}</pubDate>
+      <description>${escapeXml(post.abstract)}</description>${
+        pubDate(post.publishedOn)
+      }
     </item>`
     )
     .join("\n")
