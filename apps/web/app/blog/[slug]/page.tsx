@@ -3,7 +3,8 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { compileMDX } from "next-mdx-remote/rsc"
 import remarkGfm from "remark-gfm"
-import rehypePrettyCode from "rehype-pretty-code"
+import rehypePrettyCode, { type Options as PrettyCodeOptions } from "rehype-pretty-code"
+import type { Highlighter } from "shiki"
 
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
@@ -17,12 +18,16 @@ import {
   CATEGORY_LABELS,
   formatDate,
 } from "@/lib/blog"
+import { createHighlighter } from "@/lib/highlighter"
 
-const prettyCodeOptions = {
+const prettyCodeOptions: PrettyCodeOptions = {
   // Temas duales: los tokens usan CSS vars que alternan con la clase .dark
   // (ver el snippet .shiki en packages/ui/src/styles/globals.css).
   theme: { light: "github-light", dark: "github-dark" },
   keepBackground: false,
+  // Highlighter propio (ver lib/highlighter.ts): motor JS, sin WASM.
+  getHighlighter: async (options) =>
+    (await createHighlighter(options)) as unknown as Highlighter,
 }
 
 export function generateStaticParams() {
