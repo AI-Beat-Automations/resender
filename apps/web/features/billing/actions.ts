@@ -1,5 +1,6 @@
 "use server"
 
+import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 
 import { auth } from "@/auth"
@@ -12,7 +13,16 @@ import {
   setStripeCustomerId,
 } from "@/lib/billing/subscription"
 
-function getAppUrl(): string {
+// Las URLs de retorno de Stripe deben apuntar al mismo host del request: la
+// cookie de sesión es host-only, y si APP_URL difiere (www vs apex) el
+// regreso del Checkout aterriza sin sesión y rebota a /login.
+async function getAppUrl(): Promise<string> {
+  const requestHeaders = await headers()
+  const host = requestHeaders.get("host")
+  if (host) {
+    const proto = requestHeaders.get("x-forwarded-proto") ?? "https"
+    return `${proto}://${host}`
+  }
   const appUrl = process.env.APP_URL
   if (!appUrl) throw new Error("APP_URL is required")
   return appUrl
@@ -51,7 +61,7 @@ export async function startCheckout(lookupKey: string): Promise<void> {
   // `session_id` permite a /billing/success verificar server-side que el
   // Checkout es de este usuario y está completado (no abre acceso: eso sigue
   // siendo del webhook).
-  const appUrl = getAppUrl()
+  const appUrl = await getAppUrl()
   const checkout = await stripe.checkout.sessions.create({
     mode: "subscription",
     customer: customerId,
@@ -77,7 +87,7 @@ export async function openPortal(): Promise<void> {
 
   const portal = await getStripe().billingPortal.sessions.create({
     customer: customerId,
-    return_url: `${getAppUrl()}/settings`,
+    return_url: `${await getAppUrl()}/settings`,
   })
 
   redirect(portal.url)
