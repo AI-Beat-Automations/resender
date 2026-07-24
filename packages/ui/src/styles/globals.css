@@ -135,14 +135,38 @@
     }
 }
 
-/* rehype-pretty-code: temas duales de Shiki. Los tokens exponen --shiki-light /
-   --shiki-dark y alternamos según la clase .dark (blog MDX). */
+/* Shiki (codeToHtml, usado por el code-panel de la landing): clase .shiki. */
 .shiki,
 .shiki span {
   color: var(--shiki-light);
 }
 .dark .shiki,
 .dark .shiki span {
+  color: var(--shiki-dark);
+}
+
+/* Blog (rehype-pretty-code): el output usa data-theme, NO la clase .shiki.
+   Color base = foreground (para bloques sin lenguaje, que no traen variables);
+   los tokens de bloques con lenguaje traen --shiki-light/--shiki-dark inline. */
+pre[data-theme],
+pre[data-theme] code {
+  color: var(--shiki-light, var(--foreground));
+}
+/* Salto de línea en vez de scroll horizontal (los bloques son texto de prompts,
+   no código que dependa de la indentación exacta). */
+pre[data-theme],
+pre[data-theme] code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+pre[data-theme] span {
+  color: var(--shiki-light);
+}
+.dark pre[data-theme],
+.dark pre[data-theme] code {
+  color: var(--shiki-dark, var(--foreground));
+}
+.dark pre[data-theme] span {
   color: var(--shiki-dark);
 }
 

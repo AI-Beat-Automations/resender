@@ -9,6 +9,7 @@ import {
   InvalidAuthInputError,
 } from "@/lib/auth/users"
 import { validateAuthInput } from "@/lib/auth/validation"
+import { posthog } from "@/lib/posthog"
 
 export type AuthFormState = {
   error?: string
@@ -18,7 +19,10 @@ export async function loginAction(
   _state: AuthFormState,
   formData: FormData
 ): Promise<AuthFormState> {
-  const input = validateAuthInput(formData.get("email"), formData.get("password"))
+  const input = validateAuthInput(
+    formData.get("email"),
+    formData.get("password")
+  )
   if (!input.ok) return { error: "Incorrect email or password." }
 
   try {
@@ -44,8 +48,9 @@ export async function registerAction(
   const email = formData.get("email")
   const password = formData.get("password")
 
+  let newUser: Awaited<ReturnType<typeof createUser>> | null = null
   try {
-    await createUser(email, password)
+    newUser = await createUser(email, password)
   } catch (error) {
     if (error instanceof DuplicateEmailError) {
       return { error: "That email is already registered. Sign in." }
@@ -54,6 +59,15 @@ export async function registerAction(
       return { error: error.message }
     }
     throw error
+  }
+
+  if (posthog && newUser) {
+    posthog.identify({
+      distinctId: newUser.id,
+      properties: { $set: { email: newUser.email } },
+    })
+    posthog.capture({ distinctId: newUser.id, event: "user registered" })
+    await posthog.flush()
   }
 
   try {
