@@ -5,6 +5,10 @@ import { authenticateUser } from "@/lib/auth/users"
 import { posthog } from "@/lib/posthog"
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  // Fuera de Vercel (Cloudflare Workers) Auth.js no puede auto-detectar el host
+  // y rechaza toda request con UntrustedHost. El host real lo fija el custom
+  // domain del Worker, así que confiar en el header es seguro aquí.
+  trustHost: true,
   session: { strategy: "jwt" },
   pages: {
     signIn: "/login",
