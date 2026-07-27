@@ -31,7 +31,7 @@ export default function DocsLayout({
           {children}
         </article>
       </main>
-      <SiteFooter />
+      <SiteFooter lang="es" />
     </div>
   )
 }

@@ -75,7 +75,7 @@ export default async function BillingPage() {
           </p>
         </div>
       </main>
-      <SiteFooter />
+      <SiteFooter lang="es" />
     </div>
   )
 }

@@ -107,7 +107,7 @@ _Source of truth: `apps/web/app/api/meta/send/route.ts` and `apps/web/lib/outbou
 
 The request body fields:
 
-- **`pageId`** — the Page's `metaPageId` from the inbound payload, **not** the internal `page.id`. Resender matches this value against the Page's Meta ID, so sending `page.id` will fail to resolve the channel.
+- **`pageId`** — the Page's `metaPageId` from the inbound payload, **not** the internal `page.id`. Resender matches this value against the Page's Facebook ID, so sending `page.id` will fail to resolve the channel.
 - **`recipientId`** — the `conversation.contactId` from the inbound payload, so your reply reaches the right customer.
 - **`reply`** — the text to send back.
 - **`conversationId`** _(optional)_ — if you include it, it must match the same `pageId` and `recipientId`; a mismatch returns `400`. If you omit it, Resender resolves (or creates) the conversation for you.
@@ -128,5 +128,5 @@ A successful call responds with a `{ meta, resender }` body:
 }
 ```
 
-- **`meta`** is Meta's raw passthrough response — Resender does not own or reshape it, so treat it as Meta's contract.
+- **`meta`** is Facebook's raw passthrough response — Resender does not own or reshape it, so treat it as Facebook's contract.
 - **`resender`** is Resender's own record of the reply. Log `resender.messageId` and `resender.status` (`"sent"` on success, `"failed"` otherwise) to track delivery on your side.

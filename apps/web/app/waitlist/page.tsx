@@ -68,7 +68,7 @@ export default async function WaitlistPage() {
           </p>
         </div>
       </main>
-      <SiteFooter />
+      <SiteFooter lang="es" />
     </div>
   )
 }

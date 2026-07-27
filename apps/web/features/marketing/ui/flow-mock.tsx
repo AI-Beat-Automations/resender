@@ -4,46 +4,65 @@ import * as React from "react"
 
 import { cn } from "@workspace/ui/lib/utils"
 
+import { getDictionary, type Locale } from "@/content/i18n"
+
 // Timeline animado del recorrido de un mensaje (diseño 1b), en claro y oscuro.
 // Secuencia en loop: aparece el paso IN → se pinta la línea → aparece HOOK →
 // se pinta la línea → aparece OUT. El contenedor se remonta por ciclo.
+//
+// Los labels IN/HOOK/OUT quedan fijos (son tokens, no copy); el meta y el texto
+// de cada paso salen del diccionario.
 
-const STEPS = [
-  {
-    label: "IN",
-    labelClass: "text-primary",
-    meta: "Facebook · 14:02",
-    text: "Hola, ¿tienen turno para hoy?",
-    textClass: "text-foreground",
-    dotClass: "bg-primary",
-    delay: 300,
-    lineDelay: 900,
-  },
-  {
-    label: "HOOK",
-    labelClass: "text-muted-foreground",
-    meta: "tu servidor",
-    text: "Tu automatización recibe el mensaje y genera la respuesta",
-    textClass: "text-sm text-muted-foreground",
-    dotClass: "box-border border-2 border-primary bg-card",
-    delay: 1500,
-    lineDelay: 2100,
-  },
-  {
-    label: "OUT",
-    labelClass: "text-foreground",
-    meta: "POST · 14:02",
-    text: "¡Sí! Te espero hoy a las 15:00 👍",
-    textClass: "font-medium text-foreground",
-    dotClass: "bg-foreground",
-    delay: 2700,
-    lineDelay: null,
-  },
-] as const
+type FlowStep = {
+  label: string
+  labelClass: string
+  meta: string
+  text: string
+  textClass: string
+  dotClass: string
+  delay: number
+  lineDelay: number | null
+}
+
+function buildSteps(lang: Locale): FlowStep[] {
+  const { flowMock } = getDictionary(lang)
+  return [
+    {
+      label: "IN",
+      labelClass: "text-primary",
+      meta: flowMock.in.meta,
+      text: flowMock.in.text,
+      textClass: "text-foreground",
+      dotClass: "bg-primary",
+      delay: 300,
+      lineDelay: 900,
+    },
+    {
+      label: "HOOK",
+      labelClass: "text-muted-foreground",
+      meta: flowMock.hook.meta,
+      text: flowMock.hook.text,
+      textClass: "text-sm text-muted-foreground",
+      dotClass: "box-border border-2 border-primary bg-card",
+      delay: 1500,
+      lineDelay: 2100,
+    },
+    {
+      label: "OUT",
+      labelClass: "text-foreground",
+      meta: flowMock.out.meta,
+      text: flowMock.out.text,
+      textClass: "font-medium text-foreground",
+      dotClass: "bg-foreground",
+      delay: 2700,
+      lineDelay: null,
+    },
+  ]
+}
 
 const CYCLE = 5200
 
-function Sequence({ animate }: { animate: boolean }) {
+function Sequence({ steps, animate }: { steps: FlowStep[]; animate: boolean }) {
   const fade = (delay: number): React.CSSProperties | undefined =>
     animate ? { animation: `node-pop 350ms ease-out ${delay}ms both` } : undefined
 
@@ -57,7 +76,7 @@ function Sequence({ animate }: { animate: boolean }) {
 
   return (
     <div className="flex flex-col">
-      {STEPS.map((step) => (
+      {steps.map((step) => (
         <div key={step.label} className="flex gap-4">
           {/* Columna del nodo: punto + línea conectora que se pinta. */}
           <div className="flex flex-col items-center">
@@ -95,9 +114,12 @@ function Sequence({ animate }: { animate: boolean }) {
   )
 }
 
-export function FlowMock() {
+export function FlowMock({ lang }: { lang: Locale }) {
   const [cycle, setCycle] = React.useState(0)
   const [animate, setAnimate] = React.useState(false)
+
+  const dict = getDictionary(lang)
+  const steps = React.useMemo(() => buildSteps(lang), [lang])
 
   React.useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -113,10 +135,10 @@ export function FlowMock() {
   return (
     <div className="rounded-3xl border border-border bg-card p-7 shadow-sm">
       <div className="mb-6 font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
-        message-flow · en vivo
+        {dict.flowMock.live}
       </div>
       {/* key={cycle}: remonta la secuencia para reproducir la animación en loop. */}
-      <Sequence key={cycle} animate={animate} />
+      <Sequence key={cycle} steps={steps} animate={animate} />
     </div>
   )
 }

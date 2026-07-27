@@ -1,49 +1,23 @@
 import type { Metadata } from "next"
 
-import { SiteHeader } from "@/components/site-header"
-import { SiteFooter } from "@/components/site-footer"
-import { SiteBackground } from "@/components/site-background"
-import { Section, SectionHeading } from "@/features/marketing/ui/section"
-import { getPublishedPosts, formatDate } from "@/lib/blog"
-import { BlogList, type BlogListItem } from "./blog-list"
+import { BlogListView } from "@/features/marketing/views/blog-list-view"
+import { getDictionary } from "@/content/i18n"
+import { alternatesFor, OG_LOCALES } from "@/lib/seo"
+
+const dict = getDictionary("es")
 
 export const metadata: Metadata = {
-  title: "Blog — Resender",
-  description:
-    "Tutoriales y actualizaciones sobre cómo integrar mensajes de Meta con Resender.",
+  title: dict.blog.metaTitle,
+  description: dict.blog.metaDescription,
+  alternates: alternatesFor("/blog", "es"),
+  openGraph: {
+    title: dict.blog.metaTitle,
+    description: dict.blog.metaDescription,
+    type: "website",
+    locale: OG_LOCALES.es,
+  },
 }
 
 export default function BlogPage() {
-  const posts: BlogListItem[] = getPublishedPosts("es").map((post) => ({
-    slug: post.slug,
-    title: post.title,
-    abstract: post.abstract,
-    category: post.category,
-    publishedOn: post.publishedOn,
-    dateLabel: post.publishedOn ? formatDate(post.publishedOn) : "",
-  }))
-
-  return (
-    <div className="flex min-h-svh flex-col">
-      <SiteBackground />
-      <SiteHeader />
-      <main className="flex-1">
-        <Section>
-          <SectionHeading
-            title="Blog"
-            subtitle="Tutoriales y novedades del producto."
-          />
-
-          {posts.length === 0 ? (
-            <p className="mt-12 text-center text-muted-foreground">
-              Todavía no hay posts publicados.
-            </p>
-          ) : (
-            <BlogList posts={posts} />
-          )}
-        </Section>
-      </main>
-      <SiteFooter />
-    </div>
-  )
+  return <BlogListView lang="es" />
 }

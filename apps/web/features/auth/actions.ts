@@ -10,20 +10,31 @@ import {
 } from "@/lib/auth/users"
 import { validateAuthInput } from "@/lib/auth/validation"
 import { posthog } from "@/lib/posthog"
+import { getDictionary, type Locale } from "@/content/i18n"
 
 export type AuthFormState = {
   error?: string
+}
+
+// El idioma llega en un input oculto del form (ver features/auth/ui/auth-form):
+// un server action no tiene acceso al pathname de la página que lo invocó.
+function authErrors(formData: FormData) {
+  const raw = formData.get("locale")
+  const locale: Locale = raw === "en" ? "en" : "es"
+  return getDictionary(locale).auth.errors
 }
 
 export async function loginAction(
   _state: AuthFormState,
   formData: FormData
 ): Promise<AuthFormState> {
+  const errors = authErrors(formData)
+
   const input = validateAuthInput(
     formData.get("email"),
     formData.get("password")
   )
-  if (!input.ok) return { error: "Incorrect email or password." }
+  if (!input.ok) return { error: errors.invalidCredentials }
 
   try {
     await signIn("credentials", {
@@ -33,7 +44,7 @@ export async function loginAction(
     })
   } catch (error) {
     if (error instanceof AuthError) {
-      return { error: "Incorrect email or password." }
+      return { error: errors.invalidCredentials }
     }
     throw error
   }
@@ -45,6 +56,7 @@ export async function registerAction(
   _state: AuthFormState,
   formData: FormData
 ): Promise<AuthFormState> {
+  const errors = authErrors(formData)
   const email = formData.get("email")
   const password = formData.get("password")
 
@@ -53,10 +65,10 @@ export async function registerAction(
     newUser = await createUser(email, password)
   } catch (error) {
     if (error instanceof DuplicateEmailError) {
-      return { error: "That email is already registered. Sign in." }
+      return { error: errors.duplicateEmail }
     }
     if (error instanceof InvalidAuthInputError) {
-      return { error: error.message }
+      return { error: errors.invalidInput }
     }
     throw error
   }
@@ -78,7 +90,7 @@ export async function registerAction(
     })
   } catch (error) {
     if (error instanceof AuthError) {
-      return { error: "The account was created, but we couldn't sign you in." }
+      return { error: errors.createdNoSignin }
     }
     throw error
   }

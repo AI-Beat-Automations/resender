@@ -1,0 +1,378 @@
+// English copy for the public site (served under /en). Twin of `es.ts`: both
+// implement `Dict`, so a missing key on either side breaks the typecheck.
+
+import type { Dict } from "./dictionary"
+
+export const en: Dict = {
+  nav: {
+    pricing: "Pricing",
+    blog: "Blog",
+    docs: "Docs",
+    login: "Log in",
+    getStarted: "Get started",
+    menu: "Menu",
+    openMenu: "Open menu",
+    home: "Resender.dev — home",
+  },
+
+  hero: {
+    eyebrow: "receive and reply to Facebook messages via API",
+    title: "The relay API for Facebook messages.",
+    titleAccent: "Developer-first.",
+    subtitle:
+      "Connect your Page, point your webhook and reply with a POST. No visual builders, no features you'll never use.",
+    ctaPrimary: "Get started",
+    ctaSecondary: "See how it works",
+  },
+
+  flowMock: {
+    live: "message-flow · live",
+    in: { meta: "Facebook · 2:02 PM", text: "Hi, do you have a slot for today?" },
+    hook: {
+      meta: "your server",
+      text: "Your automation receives the message and generates the reply",
+    },
+    out: { meta: "POST · 2:02 PM", text: "Yes! See you today at 3:00 PM 👍" },
+  },
+
+  pain: {
+    kicker: "the problem",
+    title: "The same old pain",
+    subtitle:
+      "If you've ever tried to process Facebook messages, you know exactly what we mean.",
+    questions: [
+      "How do I connect my n8n to Facebook?",
+      "Connecting any automation to Facebook is a headache",
+      "I just need the API — does anyone know something cheaper?",
+      "I want one place to manage the agents for all my clients",
+      "I need something simple and fast to connect to a client's Page",
+    ],
+    items: [
+      {
+        icon: "wallet",
+        title: "You pay for features you never open",
+        body: "Expensive plans come with builders, templates and engagement analytics. You just want to receive and reply to messages.",
+      },
+      {
+        icon: "unplug",
+        title: "Connecting to Facebook is a maze",
+        body: "Reviewers, expiring tokens, permissions and webhooks. Maybe you already tried the direct route and gave up halfway.",
+      },
+      {
+        icon: "users",
+        title: "Juggling multiple clients",
+        body: "You're an agency, and every client is another Page, another automation and another account to keep in order.",
+      },
+      {
+        icon: "zap",
+        title: "You need something simple and fast",
+        body: "Connecting to a client's Page should take minutes, not a whole afternoon of setup.",
+      },
+    ],
+  },
+
+  howItWorks: {
+    kicker: "flow",
+    title: "From zero to receiving messages in minutes",
+    subtitle: "",
+    stepLabel: "Step",
+    steps: [
+      {
+        title: "Connect your Page",
+        body: "Link your Facebook Page in a couple of clicks.",
+      },
+      {
+        title: "Set up your webhook",
+        body: "Paste your webhook URL and Resender starts forwarding incoming messages to you.",
+      },
+      {
+        title: "Receive the messages",
+        body: "Every message arrives at your endpoint as JSON, ready for your automation.",
+      },
+      {
+        title: "Reply via API",
+        body: "Make a POST back to Resender and we deliver the reply to the end user.",
+      },
+    ],
+  },
+
+  quickstart: {
+    kicker: "quickstart",
+    title: "One request and you're already replying",
+    subtitle: "A POST from your backend, from n8n, from wherever.",
+    filename: "reply.request",
+    replySample: "Yes! See you today at 3:00 PM 👍",
+  },
+
+  features: {
+    kicker: "features",
+    title: "Everything you need",
+    subtitle: "The API you wanted, without the weight of a no-code platform.",
+    items: [
+      {
+        icon: "code",
+        title: "Developer-first",
+        body: "Clean API, clear webhooks and real documentation. No unnecessary UI.",
+      },
+      {
+        icon: "wallet",
+        title: "Affordable pricing",
+        body: "From $15/mo versus ManyChat's $39+. You pay for what you use.",
+        hidden: true,
+      },
+      {
+        icon: "zap",
+        title: "Setup in minutes",
+        body: "Connect, configure the webhook and you're receiving messages. No friction.",
+      },
+      {
+        icon: "plug",
+        title: "Works with your stack",
+        body: "Works with n8n, Make, Zapier or your own custom code. Your call.",
+      },
+      {
+        icon: "messages",
+        title: "Facebook, Instagram and WhatsApp",
+        body: "One relay for all three Facebook messaging channels.",
+        hidden: true,
+      },
+    ],
+  },
+
+  pricingPreview: {
+    kicker: "pricing",
+    title: "Simple, transparent plans",
+    subtitle: "Pick the one that fits your volume. Change whenever you want.",
+    cta: "See full plans",
+  },
+
+  about: {
+    title: "Why we built Resender",
+    body: [
+      "We used ManyChat for our own projects, but all we needed was the API: receiving messages and replying to them from our automations. We were paying for a pile of features we never opened.",
+      "So we built what we wished we'd had: a direct relay made for developers. Resender is that tool, now available to you.",
+    ],
+  },
+
+  faq: {
+    kicker: "faq",
+    title: "Frequently asked questions",
+    items: [
+      {
+        q: "Which channels does Resender work with?",
+        a: "Today Resender works with Facebook Pages (Messenger). You connect your Page and start receiving messages at your webhook.",
+      },
+      {
+        q: "Do I need Facebook approval to use Resender?",
+        a: "Resender handles the integration with Facebook's APIs for you. Depending on your use case, Facebook review may be required, but we guide you through the process.",
+      },
+      {
+        q: "How does the webhook work?",
+        a: "You set an HTTPS URL per Page. When a message comes in, Resender persists it and forwards it to your endpoint as JSON. You reply with a POST to our outbound API.",
+      },
+      {
+        q: "Can I use Resender with n8n, Make or Zapier?",
+        a: "Yes. Resender is API-only, so it plugs into any no-code/low-code tool or your own code.",
+      },
+      {
+        q: "What happens if I go over my plan's messages?",
+        a: "We let you know when you're getting close to the limit, and you can upgrade anytime without losing your setup.",
+      },
+      {
+        q: "Can I change plans at any time?",
+        a: "Yes, you can upgrade or downgrade whenever you want. Changes take effect on your next billing cycle.",
+      },
+      {
+        q: "What payment methods do you accept?",
+        a: "We accept major credit and debit cards through Stripe.",
+      },
+    ],
+  },
+
+  finalCta: {
+    title: "Ready to get started?",
+    subtitle:
+      "Connect your first Page and receive messages in minutes. No card to get going.",
+    cta: "Get started",
+  },
+
+  pricing: {
+    kicker: "pricing",
+    title: "Pricing",
+    subtitle:
+      "A plan for every stage. No contracts, no surprises. Cancel whenever you want.",
+    plans: [
+      {
+        name: "Starter",
+        price: "$15",
+        period: "/mo",
+        description: "To get your first project off the ground.",
+        featured: false,
+        badge: null,
+        cta: "Get started with Starter",
+        features: [
+          "50,000 messages per month",
+          "2 Facebook Pages",
+          "Email + Discord support",
+        ],
+      },
+      {
+        name: "Pro",
+        price: "$25",
+        period: "/mo",
+        description: "For growing devs and agencies.",
+        featured: true,
+        badge: "Recommended",
+        cta: "Get started with Pro",
+        features: [
+          "100,000 messages per month",
+          "5 Facebook Pages",
+          "Email + Discord support",
+        ],
+      },
+    ],
+  },
+
+  comparison: {
+    kicker: "vs manychat",
+    title: "Resender vs ManyChat",
+    subtitle:
+      "If all you need is the Facebook API, you're overpaying. See the difference.",
+    yes: "Yes",
+    no: "No",
+    headers: { feature: "", resender: "Resender", manychat: "ManyChat" },
+    rows: [
+      { feature: "Entry price", resender: "$15/mo", manychat: "$39+/mo" },
+      { feature: "Clean API and webhooks", resender: true, manychat: true },
+      { feature: "No extra visual builders", resender: true, manychat: false },
+      { feature: "Developer-first focus", resender: true, manychat: false },
+      { feature: "Setup in minutes", resender: true, manychat: false },
+      {
+        feature: "Integrates with n8n / Make / Zapier",
+        resender: true,
+        manychat: true,
+      },
+      {
+        feature: "Visual templates and engagement analytics",
+        resender: "You don't need them",
+        manychat: true,
+      },
+    ],
+  },
+
+  pricingFaq: {
+    kicker: "faq",
+    title: "Pricing questions",
+    items: [
+      {
+        q: "What happens if I go over my messages?",
+        a: "We let you know when you're getting close to the limit. You can upgrade with no interruptions.",
+      },
+      {
+        q: "Can I change plans?",
+        a: "Yes, upgrade or downgrade whenever you want. Changes are prorated on your next cycle.",
+      },
+      {
+        q: "Is there a contract or commitment?",
+        a: "No. It's month to month and you cancel whenever you want, no penalties.",
+      },
+      {
+        q: "What payment methods do you accept?",
+        a: "Credit and debit cards through Stripe.",
+      },
+    ],
+  },
+
+  pricingCta: {
+    title: "Start building today",
+    subtitle: "Create your account and connect your first Page in minutes.",
+    cta: "Get started",
+  },
+
+  blog: {
+    metaTitle: "Blog — Resender",
+    metaDescription:
+      "Tutorials and news on integrating Facebook messages with Resender.",
+    title: "Blog",
+    subtitle: "Product tutorials and news.",
+    empty: "No posts published yet.",
+    back: "← Back to blog",
+    reading: {
+      title: "Ready to get started?",
+      subtitle: "Connect your first Page and receive messages in minutes.",
+      cta: "Get started",
+    },
+    categories: { tutorial: "Tutorial", actualizacion: "News" },
+    filters: { tutorial: "Tutorials", actualizacion: "News" },
+    filterGroupLabel: "Filter posts",
+    emptyCategory: "No posts in this category.",
+    tocNavLabel: "Table of contents",
+    tocTitle: "In this article",
+    rssTitle: "Resender Blog",
+    rssDescription: "Tutorials and news from Resender.",
+  },
+
+  auth: {
+    login: {
+      title: "Log in",
+      subtitle: "Sign in to manage your connections and message log.",
+    },
+    register: {
+      title: "Create account",
+      subtitle:
+        "Create an account with email and password. There's no email verification in the MVP.",
+    },
+    passwordChanged: "Password updated. Sign in with your new password.",
+    form: {
+      email: "Email",
+      password: "Password",
+      emailPlaceholder: "you@company.com",
+      passwordPlaceholder: "At least 8 characters",
+      processing: "Processing...",
+      signIn: "Sign in",
+      createAccount: "Create account",
+      noAccount: "Don't have an account?",
+      haveAccount: "Already have an account?",
+      signUp: "Sign up",
+      signInAction: "Sign in",
+    },
+    errors: {
+      invalidCredentials: "Incorrect email or password.",
+      duplicateEmail: "That email is already registered. Sign in.",
+      invalidInput: "Check your email and password and try again.",
+      createdNoSignin: "The account was created, but we couldn't sign you in.",
+    },
+  },
+
+  footer: {
+    tagline: "The relay API for Facebook messages. Simple and developer-first.",
+    columns: { product: "Product", legal: "Legal", contact: "Contact" },
+    links: {
+      pricing: "Pricing",
+      blog: "Blog",
+      docs: "Docs",
+      privacy: "Privacy",
+      terms: "Terms",
+      dataDeletion: "Data deletion",
+    },
+  },
+
+  meta: {
+    home: {
+      title: "Resender — The relay API for Facebook messages",
+      description:
+        "The developer-first alternative to ManyChat. Receive Facebook messages at your webhook and reply via API. Simple, with no features you'll never use.",
+      ogTitle: "Resender — The relay API for Facebook messages",
+      ogDescription:
+        "Receive Facebook messages at your webhook and reply via API. Simple and developer-first.",
+    },
+    pricing: {
+      title: "Pricing — Resender",
+      description:
+        "Plans from $15/mo. Compare Resender with ManyChat and pick the plan that fits your message volume. No contracts.",
+      ogTitle: "Pricing — Resender",
+      ogDescription:
+        "Simple plans from $15/mo. The developer-first alternative to ManyChat.",
+    },
+  },
+}

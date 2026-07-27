@@ -1,3 +1,4 @@
+import type { Metadata } from "next"
 import { Inter, Space_Mono } from "next/font/google"
 import localFont from "next/font/local"
 
@@ -24,6 +25,15 @@ const fontHeading = localFont({
   ],
 })
 
+// Base para resolver los `alternates`/`openGraph` relativos que declara cada
+// página (ver lib/seo.ts). Sin esto Next los resuelve contra localhost.
+export const metadata: Metadata = {
+  metadataBase: new URL("https://resender.dev"),
+}
+
+// `lang="es"` es el idioma por defecto del sitio (el español vive en la raíz).
+// Las vistas bajo /en montan <HtmlLang lang="en" /> para corregirlo en cliente;
+// el SEO por idioma lo llevan los hreflang del metadata, que son server-side.
 export default function RootLayout({
   children,
 }: Readonly<{

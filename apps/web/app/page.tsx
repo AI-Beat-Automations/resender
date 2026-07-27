@@ -1,48 +1,23 @@
 import type { Metadata } from "next"
 
-import { SiteHeader } from "@/components/site-header"
-import { SiteFooter } from "@/components/site-footer"
-import { SiteBackground } from "@/components/site-background"
-import { Hero } from "@/features/marketing/ui/hero"
-import { PainPoint } from "@/features/marketing/ui/pain-point"
-import { HowItWorks } from "@/features/marketing/ui/how-it-works"
-import { Quickstart } from "@/features/marketing/ui/quickstart"
-import { PricingPreview } from "@/features/marketing/ui/pricing-preview"
-import { FaqSection } from "@/features/marketing/ui/faq-section"
-import { FinalCta } from "@/features/marketing/ui/final-cta"
-import { dict } from "@/content/i18n/es"
+import { LandingView } from "@/features/marketing/views/landing-view"
+import { getDictionary } from "@/content/i18n"
+import { alternatesFor, OG_LOCALES } from "@/lib/seo"
+
+const dict = getDictionary("es")
 
 export const metadata: Metadata = {
-  title: "Resender — La API relay para mensajes de Meta",
-  description:
-    "La alternativa developer-first a ManyChat. Recibí mensajes de Facebook en tu webhook y respondé por API. Simple y sin features que no usás.",
+  title: dict.meta.home.title,
+  description: dict.meta.home.description,
+  alternates: alternatesFor("/", "es"),
   openGraph: {
-    title: "Resender — La API relay para mensajes de Meta",
-    description:
-      "Recibí mensajes de Facebook en tu webhook y respondé por API. Simple y developer-first.",
+    title: dict.meta.home.ogTitle,
+    description: dict.meta.home.ogDescription,
     type: "website",
+    locale: OG_LOCALES.es,
   },
 }
 
 export default function HomePage() {
-  return (
-    <div className="flex min-h-svh flex-col">
-      <SiteBackground />
-      <SiteHeader />
-      <main className="flex-1">
-        <Hero />
-        <PainPoint />
-        <HowItWorks />
-        <Quickstart />
-        <PricingPreview />
-        <FaqSection id="faq" title={dict.faq.title} items={dict.faq.items} />
-        <FinalCta
-          title={dict.finalCta.title}
-          subtitle={dict.finalCta.subtitle}
-          cta={dict.finalCta.cta}
-        />
-      </main>
-      <SiteFooter />
-    </div>
-  )
+  return <LandingView lang="es" />
 }

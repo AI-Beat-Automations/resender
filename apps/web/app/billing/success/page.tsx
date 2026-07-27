@@ -68,7 +68,7 @@ export default async function BillingSuccessPage({
           </p>
         </div>
       </main>
-      <SiteFooter />
+      <SiteFooter lang="es" />
       <ActivationPoller />
     </div>
   )
