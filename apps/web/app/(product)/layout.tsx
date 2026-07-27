@@ -7,12 +7,18 @@ import { hasActiveSubscription } from "@/lib/billing/subscription"
 import { Button } from "@workspace/ui/components/button"
 import { SiteLogo } from "@/components/site-logo"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { privatePageMetadata } from "@/lib/seo"
+import { DOCS_URL } from "@/lib/site-config"
+
+// La app logueada no tiene nada que hacer en el índice. Lo heredan
+// /connections, /messages y /settings.
+export const metadata = privatePageMetadata("Resender")
 
 const navItems = [
   { href: "/connections", label: "Connections" },
   { href: "/messages", label: "Messages" },
   { href: "/settings", label: "Settings" },
-  { href: "/docs", label: "Docs" },
+  { href: DOCS_URL, label: "Docs" },
 ]
 
 export default async function ProductLayout({

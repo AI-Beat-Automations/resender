@@ -1,12 +1,11 @@
 import "server-only"
 
 import { getPublishedPosts } from "@/lib/blog"
+import { SITE_URL as BASE_URL } from "@/lib/site-config"
 import { getDictionary, localePath, type Locale } from "@/content/i18n"
 
 // Builder del feed RSS del blog, parametrizado por idioma: `/blog/rss.xml` (ES)
 // y `/en/blog/rss.xml` (EN) comparten esta implementación.
-
-const BASE_URL = "https://resender.dev"
 
 function escapeXml(value: string): string {
   return value

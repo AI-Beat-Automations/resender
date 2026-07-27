@@ -9,6 +9,8 @@ import { Quickstart } from "@/features/marketing/ui/quickstart"
 import { PricingPreview } from "@/features/marketing/ui/pricing-preview"
 import { FaqSection } from "@/features/marketing/ui/faq-section"
 import { FinalCta } from "@/features/marketing/ui/final-cta"
+import { JsonLd } from "@/components/json-ld"
+import { landingGraph } from "@/lib/schema"
 import { getDictionary, type Locale } from "@/content/i18n"
 
 // Landing compartida por `/` (ES) y `/en` (EN). Cada ruta solo renderiza esta
@@ -18,6 +20,7 @@ export function LandingView({ lang }: { lang: Locale }) {
 
   return (
     <div className="flex min-h-svh flex-col">
+      <JsonLd data={landingGraph(lang)} />
       <HtmlLang lang={lang} />
       <SiteBackground />
       <SiteHeader lang={lang} />

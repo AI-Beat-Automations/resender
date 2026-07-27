@@ -2,20 +2,19 @@ import type { Metadata } from "next"
 
 import { LandingView } from "@/features/marketing/views/landing-view"
 import { getDictionary } from "@/content/i18n"
-import { alternatesFor, OG_LOCALES } from "@/lib/seo"
+import { alternatesFor, openGraphFor } from "@/lib/seo"
 
 const dict = getDictionary("es")
 
 export const metadata: Metadata = {
-  title: dict.meta.home.title,
+  title: { absolute: dict.meta.home.title },
   description: dict.meta.home.description,
   alternates: alternatesFor("/", "es"),
-  openGraph: {
+  openGraph: openGraphFor({
     title: dict.meta.home.ogTitle,
     description: dict.meta.home.ogDescription,
-    type: "website",
-    locale: OG_LOCALES.es,
-  },
+    lang: "es",
+  }),
 }
 
 export default function HomePage() {

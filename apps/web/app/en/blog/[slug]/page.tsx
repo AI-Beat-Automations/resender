@@ -1,8 +1,8 @@
 import type { Metadata } from "next"
 
 import { BlogPostView } from "@/features/marketing/views/blog-post-view"
-import { getPostBySlug, getPostSlugs } from "@/lib/blog"
-import { alternatesFor, OG_LOCALES } from "@/lib/seo"
+import { getPostBySlug, getPostSlugs, localesWithPost } from "@/lib/blog"
+import { alternatesFor, openGraphFor } from "@/lib/seo"
 
 export function generateStaticParams() {
   return getPostSlugs("en").map((slug) => ({ slug }))
@@ -17,16 +17,17 @@ export async function generateMetadata({
   const post = getPostBySlug(slug, "en")
   if (!post) return {}
   return {
-    title: `${post.title} — Resender`,
+    title: post.title,
     description: post.abstract,
-    alternates: alternatesFor(`/blog/${slug}`, "en"),
-    openGraph: {
+    alternates: alternatesFor(`/blog/${slug}`, "en", localesWithPost(slug)),
+    openGraph: openGraphFor({
       title: post.title,
       description: post.abstract,
+      lang: "en",
       type: "article",
-      locale: OG_LOCALES.en,
+      image: `/en/blog/${slug}/opengraph-image`,
       publishedTime: post.publishedOn,
-    },
+    }),
   }
 }
 

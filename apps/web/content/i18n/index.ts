@@ -8,7 +8,6 @@ export type {
   FaqItem,
   PainItem,
   Step,
-  FeatureItem,
   Plan,
   ComparisonRow,
 } from "./dictionary"

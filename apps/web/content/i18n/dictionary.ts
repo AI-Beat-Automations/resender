@@ -14,12 +14,6 @@ export const defaultLocale: Locale = "es"
 export type FaqItem = { q: string; a: string }
 export type PainItem = { icon: string; title: string; body: string }
 export type Step = { title: string; body: string }
-export type FeatureItem = {
-  icon: string
-  title: string
-  body: string
-  hidden?: boolean
-}
 export type Plan = {
   name: string
   price: string
@@ -83,18 +77,19 @@ export type Dict = {
     filename: string
     // Texto de ejemplo que va en el body `reply` de los snippets de código.
     replySample: string
+    copy: string
+    copied: string
   }
-  features: {
+  pricingPreview: { kicker: string; title: string; subtitle: string; cta: string }
+  faq: { kicker: string; title: string; items: FaqItem[] }
+  finalCta: { title: string; subtitle: string; cta: string }
+  pricing: {
     kicker: string
     title: string
     subtitle: string
-    items: FeatureItem[]
+    intro: string[]
+    plans: Plan[]
   }
-  pricingPreview: { kicker: string; title: string; subtitle: string; cta: string }
-  about: { title: string; body: string[] }
-  faq: { kicker: string; title: string; items: FaqItem[] }
-  finalCta: { title: string; subtitle: string; cta: string }
-  pricing: { kicker: string; title: string; subtitle: string; plans: Plan[] }
   comparison: {
     kicker: string
     title: string
@@ -104,6 +99,19 @@ export type Dict = {
     headers: { feature: string; resender: string; manychat: string }
     rows: ComparisonRow[]
   }
+  // Página /vs-manychat. Reutiliza `comparison` (la tabla) y le suma el
+  // contenido propio que necesita para rankear por sí sola.
+  vsManychat: {
+    kicker: string
+    title: string
+    subtitle: string
+    intro: string[]
+    verdict: { title: string; items: { when: string; pick: string }[] }
+    faq: { title: string; items: FaqItem[] }
+    cta: { title: string; subtitle: string; cta: string }
+    metaTitle: string
+    metaDescription: string
+  }
   pricingFaq: { kicker: string; title: string; items: FaqItem[] }
   pricingCta: { title: string; subtitle: string; cta: string }
   blog: {
@@ -111,6 +119,7 @@ export type Dict = {
     metaDescription: string
     title: string
     subtitle: string
+    intro: string
     empty: string
     back: string
     reading: { title: string; subtitle: string; cta: string }
@@ -155,6 +164,7 @@ export type Dict = {
     columns: { product: string; legal: string; contact: string }
     links: {
       pricing: string
+      vsManychat: string
       blog: string
       docs: string
       privacy: string
@@ -191,7 +201,13 @@ export function localeFromPathname(pathname: string): Locale {
 
 // Rutas que existen en los dos idiomas. Todo lo demás (docs, páginas legales,
 // waitlist, billing y la app logueada) vive solo en la raíz.
-const LOCALIZED_ROUTES = ["/pricing", "/blog", "/login", "/register"]
+const LOCALIZED_ROUTES = [
+  "/pricing",
+  "/vs-manychat",
+  "/blog",
+  "/login",
+  "/register",
+]
 
 // Quita el prefijo /en de un pathname y devuelve la ruta "base" (sin idioma).
 function stripLocale(pathname: string): string {

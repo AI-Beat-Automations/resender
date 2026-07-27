@@ -4,21 +4,24 @@
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-07-01",
   "compatibility_flags": ["nodejs_compat"],
-  // workers.dev sirve para smoke tests; cuando el custom domain esté activo
-  // se puede poner en false para que solo responda resender.dev.
-  "workers_dev": true,
-  "preview_urls": true,
+  // Ambos en false a propósito: con `workers_dev: true` el sitio entero
+  // respondía 200 en web.<subdomain>.workers.dev — una copia idéntica e
+  // indexable de resender.dev — y `preview_urls: true` publicaba una URL más
+  // por deploy. Sin canonicals que consolidaran, eso partía la autoridad entre
+  // varios hosts. Para smoke tests, `wrangler dev` o un preview puntual.
+  "workers_dev": false,
+  "preview_urls": false,
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
   "observability": {
     "enabled": true
-  }
+  },
+  // Único host que sirve el worker. `www` NO va acá: debe resolverse con una
+  // Redirect Rule 301 hacia el ápex (ver el checklist de Cloudflare), no
+  // sirviendo el mismo contenido en dos dominios.
+  "routes": [{ "pattern": "resender.dev", "custom_domain": true }]
   // Los secretos (DATABASE_URL, AUTH_SECRET, etc.) NO van aquí: se cargan con
   // `wrangler secret put <NAME>` en producción y en `.dev.vars` para preview local.
-  //
-  // Custom domain: cuando la zona resender.dev esté activa en Cloudflare,
-  // descomentar y ajustar:
-  // "routes": [{ "pattern": "resender.dev", "custom_domain": true }]
 }

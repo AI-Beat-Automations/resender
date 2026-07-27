@@ -1,6 +1,12 @@
 import Link from "next/link"
 
 import { SiteLogo } from "@/components/site-logo"
+import {
+  DISCORD_INVITE_URL,
+  DOCS_URL,
+  SITE_CONTACT_EMAIL,
+  SITE_CONTACT_EMAIL_HREF,
+} from "@/lib/site-config"
 import { getDictionary, localePath, type Locale } from "@/content/i18n"
 
 // Footer compartido de la superficie pública (landing, pricing, blog, auth y
@@ -22,11 +28,16 @@ export function SiteFooter({ lang }: { lang: Locale }) {
           external: false,
         },
         {
+          href: localePath("/vs-manychat", lang),
+          label: dict.footer.links.vsManychat,
+          external: false,
+        },
+        {
           href: localePath("/blog", lang),
           label: dict.footer.links.blog,
           external: false,
         },
-        { href: "/docs", label: dict.footer.links.docs, external: false },
+        { href: DOCS_URL, label: dict.footer.links.docs, external: true },
       ],
     },
     {
@@ -45,12 +56,16 @@ export function SiteFooter({ lang }: { lang: Locale }) {
       title: dict.footer.columns.contact,
       links: [
         {
-          href: "mailto:info@resender.dev",
-          label: "info@resender.dev",
+          href: SITE_CONTACT_EMAIL_HREF,
+          label: SITE_CONTACT_EMAIL,
           external: true,
         },
-        // TODO: reemplazar por la invitación real de Discord cuando exista.
-        { href: "https://discord.gg", label: "Discord", external: true },
+        // Discord: se muestra recién cuando exista la invitación real. Un
+        // `https://discord.gg` pelado es un link muerto en producción, y los
+        // enlaces rotos del footer pesan en cada página del sitio.
+        ...(DISCORD_INVITE_URL
+          ? [{ href: DISCORD_INVITE_URL, label: "Discord", external: true }]
+          : []),
       ],
     },
   ]

@@ -13,8 +13,11 @@ import { SiteHeader } from "@/components/site-header"
 import { SiteFooter } from "@/components/site-footer"
 import { SiteBackground } from "@/components/site-background"
 import { HtmlLang } from "@/components/html-lang"
+import { JsonLd } from "@/components/json-ld"
 import { getPostBySlug, getHeadings, formatDate } from "@/lib/blog"
 import { createHighlighter } from "@/lib/highlighter"
+import { baseGraph, blogPostingSchema, breadcrumbSchema, schemaGraph } from "@/lib/schema"
+import { SITE_NAME } from "@/lib/site-config"
 import { getDictionary, localePath, type Locale } from "@/content/i18n"
 
 const prettyCodeOptions: PrettyCodeOptions = {
@@ -57,6 +60,28 @@ export async function BlogPostView({
 
   return (
     <div className="flex min-h-svh flex-col">
+      <JsonLd
+        data={schemaGraph(
+          ...baseGraph(lang),
+          blogPostingSchema({
+            title: post.title,
+            description: post.abstract,
+            slug: post.slug,
+            publishedOn: post.publishedOn,
+            updatedOn: post.updatedOn,
+            author: post.author,
+            lang,
+          }),
+          breadcrumbSchema(
+            [
+              { name: SITE_NAME, path: "/" },
+              { name: dict.blog.title, path: "/blog" },
+              { name: post.title, path: `/blog/${post.slug}` },
+            ],
+            lang
+          )
+        )}
+      />
       <HtmlLang lang={lang} />
       <SiteBackground />
       <SiteHeader lang={lang} />

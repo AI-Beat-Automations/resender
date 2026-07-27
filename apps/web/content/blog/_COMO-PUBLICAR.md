@@ -10,12 +10,12 @@
 2. Tocá **Add file → Create new file** (o **Upload files** si ya tenés el `.md`).
 3. Nombrá el archivo, pegá el contenido y tocá **Commit changes**.
 
-Al hacer commit **a la rama de producción**, Vercel reconstruye el sitio y el
-post queda publicado solo en unos minutos.
+Al hacer commit **a la rama de producción**, se reconstruye el sitio en
+Cloudflare y el post queda publicado solo en unos minutos.
 
-> ⚠️ **Importante:** el post solo sale live si lo commiteás a la rama que Vercel
-> usa como producción (normalmente `main`). Si lo subís a otra rama, no aparece
-> hasta que esa rama se mergee a producción.
+> ⚠️ **Importante:** el post solo sale live si lo commiteás a la rama de
+> producción (normalmente `main`). Si lo subís a otra rama, no aparece hasta que
+> esa rama se mergee a producción.
 
 ## La carpeta = el idioma
 
@@ -107,6 +107,33 @@ dos categorías del filtro.
 > El `·` es un punto medio. En Mac lo escribís con **Option + Shift + 9**. Si te
 > resulta más cómodo, también podés separar con `|` (ej. `*Tutorial | 23 de julio de 2026*`).
 
+### Autor y fecha de actualización (opcional, pero suma en Google)
+
+Si querés firmar el post o dejar constancia de que lo actualizaste, poné un
+bloque de datos entre dos líneas de `---`, **arriba de todo el archivo**:
+
+```markdown
+---
+author: Nombre y Apellido
+updatedOn: 2026-09-15
+---
+
+# Título del post
+
+*Tutorial · 23 de julio de 2026*
+```
+
+- **`author`** — el nombre de una persona real. Google lo usa como señal de que
+  detrás del contenido hay alguien con experiencia en el tema, y aparece debajo
+  del título. Si no lo ponés, el artículo queda firmado por Resender.
+- **`updatedOn`** — la fecha de la última revisión, en formato `AAAA-MM-DD`.
+  Ponela **solo si de verdad revisaste el post**: le dice a Google que el
+  contenido sigue vigente, y una fecha falsa es una señal que después no vas a
+  poder sostener.
+
+> ⚠️ En ese bloque **no** pongas `title`: el título se sigue tomando del `#` del
+> cuerpo, y si lo duplicás acá el post te va a mostrar el encabezado dos veces.
+
 ### Formatos de fecha válidos
 
 Cualquiera de estos funciona (elegí el que te resulte más cómodo):
@@ -130,8 +157,11 @@ Si no ponés fecha, el post igual se publica, pero sin fecha visible.
 **¿Necesito estar en la computadora?** No. Todo se puede hacer desde el navegador
 en GitHub, incluso desde el celular.
 
-**¿Puedo poner imágenes?** Sí. Subí la imagen a `apps/web/public/blog/` y usala
-con `![texto alternativo](/blog/mi-imagen.png)`.
+**¿Puedo poner imágenes?** Sí. Subí la imagen a `apps/web/public/blog/` (esa
+carpeta todavía no existe: al subir la primera imagen desde GitHub se crea sola)
+y usala con `![texto alternativo](/blog/mi-imagen.png)`. Escribí siempre el texto
+alternativo entre los corchetes: es lo que leen los lectores de pantalla y lo que
+usa Google para entender la imagen.
 
 **¿Cómo borro o edito un post?** Editá o borrá el `.md` desde GitHub y hacé
 commit. El sitio se actualiza solo.

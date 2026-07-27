@@ -89,7 +89,11 @@ export async function Quickstart({ lang }: { lang: Locale }) {
       />
       <div className="mx-auto mt-12 max-w-2xl overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
         <EditorChrome filename={dict.quickstart.filename} />
-        <CodeTabs snippets={snippets} />
+        <CodeTabs
+          snippets={snippets}
+          copyLabel={dict.quickstart.copy}
+          copiedLabel={dict.quickstart.copied}
+        />
       </div>
     </Section>
   )

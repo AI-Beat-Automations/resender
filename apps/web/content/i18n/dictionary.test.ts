@@ -39,6 +39,8 @@ describe("hasLocaleTwin", () => {
     for (const path of [
       "/",
       "/pricing",
+      "/vs-manychat",
+      "/en/vs-manychat",
       "/blog",
       "/blog/mi-post",
       "/login",
@@ -52,7 +54,6 @@ describe("hasLocaleTwin", () => {
 
   it("descarta las rutas que viven solo en la raíz", () => {
     for (const path of [
-      "/docs",
       "/privacy",
       "/terms",
       "/data-deletion",

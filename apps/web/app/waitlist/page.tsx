@@ -6,6 +6,10 @@ import { auth, signOut } from "@/auth"
 import { SiteFooter } from "@/components/site-footer"
 import { isUserWaitlisted } from "@/lib/auth/waitlist"
 import { Button } from "@workspace/ui/components/button"
+import { privatePageMetadata } from "@/lib/seo"
+import { DOCS_URL } from "@/lib/site-config"
+
+export const metadata = privatePageMetadata("Waitlist")
 
 // Landing zone for accounts that registered while the product is closed.
 // Lives outside the `(product)` group on purpose: that layout bounces
@@ -51,12 +55,12 @@ export default async function WaitlistPage() {
           </div>
           <p className="mt-6 text-sm text-muted-foreground">
             In the meantime you can read the{" "}
-            <Link
-              href="/docs"
+            <a
+              href={DOCS_URL}
               className="font-medium text-foreground underline-offset-4 hover:underline"
             >
               integration docs
-            </Link>{" "}
+            </a>{" "}
             to see how Resender connects to your automation, or reach us at{" "}
             <a
               href="mailto:info@resender.dev"

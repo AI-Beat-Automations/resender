@@ -6,7 +6,7 @@ import { SiteFooter } from "@/components/site-footer"
 import { SiteBackground } from "@/components/site-background"
 
 export const metadata: Metadata = {
-  title: "Data Deletion Instructions · Resender",
+  title: "Data Deletion Instructions",
   description: "How to delete your data from Resender, operated by AI Beat.",
 }
 

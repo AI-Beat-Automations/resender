@@ -102,41 +102,8 @@ export const en: Dict = {
     subtitle: "A POST from your backend, from n8n, from wherever.",
     filename: "reply.request",
     replySample: "Yes! See you today at 3:00 PM 👍",
-  },
-
-  features: {
-    kicker: "features",
-    title: "Everything you need",
-    subtitle: "The API you wanted, without the weight of a no-code platform.",
-    items: [
-      {
-        icon: "code",
-        title: "Developer-first",
-        body: "Clean API, clear webhooks and real documentation. No unnecessary UI.",
-      },
-      {
-        icon: "wallet",
-        title: "Affordable pricing",
-        body: "From $15/mo versus ManyChat's $39+. You pay for what you use.",
-        hidden: true,
-      },
-      {
-        icon: "zap",
-        title: "Setup in minutes",
-        body: "Connect, configure the webhook and you're receiving messages. No friction.",
-      },
-      {
-        icon: "plug",
-        title: "Works with your stack",
-        body: "Works with n8n, Make, Zapier or your own custom code. Your call.",
-      },
-      {
-        icon: "messages",
-        title: "Facebook, Instagram and WhatsApp",
-        body: "One relay for all three Facebook messaging channels.",
-        hidden: true,
-      },
-    ],
+    copy: "Copy code",
+    copied: "Copied",
   },
 
   pricingPreview: {
@@ -144,14 +111,6 @@ export const en: Dict = {
     title: "Simple, transparent plans",
     subtitle: "Pick the one that fits your volume. Change whenever you want.",
     cta: "See full plans",
-  },
-
-  about: {
-    title: "Why we built Resender",
-    body: [
-      "We used ManyChat for our own projects, but all we needed was the API: receiving messages and replying to them from our automations. We were paying for a pile of features we never opened.",
-      "So we built what we wished we'd had: a direct relay made for developers. Resender is that tool, now available to you.",
-    ],
   },
 
   faq: {
@@ -201,6 +160,12 @@ export const en: Dict = {
     title: "Pricing",
     subtitle:
       "A plan for every stage. No contracts, no surprises. Cancel whenever you want.",
+    intro: [
+      "Both plans include the same thing: the full API, inbound and outbound webhooks, and support. The only difference is how many messages you process per month and how many Facebook Pages you connect.",
+      "A message is every event that crosses the relay, in either direction: the one a user sends you and that lands at your webhook counts as one, and your reply through the API counts as another. A ten-turn back-and-forth uses twenty messages. Webhook retries after an outage are not billed.",
+      "If you are torn between the two, start with Starter. 50,000 messages a month is roughly 25,000 short conversations, plenty for a side project or your first clients. We warn you as you approach the limit, and moving up to Pro is immediate: no downtime and nothing to reconnect.",
+      "We charge per message processed rather than per contact reached, which is the difference that shows most against ManyChat as you grow: your bill tracks real traffic, not the accumulated size of your audience.",
+    ],
     plans: [
       {
         name: "Starter",
@@ -260,6 +225,77 @@ export const en: Dict = {
     ],
   },
 
+  vsManychat: {
+    kicker: "comparison",
+    title: "Resender vs ManyChat",
+    subtitle:
+      "Both connect to Facebook Messenger. One is a full no-code platform; the other is the relay API you need when you already have somewhere to run your logic.",
+    intro: [
+      "ManyChat is a conversational marketing platform: a visual flow builder, broadcast sequences, templates and engagement analytics. If your team builds campaigns without writing code, that toolbox makes sense and you'll use all of it.",
+      "Resender doesn't compete with that. It does one thing: it pushes every message your Facebook Page receives to your webhook, and lets you reply with a POST. The logic lives wherever you want it — n8n, Make, an AI agent or your own backend.",
+      "The practical difference shows up in the bill and in the ceiling. ManyChat starts at $39/mo for a platform whose builder you won't open if your flow already runs elsewhere. Resender charges $15/mo for the transport, and your logic is limited only by your own code.",
+    ],
+    verdict: {
+      title: "Which one fits you",
+      items: [
+        {
+          when: "Your team builds the flows without programming",
+          pick: "ManyChat. The visual builder and templates exist for exactly that, and rebuilding them in code will cost you more than you save.",
+        },
+        {
+          when: "Your logic already lives in n8n, Make, Zapier or your backend",
+          pick: "Resender. All you're missing is the transport to Facebook, and that's the only thing you'll pay for.",
+        },
+        {
+          when: "You're wiring an AI agent to Facebook",
+          pick: "Resender. The agent needs the raw message at its webhook and a direct way to reply, not a builder in between.",
+        },
+        {
+          when: "You manage Pages for several clients",
+          pick: "Resender. Connect multiple Pages under one account and route them by webhook, without one subscription per client.",
+        },
+        {
+          when: "You need broadcasts, sequences and engagement analytics",
+          pick: "ManyChat. Resender doesn't have them and won't: it's infrastructure, not a marketing tool.",
+        },
+      ],
+    },
+    faq: {
+      title: "Frequently asked questions",
+      items: [
+        {
+          q: "Does Resender replace ManyChat?",
+          a: "Only if you were using ManyChat for its API. If you depend on the visual builder, broadcasts or engagement analytics, Resender doesn't cover that. If your flow already runs in n8n, Make or your backend, then yes: same result without the platform in between.",
+        },
+        {
+          q: "How much cheaper is Resender than ManyChat?",
+          a: "Resender starts at $15/mo with 50,000 messages and 2 Pages. ManyChat's Pro plan starts at $39/mo and scales with your contact count. The gap widens as you grow, because Resender charges per message rather than per contact.",
+        },
+        {
+          q: "Can I use Resender with n8n the way I used ManyChat?",
+          a: "Yes, and it's the main use case. Point Resender's webhook at your n8n workflow, receive the message there and reply with an HTTP Request node against Resender's API.",
+        },
+        {
+          q: "Do I need Facebook approval to migrate?",
+          a: "Resender already has the Messenger permissions approved, so you connect your Page with Facebook Login and you're done. No app review of your own.",
+        },
+        {
+          q: "Can I use both at once?",
+          a: "A Facebook Page sends its webhooks to one app at a time, so it's best to pick one per Page. What you can do is keep some Pages on ManyChat and others on Resender.",
+        },
+      ],
+    },
+    cta: {
+      title: "Try the direct relay",
+      subtitle:
+        "Connect your Page, point your webhook and reply with a POST. No contracts.",
+      cta: "Get started",
+    },
+    metaTitle: "Resender vs ManyChat: the API-first alternative",
+    metaDescription:
+      "An honest comparison of Resender and ManyChat: $15 vs $39/mo, API and webhooks, and which one fits depending on whether you use a visual builder or n8n, Make and AI agents.",
+  },
+
   pricingFaq: {
     kicker: "faq",
     title: "Pricing questions",
@@ -280,6 +316,18 @@ export const en: Dict = {
         q: "What payment methods do you accept?",
         a: "Credit and debit cards through Stripe.",
       },
+      {
+        q: "Do retries count as messages?",
+        a: "No. If your webhook goes down and we retry delivery, the message is billed once. We count unique events, not network attempts.",
+      },
+      {
+        q: "Can I connect more Pages than my plan includes?",
+        a: "The Page limit is per plan: 2 on Starter and 5 on Pro. If you need more, move up to Pro or write to us and we'll put something together for your volume.",
+      },
+      {
+        q: "What happens to my data if I cancel?",
+        a: "Your connections go inactive and we stop receiving messages from your Pages. You can request deletion of your data at any time from the data deletion page.",
+      },
     ],
   },
 
@@ -290,11 +338,14 @@ export const en: Dict = {
   },
 
   blog: {
-    metaTitle: "Blog — Resender",
+    metaTitle: "Blog: integrating Facebook Messenger via API",
     metaDescription:
-      "Tutorials and news on integrating Facebook messages with Resender.",
+      "Tutorials on webhooks, AI agents and automations with n8n, Make and Zapier on top of Facebook messages, plus Resender product news.",
     title: "Blog",
-    subtitle: "Product tutorials and news.",
+    subtitle:
+      "Tutorials for wiring Facebook Messenger into your automations and AI agents, plus product news.",
+    intro:
+      "We write about what we run into while building Resender: how to structure a webhook that doesn't drop messages, how to set boundaries for an AI agent handling customers, and what is better solved in your automation than in the messaging platform. Concrete cases, with the code we actually use.",
     empty: "No posts published yet.",
     back: "← Back to blog",
     reading: {
@@ -349,6 +400,7 @@ export const en: Dict = {
     columns: { product: "Product", legal: "Legal", contact: "Contact" },
     links: {
       pricing: "Pricing",
+      vsManychat: "vs ManyChat",
       blog: "Blog",
       docs: "Docs",
       privacy: "Privacy",
@@ -367,10 +419,10 @@ export const en: Dict = {
         "Receive Facebook messages at your webhook and reply via API. Simple and developer-first.",
     },
     pricing: {
-      title: "Pricing — Resender",
+      title: "Pricing and plans from $15 per month",
       description:
-        "Plans from $15/mo. Compare Resender with ManyChat and pick the plan that fits your message volume. No contracts.",
-      ogTitle: "Pricing — Resender",
+        "Resender plans from $15/mo with 50,000 messages and 2 Facebook Pages. No contracts, no per-contact charges, and you can cancel whenever you want.",
+      ogTitle: "Pricing and plans from $15 per month",
       ogDescription:
         "Simple plans from $15/mo. The developer-first alternative to ManyChat.",
     },

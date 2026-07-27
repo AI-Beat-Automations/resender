@@ -6,7 +6,7 @@ import { SiteFooter } from "@/components/site-footer"
 import { SiteBackground } from "@/components/site-background"
 
 export const metadata: Metadata = {
-  title: "Privacy Policy · Resender",
+  title: "Privacy Policy",
   description:
     "How Resender, operated by AI Beat, handles account and Messenger data.",
 }

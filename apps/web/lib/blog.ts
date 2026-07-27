@@ -6,7 +6,7 @@ import path from "node:path"
 import matter from "gray-matter"
 import GithubSlugger from "github-slugger"
 
-import type { Locale } from "@/content/i18n/dictionary"
+import { locales, type Locale } from "@/content/i18n/dictionary"
 
 // Loader del blog. Los posts se escriben como .md/.mdx bajo
 // content/blog/<idioma>/ y se renderizan en build time (SSG).
@@ -319,6 +319,13 @@ export function getPostSlugs(lang: Locale = "es"): string[] {
 export function getPostBySlug(slug: string, lang: Locale = "es"): BlogPost | null {
   const post = readAllPosts(lang).find((p) => p.slug === slug)
   return post && post.isPublished ? post : null
+}
+
+// Idiomas en los que ESE slug existe publicado. Alimenta el hreflang del post:
+// declarar la gemela de un idioma que no existe apunta a un 404 y hace que
+// Google descarte el clúster hreflang entero (ver lib/seo.ts).
+export function localesWithPost(slug: string): Locale[] {
+  return locales.filter((lang) => getPostBySlug(slug, lang) !== null)
 }
 
 // Encabezados H2/H3 del cuerpo para la tabla de contenidos. Los ids coinciden

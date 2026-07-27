@@ -8,6 +8,9 @@ import { isUserWaitlisted } from "@/lib/auth/waitlist"
 import { PLANS } from "@/lib/billing/plans"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
 import { Button } from "@workspace/ui/components/button"
+import { privatePageMetadata } from "@/lib/seo"
+
+export const metadata = privatePageMetadata("Suscripción")
 
 // Pricing para cuentas aprobadas en waitlist sin suscripción activa. Vive
 // fuera del grupo `(product)` a propósito (análogo a `/waitlist`): ese layout

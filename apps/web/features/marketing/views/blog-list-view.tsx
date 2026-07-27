@@ -4,7 +4,10 @@ import { SiteBackground } from "@/components/site-background"
 import { HtmlLang } from "@/components/html-lang"
 import { Section, SectionHeading } from "@/features/marketing/ui/section"
 import { BlogList, type BlogListItem } from "@/features/marketing/ui/blog-list"
+import { JsonLd } from "@/components/json-ld"
 import { getPublishedPosts, formatDate } from "@/lib/blog"
+import { baseGraph, breadcrumbSchema, schemaGraph } from "@/lib/schema"
+import { SITE_NAME } from "@/lib/site-config"
 import { getDictionary, type Locale } from "@/content/i18n"
 
 // Listado del blog compartido por `/blog` (ES) y `/en/blog` (EN). Los posts se
@@ -23,12 +26,31 @@ export function BlogListView({ lang }: { lang: Locale }) {
 
   return (
     <div className="flex min-h-svh flex-col">
+      <JsonLd
+        data={schemaGraph(
+          ...baseGraph(lang),
+          breadcrumbSchema(
+            [
+              { name: SITE_NAME, path: "/" },
+              { name: dict.blog.title, path: "/blog" },
+            ],
+            lang
+          )
+        )}
+      />
       <HtmlLang lang={lang} />
       <SiteBackground />
       <SiteHeader lang={lang} />
       <main className="flex-1">
         <Section>
-          <SectionHeading title={dict.blog.title} subtitle={dict.blog.subtitle} />
+          <SectionHeading
+            as="h1"
+            title={dict.blog.title}
+            subtitle={dict.blog.subtitle}
+          />
+          <p className="mx-auto mt-6 max-w-2xl text-center leading-8 text-muted-foreground">
+            {dict.blog.intro}
+          </p>
 
           {posts.length === 0 ? (
             <p className="mt-12 text-center text-muted-foreground">

@@ -6,7 +6,7 @@ import { SiteFooter } from "@/components/site-footer"
 import { SiteBackground } from "@/components/site-background"
 
 export const metadata: Metadata = {
-  title: "Terms of Service · Resender",
+  title: "Terms of Service",
   description:
     "Terms for businesses using Resender, operated by AI Beat.",
 }

@@ -15,11 +15,13 @@ import {
 import { SiteLogo } from "@/components/site-logo"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { LanguageToggle } from "@/components/language-toggle"
+import { DOCS_URL } from "@/lib/site-config"
 import { getDictionary, localePath, type Locale } from "@/content/i18n"
 
 // Navbar público de marketing. Sticky, con logo, navegación, toggles de tema e
 // idioma y CTAs a la app existente (Login / Empezá). El menú mobile usa Sheet.
-// `/docs` NO se localiza: la documentación existe solo en inglés.
+// Los docs son un sitio aparte (docs.resender.dev), así que ese link sale del
+// dominio y no se localiza.
 export function SiteHeader({ lang }: { lang: Locale }) {
   const [open, setOpen] = React.useState(false)
   const dict = getDictionary(lang)
@@ -27,7 +29,7 @@ export function SiteHeader({ lang }: { lang: Locale }) {
   const navLinks = [
     { href: localePath("/pricing", lang), label: dict.nav.pricing },
     { href: localePath("/blog", lang), label: dict.nav.blog },
-    { href: "/docs", label: dict.nav.docs },
+    { href: DOCS_URL, label: dict.nav.docs },
   ]
 
   return (
