@@ -42,12 +42,18 @@ El usuario autenticado puede cambiar su password desde `Settings` definiendo un 
 En `login`, los errores son genericos. En `register`, el email duplicado se informa de forma explicita.
 
 ### Ownership de páginas
-Una página de Facebook conectada pertenece a un solo tenant. Si otro usuario intenta conectar una página ya asociada a otra cuenta, el sistema debe bloquear la operación; no hay transferencia automática de ownership en el MVP.
+Una página de Facebook conectada pertenece a un solo tenant y no hay transferencia automática de ownership.
+El ownership se evalúa **página por página**, no sobre la lista completa que devuelve Meta. Que una página ya esté tomada por otro tenant no invalida las demás: si Arturo conectó A y B, y Felipe —que también las administra— quiere conectar C y D, Felipe puede hacerlo. A y B le aparecen en la lista deshabilitadas, con un cartel de que ya están conectadas en otra cuenta. Se muestran en vez de ocultarse para que el usuario entienda por qué le falta una página que sí administra. Decisión en `docs/adr/0004-page-selection-and-per-page-ownership.md`.
 
 ### Páginas conectadas por tenant
-En el MVP, cada usuario/tenant puede conectar múltiples páginas de Facebook.
-Cuando Meta devuelve varias páginas en el callback, el MVP conecta automáticamente todas las páginas autorizadas para ese mismo tenant.
-La conexión OAuth es all-or-nothing: antes de llamar a Meta, Resender verifica que el servidor pueda cifrar tokens y que las páginas sean conectables por ownership local; después exige que Meta confirme la suscripción al webhook para todas las páginas devueltas. Solo entonces persiste las páginas como activas. Si alguna suscripción falla, no se guarda ninguna página como conectada.
+Cada tenant puede conectar múltiples páginas de Facebook, hasta el límite de su plan (ver [Límites por plan]). El límite cuenta solo las páginas `active`: las desconectadas no ocupan cupo, pero reconectar una estando en el tope se bloquea igual que conectar una nueva.
+Resender ya no conecta automáticamente todas las páginas que Meta devuelve. Ver [Selección de páginas].
+La conexión sigue siendo all-or-nothing **sobre el subconjunto seleccionado**: antes de persistir, Resender verifica que el servidor pueda cifrar tokens y que las páginas sean conectables por ownership local, y exige que Meta confirme la suscripción al webhook de cada página elegida. Si alguna suscripción falla, no se guarda ninguna.
+
+### Selección de páginas
+Entre el callback de Meta y la conexión hay una pantalla donde el usuario elige qué páginas conectar, dentro del límite de su plan.
+La pantalla **solo agrega**: desmarcar una página ya conectada no la desconecta. Desconectar sigue siendo una acción explícita con confirmación en `Connections` (ver [Gestion de paginas en Connections]), para que el flujo de reconexión no pueda desconectar páginas por accidente.
+Para que los page access tokens de las páginas descartadas nunca lleguen a la base, Resender persiste cifrado el **user access token de larga duración** que ya obtiene en el intercambio de OAuth. La pantalla muestra solo `id` y `name`; al confirmar, Resender vuelve a llamar `/me/accounts` con ese token y guarda únicamente los page tokens de las páginas elegidas. Efecto colateral útil: agregar una página más adelante no exige repetir el OAuth de Meta.
 
 ### Reconexión de páginas
 Si una página ya conectada pertenece al mismo tenant y se vuelve a autorizar en Meta, la reconexión es idempotente: actualiza token, nombre y `updatedAt`.
@@ -139,7 +145,48 @@ Gotcha documentado: el campo `pageId` de `POST /api/meta/send` se matchea contra
 "Delete account" en `Settings` borra **todo** el tenant (cuenta, paginas, conversaciones, mensajes, API keys); no hay borrado parcial en el MVP. Es inmediato y transaccional en produccion; los backups se purgan en ≤30 dias. Antes de borrar, se intenta best-effort dar de baja cada pagina activa del webhook de Meta. Requiere confirmacion destructiva (reescribir el email de la cuenta). Se implementa con FKs `on delete cascade` (migracion `0002`), que reemplazan el `on delete restrict` original. Cuidado: con cascade, borrar una fila de `connected_pages` arrastraria su historial; hoy nada borra paginas (ver [Desconexión de páginas], que es UPDATE no DELETE).
 
 ### Suscripcion (billing)
-El uso del producto requiere una suscripcion de pago gestionada por Stripe. Hay 3 planes mensuales en USD: **Starter $15**, **Pro $25** y **Business $60**. Solo ciclo mensual. La diferenciacion funcional entre planes aun no esta definida: el entitlement actual es binario (suscripcion activa si/no) y el plan contratado solo se persiste para diferenciar features en el futuro. Decision registrada en `docs/adr/0002-stripe-checkout-subscriptions.md`.
+El uso del producto requiere una suscripcion de pago gestionada por Stripe. Hay 2 planes mensuales en USD: **Starter $15** y **Pro $25**. Solo ciclo mensual.
+El plan **Business $60** fue eliminado: su price esta archivado en Stripe y nunca tuvo suscripciones. El ADR 0002 y las versiones anteriores de esta seccion hablaban de 3 planes; quedan enmendados.
+La diferenciacion funcional entre planes ya no es binaria: cada plan trae una cuota de mensajes y un limite de paginas. Ver [Límites por plan]. Decisiones en `docs/adr/0002-stripe-checkout-subscriptions.md` y `docs/adr/0003-plan-entitlements-usage-quota.md`.
+
+### Límites por plan
+| Plan | Precio | Mensajes por período | Páginas |
+|---|---|---|---|
+| `starter_monthly` | $15 | 50.000 | 2 |
+| `pro_monthly` | $25 | 100.000 | 5 |
+
+El límite se resuelve desde `subscriptions.price_lookup_key` contra un mapa en código. Un `price_lookup_key` desconocido es fail-closed, igual que el resto de los gates.
+
+### Mensaje contabilizado
+La cuota mide **ambas direcciones**: cada [Inbound message] persistido suma 1, y cada reply que Meta acepta (`status: 'sent'`) suma 1. Una conversación de ida y vuelta consume 2 unidades, así que los 50.000 del Starter son ~25.000 intercambios; los números publicados se mantienen sabiendo esto.
+**No** consumen cuota: un envío que Meta rechaza (`status: 'failed'`) —el cliente no paga por un page token vencido nuestro ni por la ventana de 24h de Messenger— ni un replay idempotente, que no llama a Meta ni inserta mensaje nuevo.
+Los entrantes **cuentan aunque no se entreguen**: si el tenant está restringido o la página no tiene `webhookUrl`, el mensaje se persiste igual y consume cuota. Lo que la cuota cubre es recibir y persistir, no entregar.
+
+### Período de cuota
+La ventana es el **período de facturación de Stripe**, no el mes calendario: el contador se resetea cuando cierra el ciclo que el cliente pagó, para no regalar una cuota completa a quien paga el día 28. Requiere `subscriptions.current_period_start`, que la migración `0005` no incluía. Sin período conocido no hay envío (fail-closed).
+El límite es un **tope práctico, no exacto**: como solo cuentan los envíos que Meta acepta, hay que llamar a Meta y después incrementar, y sin transacciones interactivas en el driver HTTP de Neon un puñado de requests concurrentes puede pasarse por decenas de mensajes.
+
+### Cambio de plan
+El **upgrade se aplica inmediato**: sube el techo y **conserva el consumo** del período (quien gastó 50.000 y sube a Pro tiene 50.000 restantes, no 100.000). Así ciclar planes no sirve para resetear cuota, y un cliente bloqueado puede desbloquearse pagando en el acto.
+El **downgrade se difiere** al cierre del período: quien pagó el mes lo usa completo, mismo criterio que `cancel_at_period_end`. El Customer Portal de Stripe debe configurarse para diferirlo; por defecto Stripe lo aplica inmediato con prorrateo.
+
+### Cuenta restringida
+Estado degradado con dos causas: **cuota agotada** o **exceso de páginas** tras un downgrade (bajar a Starter con 5 páginas conectadas).
+En ambos casos el comportamiento es el mismo: los entrantes se siguen persistiendo en la bitácora, dejan de reenviarse al webhook del cliente, y el envío queda bloqueado **para todas las páginas** del tenant, no solo las excedentes. No desconectamos páginas nosotros: desconectar es siempre acción del usuario.
+Se levanta al resolverse la causa: nuevo período de facturación, o el usuario desconecta páginas hasta quedar dentro de su límite.
+Se distingue del [Gate de suscripcion], que sí descarta los entrantes sin persistir.
+
+### Errores de límite en la API
+Dos códigos distintos, porque la acción del cliente es distinta:
+- `402 Payment Required` + `quota_exceeded` — se arregla subiendo de plan.
+- `403 Forbidden` + `page_limit_exceeded` — se arregla desconectando páginas.
+- `403 Forbidden` + `plan_unavailable` — fail-closed cuando no se puede resolver el plan (`price_lookup_key` desconocido) o el [Período de cuota]. No es una causa de negocio sino una inconsistencia de datos: se arregla del lado de Resender, y el `message` manda a soporte.
+
+Cada uno con `message` legible. Se suman al contrato de errores `snake_case` de `prd_api_separation.md`. Se descartó `429`, que comunica velocidad y no cuota comprada.
+
+### Aviso de cuota
+A partir del **80%** del consumo del período aparece una barra de alerta **global en el dashboard**, no solo en `Connections`: quien no entra a esa pantalla no se entera.
+No hay email transaccional en esta entrega (no existe canal de correo en el repo). Pendiente: la FAQ pública promete "Te avisamos cuando te acercás al límite" dos veces en `content/i18n/es.ts`, que un cliente lee como email; hay que reescribirla para que apunte al dashboard.
 
 ### Gate de suscripcion
 Segundo gate en serie despues de la [Waitlist]: la waitlist decide quien puede entrar, la suscripcion decide quien puede usar. Un usuario con `waitlisted = false` pero sin suscripcion activa aterriza en la pagina de pricing. El acceso existe solo con status `active` en la tabla `subscriptions`; cualquier otro estado es **bloqueo total**: dashboard, OAuth de Meta y `POST /api/meta/send` (403) quedan cerrados, y los webhooks entrantes de Meta del tenant se descartan sin persistir (respondiendo `200` a Meta para no degradar la app). Mismo patron que la waitlist: se lee de base de datos en cada request, fail-closed, nunca del JWT ni de la API de Stripe en el hot path.

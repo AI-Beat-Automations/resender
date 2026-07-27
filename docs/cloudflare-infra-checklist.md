@@ -235,6 +235,36 @@ cada merge a `main` corre migraciones contra Neon y deploya a producción.
 
 ---
 
+## Paso 9.1 — Customer Portal: diferir los cambios de plan
+
+> Requerido por el ADR 0003 (entitlements por plan). **Sin esto la regla de
+> downgrade diferido no se sostiene aunque el código esté bien.**
+
+Por defecto Stripe aplica los cambios de plan **inmediato y con prorrateo**.
+Con los límites por plan activos eso significa que un cliente que baja de Pro a
+Starter con 5 páginas conectadas queda **bloqueado por exceso de páginas el
+mismo día que baja**, en vez de al cierre del período que ya pagó.
+
+1. Dashboard de Stripe → **Settings** → **Billing** → **Customer portal**.
+2. Sección **Subscriptions** → *Customers can switch plans*: activado.
+3. En **Proration behavior / When to apply the change**, buscá la opción que
+   **agenda el cambio al final del período solo cuando el monto baja**
+   (`schedule_at_period_end` con la condición `decreasing_item_amount`). Eso
+   difiere el downgrade y deja el upgrade inmediato, que es exactamente lo que
+   pide el ADR 0003.
+4. Guardá y verificá con una cuenta de prueba, en las dos direcciones:
+   - bajar de Pro a Starter debe dejar la suscripción en Pro hasta
+     `current_period_end`;
+   - subir de Starter a Pro debe verse reflejado en el acto (un tenant
+     bloqueado por cuota se desbloquea pagando, sin esperar la factura).
+
+Si la UI del Dashboard no expusiera esa condición, se puede fijar por API sobre
+la configuración del portal (`subscription_update.schedule_at_period_end`).
+**No** dejes el comportamiento por defecto (inmediato con prorrateo): un cliente
+que baja de plan con 5 páginas conectadas queda restringido el mismo día.
+
+---
+
 ## Paso 10 — Smoke tests finales (validan node:crypto bajo `nodejs_compat`)
 
 En `https://resender.dev`:
