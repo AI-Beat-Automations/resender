@@ -148,11 +148,11 @@ export const dict = {
       },
       {
         q: "¿Qué pasa si me paso de los mensajes de mi plan?",
-        a: "Te avisamos cuando te acercás al límite y podés subir de plan en cualquier momento sin perder configuración.",
+        a: "Desde el 80% de tu cuota te aparece una barra de aviso en el dashboard. Si la agotás, seguimos guardando tus mensajes entrantes pero dejamos de reenviarlos y de aceptar envíos hasta que arranque tu próximo período de facturación. Podés subir de plan en cualquier momento para desbloquearte al instante, sin perder configuración.",
       },
       {
         q: "¿Puedo cambiar de plan en cualquier momento?",
-        a: "Sí, podés subir o bajar de plan cuando quieras. Los cambios se aplican en tu próximo ciclo de facturación.",
+        a: "Sí. Subir de plan se aplica al instante y conservás el consumo del período; bajar de plan se aplica al cierre del período que ya pagaste.",
       },
       {
         q: "¿Qué métodos de pago aceptan?",
@@ -229,11 +229,11 @@ export const dict = {
     items: [
       {
         q: "¿Qué pasa si me paso de los mensajes?",
-        a: "Te avisamos cuando te acercás al límite. Podés subir de plan sin interrupciones.",
+        a: "Desde el 80% de tu cuota te aparece una barra de aviso en el dashboard. Al agotarla el envío se bloquea hasta tu próximo período de facturación; subir de plan te desbloquea en el acto.",
       },
       {
         q: "¿Puedo cambiar de plan?",
-        a: "Sí, subís o bajás de plan cuando quieras. Los cambios se prorratean en tu próximo ciclo.",
+        a: "Sí. Subir de plan se aplica al instante y conservás el consumo del período; bajar de plan se aplica al cierre del período que ya pagaste.",
       },
       {
         q: "¿Hay contrato o compromiso?",

@@ -7,21 +7,15 @@ import {
   assertSecretEncryptionConfigured,
   SecretEncryptionConfigError,
 } from "@/lib/crypto/encryption"
-import {
-  APP_URL,
-  STATE_COOKIE,
-  exchangeCodeForPages,
-  subscribePagesToWebhook,
-  WebhookSubscriptionError,
-} from "@/lib/meta"
-import {
-  assertPagesConnectable,
-  connectAuthorizedPages,
-  PageOwnershipError,
-} from "@/lib/pages/page-registry"
+import { APP_URL, STATE_COOKIE, exchangeCodeForUserToken } from "@/lib/meta"
+import { saveMetaUserAccessToken } from "@/lib/pages/meta-user-token"
 import { posthog } from "@/lib/posthog"
 
 // Meta redirige aquí con ?code=...&state=... tras aprobar el diálogo.
+// El callback ya no conecta nada (ADR 0004): solo persiste cifrado el user
+// access token de larga duración y manda a la pantalla de selección, donde el
+// usuario elige qué páginas conectar. Así los page tokens de las páginas
+// descartadas nunca llegan a la base.
 export const runtime = "nodejs"
 
 export async function GET(request: NextRequest) {
@@ -60,50 +54,15 @@ export async function GET(request: NextRequest) {
   if (!state || !expected || state !== expected) return fail("state_mismatch")
 
   try {
-    const pages = await exchangeCodeForPages(code)
     assertSecretEncryptionConfigured()
-    await assertPagesConnectable(session.user.id, pages)
-    await subscribePagesToWebhook(pages)
+    const userToken = await exchangeCodeForUserToken(code)
+    await saveMetaUserAccessToken(session.user.id, userToken)
 
-    const connectedPages = await connectAuthorizedPages(session.user.id, pages)
-
-    console.log(
-      "connected pages",
-      connectedPages.map((p) => ({ pageId: p.metaPageId, name: p.name }))
-    )
-
-    if (posthog) {
-      for (const page of connectedPages) {
-        posthog.capture({
-          distinctId: session.user.id,
-          event: "page connected",
-          properties: { page_id: page.metaPageId, page_name: page.name },
-        })
-      }
-      await posthog.flush()
-    }
-
-    // Solo exponemos id + name en la URL; el token queda cifrado en Postgres.
-    const publicPages = connectedPages.map((p) => ({
-      id: p.metaPageId,
-      name: p.name,
-    }))
-    connections.searchParams.set("meta", "connected")
-    connections.searchParams.set("pages", JSON.stringify(publicPages))
-    const res = NextResponse.redirect(connections)
+    const res = NextResponse.redirect(new URL("/connections/select", APP_URL))
     res.cookies.delete(STATE_COOKIE)
     return res
   } catch (error) {
     if (posthog) posthog.captureException(error, session.user.id)
-    if (error instanceof PageOwnershipError) {
-      return fail(`page_owned:${error.metaPageId}`)
-    }
-    if (error instanceof WebhookSubscriptionError) {
-      console.error("webhook subscription failed", {
-        pageIds: error.failedPageIds,
-      })
-      return fail("webhook_subscription_failed")
-    }
     console.error("meta connection failed", error)
     if (error instanceof SecretEncryptionConfigError) {
       return fail("configuration_failed")

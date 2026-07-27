@@ -2,7 +2,9 @@ import { type NextRequest } from "next/server"
 
 import { authenticateApiKey } from "@/lib/api-keys/api-keys"
 import { isUserWaitlisted } from "@/lib/auth/waitlist"
+import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
+import { incrementUsage } from "@/lib/billing/usage-counter"
 import {
   getConversationById,
   getOutboundMessageByIdempotencyKey,
@@ -59,6 +61,38 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "no active subscription" }, { status: 403 })
   }
 
+  // El replay idempotente se resuelve ANTES del gate de cuota: no llama a Meta
+  // ni inserta nada, así que no consume cuota, y devolver el resultado ya
+  // almacenado es lo único correcto. Bloquearlo con 402 le diría al cliente que
+  // falló un mensaje que Meta ya entregó, justo en el reintento agresivo que la
+  // Idempotency-Key existe para hacer seguro.
+  if (idempotencyKey) {
+    const replay = await getOutboundMessageByIdempotencyKey(
+      apiKey.tenantId,
+      idempotencyKey
+    )
+    if (replay) return idempotentReplayResponse(replay)
+  }
+
+  // Tercer gate en serie (ADR 0003): con la cuota del período agotada o con
+  // más páginas conectadas de las que permite el plan, la cuenta queda
+  // restringida y no envía por ninguna de sus páginas.
+  const { block, periodStart } = await getTenantEntitlement(apiKey.tenantId)
+  // Un período sin resolver siempre viene acompañado de `block` (el módulo
+  // puro es fail-closed); comprobar ambos es lo que estrecha el tipo de
+  // `periodStart` hasta el incremento del contador, sin recurrir a `!`.
+  if (block || !periodStart) {
+    return Response.json(
+      {
+        error: block?.code ?? "plan_unavailable",
+        message:
+          block?.message ??
+          "We couldn't resolve your current billing period. Contact support at info@resender.dev.",
+      },
+      { status: block?.status ?? 403 }
+    )
+  }
+
   let body: unknown
   try {
     body = await request.json()
@@ -73,14 +107,6 @@ export async function POST(request: NextRequest) {
   const input = parseOutboundSendInput(body)
   if (!input.ok) {
     return Response.json({ error: input.error }, { status: 400 })
-  }
-
-  if (idempotencyKey) {
-    const existing = await getOutboundMessageByIdempotencyKey(
-      apiKey.tenantId,
-      idempotencyKey
-    )
-    if (existing) return idempotentReplayResponse(existing)
   }
 
   const connectedPage = await getActivePageWithTokenForTenant(
@@ -178,6 +204,19 @@ export async function POST(request: NextRequest) {
       if (existing) return idempotentReplayResponse(existing)
     }
     throw error
+  }
+
+  // Solo consume cuota la respuesta que Meta aceptó: el cliente no paga por un
+  // page token vencido nuestro ni por la ventana de 24h de Messenger. Los
+  // replays idempotentes ya devolvieron antes de llegar acá, así que tampoco
+  // suman. Best-effort: un fallo del contador no puede hacer fallar un mensaje
+  // que Meta ya entregó.
+  if (metaResult.ok) {
+    try {
+      await incrementUsage(apiKey.tenantId, periodStart)
+    } catch (error) {
+      console.error("failed to increment usage counter", apiKey.tenantId, error)
+    }
   }
 
   if (posthog) {

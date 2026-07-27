@@ -10,6 +10,12 @@ export type SubscriptionView = {
   status: string
   currentPeriodEnd: string | null
   cancelAtPeriodEnd: boolean
+  // Consumo del período vigente contra el límite del plan; `limit` es null
+  // cuando el plan no se pudo resolver.
+  usage: number
+  messageLimit: number | null
+  pagesInUse: number
+  pageLimit: number | null
 }
 
 export function SubscriptionPanel({
@@ -27,6 +33,20 @@ export function SubscriptionPanel({
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
             Status: <span className="text-foreground">{subscription.status}</span>
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Messages this period:{" "}
+            <span className="text-foreground">
+              {formatCount(subscription.usage)} /{" "}
+              {formatCount(subscription.messageLimit)}
+            </span>
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Connected Pages:{" "}
+            <span className="text-foreground">
+              {formatCount(subscription.pagesInUse)} /{" "}
+              {formatCount(subscription.pageLimit)}
+            </span>
           </p>
           {subscription.currentPeriodEnd && (
             <p className="mt-1 text-sm text-muted-foreground">
@@ -62,6 +82,11 @@ export function SubscriptionPanel({
       )}
     </section>
   )
+}
+
+function formatCount(value: number | null): string {
+  if (value === null) return "—"
+  return value.toLocaleString("en-US")
 }
 
 function formatDate(iso: string): string {
