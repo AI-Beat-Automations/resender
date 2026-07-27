@@ -19,6 +19,14 @@ export const SITE_CONTACT_EMAIL_HREF = `mailto:${SITE_CONTACT_EMAIL}`
 // marketing solo enlaza hacia allá (ver el redirect 301 en next.config.ts).
 export const DOCS_URL = "https://docs.resender.dev/"
 
+// Fecha (YYYY-MM-DD) de la última vez que cambió el copy de las páginas fijas.
+// Las páginas fijas no tienen fecha de contenido propia: usar `new Date()` hacía
+// que su `lastmod` cambiara en CADA deploy sin cambiar el contenido — ruido que
+// enseña a Google a desconfiar de la señal. Se sube A MANO cuando el copy cambia
+// de verdad. La consumen el sitemap y el encabezado de /llms-full.txt, así que
+// las dos declaran lo mismo.
+export const STATIC_CONTENT_UPDATED_AT = "2026-07-27"
+
 // Invitación de Discord. Si alguna vez vuelve a ser null, el footer oculta la
 // entrada en lugar de dejar un link muerto en todas las páginas del sitio.
 export const DISCORD_INVITE_URL: string | null =

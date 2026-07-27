@@ -1,7 +1,11 @@
 import type { MetadataRoute } from "next"
 
 import { getPublishedPosts, localesWithPost } from "@/lib/blog"
-import { SITE_URL, absoluteUrl } from "@/lib/site-config"
+import {
+  SITE_URL,
+  STATIC_CONTENT_UPDATED_AT,
+  absoluteUrl,
+} from "@/lib/site-config"
 import { locales, localePath, type Locale } from "@/content/i18n"
 
 // Rutas de producto: existen en los dos idiomas (raíz = ES, /en = EN).
@@ -16,11 +20,9 @@ const LOCALIZED_ROUTES = [
 // vive en docs.resender.dev y acá solo queda un 301 (ver next.config.ts).
 const SHARED_ROUTES = ["/privacy", "/terms", "/data-deletion"]
 
-// Las páginas fijas no tienen fecha de contenido propia. Usar `new Date()` hacía
-// que su `lastmod` cambiara en CADA deploy sin cambiar el contenido — ruido que
-// enseña a Google a desconfiar de la señal. Se sube a mano cuando el copy cambia
-// de verdad.
-const STATIC_CONTENT_UPDATED_AT = new Date("2026-07-27")
+// Fecha de la última vez que cambió el copy de las páginas fijas. Vive en
+// `lib/site-config.ts` porque /llms-full.txt declara la misma.
+const staticUpdatedAt = new Date(STATIC_CONTENT_UPDATED_AT)
 
 function absolute(path: string, lang: Locale) {
   return absoluteUrl(localePath(path, lang))
@@ -36,7 +38,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const localizedRoutes = LOCALIZED_ROUTES.flatMap((route) =>
     locales.map((lang: Locale) => ({
       url: absolute(route.path, lang),
-      lastModified: STATIC_CONTENT_UPDATED_AT,
+      lastModified: staticUpdatedAt,
       changeFrequency: route.changeFrequency,
       priority: route.priority,
       alternates: { languages: languagesFor(route.path, locales) },
@@ -45,7 +47,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
 
   const sharedRoutes = SHARED_ROUTES.map((path) => ({
     url: `${SITE_URL}${path}`,
-    lastModified: STATIC_CONTENT_UPDATED_AT,
+    lastModified: staticUpdatedAt,
     changeFrequency: "yearly" as const,
     priority: 0.3,
   }))
@@ -57,7 +59,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
       return {
         url: absolute(path, lang),
         lastModified: Number.isNaN(date.getTime())
-          ? STATIC_CONTENT_UPDATED_AT
+          ? staticUpdatedAt
           : date,
         changeFrequency: "yearly" as const,
         priority: 0.8,

@@ -30,6 +30,10 @@ export type ComparisonRow = {
   manychat: string | boolean
 }
 
+// Una entrada del índice de /llms.txt. Se renderiza como el spec de llmstxt.org
+// manda: `- [label](url): detail`.
+export type LlmsEntry = { label: string; detail: string }
+
 export type Dict = {
   nav: {
     pricing: string
@@ -184,6 +188,55 @@ export type Dict = {
       description: string
       ogTitle: string
       ogDescription: string
+    }
+  }
+  // Copy de /llms.txt y /llms-full.txt (spec: https://llmstxt.org/). Vive en el
+  // diccionario y no en `lib/llms-txt.ts` para que el contrato `Dict` fuerce la
+  // paridad ES/EN igual que el resto del sitio. Las URLs y los títulos de las
+  // páginas NO se repiten acá: salen de `site-config`, `localePath` y del copy
+  // que ya existe (`pricing.title`, `blog.title`, …).
+  llms: {
+    // Blockquote que va justo debajo del H1: lo mínimo para entender el resto
+    // del archivo sin abrir ninguna URL.
+    summary: string
+    // Párrafos entre el blockquote y el primer H2. El spec solo admite acá
+    // secciones "de cualquier tipo excepto encabezados".
+    context: string[]
+    // Títulos de las secciones H2 del índice.
+    sections: {
+      product: string
+      docs: string
+      blog: string
+      legal: string
+      // El spec matchea el literal "Optional" para saber qué se puede saltear
+      // si hace falta menos contexto: no se traduce, ni siquiera en español.
+      optional: "Optional"
+    }
+    entries: {
+      home: LlmsEntry
+      pricing: LlmsEntry
+      vsManychat: LlmsEntry
+      blog: LlmsEntry
+      docs: LlmsEntry
+      privacy: LlmsEntry
+      terms: LlmsEntry
+      dataDeletion: LlmsEntry
+      full: LlmsEntry
+      otherLocale: LlmsEntry
+      rss: LlmsEntry
+    }
+    // /llms-full.txt: el volcado del contenido completo.
+    fullFile: {
+      title: string
+      // Nota de contexto; `{date}` se reemplaza por la fecha de actualización.
+      note: string
+      // Encabezado de la lista de posts dentro del volcado.
+      postsTitle: string
+      // Etiquetas de los campos que no salen de una sección con título propio.
+      sourceLabel: string
+      publishedLabel: string
+      plansTitle: string
+      comparisonTitle: string
     }
   }
 }

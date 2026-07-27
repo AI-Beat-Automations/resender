@@ -427,4 +427,85 @@ export const en: Dict = {
         "Simple plans from $15/mo. The developer-first alternative to ManyChat.",
     },
   },
+
+  llms: {
+    summary:
+      "The relay API for Facebook messages. Connect your Page, point your webhook and reply with a POST — no visual builders, no features you'll never use. A developer-first alternative to ManyChat, from $15/mo. Operated by AI Beat.",
+    context: [
+      "Resender solves one specific problem: receiving the messages sent to a Facebook Page (Messenger) on your own server, and replying to them via API. The logic runs wherever you want it — n8n, Make, Zapier, an AI agent or your own backend — and Resender only handles the transport to and from Facebook.",
+      "How it works: you connect your Page with Facebook Login, set an HTTPS URL per Page, every incoming message arrives at that endpoint as JSON, and you reply with a POST to Resender's outbound API. The Messenger permissions are already approved, so you don't go through an app review of your own.",
+      "What it is NOT: Resender has no visual flow builder, broadcasts, templates or engagement analytics. If you need those, ManyChat is the better choice and we say so in the comparison.",
+      "Pricing: Starter $15/mo (50,000 messages, 2 Facebook Pages) and Pro $25/mo (100,000 messages, 5 Pages). Billing is per message processed in either direction, not per contact reached. Retries after a webhook outage are not billed. No contracts: it's month to month.",
+      "The site is in Spanish at the root and in English under /en. The legal pages exist in Spanish only.",
+    ],
+    sections: {
+      product: "Product",
+      docs: "Documentation",
+      blog: "Blog",
+      legal: "Legal",
+      optional: "Optional",
+    },
+    entries: {
+      home: {
+        label: "Home",
+        detail:
+          "What Resender is, the four-step flow, the quickstart with the reply request, and frequently asked questions.",
+      },
+      pricing: {
+        label: "Pricing",
+        detail:
+          "The Starter and Pro plans, what counts as a message, how billing works and billing questions.",
+      },
+      vsManychat: {
+        label: "Resender vs ManyChat",
+        detail:
+          "Price and scope compared against ManyChat, and which one fits which case.",
+      },
+      blog: {
+        label: "Blog",
+        detail:
+          "Tutorials on webhooks, AI agents and automations with n8n, Make and Zapier, plus product news.",
+      },
+      docs: {
+        label: "Technical documentation",
+        detail:
+          "API reference: authentication, inbound webhook format and the reply endpoint. Lives on its own subdomain.",
+      },
+      privacy: {
+        label: "Privacy policy",
+        detail: "What data Resender stores and for how long. Spanish only.",
+      },
+      terms: {
+        label: "Terms of service",
+        detail:
+          "Terms for using Resender, operated by AI Beat. Spanish only.",
+      },
+      dataDeletion: {
+        label: "Data deletion",
+        detail: "How to request deletion of your data. Spanish only.",
+      },
+      full: {
+        label: "Full site content",
+        detail:
+          "The complete text of every page and blog post in a single markdown file.",
+      },
+      otherLocale: {
+        label: "Versión en español",
+        detail: "The same index, with the URLs of the Spanish version of the site.",
+      },
+      rss: {
+        label: "Blog RSS",
+        detail: "Feed of the English-language posts.",
+      },
+    },
+    fullFile: {
+      title: "Resender — full content",
+      note: "A dump of the complete text of the site and the blog. The shorter, curated index lives at {index}. Last updated: {date}.",
+      postsTitle: "Blog posts",
+      sourceLabel: "Source",
+      publishedLabel: "Published",
+      plansTitle: "Plans",
+      comparisonTitle: "Comparison table",
+    },
+  },
 }
