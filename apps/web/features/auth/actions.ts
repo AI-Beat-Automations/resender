@@ -3,6 +3,7 @@
 import { AuthError } from "next-auth"
 
 import { signIn } from "@/auth"
+import { getDictionary, type Locale } from "@/content/i18n"
 import {
   createUser,
   DuplicateEmailError,
@@ -10,7 +11,6 @@ import {
 } from "@/lib/auth/users"
 import { validateAuthInput } from "@/lib/auth/validation"
 import { posthog } from "@/lib/posthog"
-import { getDictionary, type Locale } from "@/content/i18n"
 
 export type AuthFormState = {
   error?: string
@@ -18,22 +18,22 @@ export type AuthFormState = {
 
 // El idioma llega en un input oculto del form (ver features/auth/ui/auth-form):
 // un server action no tiene acceso al pathname de la página que lo invocó.
-function authErrors(formData: FormData) {
-  const raw = formData.get("locale")
-  const locale: Locale = raw === "en" ? "en" : "es"
-  return getDictionary(locale).auth.errors
+function localeOf(formData: FormData): Locale {
+  return formData.get("locale") === "en" ? "en" : "es"
 }
 
 export async function loginAction(
   _state: AuthFormState,
   formData: FormData
 ): Promise<AuthFormState> {
-  const errors = authErrors(formData)
+  const errors = getDictionary(localeOf(formData)).auth.errors
 
   const input = validateAuthInput(
     formData.get("email"),
     formData.get("password")
   )
+  // En login los errores son genéricos a propósito: no confirmamos si el
+  // email existe (CONTEXT.md → «Usuario MVP»).
   if (!input.ok) return { error: errors.invalidCredentials }
 
   try {
@@ -56,7 +56,8 @@ export async function registerAction(
   _state: AuthFormState,
   formData: FormData
 ): Promise<AuthFormState> {
-  const errors = authErrors(formData)
+  const locale = localeOf(formData)
+  const errors = getDictionary(locale).auth.errors
   const email = formData.get("email")
   const password = formData.get("password")
 
@@ -64,11 +65,16 @@ export async function registerAction(
   try {
     newUser = await createUser(email, password)
   } catch (error) {
+    // En el alta, el email duplicado sí se nombra: aquí el usuario necesita
+    // saber que ya tiene cuenta (CONTEXT.md → «Usuario MVP»).
     if (error instanceof DuplicateEmailError) {
       return { error: errors.duplicateEmail }
     }
+    // `lib/auth/validation` devuelve su texto en español y dice qué campo
+    // falló, así que en español se propaga tal cual. En inglés no hay
+    // equivalente traducido: ahí cae al genérico del diccionario.
     if (error instanceof InvalidAuthInputError) {
-      return { error: errors.invalidInput }
+      return { error: locale === "es" ? error.message : errors.invalidInput }
     }
     throw error
   }

@@ -140,11 +140,11 @@ export const es: Dict = {
       },
       {
         q: "¿Qué pasa si me paso de los mensajes de mi plan?",
-        a: "Te avisamos cuando te acercás al límite y podés subir de plan en cualquier momento sin perder configuración.",
+        a: "Desde el 80% de tu cuota te aparece una barra de aviso en el dashboard. Si la agotás, seguimos guardando tus mensajes entrantes pero dejamos de reenviarlos y de aceptar envíos hasta que arranque tu próximo período de facturación. Podés subir de plan en cualquier momento para desbloquearte al instante, sin perder configuración.",
       },
       {
         q: "¿Puedo cambiar de plan en cualquier momento?",
-        a: "Sí, podés subir o bajar de plan cuando quieras. Los cambios se aplican en tu próximo ciclo de facturación.",
+        a: "Sí. Subir de plan se aplica al instante y conservás el consumo del período; bajar de plan se aplica al cierre del período que ya pagaste.",
       },
       {
         q: "¿Qué métodos de pago aceptan?",
@@ -303,11 +303,11 @@ export const es: Dict = {
     items: [
       {
         q: "¿Qué pasa si me paso de los mensajes?",
-        a: "Te avisamos cuando te acercás al límite. Podés subir de plan sin interrupciones.",
+        a: "Desde el 80% de tu cuota te aparece una barra de aviso en el dashboard. Al agotarla el envío se bloquea hasta tu próximo período de facturación; subir de plan te desbloquea en el acto.",
       },
       {
         q: "¿Puedo cambiar de plan?",
-        a: "Sí, subís o bajás de plan cuando quieras. Los cambios se prorratean en tu próximo ciclo.",
+        a: "Sí. Subir de plan se aplica al instante y conservás el consumo del período; bajar de plan se aplica al cierre del período que ya pagaste.",
       },
       {
         q: "¿Hay contrato o compromiso?",
@@ -362,36 +362,42 @@ export const es: Dict = {
     rssDescription: "Tutoriales y novedades de Resender.",
   },
 
+  // Login y registro son la puerta entre el sitio público y el producto, así
+  // que salen del español hardcodeado del dashboard y viven acá (ADR 0006). El
+  // registro es el del producto —tuteo neutro, ADR 0005—, no el voseo del
+  // landing: el texto es el mismo que dibujó la consola v2.
   auth: {
     login: {
+      eyebrow: "acceso",
       title: "Iniciar sesión",
-      subtitle:
-        "Ingresá para administrar tus conexiones y el registro de mensajes.",
+      subtitle: "Entra para administrar tus conexiones y el log de mensajes.",
     },
     register: {
+      eyebrow: "alta",
       title: "Crear cuenta",
-      subtitle:
-        "Creá una cuenta con email y contraseña. En el MVP no hay verificación por email.",
+      subtitle: "Email y contraseña. No hay verificación por correo en el MVP.",
     },
-    passwordChanged: "Contraseña actualizada. Ingresá con tu nueva contraseña.",
+    passwordChanged: "Contraseña actualizada. Inicia sesión con la nueva.",
     form: {
       email: "Email",
       password: "Contraseña",
-      emailPlaceholder: "vos@empresa.com",
+      emailPlaceholder: "tu@empresa.com",
       passwordPlaceholder: "Al menos 8 caracteres",
-      processing: "Procesando...",
-      signIn: "Ingresar",
+      passwordHint: "Al menos 8 caracteres.",
+      processing: "Procesando…",
+      signIn: "Entrar",
       createAccount: "Crear cuenta",
-      noAccount: "¿No tenés cuenta?",
-      haveAccount: "¿Ya tenés cuenta?",
-      signUp: "Registrate",
-      signInAction: "Ingresá",
+      noAccount: "¿No tienes cuenta?",
+      haveAccount: "¿Ya tienes cuenta?",
+      signUp: "Crear una",
+      signInAction: "Iniciar sesión",
     },
     errors: {
       invalidCredentials: "Email o contraseña incorrectos.",
-      duplicateEmail: "Ese email ya está registrado. Iniciá sesión.",
-      invalidInput: "Revisá el email y la contraseña e intentá de nuevo.",
-      createdNoSignin: "Creamos la cuenta, pero no pudimos iniciar sesión.",
+      duplicateEmail: "Ese email ya está registrado. Inicia sesión.",
+      invalidInput: "Revisa el email y la contraseña e inténtalo de nuevo.",
+      createdNoSignin:
+        "Creamos tu cuenta, pero no pudimos iniciar la sesión. Entra desde Iniciar sesión.",
     },
   },
 

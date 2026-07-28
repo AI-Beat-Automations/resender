@@ -1,13 +1,33 @@
 "use client"
 
 import { useActionState } from "react"
+import { LoaderCircle } from "lucide-react"
 
 import {
   deleteAccountAction,
   type DeleteAccountState,
 } from "@/features/account/actions"
+import {
+  SettingsCard,
+  SettingsCardTitle,
+} from "@/features/settings/ui/settings-card"
 import { Button } from "@workspace/ui/components/button"
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@workspace/ui/components/dialog"
+import { Input } from "@workspace/ui/components/input"
+import { Label } from "@workspace/ui/components/label"
 
+// Zona de peligro de la pestaña Cuenta (B6): tarjeta orlada en rojo, separada
+// del resto, y la confirmación en diálogo en vez de `window.confirm`
+// (ADR 0005). Sigue exigiendo escribir el email exacto de la cuenta.
 export function DeleteAccountPanel({ email }: { email: string }) {
   const [state, action, pending] = useActionState<DeleteAccountState, FormData>(
     deleteAccountAction,
@@ -15,43 +35,78 @@ export function DeleteAccountPanel({ email }: { email: string }) {
   )
 
   return (
-    <section className="rounded-2xl border border-destructive/40 bg-card p-6 shadow-sm">
-      <h2 className="font-medium text-destructive">Delete account</h2>
-      <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-        Permanently deletes your account and all your data: connected Pages,
-        conversations, messages, and API keys. Before deleting, we attempt to
-        unsubscribe your Pages from Meta&apos;s webhook. This action is immediate
-        and can&apos;t be undone; backups are purged within 30 days.
+    <SettingsCard className="border-destructive-soft-border">
+      <SettingsCardTitle className="text-[var(--danger-text)]">
+        Eliminar cuenta
+      </SettingsCardTitle>
+      <p className="mt-1.5 max-w-160 text-[13.5px]/[1.6] text-muted-foreground">
+        Borra definitivamente tu cuenta y todos tus datos: páginas conectadas,
+        conversaciones, mensajes y API keys. Antes de borrar intentamos
+        desuscribir tus páginas del webhook de Meta. Es inmediato y no se puede
+        deshacer; las copias de respaldo se purgan en 30 días.
       </p>
-      <form
-        action={action}
-        onSubmit={(event) => {
-          const ok = window.confirm(
-            "This permanently deletes your account and all your data. Continue?"
-          )
-          if (!ok) event.preventDefault()
-        }}
-        className="mt-4 grid gap-3 sm:max-w-md"
-      >
-        <label className="text-sm font-medium" htmlFor="confirmEmail">
-          Type <span className="font-mono">{email}</span> to confirm
-        </label>
-        <input
-          id="confirmEmail"
-          name="confirmEmail"
-          type="email"
-          autoComplete="off"
-          required
-          placeholder={email}
-          className="h-10 rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
-        />
-        <Button type="submit" variant="destructive" disabled={pending}>
-          {pending ? "Deleting..." : "Delete account"}
-        </Button>
-        {state.error && (
-          <p className="text-sm text-destructive">{state.error}</p>
-        )}
-      </form>
-    </section>
+
+      <Dialog>
+        <DialogTrigger asChild>
+          <Button
+            type="button"
+            variant="destructive"
+            size="lg"
+            className="mt-4"
+          >
+            Eliminar cuenta
+          </Button>
+        </DialogTrigger>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Eliminar tu cuenta</DialogTitle>
+            <DialogDescription>
+              Se borran tu cuenta, tus páginas conectadas, tus conversaciones,
+              tus mensajes y tus API keys. Es inmediato y no se puede deshacer.
+            </DialogDescription>
+          </DialogHeader>
+          <form action={action} className="grid gap-2">
+            <Label htmlFor="confirmEmail">
+              Escribe <span className="font-mono text-xs">{email}</span> para
+              confirmar
+            </Label>
+            <Input
+              id="confirmEmail"
+              name="confirmEmail"
+              type="email"
+              autoComplete="off"
+              required
+              placeholder={email}
+              className="w-full"
+            />
+            {state.error ? (
+              <p className="text-[13px] text-destructive">{state.error}</p>
+            ) : null}
+            <DialogFooter className="mt-2">
+              <DialogClose asChild>
+                <Button type="button" variant="ghost" size="lg">
+                  Cancelar
+                </Button>
+              </DialogClose>
+              <Button
+                type="submit"
+                variant="destructive"
+                size="lg"
+                disabled={pending}
+              >
+                {pending ? (
+                  <>
+                    <LoaderCircle className="animate-spin" aria-hidden />
+                    Eliminando…
+                  </>
+                ) : (
+                  "Sí, eliminar mi cuenta"
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </SettingsCard>
   )
 }

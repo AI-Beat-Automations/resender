@@ -2,11 +2,13 @@
 
 import Link from "next/link"
 import { useActionState } from "react"
+import { LoaderCircle, TriangleAlert } from "lucide-react"
 
 import type { AuthFormState } from "@/features/auth/actions"
-import { Button } from "@workspace/ui/components/button"
-
 import { getDictionary, localePath, type Locale } from "@/content/i18n"
+import { Button } from "@workspace/ui/components/button"
+import { Input } from "@workspace/ui/components/input"
+import { Label } from "@workspace/ui/components/label"
 
 type AuthAction = (
   state: AuthFormState,
@@ -22,51 +24,73 @@ type AuthFormProps = {
 export function AuthForm({ action, mode, lang }: AuthFormProps) {
   const [state, formAction, pending] = useActionState(action, {})
   const isLogin = mode === "login"
+  const hasError = Boolean(state.error)
   const t = getDictionary(lang).auth.form
 
   return (
-    <form action={formAction} className="flex flex-col gap-4">
-      {/* El server action no ve el pathname: le pasamos el idioma para que
-          devuelva los mensajes de error en el idioma de la página. */}
-      <input type="hidden" name="locale" value={lang} />
-      <div className="grid gap-2">
-        <label className="text-sm font-medium" htmlFor="email">
-          {t.email}
-        </label>
-        <input
-          id="email"
-          name="email"
-          type="email"
-          autoComplete="email"
-          required
-          className="h-10 rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
-          placeholder={t.emailPlaceholder}
-        />
-      </div>
-      <div className="grid gap-2">
-        <label className="text-sm font-medium" htmlFor="password">
-          {t.password}
-        </label>
-        <input
-          id="password"
-          name="password"
-          type="password"
-          autoComplete={isLogin ? "current-password" : "new-password"}
-          required
-          minLength={8}
-          className="h-10 rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
-          placeholder={t.passwordPlaceholder}
-        />
-      </div>
-      {state.error && (
-        <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {state.error}
-        </p>
-      )}
-      <Button type="submit" size="lg" disabled={pending}>
-        {pending ? t.processing : isLogin ? t.signIn : t.createAccount}
-      </Button>
-      <p className="text-center text-sm text-muted-foreground">
+    <>
+      <form action={formAction} className="mt-5 flex flex-col gap-3.5">
+        {/* El server action no ve el pathname: le pasamos el idioma para que
+            devuelva sus errores en el idioma de la página. */}
+        <input type="hidden" name="locale" value={lang} />
+        <div className="grid gap-2">
+          <Label htmlFor="email">{t.email}</Label>
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            required
+            disabled={pending}
+            aria-invalid={hasError}
+            placeholder={t.emailPlaceholder}
+          />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="password">{t.password}</Label>
+          <Input
+            id="password"
+            name="password"
+            type="password"
+            autoComplete={isLogin ? "current-password" : "new-password"}
+            required
+            minLength={8}
+            disabled={pending}
+            aria-invalid={hasError}
+            aria-describedby={isLogin ? undefined : "password-hint"}
+            placeholder={isLogin ? undefined : t.passwordPlaceholder}
+          />
+          {/* El mínimo de contraseña se anuncia antes de enviar, no como error
+              del servidor: en el alta es un requisito, no un fallo. */}
+          {!isLogin && (
+            <p id="password-hint" className="text-[13px] text-muted-foreground">
+              {t.passwordHint}
+            </p>
+          )}
+        </div>
+        {state.error && (
+          <p
+            role="alert"
+            className="flex items-start gap-2 rounded-lg border border-destructive-soft-border bg-destructive-soft px-3 py-2.5 text-[13px] text-destructive-soft-foreground"
+          >
+            <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+            {state.error}
+          </p>
+        )}
+        <Button type="submit" size="lg" className="w-full" disabled={pending}>
+          {pending ? (
+            <>
+              <LoaderCircle className="size-4 animate-spin" aria-hidden />
+              {t.processing}
+            </>
+          ) : isLogin ? (
+            t.signIn
+          ) : (
+            t.createAccount
+          )}
+        </Button>
+      </form>
+      <p className="mt-4 text-center text-[13.5px] text-muted-foreground">
         {isLogin ? t.noAccount : t.haveAccount}{" "}
         <Link
           href={localePath(isLogin ? "/register" : "/login", lang)}
@@ -75,6 +99,6 @@ export function AuthForm({ action, mode, lang }: AuthFormProps) {
           {isLogin ? t.signUp : t.signInAction}
         </Link>
       </p>
-    </form>
+    </>
   )
 }

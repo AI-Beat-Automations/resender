@@ -1,16 +1,21 @@
-import Link from "next/link"
 import { redirect } from "next/navigation"
 
 import { auth, signOut } from "@/auth"
-import { SiteFooter } from "@/components/site-footer"
+import { AccessEyebrow, AccessShell } from "@/features/auth/ui/access-shell"
 import { startCheckout } from "@/features/billing/actions"
 import { isUserWaitlisted } from "@/lib/auth/waitlist"
 import { PLANS } from "@/lib/billing/plans"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
-import { Button } from "@workspace/ui/components/button"
 import { privatePageMetadata } from "@/lib/seo"
+import { Button } from "@workspace/ui/components/button"
+import { cn } from "@workspace/ui/lib/utils"
 
 export const metadata = privatePageMetadata("Suscripción")
+
+// El plan destacado. El diseño marca Pro con el anillo violeta grueso.
+const RECOMMENDED_PLAN = "pro_monthly"
+
+const numberFormat = new Intl.NumberFormat("es-ES")
 
 // Pricing para cuentas aprobadas en waitlist sin suscripción activa. Vive
 // fuera del grupo `(product)` a propósito (análogo a `/waitlist`): ese layout
@@ -23,11 +28,8 @@ export default async function BillingPage() {
   if (await hasActiveSubscription(session.user.id)) redirect("/connections")
 
   return (
-    <div className="flex min-h-svh flex-col bg-[radial-gradient(circle_at_top_left,theme(colors.muted),transparent_34rem)]">
-      <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-8">
-        <Link href="/" className="text-sm font-semibold tracking-tight">
-          Resender
-        </Link>
+    <AccessShell
+      topbarEnd={
         <form
           action={async () => {
             "use server"
@@ -35,50 +37,73 @@ export default async function BillingPage() {
           }}
         >
           <Button type="submit" variant="outline">
-            Sign out
+            Cerrar sesión
           </Button>
         </form>
-      </header>
-      <main className="flex flex-1 items-center justify-center px-6 pb-12">
-        <div className="w-full max-w-4xl">
-          <h1 className="text-center text-3xl font-semibold tracking-tight">
-            Choose your plan
-          </h1>
-          <p className="mx-auto mt-3 max-w-xl text-center text-muted-foreground">
-            Your account is approved. Pick a monthly plan to start using
-            Resender — payment happens on a secure page hosted by Stripe.
-          </p>
-          <div className="mt-8 grid gap-4 sm:grid-cols-3">
-            {PLANS.map((plan) => (
+      }
+    >
+      <div className="flex w-full flex-col items-center">
+        <AccessEyebrow label="pricing" />
+        <h1 className="mt-2 font-heading text-3xl font-bold tracking-tight">
+          Elige tu plan.
+        </h1>
+        <p className="mt-2.5 max-w-130 text-center text-[15px]/[1.6] text-muted-foreground">
+          Tu cuenta está aprobada. El pago ocurre en una página segura de
+          Stripe.
+        </p>
+        <div className="mt-7 grid w-full max-w-155 gap-5 sm:grid-cols-2">
+          {PLANS.map((plan) => {
+            const recommended = plan.lookupKey === RECOMMENDED_PLAN
+            return (
               <section
                 key={plan.lookupKey}
-                className="flex flex-col rounded-2xl border border-border bg-card p-6 shadow-sm"
+                className={cn(
+                  "flex flex-col gap-5 rounded-xl bg-card p-6",
+                  recommended
+                    ? "shadow-[inset_0_0_0_var(--border-width-thick)_var(--primary)]"
+                    : "shadow-[var(--ring-hairline)]"
+                )}
               >
-                <h2 className="font-medium">{plan.name}</h2>
-                <p className="mt-3">
-                  <span className="text-3xl font-semibold tracking-tight">
-                    ${plan.priceMonthlyUsd}
-                  </span>{" "}
-                  <span className="text-sm text-muted-foreground">/ month</span>
-                </p>
+                <div>
+                  <h2 className="font-heading text-base font-semibold">
+                    {plan.name}
+                  </h2>
+                  <p className="mt-2.5 flex items-baseline gap-1.5">
+                    <span className="font-heading text-4xl font-bold tracking-tight">
+                      ${plan.priceMonthlyUsd}
+                    </span>
+                    <span className="text-sm text-muted-foreground">/ mes</span>
+                  </p>
+                  {/* Los límites junto al precio: `/billing` era la única
+                      superficie donde se pagaba sin ver qué se compra. */}
+                  <p className="mt-2 text-[13.5px] text-muted-foreground">
+                    {numberFormat.format(plan.limits.messagesPerPeriod)}{" "}
+                    mensajes · {plan.limits.maxPages}{" "}
+                    {plan.limits.maxPages === 1 ? "página" : "páginas"}
+                  </p>
+                </div>
                 <form
                   action={startCheckout.bind(null, plan.lookupKey)}
-                  className="mt-6 flex flex-1 items-end"
+                  className="mt-auto"
                 >
-                  <Button type="submit" className="w-full">
-                    Subscribe
+                  <Button
+                    type="submit"
+                    size="lg"
+                    variant={recommended ? "default" : "outline"}
+                    className="w-full"
+                  >
+                    Suscribirme
                   </Button>
                 </form>
               </section>
-            ))}
-          </div>
-          <p className="mt-6 text-center text-sm text-muted-foreground">
-            Change plan, update your card or cancel anytime from Settings via
-            the Stripe Customer Portal.
-          </p>
+            )
+          })}
         </div>
-      </main>
-      <SiteFooter lang="es" />
-    </div>
+        <p className="mt-6 text-center text-[13.5px] text-muted-foreground">
+          Cambia de plan, actualiza tu tarjeta o cancela cuando quieras desde
+          Ajustes, con el portal de Stripe.
+        </p>
+      </div>
+    </AccessShell>
   )
 }

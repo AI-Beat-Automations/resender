@@ -363,33 +363,36 @@ export const en: Dict = {
 
   auth: {
     login: {
+      eyebrow: "access",
       title: "Log in",
       subtitle: "Sign in to manage your connections and message log.",
     },
     register: {
+      eyebrow: "sign-up",
       title: "Create account",
-      subtitle:
-        "Create an account with email and password. There's no email verification in the MVP.",
+      subtitle: "Email and password. No email verification in the MVP.",
     },
-    passwordChanged: "Password updated. Sign in with your new password.",
+    passwordChanged: "Password updated. Sign in with the new one.",
     form: {
       email: "Email",
       password: "Password",
       emailPlaceholder: "you@company.com",
       passwordPlaceholder: "At least 8 characters",
-      processing: "Processing...",
+      passwordHint: "At least 8 characters.",
+      processing: "Processing…",
       signIn: "Sign in",
       createAccount: "Create account",
       noAccount: "Don't have an account?",
       haveAccount: "Already have an account?",
-      signUp: "Sign up",
+      signUp: "Create one",
       signInAction: "Sign in",
     },
     errors: {
       invalidCredentials: "Incorrect email or password.",
       duplicateEmail: "That email is already registered. Sign in.",
       invalidInput: "Check your email and password and try again.",
-      createdNoSignin: "The account was created, but we couldn't sign you in.",
+      createdNoSignin:
+        "We created your account, but couldn't sign you in. Sign in from Log in.",
     },
   },
 

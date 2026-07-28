@@ -3,8 +3,8 @@ import { redirect } from "next/navigation"
 import { LoaderCircle } from "lucide-react"
 
 import { auth } from "@/auth"
-import { SiteFooter } from "@/components/site-footer"
 import { ActivationPoller } from "@/features/billing/ui/activation-poller"
+import { AccessCard, AccessShell } from "@/features/auth/ui/access-shell"
 import { getStripe } from "@/lib/billing/stripe"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
 import { privatePageMetadata } from "@/lib/seo"
@@ -33,47 +33,39 @@ export default async function BillingSuccessPage({
   }
 
   return (
-    <div className="flex min-h-svh flex-col bg-[radial-gradient(circle_at_top_left,theme(colors.muted),transparent_34rem)]">
-      <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-8">
-        <Link href="/" className="text-sm font-semibold tracking-tight">
-          Resender
-        </Link>
-      </header>
-      <main className="flex flex-1 items-center justify-center px-6 pb-12">
-        <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-8 shadow-sm">
-          <span className="flex size-11 items-center justify-center rounded-full bg-muted text-muted-foreground">
-            <LoaderCircle className="size-5 animate-spin" aria-hidden />
-          </span>
-          <h1 className="mt-5 text-2xl font-semibold tracking-tight">
-            Activating your subscription…
-          </h1>
-          <p className="mt-3 text-muted-foreground">
-            Thanks for subscribing. We&apos;re confirming your payment with
-            Stripe — this usually takes a few seconds and this page will move
-            you along automatically.
-          </p>
-          <p className="mt-6 text-sm text-muted-foreground">
-            Taking longer than expected?{" "}
-            <Link
-              href="/connections"
-              className="font-medium text-foreground underline-offset-4 hover:underline"
-            >
-              Try opening the app
-            </Link>{" "}
-            or reach us at{" "}
-            <a
-              href="mailto:info@resender.dev"
-              className="font-medium text-foreground underline-offset-4 hover:underline"
-            >
-              info@resender.dev
-            </a>
-            .
-          </p>
-        </div>
-      </main>
-      <SiteFooter lang="es" />
+    <AccessShell>
+      <AccessCard className="max-w-130 p-7.5">
+        <span className="flex size-11 items-center justify-center rounded-full bg-primary-soft text-primary-soft-foreground">
+          <LoaderCircle className="size-5 animate-spin" aria-hidden />
+        </span>
+        <h1 className="mt-4.5 font-heading text-[22px] font-bold tracking-tight">
+          Activando tu suscripción…
+        </h1>
+        <p className="mt-2.5 text-[14.5px]/[1.6] text-muted-foreground">
+          Gracias por suscribirte. Estamos confirmando el pago con Stripe: suele
+          tomar unos segundos y esta página te lleva adentro sola. No hace falta
+          que recargues ni que vuelvas a pagar.
+        </p>
+        <p className="mt-4.5 text-[13px]/[1.6] text-muted-foreground">
+          ¿Tarda más de lo esperado?{" "}
+          <Link
+            href="/connections"
+            className="font-medium text-foreground underline-offset-4 hover:underline"
+          >
+            Abre la app
+          </Link>{" "}
+          o escríbenos a{" "}
+          <a
+            href="mailto:info@resender.dev"
+            className="font-medium text-foreground underline-offset-4 hover:underline"
+          >
+            info@resender.dev
+          </a>
+          .
+        </p>
+      </AccessCard>
       <ActivationPoller />
-    </div>
+    </AccessShell>
   )
 }
 

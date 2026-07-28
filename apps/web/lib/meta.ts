@@ -46,11 +46,9 @@ export class WebhookSubscriptionError extends Error {
   }
 }
 
-// code -> user token (corto) -> token largo -> páginas con su page access token.
+// code -> user access token (corto) -> user access token de larga duración.
 // Lanza Error si algún paso falla (el detalle queda en console.error del servidor).
-export async function exchangeCodeForPages(
-  code: string
-): Promise<ConnectedPage[]> {
+export async function exchangeCodeForUserToken(code: string): Promise<string> {
   // 1. code -> user access token (corto). redirect_uri = el mismo del diálogo.
   const tokenUrl = new URL(`${GRAPH}/oauth/access_token`)
   tokenUrl.searchParams.set("client_id", APP_ID)
@@ -66,7 +64,9 @@ export async function exchangeCodeForPages(
   }
   const shortToken = tokenData.access_token
 
-  // 2. corto -> largo (long-lived); si falla, caemos al corto
+  // 2. corto -> largo (long-lived). Falla explícito: antes se caía en silencio
+  // al token corto, y ese token se persiste (ADR 0004). Guardar una credencial
+  // que muere en ~1 hora rompería la selección de páginas sin señal clara.
   const longUrl = new URL(`${GRAPH}/oauth/access_token`)
   longUrl.searchParams.set("grant_type", "fb_exchange_token")
   longUrl.searchParams.set("client_id", APP_ID)
@@ -75,12 +75,23 @@ export async function exchangeCodeForPages(
 
   const longRes = await fetch(longUrl)
   const longData = await longRes.json()
-  const userToken = longData.access_token ?? shortToken
+  if (!longRes.ok || !longData.access_token) {
+    console.error("long-lived token exchange failed", longData)
+    throw new Error("long-lived token exchange failed")
+  }
 
-  // 3. páginas autorizadas + su page access token
+  return longData.access_token as string
+}
+
+// Páginas que el usuario administra + su page access token. Se vuelve a llamar
+// al confirmar la selección, así los tokens de las páginas descartadas nunca
+// tocan la base.
+export async function listAuthorizedPages(
+  userAccessToken: string
+): Promise<ConnectedPage[]> {
   const pagesUrl = new URL(`${GRAPH}/me/accounts`)
   pagesUrl.searchParams.set("fields", "id,name,access_token")
-  pagesUrl.searchParams.set("access_token", userToken)
+  pagesUrl.searchParams.set("access_token", userAccessToken)
 
   const pagesRes = await fetch(pagesUrl)
   const pagesData = await pagesRes.json()

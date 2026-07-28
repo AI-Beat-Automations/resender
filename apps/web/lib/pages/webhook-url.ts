@@ -34,10 +34,10 @@ export function normalizeWebhookUrl(
     return {
       ok: false,
       error:
-        "The URL must use HTTPS. HTTP is only allowed for localhost in development.",
+        "La URL tiene que usar https. Solo se permite http en localhost, para desarrollo.",
     }
   } catch {
-    return { ok: false, error: "Enter a valid URL." }
+    return { ok: false, error: "Escribe una URL válida." }
   }
 }
 
@@ -48,5 +48,7 @@ function resolveWebhookUrlMode(options: WebhookUrlOptions): WebhookUrlMode {
 
 function isLocalHttpUrl(url: URL) {
   const hostname = url.hostname.toLowerCase().replace(/^\[(.*)\]$/, "$1")
-  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1"
+  return (
+    hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1"
+  )
 }

@@ -19,6 +19,15 @@ const badgeVariants = cva(
         ghost:
           "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
         link: "text-primary underline-offset-4 hover:underline",
+        // Tintes semánticos: sobre la crema un tinte suave sin su *-soft-border
+        // se desvanece, así que las cuatro variantes llevan borde siempre.
+        success:
+          "border-success-soft-border bg-success-soft text-success-soft-foreground [a]:hover:bg-success-soft/80",
+        warning:
+          "border-warning-soft-border bg-warning-soft text-warning-soft-foreground [a]:hover:bg-warning-soft/80",
+        info: "border-info-soft-border bg-info-soft text-info-soft-foreground [a]:hover:bg-info-soft/80",
+        destructiveSoft:
+          "border-destructive-soft-border bg-destructive-soft text-destructive-soft-foreground [a]:hover:bg-destructive-soft/80",
       },
     },
     defaultVariants: {

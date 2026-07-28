@@ -141,14 +141,15 @@ export type Dict = {
     rssDescription: string
   }
   auth: {
-    login: { title: string; subtitle: string }
-    register: { title: string; subtitle: string }
+    login: { eyebrow: string; title: string; subtitle: string }
+    register: { eyebrow: string; title: string; subtitle: string }
     passwordChanged: string
     form: {
       email: string
       password: string
       emailPlaceholder: string
       passwordPlaceholder: string
+      passwordHint: string
       processing: string
       signIn: string
       createAccount: string

@@ -10,129 +10,585 @@
 @source "../**/*.{ts,tsx}";
 
 @theme inline {
-    --font-heading: var(--font-hk, var(--font-sans));
-    --color-sidebar-ring: var(--sidebar-ring);
-    --color-sidebar-border: var(--sidebar-border);
-    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-    --color-sidebar-accent: var(--sidebar-accent);
-    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-    --color-sidebar-primary: var(--sidebar-primary);
-    --color-sidebar-foreground: var(--sidebar-foreground);
-    --color-sidebar: var(--sidebar);
-    --color-chart-5: var(--chart-5);
-    --color-chart-4: var(--chart-4);
-    --color-chart-3: var(--chart-3);
-    --color-chart-2: var(--chart-2);
-    --color-chart-1: var(--chart-1);
-    --color-ring: var(--ring);
-    --color-input: var(--input);
-    --color-border: var(--border);
-    --color-destructive: var(--destructive);
-    --color-accent-foreground: var(--accent-foreground);
-    --color-accent: var(--accent);
-    --color-muted-foreground: var(--muted-foreground);
-    --color-muted: var(--muted);
-    --color-secondary-foreground: var(--secondary-foreground);
-    --color-secondary: var(--secondary);
-    --color-primary-foreground: var(--primary-foreground);
-    --color-primary: var(--primary);
-    --color-popover-foreground: var(--popover-foreground);
-    --color-popover: var(--popover);
-    --color-card-foreground: var(--card-foreground);
-    --color-card: var(--card);
-    --color-foreground: var(--foreground);
-    --color-background: var(--background);
-    --radius-sm: calc(var(--radius) * 0.6);
-    --radius-md: calc(var(--radius) * 0.8);
-    --radius-lg: var(--radius);
-    --radius-xl: calc(var(--radius) * 1.4);
-    --radius-2xl: calc(var(--radius) * 1.8);
-    --radius-3xl: calc(var(--radius) * 2.2);
-    --radius-4xl: calc(var(--radius) * 2.6);
-    --font-sans: var(--font-sans);
+  --font-heading: var(--font-hk, var(--font-sans));
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+  --font-sans: var(--font-sans);
+
+  /* Extras del design system que shadcn no trae, expuestos como utilidades
+       (bg-success-soft, text-warning-soft-foreground, border-info-soft-border…). */
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-soft: var(--success-soft);
+  --color-success-soft-border: var(--success-soft-border);
+  --color-success-soft-foreground: var(--success-soft-foreground);
+  --color-success-text: var(--success-text);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-soft-border: var(--warning-soft-border);
+  --color-warning-soft-foreground: var(--warning-soft-foreground);
+  --color-warning-text: var(--warning-text);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-soft: var(--info-soft);
+  --color-info-soft-border: var(--info-soft-border);
+  --color-info-soft-foreground: var(--info-soft-foreground);
+  --color-info-text: var(--info-text);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-soft: var(--destructive-soft);
+  --color-destructive-soft-border: var(--danger-soft-border);
+  --color-destructive-soft-foreground: var(--destructive-soft-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-soft-border: var(--primary-soft-border);
+  --color-primary-soft-foreground: var(--primary-soft-foreground);
+  --color-surface-app: var(--surface-app);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-border-subtle: var(--border-subtle);
+  --color-border-strong: var(--border-strong);
+  --color-bubble-in: var(--bubble-in);
+  --color-bubble-in-border: var(--bubble-in-border);
+  --color-bubble-in-foreground: var(--bubble-in-foreground);
+  --color-bubble-out: var(--bubble-out);
+  --color-bubble-out-border: var(--bubble-out-border);
+  --color-bubble-out-foreground: var(--bubble-out-foreground);
 }
 
-/* Resender brand palette (ver resender-website-spec.md §4).
-   Acento violeta #7773a5 en ambos modos. Aplica global (marketing + dashboard). */
+/* ---------------------------------------------------------------------------
+   Design system: rampas crudas (tokens/colors.css).
+   Acento violeta #7773a5 en ambos modos. Los neutros son arena cálida, nunca
+   gris frío. Las semánticas son apagadas y terrosas para convivir con la crema.
+   --------------------------------------------------------------------------- */
 :root {
-    --background: #f3ece0;
-    --foreground: #242029;
-    --card: #ffffff;
-    --card-foreground: #242029;
-    --popover: #ffffff;
-    --popover-foreground: #242029;
-    --primary: #7773a5;
-    --primary-foreground: #ffffff;
-    --secondary: #ffffff;
-    --secondary-foreground: #242029;
-    --muted: #ebe4d6;
-    --muted-foreground: #6b6780;
-    --accent: #7773a5;
-    --accent-foreground: #ffffff;
-    --destructive: #c0392b;
-    --border: #d4cfc7;
-    --input: #d4cfc7;
-    --ring: #7773a5;
-    --chart-1: #7773a5;
-    --chart-2: #918ec0;
-    --chart-3: #5f5b85;
-    --chart-4: #a9a5c9;
-    --chart-5: #46436b;
-    --radius: 0.625rem;
-    --sidebar: #f3ece0;
-    --sidebar-foreground: #242029;
-    --sidebar-primary: #7773a5;
-    --sidebar-primary-foreground: #ffffff;
-    --sidebar-accent: #ebe4d6;
-    --sidebar-accent-foreground: #242029;
-    --sidebar-border: #d4cfc7;
-    --sidebar-ring: #7773a5;
+  /* Violeta — primario de marca. 500 es el acento fijado. */
+  --violet-50: #f4f3f8;
+  --violet-100: #e7e6f0;
+  --violet-200: #cfcde1;
+  --violet-300: #b3b0cd;
+  --violet-400: #9591b8;
+  --violet-500: #7773a5;
+  --violet-600: #635f8c;
+  --violet-700: #514d73;
+  --violet-800: #3d3a57;
+  --violet-900: #2e2b40;
+  --violet-950: #1e1c2b;
+
+  /* Arena — neutro cálido construido sobre el fondo crema. */
+  --sand-50: #fbf8f2;
+  --sand-100: #f3ede1;
+  --sand-200: #ebe4d6;
+  --sand-300: #ded5c4;
+  --sand-400: #c9bfa9;
+  --sand-500: #a89e8a;
+  --sand-600: #857c6c;
+  --sand-700: #635c50;
+  --sand-800: #474139;
+  --sand-900: #332f2c;
+  --sand-950: #242029; /* tinta — lleva un matiz violeta a propósito */
+
+  /* Superficies de tinta (grises del modo oscuro, con matiz violeta) */
+  --ink-900: #242029;
+  --ink-800: #2e2a35;
+  --ink-700: #35303d;
+  --ink-600: #3d3845;
+  --ink-500: #4a4453;
+  --ink-300: #a09bab;
+
+  /* Salvia — éxito / conectado / positivo */
+  --sage-50: #eff4ec;
+  --sage-100: #e1ebde;
+  --sage-200: #c3d8c3;
+  --sage-300: #9cbfa1;
+  --sage-400: #6ea07b;
+  --sage-500: #3f7a52;
+  --sage-600: #336344;
+  --sage-700: #2a5039;
+  --sage-800: #1f3a2a;
+  --sage-900: #16281e;
+
+  /* Ladrillo — destructivo / error (conserva el #c0392b del producto) */
+  --brick-50: #fbeeea;
+  --brick-100: #f7e4e0;
+  --brick-200: #eec5bc;
+  --brick-300: #de9e92;
+  --brick-400: #ce6c58;
+  --brick-500: #c0392b;
+  --brick-600: #a02d22;
+  --brick-700: #7e241b;
+  --brick-800: #5a1b15;
+  --brick-900: #3b1310;
+
+  /* Azul pizarra — info / énfasis neutro. A un paso de matiz del violeta. */
+  --azure-50: #edf2f7;
+  --azure-100: #e3eaf2;
+  --azure-200: #bfd0e1;
+  --azure-300: #96b3ce;
+  --azure-400: #6591b6;
+  --azure-500: #3a6e9c;
+  --azure-600: #2f5a80;
+  --azure-700: #274867;
+  --azure-800: #1d354b;
+  --azure-900: #152632;
+
+  /* Ocre — aviso / cuota / pendiente */
+  --ochre-50: #fbf3e2;
+  --ochre-100: #f4e1b8;
+  --ochre-200: #e5ce9f;
+  --ochre-300: #d4af66;
+  --ochre-400: #c4881f;
+  --ochre-500: #a9741a;
+  --ochre-600: #8a5a12;
+  --ochre-700: #6b460e;
+  --ochre-800: #4c320b;
+  --ochre-900: #332208;
+
+  /* Absolutos */
+  --white: #ffffff;
+  --black: #000000;
+}
+
+/* ---------------------------------------------------------------------------
+   Design system: espaciado (tokens/spacing.css). Base de 4 px.
+   --------------------------------------------------------------------------- */
+:root {
+  --space-0: 0px;
+  --space-px: 1px;
+  --space-0-5: 2px;
+  --space-1: 4px;
+  --space-1-5: 6px;
+  --space-2: 8px;
+  --space-2-5: 10px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+  --space-28: 112px;
+
+  /* Recetas de ritmo sacadas de los layouts reales */
+  --card-spacing: var(--space-4);
+  --card-spacing-sm: var(--space-3);
+  --section-y: var(--space-20);
+  --section-y-lg: var(--space-28);
+  --gutter: var(--space-6);
+  --container-max: 1152px;
+  --container-prose: 768px;
+  --header-h: 64px;
+  --sidebar-w: 240px;
+  --control-h-xs: 24px;
+  --control-h-sm: 28px;
+  --control-h: 32px;
+  --control-h-lg: 36px;
+  --control-h-field: 40px;
+  --bg-pattern-size: 40px;
+}
+
+/* ---------------------------------------------------------------------------
+   Design system: elevación (tokens/elevation.css).
+   Los radios ya viven en `@theme inline` con los mismos valores; aquí van
+   grosores, anillos y sombras. La elevación es discreta: una línea de pelo hace
+   el trabajo y la sombra es un susurro. Nunca combinar sombra >= md con borde.
+   --------------------------------------------------------------------------- */
+:root {
+  --border-width: 1px;
+  --border-width-thick: 2px;
+
+  --shadow-none: none;
+  --shadow-xs: 0 1px 2px 0 color-mix(in oklab, var(--sand-950) 5%, transparent);
+  --shadow-sm:
+    0 1px 2px 0 color-mix(in oklab, var(--sand-950) 6%, transparent),
+    0 1px 3px 0 color-mix(in oklab, var(--sand-950) 6%, transparent);
+  --shadow-md:
+    0 2px 4px -1px color-mix(in oklab, var(--sand-950) 8%, transparent),
+    0 4px 10px -2px color-mix(in oklab, var(--sand-950) 6%, transparent);
+  --shadow-lg: 0 8px 24px -6px
+    color-mix(in oklab, var(--sand-950) 14%, transparent);
+  --ring-hairline: inset 0 0 0 1px
+    color-mix(in oklab, var(--sand-950) 10%, transparent);
+  --focus-ring: 0 0 0 3px var(--primary-ring);
+}
+
+/* ---------------------------------------------------------------------------
+   Design system: movimiento (tokens/motion.css). Corto, ease-out, nunca rebota.
+   Los keyframes del producto ya viven más abajo en este archivo.
+   --------------------------------------------------------------------------- */
+:root {
+  --duration-fast: 150ms;
+  --duration-base: 250ms;
+  --duration-slow: 350ms;
+  --duration-draw: 450ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-standard: ease-out;
+  --marquee-duration: 45s;
+  --flow-cycle: 5200ms;
+}
+
+/* ---------------------------------------------------------------------------
+   Design system: escala tipográfica (tokens/typography.css).
+   Las FAMILIAS no se declaran aquí: las inyecta `next/font` sobre <html>
+   (--font-sans, --font-mono, --font-hk) y `@theme inline` deriva --font-heading.
+   Declararlas otra vez crearía la referencia cíclica --font-heading <-> --font-hk.
+   Tampoco se redeclara --text-base: es clave del tema de Tailwind (1rem) y el
+   valor del DS (15px) cambiaría el cuerpo de texto del sitio público.
+   --------------------------------------------------------------------------- */
+:root {
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  --text-2xs: 11px;
+  --leading-2xs: 1.45;
+  --leading-xs: 1.5;
+  --leading-sm: 1.5;
+  --leading-base: 1.6;
+  --text-md: 16px;
+  --leading-md: 1.6;
+  --leading-lg: 1.78;
+  --leading-xl: 1.4;
+  --leading-2xl: 1.3;
+  --leading-3xl: 1.2;
+  --leading-4xl: 1.12;
+  --leading-5xl: 1.05;
+  --leading-6xl: 1;
+
+  --tracking-kicker: 0.08em;
+}
+
+/* ---------------------------------------------------------------------------
+   Design system: contrato semántico (tokens/semantic.css).
+   Nombres de shadcn tal cual, más los extras de Resender (--success-*, --info-*,
+   --warning-*, --*-soft, --surface-*, --bubble-*) que shadcn no trae.
+   --------------------------------------------------------------------------- */
+:root {
+  --background: #f3ede1;
+  --foreground: #242029;
+  --card: #ffffff;
+  --card-foreground: #242029;
+  --popover: #ffffff;
+  --popover-foreground: #242029;
+  --primary: #7773a5;
+  --primary-foreground: #ffffff;
+  --secondary: #ffffff;
+  --secondary-foreground: #242029;
+  --muted: #ebe4d6;
+  --muted-foreground: #6b6780;
+  --accent: #7773a5;
+  --accent-foreground: #ffffff;
+  --destructive: #c0392b;
+  --destructive-foreground: #ffffff;
+  --border: #d4cfc7;
+  --input: #d4cfc7;
+  --ring: #7773a5;
+  --radius: 0.625rem;
+
+  /* --- superficies más allá de card --- */
+  --surface-page: var(--sand-100);
+  --surface-card: #ffffff;
+  --surface-sunken: var(--sand-200);
+  --surface-raised: #ffffff;
+  --surface-contrast: var(--sand-950);
+  --surface-contrast-foreground: var(--sand-100);
+  --surface-app: color-mix(in oklab, var(--sand-200) 45%, var(--sand-100));
+
+  /* --- texto --- */
+  --text-strong: var(--sand-950);
+  --text-body: var(--sand-950);
+  --text-muted: #6b6780;
+  --text-subtle: var(--sand-500);
+  --text-accent: var(--violet-500);
+  --text-on-accent: #ffffff;
+  --text-inverse: var(--sand-100);
+
+  /* --- bordes --- */
+  --border-subtle: #e1dace;
+  --border-default: #d4cfc7;
+  --border-strong: var(--sand-400);
+  --border-accent: var(--violet-500);
+
+  /* --- estados de interacción del primario (botones, enlaces) --- */
+  --primary-hover: #6b679a;
+  --primary-active: var(--violet-600);
+  --primary-soft: var(--violet-100);
+  --primary-soft-hover: var(--violet-200);
+  --primary-soft-border: var(--violet-200);
+  --primary-soft-foreground: var(--violet-700);
+  --primary-tint: color-mix(in oklab, var(--violet-500) 10%, transparent);
+  --primary-ring: color-mix(in oklab, var(--violet-500) 50%, transparent);
+
+  /* --- semántica: éxito --- */
+  --success: var(--sage-500);
+  --success-foreground: #ffffff;
+  --success-soft: var(--sage-100);
+  --success-soft-border: var(--sage-200);
+  --success-soft-foreground: var(--sage-700);
+  --success-text: var(--sage-600);
+
+  /* --- semántica: peligro (alias de destructive) --- */
+  --danger: var(--brick-500);
+  --danger-foreground: #ffffff;
+  --danger-soft: var(--brick-100);
+  --danger-soft-border: var(--brick-200);
+  --danger-soft-foreground: var(--brick-700);
+  --danger-text: var(--brick-600);
+  --destructive-soft: var(--brick-100);
+  --destructive-soft-foreground: var(--brick-700);
+
+  /* --- semántica: info --- */
+  --info: var(--azure-500);
+  --info-foreground: #ffffff;
+  --info-soft: var(--azure-100);
+  --info-soft-border: var(--azure-200);
+  --info-soft-foreground: var(--azure-700);
+  --info-text: var(--azure-600);
+
+  /* --- semántica: aviso --- */
+  --warning: var(--ochre-400);
+  --warning-foreground: var(--sand-950);
+  --warning-soft: #f4e1b8;
+  --warning-soft-border: var(--ochre-200);
+  --warning-soft-foreground: var(--ochre-700);
+  --warning-text: var(--ochre-600);
+
+  /* --- burbujas de la bitácora de mensajes --- */
+  --bubble-in: var(--sage-100);
+  --bubble-in-border: var(--sage-200);
+  --bubble-in-foreground: var(--sage-800);
+  --bubble-out: var(--ochre-100);
+  --bubble-out-border: var(--ochre-200);
+  --bubble-out-foreground: var(--ochre-800);
+
+  /* --- gráficos --- */
+  --chart-1: #7773a5;
+  --chart-2: #918ec0;
+  --chart-3: #5f5b85;
+  --chart-4: #a9a5c9;
+  --chart-5: #46436b;
+  --chart-success: var(--sage-400);
+  --chart-info: var(--azure-400);
+  --chart-warning: var(--ochre-300);
+  --chart-danger: var(--brick-400);
+
+  /* --- sidebar --- */
+  --sidebar: #f3ede1;
+  --sidebar-foreground: #242029;
+  --sidebar-primary: #7773a5;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #ebe4d6;
+  --sidebar-accent-foreground: #242029;
+  --sidebar-border: #d4cfc7;
+  --sidebar-ring: #7773a5;
 }
 
 .dark {
-    --background: #242029;
-    --foreground: #f3ece0;
-    --card: #2e2a35;
-    --card-foreground: #f3ece0;
-    --popover: #2e2a35;
-    --popover-foreground: #f3ece0;
-    --primary: #7773a5;
-    --primary-foreground: #ffffff;
-    --secondary: #2e2a35;
-    --secondary-foreground: #f3ece0;
-    --muted: #35303d;
-    --muted-foreground: #a09bab;
-    --accent: #7773a5;
-    --accent-foreground: #ffffff;
-    --destructive: #e5533d;
-    --border: #3d3845;
-    --input: #3d3845;
-    --ring: #7773a5;
-    --chart-1: #918ec0;
-    --chart-2: #7773a5;
-    --chart-3: #a9a5c9;
-    --chart-4: #5f5b85;
-    --chart-5: #c7c4dd;
-    --sidebar: #2e2a35;
-    --sidebar-foreground: #f3ece0;
-    --sidebar-primary: #7773a5;
-    --sidebar-primary-foreground: #ffffff;
-    --sidebar-accent: #35303d;
-    --sidebar-accent-foreground: #f3ece0;
-    --sidebar-border: #3d3845;
-    --sidebar-ring: #7773a5;
+  --background: #242029;
+  --foreground: #f3ede1;
+  --card: #2e2a35;
+  --card-foreground: #f3ede1;
+  --popover: #2e2a35;
+  --popover-foreground: #f3ede1;
+  --primary: #7773a5;
+  --primary-foreground: #ffffff;
+  --secondary: #2e2a35;
+  --secondary-foreground: #f3ede1;
+  --muted: #35303d;
+  --muted-foreground: #a09bab;
+  --accent: #7773a5;
+  --accent-foreground: #ffffff;
+  --destructive: #e5533d;
+  --destructive-foreground: #ffffff;
+  --border: #3d3845;
+  --input: #3d3845;
+  --ring: #7773a5;
+
+  --surface-page: var(--ink-900);
+  --surface-card: var(--ink-800);
+  --surface-sunken: var(--ink-700);
+  --surface-raised: var(--ink-700);
+  --surface-contrast: var(--sand-100);
+  --surface-contrast-foreground: var(--sand-950);
+  --surface-app: color-mix(in oklab, var(--ink-800) 40%, var(--ink-900));
+
+  --text-strong: var(--sand-100);
+  --text-body: var(--sand-100);
+  --text-muted: #a09bab;
+  --text-subtle: #7c7689;
+  --text-accent: #a9a5c9;
+  --text-inverse: var(--sand-950);
+
+  --border-subtle: #332e3b;
+  --border-default: #3d3845;
+  --border-strong: #4a4453;
+  --border-accent: var(--violet-400);
+
+  --primary-hover: #8985b4;
+  --primary-active: var(--violet-400);
+  --primary-soft: color-mix(in oklab, var(--violet-500) 22%, var(--ink-900));
+  --primary-soft-hover: color-mix(
+    in oklab,
+    var(--violet-500) 32%,
+    var(--ink-900)
+  );
+  --primary-soft-border: color-mix(
+    in oklab,
+    var(--violet-500) 45%,
+    var(--ink-900)
+  );
+  --primary-soft-foreground: #c7c4dd;
+
+  --success: #6ea07b;
+  --success-foreground: #12211a;
+  --success-soft: #24352a;
+  --success-soft-border: #3a5343;
+  --success-soft-foreground: #a8d3b2;
+  --success-text: #8fc29c;
+
+  --danger: #e5533d;
+  --danger-foreground: #ffffff;
+  --danger-soft: #3a2521;
+  --danger-soft-border: #5a342c;
+  --danger-soft-foreground: #f0a99a;
+  --danger-text: #ec8776;
+  --destructive-soft: #3a2521;
+  --destructive-soft-foreground: #f0a99a;
+
+  --info: #6591b6;
+  --info-foreground: #0f1b24;
+  --info-soft: #1f2b38;
+  --info-soft-border: #35485c;
+  --info-soft-foreground: #a9c8e5;
+  --info-text: #9bbbd8;
+
+  --warning: #d4af66;
+  --warning-foreground: #241f0f;
+  --warning-soft: #33291a;
+  --warning-soft-border: #52412a;
+  --warning-soft-foreground: #e8c888;
+  --warning-text: #debb7a;
+
+  --bubble-in: #24352a;
+  --bubble-in-border: #3a5343;
+  --bubble-in-foreground: #c6e3cd;
+  --bubble-out: #33291a;
+  --bubble-out-border: #52412a;
+  --bubble-out-foreground: #edd6a6;
+
+  --chart-1: #918ec0;
+  --chart-2: #7773a5;
+  --chart-3: #a9a5c9;
+  --chart-4: #5f5b85;
+  --chart-5: #c7c4dd;
+
+  --sidebar: #2e2a35;
+  --sidebar-foreground: #f3ede1;
+  --sidebar-primary: #7773a5;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #35303d;
+  --sidebar-accent-foreground: #f3ede1;
+  --sidebar-border: #3d3845;
+  --sidebar-ring: #7773a5;
+
+  /* Sombras del DS en oscuro (tokens/elevation.css). */
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.35);
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4), 0 1px 3px 0 rgba(0, 0, 0, 0.3);
+  --shadow-md:
+    0 2px 4px -1px rgba(0, 0, 0, 0.45), 0 4px 10px -2px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 8px 24px -6px rgba(0, 0, 0, 0.55);
+  --ring-hairline: inset 0 0 0 1px rgba(243, 237, 225, 0.1);
 }
 
+/* Defaults de elemento del design system (tokens/base.css).
+   Van dentro de `@layer base` a propósito: así las utilidades de Tailwind y el
+   `prose` del blog, que viven en capas posteriores, siguen ganando y el sitio
+   público no cambia. Se omite el `box-sizing` (ya lo pone el preflight). */
 @layer base {
   * {
     @apply border-border outline-ring/50;
-    }
+  }
   body {
     @apply bg-background text-foreground;
-    }
-  h1, h2, h3, h4 {
+    font-family: var(--font-sans);
+    font-size: var(--text-md);
+    line-height: var(--leading-md);
+    -webkit-font-smoothing: antialiased;
+    text-wrap: pretty;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
     font-family: var(--font-heading);
-    }
+    font-weight: var(--weight-bold);
+    letter-spacing: var(--tracking-tight);
+  }
+  code,
+  kbd,
+  pre,
+  samp {
+    font-family: var(--font-mono);
+  }
+  ::selection {
+    background: var(--primary-soft);
+    color: var(--primary-soft-foreground);
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+/* Kicker: la etiqueta de sección con sabor a IDE — siempre minúscula, mono, "// ". */
+.kicker {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--primary);
+}
+.kicker::before {
+  content: "// ";
+  color: var(--text-muted);
 }
 
 /* Shiki (codeToHtml, usado por el code-panel de la landing): clase .shiki. */
@@ -172,8 +628,14 @@ pre[data-theme] span {
 
 /* Caret que parpadea (acento "IDE" en el titular del hero). */
 @keyframes caret-blink {
-  0%, 70%, 100% { opacity: 1; }
-  35% { opacity: 0; }
+  0%,
+  70%,
+  100% {
+    opacity: 1;
+  }
+  35% {
+    opacity: 0;
+  }
 }
 .caret-blink {
   animation: caret-blink 1.1s steps(1) infinite;
@@ -206,38 +668,79 @@ pre[data-theme] span {
    Se disparan con `animation-delay` por elemento; el contenedor se remonta por
    ciclo para reproducirlas en loop. `both` mantiene el estado inicial/final. */
 @keyframes msg-pop {
-  from { opacity: 0; transform: scale(0.8) translateY(8px); }
-  to   { opacity: 1; transform: scale(1) translateY(0); }
+  from {
+    opacity: 0;
+    transform: scale(0.8) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 @keyframes node-pop {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 @keyframes connector-draw {
-  from { transform: scaleY(0); }
-  to   { transform: scaleY(1); }
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
 }
 @keyframes connector-pulse {
-  0%, 100% { opacity: 0.35; }
-  50%      { opacity: 1; }
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 /* Spinner del nodo: da una vuelta y se desvanece (para dar paso al tilde). */
 @keyframes spin-done {
-  0%   { transform: rotate(0deg); opacity: 1; }
-  80%  { transform: rotate(360deg); opacity: 1; }
-  100% { transform: rotate(360deg); opacity: 0; }
+  0% {
+    transform: rotate(0deg);
+    opacity: 1;
+  }
+  80% {
+    transform: rotate(360deg);
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(360deg);
+    opacity: 0;
+  }
 }
 /* Tilde "terminó": aparece con un pop cuando el spinner completó la vuelta. */
 @keyframes check-pop {
-  0%   { opacity: 0; transform: scale(0.4); }
-  60%  { opacity: 1; transform: scale(1.15); }
-  100% { opacity: 1; transform: scale(1); }
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 /* Marquee horizontal de preguntas (sección "El dolor de siempre"). El track
    duplica su contenido; trasladar -50% cierra el loop sin salto. */
 @keyframes marquee {
-  to { transform: translateX(-50%); }
+  to {
+    transform: translateX(-50%);
+  }
 }
 .animate-marquee {
   animation: marquee 45s linear infinite;

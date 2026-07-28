@@ -55,13 +55,19 @@ export function buildInboundPushPayload(input: {
   }
 }
 
-export async function recordSkippedDelivery(messageId: string) {
+// El motivo es parametrizable porque hay más de una razón para no entregar: la
+// página sin `webhookUrl` y la cuenta restringida (ADR 0003), que persiste el
+// entrante pero deja de reenviarlo.
+export async function recordSkippedDelivery(
+  messageId: string,
+  reason = "webhookUrl not configured"
+) {
   await recordDelivery({
     messageId,
     webhookUrl: null,
     status: "skipped",
     statusCode: null,
-    error: "webhookUrl not configured",
+    error: reason,
     attempt: 1,
   })
 }
