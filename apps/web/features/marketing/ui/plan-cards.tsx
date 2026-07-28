@@ -13,11 +13,19 @@ import {
 } from "@workspace/ui/components/card"
 import { cn } from "@workspace/ui/lib/utils"
 
-import { dict } from "@/content/i18n/es"
+import { getDictionary, localePath, type Locale } from "@/content/i18n"
 
 // Cards de planes. Reutilizado por la preview de la landing y la página /pricing.
 // `showFeatures` controla si se listan los features (full) o no (preview).
-export function PlanCards({ showFeatures = true }: { showFeatures?: boolean }) {
+export function PlanCards({
+  lang,
+  showFeatures = true,
+}: {
+  lang: Locale
+  showFeatures?: boolean
+}) {
+  const dict = getDictionary(lang)
+
   return (
     <div className="mx-auto grid max-w-3xl gap-6 sm:grid-cols-2">
       {dict.pricing.plans.map((plan) => (
@@ -64,7 +72,7 @@ export function PlanCards({ showFeatures = true }: { showFeatures?: boolean }) {
               variant={plan.featured ? "default" : "outline"}
             >
               {/* TODO: Stripe — por ahora el CTA va al registro existente. */}
-              <Link href="/register">{plan.cta}</Link>
+              <Link href={localePath("/register", lang)}>{plan.cta}</Link>
             </Button>
           </CardFooter>
         </Card>

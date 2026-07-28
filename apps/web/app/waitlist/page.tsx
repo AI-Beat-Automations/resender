@@ -5,7 +5,10 @@ import { Clock3 } from "lucide-react"
 import { auth, signOut } from "@/auth"
 import { AccessCard, AccessShell } from "@/features/auth/ui/access-shell"
 import { isUserWaitlisted } from "@/lib/auth/waitlist"
+import { privatePageMetadata } from "@/lib/seo"
 import { Button } from "@workspace/ui/components/button"
+
+export const metadata = privatePageMetadata("Lista de espera")
 
 // Aterrizaje de las cuentas que se registraron con el producto cerrado.
 // Vive fuera del grupo `(product)` a propósito: ese layout rebota aquí a los

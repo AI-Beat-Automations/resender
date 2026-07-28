@@ -10,6 +10,11 @@ import { isUserWaitlisted } from "@/lib/auth/waitlist"
 import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
 import type { TenantEntitlement } from "@/lib/billing/entitlements"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
+import { privatePageMetadata } from "@/lib/seo"
+
+// La app logueada no tiene nada que hacer en el índice. Lo heredan
+// /connections, /messages y /settings.
+export const metadata = privatePageMetadata("Resender")
 
 export default async function ProductLayout({
   children,

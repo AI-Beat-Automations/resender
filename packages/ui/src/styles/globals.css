@@ -641,6 +641,29 @@ pre[data-theme] span {
   animation: caret-blink 1.1s steps(1) infinite;
 }
 
+/* Máquina de escribir del H1 del hero. El texto completo ya está en el HTML
+   servido (ver features/marketing/ui/typewriter.tsx); esto solo revela su ancho,
+   así que el titular llega entero al crawler y a quien tenga JS desactivado.
+   `max-width` en vez de `width`: si el ancho estimado en `ch` se pasa del ancho
+   real, el elemento se queda en su ancho natural en lugar de estirarse. */
+@keyframes typewriter-reveal {
+  from { max-width: 0; }
+  to   { max-width: calc(var(--typewriter-chars) * 1.2ch); }
+}
+.typewriter {
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  vertical-align: bottom;
+  animation: typewriter-reveal var(--typewriter-duration, 1s)
+    steps(var(--typewriter-chars, 20)) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .typewriter {
+    animation: none;
+  }
+}
+
 /* FlowMock: animaciones de la secuencia (burbujas, nodo, conectores).
    Se disparan con `animation-delay` por elemento; el contenedor se remonta por
    ciclo para reproducirlas en loop. `both` mantiene el estado inicial/final. */

@@ -2,6 +2,7 @@ import Link from "next/link"
 import type { ReactNode } from "react"
 
 import { SiteLogo } from "@/components/site-logo"
+import { getDictionary, localePath, type Locale } from "@/content/i18n"
 import { cn } from "@workspace/ui/lib/utils"
 
 // Chrome compartido de las cinco pantallas de acceso (login, registro,
@@ -9,17 +10,28 @@ import { cn } from "@workspace/ui/lib/utils"
 // sidebar: viven fuera del grupo `(product)` y se dibujan como una tarjeta
 // centrada sobre la crema, con topbar de wordmark y pie legal compacto.
 
+// `lang` solo lo pasan login y registro, que sí tienen gemela en /en (ADR
+// 0006). Las otras tres pantallas son español-only y usan el valor por
+// defecto. Las páginas legales no tienen gemela en inglés, así que sus enlaces
+// apuntan siempre a la raíz: traducir la etiqueta es todo lo que se puede.
 type AccessShellProps = {
   children: ReactNode
   // Zona derecha del topbar: enlace a documentación o botón de cerrar sesión.
   topbarEnd?: ReactNode
+  lang?: Locale
 }
 
-export function AccessShell({ children, topbarEnd }: AccessShellProps) {
+export function AccessShell({
+  children,
+  topbarEnd,
+  lang = "es",
+}: AccessShellProps) {
+  const t = getDictionary(lang).footer.links
+
   return (
     <div className="flex min-h-svh flex-col bg-background bg-[radial-gradient(circle_at_top_left,var(--muted),transparent_38rem)]">
       <header className="flex items-center justify-between px-10 py-7">
-        <SiteLogo />
+        <SiteLogo href={localePath("/", lang)} />
         {topbarEnd}
       </header>
       <main className="flex flex-1 flex-col items-center justify-center px-10 pb-15">
@@ -29,11 +41,11 @@ export function AccessShell({ children, topbarEnd }: AccessShellProps) {
         <span>© {new Date().getFullYear()} AI Beat · Resender</span>
         <span aria-hidden>·</span>
         <Link href="/privacy" className="underline-offset-4 hover:underline">
-          Privacidad
+          {t.privacy}
         </Link>
         <span aria-hidden>·</span>
         <Link href="/terms" className="underline-offset-4 hover:underline">
-          Términos
+          {t.terms}
         </Link>
       </footer>
     </div>
@@ -41,13 +53,13 @@ export function AccessShell({ children, topbarEnd }: AccessShellProps) {
 }
 
 // Enlace por defecto del topbar en las pantallas sin sesión abierta.
-export function AccessDocsLink() {
+export function AccessDocsLink({ lang = "es" }: { lang?: Locale }) {
   return (
     <Link
       href="/docs"
       className="text-[13.5px] text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
     >
-      Documentación
+      {getDictionary(lang).footer.links.docs}
     </Link>
   )
 }

@@ -5,9 +5,9 @@ import { Card } from "@workspace/ui/components/card"
 import { Section, SectionHeading } from "@/features/marketing/ui/section"
 import { Reveal } from "@/features/marketing/ui/reveal"
 import { QuestionMarquee } from "@/features/marketing/ui/question-marquee"
-import { dict } from "@/content/i18n/es"
+import { getDictionary, type Locale } from "@/content/i18n"
 
-// Registro de iconos para los pain points (mapeados por `icon` en es.ts).
+// Registro de iconos para los pain points (mapeados por `icon` en el diccionario).
 const icons: Record<string, LucideIcon> = {
   wallet: Wallet,
   unplug: Unplug,
@@ -15,11 +15,13 @@ const icons: Record<string, LucideIcon> = {
   zap: Zap,
 }
 
-export function PainPoint() {
+export function PainPoint({ lang }: { lang: Locale }) {
+  const dict = getDictionary(lang)
+
   return (
     <Section>
       <SectionHeading
-        kicker="el problema"
+        kicker={dict.pain.kicker}
         title={dict.pain.title}
         subtitle={dict.pain.subtitle}
       />

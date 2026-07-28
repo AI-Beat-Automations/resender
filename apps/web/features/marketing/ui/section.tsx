@@ -34,12 +34,17 @@ export function SectionHeading({
   kicker,
   title,
   subtitle,
+  as: Heading = "h2",
   className,
 }: {
   // Kicker estilo comentario de código: se renderiza como `// {kicker}` en mono.
   kicker?: string
   title: string
   subtitle?: string
+  // Nivel del encabezado. Por defecto h2, porque en la landing el h1 lo pone el
+  // hero. Las páginas cuya primera sección ES el encabezado principal
+  // (/pricing, /blog, /vs-manychat) pasan "h1": sin esto quedaban sin h1.
+  as?: "h1" | "h2"
   className?: string
 }) {
   return (
@@ -50,7 +55,9 @@ export function SectionHeading({
           {kicker}
         </p>
       ) : null}
-      <h2 className="text-3xl font-bold tracking-tight md:text-4xl">{title}</h2>
+      <Heading className="text-3xl font-bold tracking-tight md:text-4xl">
+        {title}
+      </Heading>
       {subtitle ? (
         <p className="mt-4 text-lg text-muted-foreground">{subtitle}</p>
       ) : null}

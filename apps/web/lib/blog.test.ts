@@ -4,25 +4,34 @@ import {
   getHeadings,
   parseCategoryLabel,
   parsePost,
-  parseSpanishDate,
+  parsePostDate,
 } from "./blog"
 
-describe("parseSpanishDate", () => {
+describe("parsePostDate", () => {
   it("parsea fecha en español", () => {
-    expect(parseSpanishDate("23 de julio de 2026")).toBe("2026-07-23")
-    expect(parseSpanishDate("1 de enero de 2027")).toBe("2027-01-01")
-    expect(parseSpanishDate("5 de setiembre de 2025")).toBe("2025-09-05")
+    expect(parsePostDate("23 de julio de 2026")).toBe("2026-07-23")
+    expect(parsePostDate("1 de enero de 2027")).toBe("2027-01-01")
+    expect(parsePostDate("5 de setiembre de 2025")).toBe("2025-09-05")
+  })
+
+  it("parsea fecha en inglés (posts de /en)", () => {
+    expect(parsePostDate("July 23, 2026")).toBe("2026-07-23")
+    expect(parsePostDate("Jan 1 2027")).toBe("2027-01-01")
+    expect(parsePostDate("23 July 2026")).toBe("2026-07-23")
+    expect(parsePostDate("3rd September, 2025")).toBe("2025-09-03")
   })
 
   it("parsea ISO y dd/mm/yyyy", () => {
-    expect(parseSpanishDate("2026-07-23")).toBe("2026-07-23")
-    expect(parseSpanishDate("23/07/2026")).toBe("2026-07-23")
-    expect(parseSpanishDate("7/3/2026")).toBe("2026-03-07")
+    expect(parsePostDate("2026-07-23")).toBe("2026-07-23")
+    expect(parsePostDate("23/07/2026")).toBe("2026-07-23")
+    expect(parsePostDate("7/3/2026")).toBe("2026-03-07")
   })
 
   it("devuelve null si no es una fecha", () => {
-    expect(parseSpanishDate("hola mundo")).toBeNull()
-    expect(parseSpanishDate("importante")).toBeNull()
+    expect(parsePostDate("hola mundo")).toBeNull()
+    expect(parsePostDate("importante")).toBeNull()
+    // Palabra suelta con forma de mes pero sin día/año.
+    expect(parsePostDate("julio")).toBeNull()
   })
 })
 
@@ -34,8 +43,17 @@ describe("parseCategoryLabel", () => {
     expect(parseCategoryLabel("actualizaciones")).toBe("actualizacion")
   })
 
+  it("mapea la etiqueta visible nueva y su equivalente en inglés", () => {
+    // La etiqueta visible pasó a ser "Novedades" / "News"; la clave interna
+    // sigue siendo `actualizacion`.
+    expect(parseCategoryLabel("Novedades")).toBe("actualizacion")
+    expect(parseCategoryLabel("Novedad")).toBe("actualizacion")
+    expect(parseCategoryLabel("News")).toBe("actualizacion")
+    expect(parseCategoryLabel("Tutorials")).toBe("tutorial")
+  })
+
   it("devuelve null si no es una categoría conocida", () => {
-    expect(parseCategoryLabel("Novedad")).toBeNull()
+    expect(parseCategoryLabel("Opinión")).toBeNull()
     expect(parseCategoryLabel("23 de julio de 2026")).toBeNull()
   })
 })

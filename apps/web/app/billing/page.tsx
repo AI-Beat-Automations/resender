@@ -6,8 +6,11 @@ import { startCheckout } from "@/features/billing/actions"
 import { isUserWaitlisted } from "@/lib/auth/waitlist"
 import { PLANS } from "@/lib/billing/plans"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
+import { privatePageMetadata } from "@/lib/seo"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
+
+export const metadata = privatePageMetadata("Suscripción")
 
 // El plan destacado. El diseño marca Pro con el anillo violeta grueso.
 const RECOMMENDED_PLAN = "pro_monthly"

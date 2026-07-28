@@ -5,20 +5,38 @@
 
 ## Resumen en 3 pasos (todo desde el navegador, sin abrir código)
 
-1. Entrá al repo en GitHub → carpeta `apps/web/content/blog/`.
+1. Entrá al repo en GitHub → carpeta `apps/web/content/blog/es/` (o
+   `apps/web/content/blog/en/` si el post está en inglés).
 2. Tocá **Add file → Create new file** (o **Upload files** si ya tenés el `.md`).
 3. Nombrá el archivo, pegá el contenido y tocá **Commit changes**.
 
-Al hacer commit **a la rama de producción**, Vercel reconstruye el sitio y el
-post queda publicado solo en unos minutos.
+Al hacer commit **a la rama de producción**, se reconstruye el sitio en
+Cloudflare y el post queda publicado solo en unos minutos.
 
-> ⚠️ **Importante:** el post solo sale live si lo commiteás a la rama que Vercel
-> usa como producción (normalmente `main`). Si lo subís a otra rama, no aparece
-> hasta que esa rama se mergee a producción.
+> ⚠️ **Importante:** el post solo sale live si lo commiteás a la rama de
+> producción (normalmente `main`). Si lo subís a otra rama, no aparece hasta que
+> esa rama se mergee a producción.
+
+## La carpeta = el idioma
+
+El sitio tiene dos versiones: español en la raíz e inglés bajo `/en`. El blog
+sigue la misma lógica y el idioma **sale de la carpeta**, no de nada que escribas
+adentro del archivo:
+
+| Carpeta | Se publica en |
+|---|---|
+| `apps/web/content/blog/es/` | `/blog` |
+| `apps/web/content/blog/en/` | `/en/blog` |
+
+**Si el post existe en los dos idiomas, usá exactamente el mismo nombre de
+archivo en las dos carpetas.** Así el switch ES/EN del header lleva al lector de
+una versión a la otra en vez de tirarle un 404. Un post que solo existe en un
+idioma se publica igual; simplemente no aparece en el otro.
 
 ## El nombre del archivo = la URL
 
-`limites-para-agentes-de-ia.md` → se publica en `/blog/limites-para-agentes-de-ia`
+`es/limites-para-agentes-de-ia.md` → se publica en `/blog/limites-para-agentes-de-ia`
+`en/limites-para-agentes-de-ia.md` → se publica en `/en/blog/limites-para-agentes-de-ia`
 
 Reglas para el nombre:
 
@@ -71,7 +89,7 @@ una tabla de contenidos para saltar entre ellas.
 ### Categoría (opcional, para el filtro del blog)
 
 En la lista del blog hay un filtro con dos categorías: **Tutoriales** y
-**Actualizaciones**. Para que un post aparezca bajo una de ellas, escribí la
+**Novedades**. Para que un post aparezca bajo una de ellas, escribí la
 categoría **en la misma línea de la fecha**, separada con `·`:
 
 ```markdown
@@ -80,13 +98,41 @@ categoría **en la misma línea de la fecha**, separada con `·`:
 *Tutorial · 23 de julio de 2026*
 ```
 
-Podés usar `Tutorial` o `Actualización`. El orden no importa
+Podés usar `Tutorial` o `Novedades` (también se aceptan `Actualización` y, en
+posts en inglés, `Tutorial` / `News`). El orden no importa
 (`*23 de julio de 2026 · Tutorial*` también funciona). Si no ponés categoría, el
 post igual se publica y se ve en la lista, pero no queda dentro de ninguna de las
 dos categorías del filtro.
 
 > El `·` es un punto medio. En Mac lo escribís con **Option + Shift + 9**. Si te
 > resulta más cómodo, también podés separar con `|` (ej. `*Tutorial | 23 de julio de 2026*`).
+
+### Autor y fecha de actualización (opcional, pero suma en Google)
+
+Si querés firmar el post o dejar constancia de que lo actualizaste, poné un
+bloque de datos entre dos líneas de `---`, **arriba de todo el archivo**:
+
+```markdown
+---
+author: Nombre y Apellido
+updatedOn: 2026-09-15
+---
+
+# Título del post
+
+*Tutorial · 23 de julio de 2026*
+```
+
+- **`author`** — el nombre de una persona real. Google lo usa como señal de que
+  detrás del contenido hay alguien con experiencia en el tema, y aparece debajo
+  del título. Si no lo ponés, el artículo queda firmado por Resender.
+- **`updatedOn`** — la fecha de la última revisión, en formato `AAAA-MM-DD`.
+  Ponela **solo si de verdad revisaste el post**: le dice a Google que el
+  contenido sigue vigente, y una fecha falsa es una señal que después no vas a
+  poder sostener.
+
+> ⚠️ En ese bloque **no** pongas `title`: el título se sigue tomando del `#` del
+> cuerpo, y si lo duplicás acá el post te va a mostrar el encabezado dos veces.
 
 ### Formatos de fecha válidos
 
@@ -96,15 +142,26 @@ Cualquiera de estos funciona (elegí el que te resulte más cómodo):
 - `*2026-07-23*`
 - `*23/07/2026*`
 
+En los posts en inglés también podés escribir el mes en inglés:
+
+- `*July 23, 2026*`
+- `*23 July 2026*`
+
 Si no ponés fecha, el post igual se publica, pero sin fecha visible.
+
+> ⚠️ Con barras la fecha siempre se lee **día/mes/año**, también en inglés:
+> `*07/03/2026*` es el 7 de marzo. Si te genera dudas, usá el mes con nombre.
 
 ## Preguntas frecuentes
 
 **¿Necesito estar en la computadora?** No. Todo se puede hacer desde el navegador
 en GitHub, incluso desde el celular.
 
-**¿Puedo poner imágenes?** Sí. Subí la imagen a `apps/web/public/blog/` y usala
-con `![texto alternativo](/blog/mi-imagen.png)`.
+**¿Puedo poner imágenes?** Sí. Subí la imagen a `apps/web/public/blog/` (esa
+carpeta todavía no existe: al subir la primera imagen desde GitHub se crea sola)
+y usala con `![texto alternativo](/blog/mi-imagen.png)`. Escribí siempre el texto
+alternativo entre los corchetes: es lo que leen los lectores de pantalla y lo que
+usa Google para entender la imagen.
 
 **¿Cómo borro o edito un post?** Editá o borrá el `.md` desde GitHub y hacé
 commit. El sitio se actualiza solo.
