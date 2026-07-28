@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   classifyPagesForSelection,
+  formatPageAllowance,
   validatePageSelection,
   type PageOwnershipRow,
 } from "./page-selection"
@@ -127,7 +128,9 @@ describe("page selection classification", () => {
     expect(result.ok).toBe(false)
     expect(result).toMatchObject({ code: "page_limit_exceeded" })
     if (!result.ok) {
-      expect(result.message).toContain("2 connected Pages")
+      expect(result.message).toBe(
+        "Tu plan permite 2 páginas conectadas y ya tienes 0 activas: puedes añadir 2 páginas más. Desmarca las que sobren o desconecta una página para liberar cupo."
+      )
     }
   })
 
@@ -152,5 +155,62 @@ describe("page selection classification", () => {
       ok: true,
       value: [{ pageId: "b", name: "Page b" }],
     })
+  })
+})
+
+// Copy en español (ADR 0005). El caso sin cupo tiene que nombrar la acción
+// —desconectar una página— y no la pantalla de Conexiones.
+describe("page selection copy", () => {
+  const viewWith = (activePageCount: number, maxPages: number) =>
+    classifyPagesForSelection({
+      metaPages: [metaPage("a"), metaPage("b"), metaPage("c")],
+      ownership: [],
+      tenantId: "felipe",
+      activePageCount,
+      maxPages,
+    })
+
+  it("names the disconnect action instead of the Connections screen when there is no room left", () => {
+    const view = viewWith(2, 2)
+
+    expect(formatPageAllowance(view)).toBe(
+      "No te queda cupo: desconecta una página para liberar cupo y conectar otra."
+    )
+
+    const result = validatePageSelection({ view, selectedPageIds: ["a"] })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.message).toBe(
+        "Tu plan permite 2 páginas conectadas y ya tienes 2 activas: no te queda cupo. Desconecta una página para liberar cupo y conectar otra."
+      )
+      expect(result.message).not.toMatch(/Conexiones/)
+    }
+  })
+
+  it("says how many pages can still be added, in singular and plural", () => {
+    expect(formatPageAllowance(viewWith(1, 2))).toBe(
+      "Puedes añadir 1 página más."
+    )
+    expect(formatPageAllowance(viewWith(0, 3))).toBe(
+      "Puedes añadir 3 páginas más."
+    )
+  })
+
+  it("asks to reload when the selection includes a page of another tenant", () => {
+    const view = classifyPagesForSelection({
+      metaPages: [metaPage("a")],
+      ownership: [ownedBy("a", "arturo")],
+      tenantId: "felipe",
+      activePageCount: 0,
+      maxPages: 2,
+    })
+
+    const result = validatePageSelection({ view, selectedPageIds: ["a"] })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.message).toBe(
+        "Esa selección incluye una página que no puedes conectar. Recarga la pantalla e inténtalo de nuevo."
+      )
+    }
   })
 })

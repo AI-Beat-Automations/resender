@@ -1,8 +1,13 @@
 import { redirect } from "next/navigation"
 
 import { auth } from "@/auth"
-import { SiteFooter } from "@/components/site-footer"
 import { registerAction } from "@/features/auth/actions"
+import {
+  AccessCard,
+  AccessDocsLink,
+  AccessEyebrow,
+  AccessShell,
+} from "@/features/auth/ui/access-shell"
 import { AuthForm } from "@/features/auth/ui/auth-form"
 
 export default async function RegisterPage() {
@@ -10,20 +15,17 @@ export default async function RegisterPage() {
   if (session?.user?.id) redirect("/connections")
 
   return (
-    <div className="flex min-h-svh flex-col">
-      <main className="flex flex-1 items-center justify-center px-6 py-12">
-        <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-sm">
-          <div className="mb-6">
-            <h1 className="text-2xl font-bold tracking-tight">Register</h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Create an account with email and password. There&apos;s no email
-              verification in the MVP.
-            </p>
-          </div>
-          <AuthForm action={registerAction} mode="register" />
-        </div>
-      </main>
-      <SiteFooter />
-    </div>
+    <AccessShell topbarEnd={<AccessDocsLink />}>
+      <AccessCard className="max-w-95 p-6.5">
+        <AccessEyebrow label="alta" />
+        <h1 className="mt-1.5 font-heading text-[22px] font-bold tracking-tight">
+          Crear cuenta.
+        </h1>
+        <p className="mt-2 text-[13.5px] text-muted-foreground">
+          Email y contraseña. No hay verificación por correo en el MVP.
+        </p>
+        <AuthForm action={registerAction} mode="register" />
+      </AccessCard>
+    </AccessShell>
   )
 }

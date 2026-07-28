@@ -75,6 +75,21 @@ function resolveState(
   return row.status === "active" ? "already_connected" : "selectable"
 }
 
+// Cuántas páginas puede añadir todavía, en una frase. Se usa en la cabecera de
+// `/connections/select` y en el aviso del formulario, para que el mismo dato no
+// se redacte dos veces. Sin cupo nombra **la acción** (desconectar), no la
+// pantalla: quien llegó desde «Volver a conectar» ya viene de Conexiones
+// (ADR 0005).
+export function formatPageAllowance(view: PageSelectionView): string {
+  if (view.remainingSlots === 0) {
+    return "No te queda cupo: desconecta una página para liberar cupo y conectar otra."
+  }
+
+  return `Puedes añadir ${view.remainingSlots} ${
+    view.remainingSlots === 1 ? "página" : "páginas"
+  } más.`
+}
+
 export type PageSelectionResult =
   | { ok: true; value: MetaPageSummary[] }
   | {
@@ -102,7 +117,7 @@ export function validatePageSelection(input: {
         ok: false,
         code: "invalid_selection",
         message:
-          "That selection includes a Page you can't connect. Reload the page and try again.",
+          "Esa selección incluye una página que no puedes conectar. Recarga la pantalla e inténtalo de nuevo.",
       }
     }
 
@@ -111,10 +126,18 @@ export function validatePageSelection(input: {
   }
 
   if (newPages.length > input.view.remainingSlots) {
+    const { maxPages, activePageCount, remainingSlots } = input.view
+    const plan = `Tu plan permite ${maxPages} páginas conectadas y ya tienes ${activePageCount} activas`
+
     return {
       ok: false,
       code: "page_limit_exceeded",
-      message: `Your plan allows ${input.view.maxPages} connected Pages and you already have ${input.view.activePageCount} active, so you can add ${input.view.remainingSlots} more. Disconnect Pages in Connections to free slots.`,
+      message:
+        remainingSlots === 0
+          ? `${plan}: no te queda cupo. Desconecta una página para liberar cupo y conectar otra.`
+          : `${plan}: puedes añadir ${remainingSlots} ${
+              remainingSlots === 1 ? "página" : "páginas"
+            } más. Desmarca las que sobren o desconecta una página para liberar cupo.`,
     }
   }
 

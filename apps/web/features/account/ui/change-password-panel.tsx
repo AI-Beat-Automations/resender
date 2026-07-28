@@ -1,12 +1,19 @@
 "use client"
 
 import { useActionState } from "react"
+import { LoaderCircle } from "lucide-react"
 
 import {
   changePasswordAction,
   type ChangePasswordState,
 } from "@/features/account/actions"
+import {
+  SettingsCard,
+  SettingsCardTitle,
+} from "@/features/settings/ui/settings-card"
 import { Button } from "@workspace/ui/components/button"
+import { Input } from "@workspace/ui/components/input"
+import { Label } from "@workspace/ui/components/label"
 
 export function ChangePasswordPanel() {
   const [state, action, pending] = useActionState<
@@ -15,50 +22,58 @@ export function ChangePasswordPanel() {
   >(changePasswordAction, {})
 
   return (
-    <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-      <h2 className="font-medium">Change password</h2>
-      <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-        Set a new password for your account. When you save it, we&apos;ll sign
-        you out and you&apos;ll have to sign in again.
+    <SettingsCard>
+      <SettingsCardTitle>Cambiar contraseña</SettingsCardTitle>
+      {/* El cierre de sesión se avisa antes, no después: `changePasswordAction`
+          termina en `signOut({ redirectTo: "/login?passwordChanged=1" })`. */}
+      <p className="mt-1 max-w-140 text-[13.5px]/[1.55] text-muted-foreground">
+        Define una contraseña nueva. Al guardarla cerramos tu sesión y tendrás
+        que iniciar de nuevo.
       </p>
-      <form action={action} className="mt-4 grid gap-3 sm:max-w-md">
-        <div className="grid gap-2">
-          <label className="text-sm font-medium" htmlFor="newPassword">
-            New password
-          </label>
-          <input
-            id="newPassword"
-            name="newPassword"
-            type="password"
-            autoComplete="new-password"
-            required
-            minLength={8}
-            placeholder="At least 8 characters"
-            className="h-10 rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
-          />
+      <form action={action} className="mt-4 max-w-140">
+        <div className="grid gap-3.5 sm:grid-cols-2">
+          <div className="grid gap-2">
+            <Label htmlFor="newPassword">Contraseña nueva</Label>
+            <Input
+              id="newPassword"
+              name="newPassword"
+              type="password"
+              autoComplete="new-password"
+              required
+              minLength={8}
+              placeholder="Al menos 8 caracteres"
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="confirmPassword">Repetir contraseña</Label>
+            <Input
+              id="confirmPassword"
+              name="confirmPassword"
+              type="password"
+              autoComplete="new-password"
+              required
+              minLength={8}
+              placeholder="Repite la contraseña nueva"
+            />
+          </div>
         </div>
-        <div className="grid gap-2">
-          <label className="text-sm font-medium" htmlFor="confirmPassword">
-            Confirm password
-          </label>
-          <input
-            id="confirmPassword"
-            name="confirmPassword"
-            type="password"
-            autoComplete="new-password"
-            required
-            minLength={8}
-            placeholder="Repeat the new password"
-            className="h-10 rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
-          />
-        </div>
-        <Button type="submit" disabled={pending}>
-          {pending ? "Updating..." : "Change password"}
+        <p className="mt-2 text-[12.5px] text-muted-foreground">
+          Mínimo 8 caracteres.
+        </p>
+        <Button type="submit" size="lg" className="mt-4" disabled={pending}>
+          {pending ? (
+            <>
+              <LoaderCircle className="animate-spin" aria-hidden />
+              Guardando…
+            </>
+          ) : (
+            "Cambiar contraseña"
+          )}
         </Button>
         {state.error ? (
-          <p className="text-sm text-destructive">{state.error}</p>
+          <p className="mt-3 text-[13px] text-destructive">{state.error}</p>
         ) : null}
       </form>
-    </section>
+    </SettingsCard>
   )
 }

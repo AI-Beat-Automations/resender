@@ -165,9 +165,52 @@ export function resolveQuotaNotice(input: {
 
   const ratio = usage / limit
   const level: QuotaNoticeLevel =
-    ratio >= 1 ? "restricted" : ratio >= QUOTA_WARNING_RATIO ? "warning" : "none"
+    ratio >= 1
+      ? "restricted"
+      : ratio >= QUOTA_WARNING_RATIO
+        ? "warning"
+        : "none"
 
   return { level, usage, limit, ratio }
+}
+
+export type QuotaBarTone = "neutral" | "warning" | "destructive"
+
+// Resultado discriminado: o hay barra con sus datos, o no la hay. `available:
+// false` no es «sin límite», es «el plan no se pudo resolver», y la UI tiene
+// que pintar el bloqueo con el contacto de soporte (ADR 0005).
+export type QuotaBar =
+  | { available: false }
+  | {
+      available: true
+      usage: number
+      limit: number
+      // 0..100, clampeado: un consumo por encima del límite no desborda.
+      percentage: number
+      tone: QuotaBarTone
+    }
+
+// Barra de consumo de Ajustes → Suscripción (ADR 0005). Deriva el tono de
+// `resolveQuotaNotice`, el mismo criterio que la franja global del dashboard:
+// dos superficies, un solo umbral (ámbar >= 80%, destructivo al bloquear).
+export function resolveQuotaBar(input: {
+  usage: number
+  limit: number | null
+}): QuotaBar {
+  const { usage, limit } = input
+  // Sin límite resuelto no hay barra: una barra vacía sugeriría cuota libre.
+  if (!limit || limit <= 0) return { available: false }
+
+  const { level, ratio } = resolveQuotaNotice({ usage, limit })
+  const percentage = Math.min(Math.max((ratio ?? 0) * 100, 0), 100)
+  const tone: QuotaBarTone =
+    level === "restricted"
+      ? "destructive"
+      : level === "warning"
+        ? "warning"
+        : "neutral"
+
+  return { available: true, usage, limit, percentage, tone }
 }
 
 // Cuenta restringida: los entrantes se siguen persistiendo y contabilizando,

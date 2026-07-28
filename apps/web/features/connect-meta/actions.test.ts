@@ -46,7 +46,11 @@ vi.mock("@/lib/crypto/encryption", () => {
 })
 
 vi.mock("@/lib/meta", () => {
-  class WebhookSubscriptionError extends Error {}
+  class WebhookSubscriptionError extends Error {
+    constructor(readonly failedPageIds: string[]) {
+      super("webhook subscription failed")
+    }
+  }
 
   return {
     listAuthorizedPages: mocks.listAuthorizedPages,
@@ -60,7 +64,11 @@ vi.mock("@/lib/pages/meta-user-token", () => ({
 }))
 
 vi.mock("@/lib/pages/page-registry", () => {
-  class PageOwnershipError extends Error {}
+  class PageOwnershipError extends Error {
+    constructor(readonly metaPageId: string) {
+      super("page already belongs to another tenant")
+    }
+  }
 
   return {
     connectAuthorizedPages: mocks.connectAuthorizedPages,
@@ -73,6 +81,9 @@ vi.mock("@/lib/pages/page-registry", () => {
 vi.mock("@/lib/posthog", () => ({
   posthog: null,
 }))
+
+import { WebhookSubscriptionError } from "@/lib/meta"
+import { PageOwnershipError } from "@/lib/pages/page-registry"
 
 import { connectSelectedPagesAction } from "./actions"
 
@@ -129,6 +140,33 @@ describe("connectSelectedPagesAction", () => {
     )
   })
 
+  // Los fallos de Meta se redactan desde `lib/pages/meta-connection-error`,
+  // igual que los del callback (ADR 0005).
+  it("reuses the shared Spanish copy for the Meta failures", async () => {
+    mocks.subscribePagesToWebhook.mockRejectedValue(
+      new WebhookSubscriptionError(["page-1"])
+    )
+
+    await expect(
+      connectSelectedPagesAction({}, selection("page-1"))
+    ).resolves.toEqual({
+      error:
+        "No se pudo conectar: Meta no confirmó la suscripción al webhook de todas las páginas. Ninguna página quedó guardada.",
+    })
+
+    mocks.subscribePagesToWebhook.mockResolvedValue(undefined)
+    mocks.connectAuthorizedPages.mockRejectedValue(
+      new PageOwnershipError("page-1")
+    )
+
+    await expect(
+      connectSelectedPagesAction({}, selection("page-1"))
+    ).resolves.toEqual({
+      error:
+        "No se pudo conectar: la página page-1 ya pertenece a otra cuenta de Resender.",
+    })
+  })
+
   it("rejects a selection that exceeds the remaining slots of the plan", async () => {
     mocks.countActivePages.mockResolvedValue(1)
 
@@ -137,7 +175,9 @@ describe("connectSelectedPagesAction", () => {
       selection("page-1", "page-2")
     )
 
-    expect(result.error).toContain("2 connected Pages")
+    expect(result.error).toBe(
+      "Tu plan permite 2 páginas conectadas y ya tienes 1 activas: puedes añadir 1 página más. Desmarca las que sobren o desconecta una página para liberar cupo."
+    )
     expect(mocks.subscribePagesToWebhook).not.toHaveBeenCalled()
     expect(mocks.connectAuthorizedPages).not.toHaveBeenCalled()
   })
@@ -150,7 +190,7 @@ describe("connectSelectedPagesAction", () => {
     const result = await connectSelectedPagesAction({}, selection("page-1"))
 
     expect(result.error).toBe(
-      "That selection includes a Page you can't connect. Reload the page and try again."
+      "Esa selección incluye una página que no puedes conectar. Recarga la pantalla e inténtalo de nuevo."
     )
     expect(mocks.connectAuthorizedPages).not.toHaveBeenCalled()
   })
@@ -161,7 +201,8 @@ describe("connectSelectedPagesAction", () => {
     const result = await connectSelectedPagesAction({}, selection("page-1"))
 
     expect(result).toEqual({
-      error: "Your Meta authorization expired. Connect Facebook again.",
+      error:
+        "No se pudo conectar: tu autorización de Meta venció. Vuelve a conectar Facebook.",
     })
     expect(mocks.listAuthorizedPages).not.toHaveBeenCalled()
   })
@@ -173,7 +214,7 @@ describe("connectSelectedPagesAction", () => {
 
     const result = await connectSelectedPagesAction({}, selection("page-1"))
 
-    expect(result).toEqual({ error: "Your subscription isn't active." })
+    expect(result).toEqual({ error: "Tu suscripción no está activa." })
     expect(mocks.getMetaUserAccessToken).not.toHaveBeenCalled()
     expect(mocks.connectAuthorizedPages).not.toHaveBeenCalled()
   })
@@ -183,7 +224,7 @@ describe("connectSelectedPagesAction", () => {
 
     const result = await connectSelectedPagesAction({}, selection("page-1"))
 
-    expect(result).toEqual({ error: "Your account is on the waitlist." })
+    expect(result).toEqual({ error: "Tu cuenta está en la lista de espera." })
     expect(mocks.getMetaUserAccessToken).not.toHaveBeenCalled()
   })
 })

@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { Check, Link2, TriangleAlert, X } from "lucide-react"
 
 import { ConnectFacebookButton } from "@/features/connect-meta/ui/connect-facebook-button"
 import {
@@ -6,10 +7,23 @@ import {
   type ConnectedPageView,
 } from "@/features/connections/ui/connected-page-card"
 import { auth } from "@/auth"
+import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
+import { formatMetaConnectionError } from "@/lib/pages/meta-connection-error"
 import { listTenantPages } from "@/lib/pages/page-registry"
-import { Button } from "@workspace/ui/components/button"
 
 type ConnectedPage = { id: string; name: string }
+
+// Cupo de páginas del plan. `null` = no se pudo resolver: fail-closed, se
+// muestra el bloqueo y no un «N de ?» inventado (ADR 0005).
+type PageQuotaView = { activePageCount: number; maxPages: number } | null
+
+const dateTimeFormat = new Intl.DateTimeFormat("es-ES", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+})
 
 export default async function ConnectionsPage({
   searchParams,
@@ -18,80 +32,168 @@ export default async function ConnectionsPage({
 }) {
   const { meta, pages, reason } = await searchParams
   const connected = parseConnectedPages(pages)
-  const errorMessage = formatMetaConnectionError(reason)
   const session = await auth()
-  const tenantPages = session?.user?.id
-    ? await listTenantPages(session.user.id)
-    : []
+  const tenantId = session?.user?.id ?? null
+  const tenantPages = tenantId ? await listTenantPages(tenantId) : []
+  const quota = tenantId ? await resolvePageQuota(tenantId) : null
+
+  const sortedPages = [...tenantPages].sort(
+    (left, right) => cardRank(left) - cardRank(right)
+  )
+  const firstActiveId = sortedPages.find((page) => page.status === "active")?.id
 
   return (
-    <div className="grid gap-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Connections</h1>
-        <p className="mt-2 max-w-2xl text-muted-foreground">
-          Connect your Facebook Pages, configure a webhook per Page, and
-          disconnect channels without deleting history.
-        </p>
-      </div>
-      <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-        <h2 className="font-medium">Facebook</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Authorize your Pages from Meta to start onboarding.
-        </p>
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <ConnectFacebookButton />
-          <Button asChild variant="outline">
-            <Link href="/connections/select">Add a Page</Link>
-          </Button>
-        </div>
-        <p className="mt-2 text-xs text-muted-foreground">
-          Adding a Page no longer requires going through the Meta dialog again.
-        </p>
-        {meta === "connected" && (
-          <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-950 dark:border-green-900/50 dark:bg-green-950/30 dark:text-green-100">
-            <p>
-              Connected: {connected.length} Page
-              {connected.length === 1 ? "" : "s"} authorized
-              {connected.length > 0 ? ":" : "."}
-            </p>
-            {connected.length > 0 && (
-              <ul className="mt-2 list-disc pl-5">
-                {connected.map((page) => (
-                  <li key={page.id}>
-                    {page.name} ({page.id})
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-        {meta === "error" && (
-          <p className="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-            {errorMessage}
-          </p>
-        )}
-      </section>
-      <section className="grid gap-3">
+    // El padding de página lo aporta el `main` del layout (spec C.7): acá solo
+    // el ritmo vertical entre cabecera y cuerpo.
+    <div>
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="font-medium">Connected Pages</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Reconnections update token and metadata without duplicating Pages.
+          <p className="font-mono text-[11px] tracking-[0.08em] text-[var(--text-subtle)]">
+            {"// conexiones"}
+          </p>
+          <h1 className="mt-1.5 font-heading text-[26px] font-bold tracking-[-0.02em]">
+            Conexiones
+          </h1>
+          <p className="mt-2 max-w-[620px] text-[14.5px]/[1.6] text-muted-foreground">
+            Conecta tus páginas de Facebook, configura un webhook por página y
+            desconecta canales sin borrar el historial.
           </p>
         </div>
-        {tenantPages.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border bg-card p-8 text-sm text-muted-foreground">
-            No Pages connected for this tenant yet.
-          </div>
-        ) : (
-          <div className="grid gap-3">
-            {tenantPages.map((page) => (
-              <ConnectedPageCard key={page.id} page={toPageView(page)} />
-            ))}
+        {/* En el estado vacío el CTA vive en la tarjeta de abajo, no acá. */}
+        {tenantPages.length > 0 && <ConnectFacebookButton />}
+      </header>
+
+      <div className="mt-6 flex flex-col gap-3.5">
+        {meta === "connected" && (
+          <div className="flex items-center gap-3 rounded-lg border border-success-soft-border bg-success-soft px-4 py-3 text-success-soft-foreground">
+            <Check className="size-4 shrink-0" aria-hidden />
+            <p className="flex-1 text-[13.5px]">
+              {formatConnectedSummary(connected)}
+            </p>
+            <Link
+              href="/connections"
+              aria-label="Descartar el aviso"
+              className="shrink-0 opacity-60 hover:opacity-100"
+            >
+              <X className="size-[15px]" aria-hidden />
+            </Link>
           </div>
         )}
-      </section>
+
+        {meta === "error" && (
+          <div className="flex items-start gap-3 rounded-lg border border-destructive-soft-border bg-destructive-soft px-3.5 py-3 text-destructive-soft-foreground">
+            <TriangleAlert
+              className="mt-0.5 size-[15px] shrink-0"
+              aria-hidden
+            />
+            <p className="flex-1 text-[13px]/[1.5]">
+              {formatMetaConnectionError(reason)}
+            </p>
+          </div>
+        )}
+
+        {tenantPages.length === 0 ? (
+          <EmptyState />
+        ) : (
+          <>
+            <div className="mt-0.5 flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="font-mono text-[11px] tracking-[0.08em] text-muted-foreground">
+                PÁGINAS CONECTADAS
+              </h2>
+              <PageQuota quota={quota} />
+            </div>
+            {sortedPages.map((page) => (
+              <ConnectedPageCard
+                key={page.id}
+                page={toPageView(page)}
+                showWebhookHint={page.id === firstActiveId}
+              />
+            ))}
+          </>
+        )}
+      </div>
     </div>
   )
+}
+
+// B1: qué va a pasar al conectar la primera página, y el flujo en tres pasos.
+function EmptyState() {
+  return (
+    <>
+      <section className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-[22px] shadow-[var(--shadow-sm)] sm:flex-row sm:items-center">
+        <span
+          className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[var(--primary-tint)] text-primary"
+          aria-hidden
+        >
+          <Link2 className="size-5" />
+        </span>
+        <div className="flex-1">
+          <h2 className="font-heading text-base font-semibold">Facebook</h2>
+          <p className="mt-1 text-[13.5px] text-muted-foreground">
+            Autoriza tus páginas desde Meta para empezar a recibir mensajes.
+          </p>
+        </div>
+        <ConnectFacebookButton />
+      </section>
+
+      <section className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-border-strong bg-card p-10 text-center">
+        <div className="max-w-[460px]">
+          <h3 className="font-heading text-[19px] font-semibold tracking-[-0.02em]">
+            Todavía no hay páginas conectadas.
+          </h3>
+          <p className="mt-2 text-sm/[1.6] text-muted-foreground">
+            Cuando autorices una página aparecerá acá, con su webhook y su
+            estado. Reconectar actualiza el token y los metadatos sin duplicar
+            páginas.
+          </p>
+        </div>
+        <ol className="flex flex-wrap justify-center gap-x-[22px] gap-y-1.5 font-mono text-[11px] text-[var(--text-subtle)]">
+          <li>1 · autorizas la página</li>
+          <li>2 · apuntas tu webhook</li>
+          <li>3 · llega el primer mensaje</li>
+        </ol>
+      </section>
+    </>
+  )
+}
+
+function PageQuota({ quota }: { quota: PageQuotaView }) {
+  if (!quota) {
+    return (
+      <p className="font-mono text-[11px] text-[var(--danger-text)]">
+        cupo sin resolver · escríbenos a info@resender.dev
+      </p>
+    )
+  }
+
+  return (
+    <p className="font-mono text-[11px] text-muted-foreground">
+      {quota.activePageCount} de {quota.maxPages} páginas
+    </p>
+  )
+}
+
+// Orden de la lista (spec B2): activa → con el token rechazado → desconectada.
+function cardRank(page: Awaited<ReturnType<typeof listTenantPages>>[number]) {
+  if (page.status !== "active") return 2
+  return page.tokenStatus === "invalid" ? 1 : 0
+}
+
+// El cupo no cuesta una consulta nueva de dominio: reusa el entitlement que ya
+// existe. Si el plan no se resuelve (o la lectura falla) devuelve null y la
+// pantalla lo dice, en vez de dibujar un límite inventado (ADR 0005).
+async function resolvePageQuota(tenantId: string): Promise<PageQuotaView> {
+  try {
+    const entitlement = await getTenantEntitlement(tenantId)
+    if (!entitlement.limits) return null
+    return {
+      activePageCount: entitlement.activePageCount,
+      maxPages: entitlement.limits.maxPages,
+    }
+  } catch (error) {
+    console.error("page quota unavailable", error)
+    return null
+  }
 }
 
 function toPageView(
@@ -104,10 +206,17 @@ function toPageView(
     status: page.status,
     tokenStatus: page.tokenStatus,
     tokenError: page.tokenError,
-    tokenErrorAt: page.tokenErrorAt?.toISOString() ?? null,
     webhookUrl: page.webhookUrl,
     connectedAt: page.connectedAt.toISOString(),
+    connectedAtLabel: dateTimeFormat.format(page.connectedAt),
+    tokenErrorAt: page.tokenErrorAt?.toISOString() ?? null,
+    tokenErrorAtLabel: page.tokenErrorAt
+      ? dateTimeFormat.format(page.tokenErrorAt)
+      : null,
     disconnectedAt: page.disconnectedAt?.toISOString() ?? null,
+    disconnectedAtLabel: page.disconnectedAt
+      ? dateTimeFormat.format(page.disconnectedAt)
+      : null,
   }
 }
 
@@ -125,27 +234,18 @@ function parseConnectedPages(pages?: string): ConnectedPage[] {
   }
 }
 
-function formatMetaConnectionError(reason?: string) {
-  if (reason === "webhook_subscription_failed") {
-    return "Couldn't connect: Meta didn't confirm the webhook subscription for all Pages. No Page was saved as connected."
-  }
+// Qué páginas quedaron autorizadas al volver de Meta, con su id: es la única
+// confirmación que tiene el usuario de qué acaba de conectar.
+function formatConnectedSummary(connected: ConnectedPage[]): string {
+  if (connected.length === 0) return "Conectado: la autorización se completó."
 
-  if (reason?.startsWith("page_owned:")) {
-    const pageId = reason.split(":")[1]
-    return `Couldn't connect: Page ${pageId} already belongs to another Resender account.`
-  }
+  const names = connected.map((page) => `${page.name} (${page.id})`)
+  const list =
+    names.length === 1
+      ? names[0]
+      : `${names.slice(0, -1).join(", ")} y ${names[names.length - 1]}`
 
-  if (reason === "configuration_failed") {
-    return "Couldn't connect: server secret encryption isn't configured."
-  }
-
-  if (reason === "meta_session_expired") {
-    return "Couldn't connect: your Meta authorization expired. Connect Facebook again."
-  }
-
-  if (reason === "state_mismatch") {
-    return "Couldn't connect: the authorization session expired or doesn't match. Please try again."
-  }
-
-  return reason ? `Couldn't connect: ${reason}.` : "Couldn't connect."
+  return `Conectado: ${connected.length} ${
+    connected.length === 1 ? "página autorizada" : "páginas autorizadas"
+  } — ${list}.`
 }

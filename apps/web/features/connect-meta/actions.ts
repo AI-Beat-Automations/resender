@@ -20,6 +20,10 @@ import {
   WebhookSubscriptionError,
   type ConnectedPage,
 } from "@/lib/meta"
+import {
+  formatMetaConnectionError,
+  metaPageOwnedReason,
+} from "@/lib/pages/meta-connection-error"
 import { getMetaUserAccessToken } from "@/lib/pages/meta-user-token"
 import {
   connectAuthorizedPages,
@@ -38,8 +42,10 @@ export type ConnectMetaActionState = {
   message?: string
 }
 
-const EXPIRED_AUTHORIZATION =
-  "Your Meta authorization expired. Connect Facebook again."
+// Los fallos que también puede devolver el callback de Meta se redactan desde
+// el módulo de dominio (ADR 0005): el mismo problema, el mismo texto, llegue el
+// usuario por el redirect o por esta server action.
+const EXPIRED_AUTHORIZATION = formatMetaConnectionError("meta_session_expired")
 
 type PublicPage = { id: string; name: string }
 
@@ -57,24 +63,24 @@ export async function connectSelectedPagesAction(
   formData: FormData
 ): Promise<ConnectMetaActionState> {
   const session = await auth()
-  if (!session?.user?.id) return { error: "Not authenticated." }
+  if (!session?.user?.id) return { error: "No has iniciado sesión." }
 
   // Los mismos gates que protegen `/api/meta/start` y `/api/meta/callback`. El
   // layout de `(product)` no alcanza: una server action se puede invocar por
   // POST directo sin renderizar la pantalla, y la fila de `subscriptions` de un
   // tenant dado de baja conserva su `price_lookup_key`.
   if (await isUserWaitlisted(session.user.id)) {
-    return { error: "Your account is on the waitlist." }
+    return { error: "Tu cuenta está en la lista de espera." }
   }
   if (!(await hasActiveSubscription(session.user.id))) {
-    return { error: "Your subscription isn't active." }
+    return { error: "Tu suscripción no está activa." }
   }
 
   const selectedPageIds = formData
     .getAll("pageIds")
     .filter((value): value is string => typeof value === "string")
   if (selectedPageIds.length === 0) {
-    return { error: "Select at least one Page." }
+    return { error: "Elige al menos una página." }
   }
 
   const result = await connectSelectedPages(session.user.id, selectedPageIds)
@@ -118,7 +124,7 @@ async function connectSelectedPages(
   const limits = resolvePlanLimits(subscription?.priceLookupKey ?? null)
   if (!limits) {
     return failed(
-      "We couldn't resolve the limits of your plan. Contact support at info@resender.dev."
+      "No pudimos resolver los límites de tu plan. Escríbenos a info@resender.dev."
     )
   }
 
@@ -136,7 +142,7 @@ async function connectSelectedPages(
   const validated = validatePageSelection({ view, selectedPageIds })
   if (!validated.ok) return failed(validated.message)
   if (validated.value.length === 0) {
-    return failed("Select at least one new Page to connect.")
+    return failed("Elige al menos una página nueva para conectar.")
   }
 
   const byPageId = new Map(metaPages.map((page) => [page.pageId, page]))
@@ -175,19 +181,19 @@ async function connectSelectedPages(
       console.error("webhook subscription failed", {
         pageIds: error.failedPageIds,
       })
-      return failed(
-        "Meta didn't confirm the webhook subscription for every selected Page. No Page was saved as connected."
-      )
+      return failed(formatMetaConnectionError("webhook_subscription_failed"))
     }
     if (error instanceof PageOwnershipError) {
       return failed(
-        `Page ${error.metaPageId} already belongs to another Resender account.`
+        formatMetaConnectionError(metaPageOwnedReason(error.metaPageId))
       )
     }
     if (error instanceof SecretEncryptionConfigError) {
-      return failed("Server secret encryption isn't configured.")
+      return failed(formatMetaConnectionError("configuration_failed"))
     }
     console.error("meta page connection failed", error)
-    return failed("Couldn't connect the selected Pages. Please try again.")
+    return failed(
+      "No se pudo conectar: hubo un problema con las páginas seleccionadas. Inténtalo de nuevo."
+    )
   }
 }
