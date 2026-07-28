@@ -342,10 +342,8 @@ export const en: Dict = {
     metaDescription:
       "Tutorials on webhooks, AI agents and automations with n8n, Make and Zapier on top of Facebook messages, plus Resender product news.",
     title: "Blog",
-    subtitle:
-      "Tutorials for wiring Facebook Messenger into your automations and AI agents, plus product news.",
     intro:
-      "We write about what we run into while building Resender: how to structure a webhook that doesn't drop messages, how to set boundaries for an AI agent handling customers, and what is better solved in your automation than in the messaging platform. Concrete cases, with the code we actually use.",
+      "We write about what we run into while building Resender: how to set boundaries for an AI agent handling customers, how to pick an AI model for your agent, and how many AI agents your automation should have. Concrete cases, with the code we actually use.",
     empty: "No posts published yet.",
     back: "← Back to blog",
     reading: {

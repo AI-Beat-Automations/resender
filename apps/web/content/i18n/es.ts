@@ -343,10 +343,8 @@ export const es: Dict = {
     metaDescription:
       "Tutoriales sobre webhooks, agentes de IA y automatizaciones con n8n, Make y Zapier sobre mensajes de Facebook, más las novedades de Resender.",
     title: "Blog",
-    subtitle:
-      "Tutoriales para conectar Facebook Messenger con tus automatizaciones y agentes de IA, y las novedades del producto.",
     intro:
-      "Escribimos sobre lo que nos cruzamos construyendo Resender: cómo estructurar un webhook que no pierda mensajes, cómo ponerle límites a un agente de IA que atiende clientes, y qué conviene resolver en tu automatización en vez de en la plataforma de mensajería. Casos concretos, con el código que usamos nosotros.",
+      "Escribimos sobre lo que nos cruzamos construyendo Resender: cómo ponerle límites a un agente de IA que atiende clientes, cómo elegir un modelo de IA para tu agente y cuántos agentes de IA debería tener tu automatización. Casos concretos, con el código que usamos nosotros.",
     empty: "Todavía no hay posts publicados.",
     back: "← Volver al blog",
     reading: {

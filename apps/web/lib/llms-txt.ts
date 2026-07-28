@@ -275,10 +275,7 @@ export function buildLlmsFullTxt(lang: Locale): string {
     .replace("{index}", url("/llms.txt", lang))
     .replace("{date}", STATIC_CONTENT_UPDATED_AT)
 
-  const blogIndex = page(dict.blog.title, "/blog", lang, [
-    dict.blog.subtitle,
-    dict.blog.intro,
-  ])
+  const blogIndex = page(dict.blog.title, "/blog", lang, [dict.blog.intro])
 
   const blocks = [
     // El encabezado y su nota son un solo bloque: el `---` separa páginas, y la

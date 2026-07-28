@@ -43,11 +43,7 @@ export function BlogListView({ lang }: { lang: Locale }) {
       <SiteHeader lang={lang} />
       <main className="flex-1">
         <Section>
-          <SectionHeading
-            as="h1"
-            title={dict.blog.title}
-            subtitle={dict.blog.subtitle}
-          />
+          <SectionHeading as="h1" title={dict.blog.title} />
           <p className="mx-auto mt-6 max-w-2xl text-center leading-8 text-muted-foreground">
             {dict.blog.intro}
           </p>

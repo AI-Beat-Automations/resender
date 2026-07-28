@@ -122,7 +122,8 @@ export type Dict = {
     metaTitle: string
     metaDescription: string
     title: string
-    subtitle: string
+    // Párrafo único bajo el H1. Antes había además un `subtitle` como lead; se
+    // quitó para no decir dos veces lo mismo arriba del listado.
     intro: string
     empty: string
     back: string
