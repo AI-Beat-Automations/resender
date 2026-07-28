@@ -4,7 +4,13 @@
 
 @plugin "@tailwindcss/typography";
 
-@custom-variant dark (&:is(.dark *));
+/* El modo oscuro es exclusivo de la consola. El sitio público envuelve cada
+   vista en `.light` (ver más abajo), y el `:not()` hace que ese contenedor
+   también corte las utilidades `dark:` de los componentes shadcn —button,
+   badge, tabs, switch— que el marketing comparte con la consola. Sin esto, un
+   visitante con el SO en oscuro vería el sitio claro pero con los botones
+   `outline` pintados con `dark:bg-input/30`. */
+@custom-variant dark (&:is(.dark *):not(.light, .light *));
 @source "../../../apps/**/*.{ts,tsx}";
 @source "../../../components/**/*.{ts,tsx}";
 @source "../**/*.{ts,tsx}";
@@ -231,8 +237,13 @@
    Los radios ya viven en `@theme inline` con los mismos valores; aquí van
    grosores, anillos y sombras. La elevación es discreta: una línea de pelo hace
    el trabajo y la sombra es un susurro. Nunca combinar sombra >= md con borde.
+
+   `.light` acompaña a `:root` porque `.dark` sobrescribe justamente las sombras
+   y `--ring-hairline`: sin esta línea, el sitio público heredaría las sombras
+   negras de la consola cuando `<html>` tiene la clase `.dark`.
    --------------------------------------------------------------------------- */
-:root {
+:root,
+.light {
   --border-width: 1px;
   --border-width-thick: 2px;
 
@@ -302,8 +313,13 @@
    Design system: contrato semántico (tokens/semantic.css).
    Nombres de shadcn tal cual, más los extras de Resender (--success-*, --info-*,
    --warning-*, --*-soft, --surface-*, --bubble-*) que shadcn no trae.
+
+   Modo claro. `.light` lo redeclara para que cualquier subárbol marcado con esa
+   clase gane sobre un `.dark` ancestro: así el sitio público queda siempre en
+   claro sin depender de JavaScript, mientras la consola sigue alternando.
    --------------------------------------------------------------------------- */
-:root {
+:root,
+.light {
   --background: #f3ede1;
   --foreground: #242029;
   --card: #ffffff;

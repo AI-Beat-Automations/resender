@@ -29,7 +29,7 @@ export default function NotFound() {
   ]
 
   return (
-    <div className="flex min-h-svh flex-col">
+    <div className="light flex min-h-svh flex-col">
       <SiteBackground />
       <SiteHeader lang="es" />
       <main className="flex flex-1 items-center">

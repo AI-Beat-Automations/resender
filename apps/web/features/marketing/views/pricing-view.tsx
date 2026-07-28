@@ -23,7 +23,7 @@ export function PricingView({ lang }: { lang: Locale }) {
   const dict = getDictionary(lang)
 
   return (
-    <div className="flex min-h-svh flex-col">
+    <div className="light flex min-h-svh flex-col">
       <JsonLd
         data={schemaGraph(
           ...baseGraph(lang),

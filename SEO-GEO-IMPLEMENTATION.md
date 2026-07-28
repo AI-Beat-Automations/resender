@@ -128,7 +128,7 @@ Los siguientes son nuevos y su código va **completo** en la Sección 7:
 | `apps/web/content/i18n/index.ts` | reexporta helpers y expone `getDictionary(lang)` |
 | `apps/web/content/i18n/es.ts` | diccionario español (Sección 8) |
 | `apps/web/content/i18n/en.ts` | diccionario inglés (Sección 9) |
-| `apps/web/components/language-toggle.tsx` | switch ES/EN, hermano del ThemeToggle |
+| `apps/web/components/language-toggle.tsx` | switch ES/EN (se construyó como hermano visual del `ThemeToggle`; desde que el sitio quedó en modo claro fijo, va solo en la navbar) |
 | `apps/web/components/html-lang.tsx` | corrige `<html lang>` en cliente |
 | `apps/web/features/marketing/views/landing-view.tsx` | landing compartida |
 | `apps/web/features/marketing/views/pricing-view.tsx` | pricing compartida |
