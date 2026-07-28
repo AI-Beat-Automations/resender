@@ -9,6 +9,7 @@ export type SubscriptionRow = {
   stripe_subscription_id: string
   status: string
   price_lookup_key: string
+  current_period_start: Date | null
   current_period_end: Date | null
   cancel_at_period_end: boolean
   last_stripe_event_at: Date | null
@@ -19,6 +20,9 @@ export type SubscriptionRecord = {
   stripeSubscriptionId: string
   status: string
   priceLookupKey: string
+  // Inicio del período de facturación vigente: es la ventana de la cuota de
+  // mensajes (ADR 0003), no el mes calendario.
+  currentPeriodStart: Date | null
   currentPeriodEnd: Date | null
   cancelAtPeriodEnd: boolean
   lastStripeEventAt: Date | null
@@ -30,6 +34,7 @@ export function mapSubscription(row: SubscriptionRow): SubscriptionRecord {
     stripeSubscriptionId: row.stripe_subscription_id,
     status: row.status,
     priceLookupKey: row.price_lookup_key,
+    currentPeriodStart: row.current_period_start,
     currentPeriodEnd: row.current_period_end,
     cancelAtPeriodEnd: row.cancel_at_period_end,
     lastStripeEventAt: row.last_stripe_event_at,
@@ -66,7 +71,8 @@ export async function getSubscriptionByTenantId(
   const sql = getSql()
   const [row] = await sql<SubscriptionRow[]>`
     select tenant_id, stripe_subscription_id, status, price_lookup_key,
-      current_period_end, cancel_at_period_end, last_stripe_event_at
+      current_period_start, current_period_end, cancel_at_period_end,
+      last_stripe_event_at
     from subscriptions
     where tenant_id = ${tenantId}
     limit 1
@@ -79,6 +85,7 @@ export type SubscriptionUpsertInput = {
   stripeSubscriptionId: string
   status: string
   priceLookupKey: string
+  currentPeriodStart: Date | null
   currentPeriodEnd: Date | null
   cancelAtPeriodEnd: boolean
   // `created` del evento de Stripe que trae este snapshot: es lo que ordena
@@ -164,16 +171,19 @@ export async function upsertSubscription(
   await sql`
     insert into subscriptions (
       tenant_id, stripe_subscription_id, status, price_lookup_key,
-      current_period_end, cancel_at_period_end, last_stripe_event_at
+      current_period_start, current_period_end, cancel_at_period_end,
+      last_stripe_event_at
     ) values (
       ${input.tenantId}, ${input.stripeSubscriptionId}, ${input.status},
-      ${input.priceLookupKey}, ${input.currentPeriodEnd},
-      ${input.cancelAtPeriodEnd}, ${input.lastStripeEventAt}
+      ${input.priceLookupKey}, ${input.currentPeriodStart},
+      ${input.currentPeriodEnd}, ${input.cancelAtPeriodEnd},
+      ${input.lastStripeEventAt}
     )
     on conflict (tenant_id) do update set
       stripe_subscription_id = excluded.stripe_subscription_id,
       status = excluded.status,
       price_lookup_key = excluded.price_lookup_key,
+      current_period_start = excluded.current_period_start,
       current_period_end = excluded.current_period_end,
       cancel_at_period_end = excluded.cancel_at_period_end,
       last_stripe_event_at = excluded.last_stripe_event_at,

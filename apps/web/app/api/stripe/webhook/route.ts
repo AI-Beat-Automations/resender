@@ -107,6 +107,9 @@ async function applySubscriptionSnapshot(event: Stripe.Event) {
     stripeSubscriptionId: subscription.id,
     status: subscription.status,
     priceLookupKey: item?.price.lookup_key ?? item?.price.id ?? "unknown",
+    currentPeriodStart: item?.current_period_start
+      ? new Date(item.current_period_start * 1000)
+      : null,
     currentPeriodEnd: item?.current_period_end
       ? new Date(item.current_period_end * 1000)
       : null,

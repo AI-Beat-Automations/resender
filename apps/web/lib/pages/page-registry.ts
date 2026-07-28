@@ -2,6 +2,7 @@ import type { ConnectedPage as MetaConnectedPage } from "@/lib/meta"
 import { decryptSecret, encryptSecret } from "@/lib/crypto/encryption"
 import { getSql } from "@/lib/db"
 
+import type { PageOwnershipRow } from "./page-selection"
 import { normalizeWebhookUrl } from "./webhook-url"
 
 export type PageStatus = "active" | "disconnected"
@@ -122,28 +123,41 @@ export async function connectAuthorizedPages(
   )
 }
 
-export async function assertPagesConnectable(
-  tenantId: string,
-  pages: MetaConnectedPage[]
-) {
-  if (pages.length === 0) return
+// Cupo del plan: cuenta solo las páginas `active` (desconectar es un UPDATE,
+// no un DELETE, y las desconectadas no ocupan cupo).
+export async function countActivePages(tenantId: string): Promise<number> {
+  const sql = getSql()
+  const [row] = await sql<{ count: number }[]>`
+    select count(*)::int as count
+    from connected_pages
+    where tenant_id = ${tenantId} and status = 'active'
+  `
+
+  return row?.count ?? 0
+}
+
+// Ownership de una lista de páginas de Meta, de cualquier tenant y en
+// cualquier estado: lo consume el módulo puro de selección, que decide página
+// por página (ADR 0004). Ya no se lanza sobre la lista completa.
+export async function getPageOwnership(
+  metaPageIds: string[]
+): Promise<PageOwnershipRow[]> {
+  if (metaPageIds.length === 0) return []
 
   const sql = getSql()
+  const rows = await sql<
+    Pick<ConnectedPageRow, "meta_page_id" | "tenant_id" | "status">[]
+  >`
+    select meta_page_id, tenant_id, status
+    from connected_pages
+    where meta_page_id = any(${metaPageIds}::text[])
+  `
 
-  for (const page of pages) {
-    const [existing] = await sql<
-      Pick<ConnectedPageRow, "meta_page_id" | "tenant_id">[]
-    >`
-      select meta_page_id, tenant_id
-      from connected_pages
-      where meta_page_id = ${page.pageId}
-      limit 1
-    `
-
-    if (existing && existing.tenant_id !== tenantId) {
-      throw new PageOwnershipError(existing.meta_page_id)
-    }
-  }
+  return rows.map((row) => ({
+    metaPageId: row.meta_page_id,
+    tenantId: row.tenant_id,
+    status: row.status,
+  }))
 }
 
 export async function listTenantPages(tenantId: string) {

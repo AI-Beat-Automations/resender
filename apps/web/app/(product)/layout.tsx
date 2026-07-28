@@ -2,7 +2,13 @@ import Link from "next/link"
 import { redirect } from "next/navigation"
 
 import { auth, signOut } from "@/auth"
+import {
+  QuotaNoticeBar,
+  type QuotaNoticeView,
+} from "@/features/billing/ui/quota-notice-bar"
 import { isUserWaitlisted } from "@/lib/auth/waitlist"
+import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
+import type { TenantEntitlement } from "@/lib/billing/entitlements"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
 import { Button } from "@workspace/ui/components/button"
 import { SiteLogo } from "@/components/site-logo"
@@ -22,6 +28,16 @@ export default async function ProductLayout({
   if (!session?.user?.id) redirect("/login")
   if (await isUserWaitlisted(session.user.id)) redirect("/waitlist")
   if (!(await hasActiveSubscription(session.user.id))) redirect("/billing")
+
+  // El aviso no debe poder tirar el dashboard: si el entitlement no se puede
+  // resolver, la barra simplemente no aparece (los gates del hot path siguen
+  // siendo fail-closed por su cuenta).
+  let notice: QuotaNoticeView | null = null
+  try {
+    notice = toQuotaNoticeView(await getTenantEntitlement(session.user.id))
+  } catch (error) {
+    console.error("quota notice unavailable", error)
+  }
 
   return (
     <div className="min-h-svh bg-muted/30">
@@ -50,7 +66,23 @@ export default async function ProductLayout({
           </div>
         </div>
       </header>
+      <QuotaNoticeBar notice={notice} />
       <main className="mx-auto w-full max-w-6xl px-6 py-8">{children}</main>
     </div>
   )
+}
+
+function toQuotaNoticeView(
+  entitlement: TenantEntitlement
+): QuotaNoticeView | null {
+  const { notice, block } = entitlement
+  if (notice.level === "none") return null
+
+  return {
+    level: notice.level,
+    usage: notice.usage,
+    limit: notice.limit,
+    blockCode: block?.code ?? null,
+    blockMessage: block?.message ?? null,
+  }
 }

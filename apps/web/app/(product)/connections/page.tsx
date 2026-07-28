@@ -1,3 +1,5 @@
+import Link from "next/link"
+
 import { ConnectFacebookButton } from "@/features/connect-meta/ui/connect-facebook-button"
 import {
   ConnectedPageCard,
@@ -5,6 +7,7 @@ import {
 } from "@/features/connections/ui/connected-page-card"
 import { auth } from "@/auth"
 import { listTenantPages } from "@/lib/pages/page-registry"
+import { Button } from "@workspace/ui/components/button"
 
 type ConnectedPage = { id: string; name: string }
 
@@ -35,9 +38,15 @@ export default async function ConnectionsPage({
         <p className="mt-2 text-sm text-muted-foreground">
           Authorize your Pages from Meta to start onboarding.
         </p>
-        <div className="mt-4">
+        <div className="mt-4 flex flex-wrap items-center gap-3">
           <ConnectFacebookButton />
+          <Button asChild variant="outline">
+            <Link href="/connections/select">Add a Page</Link>
+          </Button>
         </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          Adding a Page no longer requires going through the Meta dialog again.
+        </p>
         {meta === "connected" && (
           <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-950 dark:border-green-900/50 dark:bg-green-950/30 dark:text-green-100">
             <p>
@@ -128,6 +137,10 @@ function formatMetaConnectionError(reason?: string) {
 
   if (reason === "configuration_failed") {
     return "Couldn't connect: server secret encryption isn't configured."
+  }
+
+  if (reason === "meta_session_expired") {
+    return "Couldn't connect: your Meta authorization expired. Connect Facebook again."
   }
 
   if (reason === "state_mismatch") {

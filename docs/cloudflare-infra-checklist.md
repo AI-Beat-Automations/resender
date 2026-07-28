@@ -235,6 +235,104 @@ cada merge a `main` corre migraciones contra Neon y deploya a producción.
 
 ---
 
+## Paso 9.1 — Customer Portal: diferir los cambios de plan
+
+> Requerido por el ADR 0003 (entitlements por plan). **Sin esto la regla de
+> downgrade diferido no se sostiene aunque el código esté bien.**
+
+Por defecto Stripe aplica los cambios de plan **inmediato y con prorrateo**.
+Con los límites por plan activos eso significa que un cliente que baja de Pro a
+Starter con 5 páginas conectadas queda **bloqueado por exceso de páginas el
+mismo día que baja**, en vez de al cierre del período que ya pagó.
+
+La opción se llama **Manage downgrades** (Dashboard → **Settings** → **Billing**
+→ **Customer portal** → sección *Subscriptions*), y viene en *Actualizar de
+inmediato*. Por API es la condición `decreasing_item_amount`, que difiere solo
+cuando el monto baja y deja el upgrade inmediato — justo lo que pide el ADR 0003.
+
+**Ya aplicado en test mode** sobre la configuración default
+`bpc_1Tvno5K73vMS5LDKT8YHq5Jv`:
+
+```sh
+stripe billing_portal configurations update bpc_1Tvno5K73vMS5LDKT8YHq5Jv \
+  -d "features[subscription_update][enabled]=true" \
+  -d "features[subscription_update][default_allowed_updates][0]=price" \
+  -d "features[subscription_update][products][0][product]=prod_Uvf23m48V8GAFY" \
+  -d "features[subscription_update][products][0][prices][0]=price_1TvniOK73vMS5LDKeIBIV3PM" \
+  -d "features[subscription_update][products][1][product]=prod_Uvf2GJIzDN2Ql7" \
+  -d "features[subscription_update][products][1][prices][0]=price_1TvnidK73vMS5LDKEHpNsZwh" \
+  -d "features[subscription_update][schedule_at_period_end][conditions][0][type]=decreasing_item_amount"
+```
+
+Falta repetirlo en **live** con los ids de live (ver paso 9.2).
+
+### Restricción de Stripe que condiciona el catálogo
+
+La doc del portal dice que solo se puede diferir el downgrade *"between prices
+that have the same product"*. Pero el catálogo del portal **rechaza** dos precios
+del mismo producto con el mismo intervalo:
+
+> For each product, its price must have unique billing intervals.
+
+Starter y Pro son los dos mensuales, así que **no pueden compartir producto**: la
+única forma de tenerlos en el catálogo es como productos separados, que es como
+están hoy (`prod_Uvf23m48V8GAFY` y `prod_Uvf2GJIzDN2Ql7`). La API acepta la
+condición igual; lo que queda por confirmar empíricamente es si el diferimiento
+se aplica entre productos distintos o si la restricción de la doc lo invalida.
+
+### Verificación obligatoria (no es opcional)
+
+De esto dependen las historias 13 y 14, que **no tienen código detrás**:
+
+1. Abrí una sesión de portal para un customer con suscripción Pro:
+   `stripe billing_portal sessions create --customer=<cus_...> --return-url=https://resender.dev/settings`
+2. Bajá de Pro a Starter en la UI.
+3. Comprobá el resultado:
+   ```sh
+   stripe subscription_schedules list --limit 5          # ¿se creó un schedule?
+   stripe subscriptions retrieve <sub_...> | grep -E '"lookup_key"|"schedule"'
+   ```
+   - **Diferido (lo que queremos)**: aparece un `subscription_schedule` y la
+     suscripción **sigue en `pro_monthly`** hasta `current_period_end`.
+   - **Inmediato (rompe la regla)**: la suscripción ya figura en
+     `starter_monthly`. En ese caso el downgrade diferido no se puede lograr con
+     el portal y hay que decidir otra cosa: manejar el cambio de plan con UI
+     propia y `subscription_schedules`, o aceptar el downgrade inmediato y
+     documentarlo (un cliente con 5 páginas quedaría restringido el mismo día).
+4. Probá también el upgrade Starter → Pro: debe verse reflejado en el acto.
+
+---
+
+## Paso 9.2 — Catálogo de precios en live (bloqueante para cobrar)
+
+En **live mode no existe ningún precio de Resender**: el único precio live es un
+`one_time` de otro producto (`prod_Sn4DbFa5sExTNa`). `startCheckout` busca el
+price por `lookup_key`, así que hoy en producción tiraría
+`No Stripe price found for lookup key starter_monthly` y nadie podría suscribirse.
+
+```sh
+stripe products create --live --name="Resender Starter"
+stripe prices create --live --product=<prod_starter> --currency=usd \
+  --unit-amount=1500 -d "recurring[interval]=month" -d "lookup_key=starter_monthly"
+
+stripe products create --live --name="Resender Pro"
+stripe prices create --live --product=<prod_pro> --currency=usd \
+  --unit-amount=2500 -d "recurring[interval]=month" -d "lookup_key=pro_monthly"
+```
+
+Después repetí sobre la config default de live el `billing_portal configurations
+update` del paso 9.1, con los ids de live.
+
+**No crees `business_monthly`**: el plan fue eliminado (ADR 0003). En test sigue
+activo (`price_1Tvnj6K73vMS5LDKjcrI8Oiw`); conviene archivarlo por higiene, aunque
+el código ya no lo ofrece y nadie puede suscribirse:
+
+```sh
+stripe prices update price_1Tvnj6K73vMS5LDKjcrI8Oiw -d "active=false"
+```
+
+---
+
 ## Paso 10 — Smoke tests finales (validan node:crypto bajo `nodejs_compat`)
 
 En `https://resender.dev`:

@@ -45,7 +45,7 @@ export default async function BillingPage() {
             Your account is approved. Pick a monthly plan to start using
             Resender — payment happens on a secure page hosted by Stripe.
           </p>
-          <div className="mt-8 grid gap-4 sm:grid-cols-3">
+          <div className="mt-8 grid gap-4 sm:grid-cols-2">
             {PLANS.map((plan) => (
               <section
                 key={plan.lookupKey}

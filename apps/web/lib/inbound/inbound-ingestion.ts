@@ -1,4 +1,11 @@
+import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
+import {
+  countsTowardQuota,
+  shouldPushInbound,
+  type TenantEntitlement,
+} from "@/lib/billing/entitlements"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
+import { incrementUsage } from "@/lib/billing/usage-counter"
 import {
   insertInboundMessage,
   upsertConversation,
@@ -25,9 +32,17 @@ export type IngestedInboundMessage = {
   pushJob: InboundPushJob
 }
 
+// Motivo del `skipped` cuando la cuenta está restringida (ADR 0003): el
+// entrante se persiste y consume cuota, pero no se reenvía.
+const RESTRICTED_SKIP_REASON =
+  "account is restricted: quota exhausted or too many connected Pages"
+
 export async function ingestMetaWebhookPayload(body: unknown) {
   const incoming = extractInboundEvents(body)
   const ingested: IngestedInboundMessage[] = []
+  // Un payload de Meta puede traer varios eventos del mismo tenant; el
+  // entitlement se resuelve una sola vez por tenant y por payload.
+  const entitlements = new Map<string, TenantEntitlement>()
 
   for (const event of incoming) {
     const page = await getActivePageByMetaPageId(event.metaPageId)
@@ -37,6 +52,12 @@ export async function ingestMetaWebhookPayload(body: unknown) {
     // se descarta sin persistir ni reenviar; esos mensajes se pierden a
     // propósito. El webhook responde 200 a Meta igualmente.
     if (!(await hasActiveSubscription(page.tenantId))) continue
+
+    let entitlement = entitlements.get(page.tenantId)
+    if (!entitlement) {
+      entitlement = await getTenantEntitlement(page.tenantId)
+      entitlements.set(page.tenantId, entitlement)
+    }
 
     const conversation = await upsertConversation({
       tenantId: page.tenantId,
@@ -55,6 +76,21 @@ export async function ingestMetaWebhookPayload(body: unknown) {
     })
 
     if (!inserted) continue
+
+    // El entrante persistido consume cuota aunque la cuenta esté restringida o
+    // la página no tenga `webhookUrl`: lo que se cobra es recibir y persistir,
+    // no entregar. Best-effort — el contador nunca puede romper la ingesta.
+    const periodStart = entitlement.periodStart
+    if (
+      periodStart &&
+      countsTowardQuota({ kind: "inbound", persisted: true })
+    ) {
+      try {
+        await incrementUsage(page.tenantId, periodStart)
+      } catch (error) {
+        console.error("failed to increment usage counter", page.tenantId, error)
+      }
+    }
 
     if (posthog) {
       posthog.capture({
@@ -78,14 +114,21 @@ export async function ingestMetaWebhookPayload(body: unknown) {
       postbackPayload: event.postbackPayload,
     })
     const webhookUrl = page.webhookUrl
-    const pushJob = webhookUrl
-      ? () =>
-          pushInboundMessage({
-            messageId: message.id,
-            webhookUrl,
-            payload,
-          })
-      : () => recordSkippedDelivery(message.id)
+    let pushJob: InboundPushJob
+    if (!shouldPushInbound(entitlement)) {
+      // Cuenta restringida (ADR 0003): el mensaje ya quedó persistido y
+      // contabilizado, pero deja de reenviarse al webhook del cliente.
+      pushJob = () => recordSkippedDelivery(message.id, RESTRICTED_SKIP_REASON)
+    } else if (webhookUrl) {
+      pushJob = () =>
+        pushInboundMessage({
+          messageId: message.id,
+          webhookUrl,
+          payload,
+        })
+    } else {
+      pushJob = () => recordSkippedDelivery(message.id)
+    }
 
     ingested.push({ page, message, pushJob })
   }

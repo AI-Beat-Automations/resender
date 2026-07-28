@@ -10,6 +10,8 @@ import {
   type SubscriptionView,
 } from "@/features/billing/ui/subscription-panel"
 import { listApiKeys } from "@/lib/api-keys/api-keys"
+import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
+import type { TenantEntitlement } from "@/lib/billing/entitlements"
 import { getPlanByLookupKey } from "@/lib/billing/plans"
 import { getSubscriptionByTenantId } from "@/lib/billing/subscription"
 
@@ -22,6 +24,9 @@ async function SettingsContent() {
   const apiKeys = session?.user?.id ? await listApiKeys(session.user.id) : []
   const subscription = session?.user?.id
     ? await getSubscriptionByTenantId(session.user.id)
+    : null
+  const entitlement = session?.user?.id
+    ? await getTenantEntitlement(session.user.id)
     : null
 
   return (
@@ -42,7 +47,9 @@ async function SettingsContent() {
         </p>
       </section>
       <SubscriptionPanel
-        subscription={subscription ? toSubscriptionView(subscription) : null}
+        subscription={
+          subscription ? toSubscriptionView(subscription, entitlement) : null
+        }
       />
       <ChangePasswordPanel />
       <ApiKeysPanel apiKeys={apiKeys.map(toApiKeyView)} />
@@ -56,7 +63,8 @@ async function SettingsContent() {
 function toSubscriptionView(
   subscription: NonNullable<
     Awaited<ReturnType<typeof getSubscriptionByTenantId>>
-  >
+  >,
+  entitlement: TenantEntitlement | null
 ): SubscriptionView {
   return {
     planName:
@@ -65,6 +73,10 @@ function toSubscriptionView(
     status: subscription.status,
     currentPeriodEnd: subscription.currentPeriodEnd?.toISOString() ?? null,
     cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+    usage: entitlement?.usage ?? 0,
+    messageLimit: entitlement?.limits?.messagesPerPeriod ?? null,
+    pagesInUse: entitlement?.activePageCount ?? 0,
+    pageLimit: entitlement?.limits?.maxPages ?? null,
   }
 }
 
