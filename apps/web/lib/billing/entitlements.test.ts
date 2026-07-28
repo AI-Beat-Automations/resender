@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest"
 import {
   countsTowardQuota,
   evaluateEntitlement,
+  QUOTA_WARNING_RATIO,
   resolvePlanLimits,
+  resolveQuotaBar,
   resolveQuotaNotice,
   resolveQuotaPeriodStart,
   shouldPushInbound,
@@ -226,6 +228,73 @@ describe("quota notice level", () => {
     expect(resolveQuotaNotice({ usage: 60_000, limit: 50_000 }).level).toBe(
       "restricted"
     )
+  })
+})
+
+describe("quota bar", () => {
+  it("reports the percentage of the plan quota, clamped to 0..100", () => {
+    expect(resolveQuotaBar({ usage: 0, limit: 50_000 })).toEqual({
+      available: true,
+      usage: 0,
+      limit: 50_000,
+      percentage: 0,
+      tone: "neutral",
+    })
+    const quarter = resolveQuotaBar({ usage: 12_500, limit: 50_000 })
+    expect(quarter.available && quarter.percentage).toBe(25)
+
+    const half = resolveQuotaBar({ usage: 25_000, limit: 50_000 })
+    expect(half.available && half.percentage).toBe(50)
+
+    // Por encima del límite la barra se queda llena, no desborda.
+    const over = resolveQuotaBar({ usage: 90_000, limit: 50_000 })
+    expect(over.available && over.percentage).toBe(100)
+  })
+
+  it("uses the same thresholds as the global quota notice bar", () => {
+    const limit = 50_000
+    const atWarning = Math.ceil(limit * QUOTA_WARNING_RATIO)
+    const belowWarning = atWarning - 1
+
+    expect(resolveQuotaNotice({ usage: belowWarning, limit }).level).toBe(
+      "none"
+    )
+    const quiet = resolveQuotaBar({ usage: belowWarning, limit })
+    expect(quiet.available && quiet.tone).toBe("neutral")
+
+    expect(resolveQuotaNotice({ usage: atWarning, limit }).level).toBe(
+      "warning"
+    )
+    const warning = resolveQuotaBar({ usage: atWarning, limit })
+    expect(warning.available && warning.tone).toBe("warning")
+
+    expect(resolveQuotaNotice({ usage: limit, limit }).level).toBe("restricted")
+    const restricted = resolveQuotaBar({ usage: limit, limit })
+    expect(restricted.available && restricted.tone).toBe("destructive")
+  })
+
+  it("has no bar when the plan limit could not be resolved", () => {
+    // `messageLimit: null` no es «sin límite»: es el fail-closed de
+    // `resolvePlanLimits`, y la UI muestra el bloqueo con soporte.
+    expect(resolveQuotaBar({ usage: 1_000, limit: null })).toEqual({
+      available: false,
+    })
+    expect(resolveQuotaBar({ usage: 1_000, limit: 0 })).toEqual({
+      available: false,
+    })
+    expect(resolveQuotaBar({ usage: 1_000, limit: -5 })).toEqual({
+      available: false,
+    })
+
+    const unresolved = evaluateEntitlement(
+      input({ priceLookupKey: "business_monthly" })
+    )
+    expect(
+      resolveQuotaBar({
+        usage: unresolved.usage,
+        limit: unresolved.limits?.messagesPerPeriod ?? null,
+      }).available
+    ).toBe(false)
   })
 })
 

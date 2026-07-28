@@ -23,7 +23,9 @@ export async function loginAction(
     formData.get("email"),
     formData.get("password")
   )
-  if (!input.ok) return { error: "Incorrect email or password." }
+  // En login los errores son genéricos a propósito: no confirmamos si el
+  // email existe (CONTEXT.md → «Usuario MVP»).
+  if (!input.ok) return { error: "Email o contraseña incorrectos." }
 
   try {
     await signIn("credentials", {
@@ -33,7 +35,7 @@ export async function loginAction(
     })
   } catch (error) {
     if (error instanceof AuthError) {
-      return { error: "Incorrect email or password." }
+      return { error: "Email o contraseña incorrectos." }
     }
     throw error
   }
@@ -52,9 +54,13 @@ export async function registerAction(
   try {
     newUser = await createUser(email, password)
   } catch (error) {
+    // En el alta, el email duplicado sí se nombra: aquí el usuario necesita
+    // saber que ya tiene cuenta (CONTEXT.md → «Usuario MVP»).
     if (error instanceof DuplicateEmailError) {
-      return { error: "That email is already registered. Sign in." }
+      return { error: "Ese email ya está registrado. Inicia sesión." }
     }
+    // `lib/auth/validation` ya devuelve su texto en español y solo lo consume
+    // la web, así que se propaga tal cual: dice qué campo falló.
     if (error instanceof InvalidAuthInputError) {
       return { error: error.message }
     }
@@ -78,7 +84,10 @@ export async function registerAction(
     })
   } catch (error) {
     if (error instanceof AuthError) {
-      return { error: "The account was created, but we couldn't sign you in." }
+      return {
+        error:
+          "Creamos tu cuenta, pero no pudimos iniciar la sesión. Entra desde Iniciar sesión.",
+      }
     }
     throw error
   }

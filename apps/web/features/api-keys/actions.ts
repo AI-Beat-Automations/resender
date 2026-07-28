@@ -26,7 +26,7 @@ export async function createApiKeyAction(
   formData: FormData
 ): Promise<CreateApiKeyState> {
   const session = await auth()
-  if (!session?.user?.id) return { error: "Not authenticated." }
+  if (!session?.user?.id) return { error: "No hay sesión iniciada." }
 
   try {
     const created = await createApiKey(session.user.id, formData.get("label"))
@@ -46,7 +46,7 @@ export async function createApiKeyAction(
     revalidatePath("/settings")
     return {
       apiKey: created.apiKey,
-      message: "API key created. Copy it now; it won't be shown again.",
+      message: "Copia la key ahora: no vamos a volver a mostrarla.",
     }
   } catch (error) {
     if (error instanceof InvalidApiKeyLabelError) {
@@ -61,15 +61,15 @@ export async function revokeApiKeyAction(
   formData: FormData
 ): Promise<RevokeApiKeyState> {
   const session = await auth()
-  if (!session?.user?.id) return { error: "Not authenticated." }
+  if (!session?.user?.id) return { error: "No hay sesión iniciada." }
 
   const apiKeyId = formData.get("apiKeyId")
   if (typeof apiKeyId !== "string" || !apiKeyId) {
-    return { error: "Invalid API key." }
+    return { error: "La API key no es válida." }
   }
 
   const revoked = await revokeApiKey(session.user.id, apiKeyId)
-  if (!revoked) return { error: "API key not found." }
+  if (!revoked) return { error: "No encontramos la API key." }
 
   if (posthog) {
     posthog.capture({
@@ -81,5 +81,5 @@ export async function revokeApiKeyAction(
   }
 
   revalidatePath("/settings")
-  return { message: "API key revoked." }
+  return { message: "API key revocada." }
 }

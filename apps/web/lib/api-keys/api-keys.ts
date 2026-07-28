@@ -1,6 +1,11 @@
 import { getSql } from "@/lib/db"
 
-import { generateApiKey, hashApiKey, isApiKeyFormat, safeEqualHash } from "./tokens"
+import {
+  generateApiKey,
+  hashApiKey,
+  isApiKeyFormat,
+  safeEqualHash,
+} from "./tokens"
 
 export type ApiKeyStatus = "active" | "revoked"
 
@@ -122,10 +127,12 @@ export async function authenticateApiKey(apiKey: unknown) {
 function normalizeLabel(labelInput: unknown) {
   const label = typeof labelInput === "string" ? labelInput.trim() : ""
   if (label.length < 1) {
-    throw new InvalidApiKeyLabelError("Label is required.")
+    throw new InvalidApiKeyLabelError("Escribe una etiqueta para la key.")
   }
   if (label.length > 80) {
-    throw new InvalidApiKeyLabelError("Label can't exceed 80 characters.")
+    throw new InvalidApiKeyLabelError(
+      "La etiqueta no puede pasar de 80 caracteres."
+    )
   }
   return label
 }

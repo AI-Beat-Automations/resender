@@ -33,7 +33,13 @@ vi.mock("@/lib/pages/page-registry", () => {
   }
 })
 
-import { disconnectPageAction } from "./actions"
+vi.mock("@/lib/posthog", () => ({
+  posthog: null,
+}))
+
+import { InvalidWebhookUrlError } from "@/lib/pages/page-registry"
+
+import { disconnectPageAction, saveWebhookUrlAction } from "./actions"
 
 describe("disconnectPageAction", () => {
   beforeEach(() => {
@@ -56,7 +62,7 @@ describe("disconnectPageAction", () => {
     formData.set("connectionId", "connection-1")
 
     await expect(disconnectPageAction({}, formData)).resolves.toEqual({
-      message: "Page disconnected. The history is kept.",
+      message: "Página desconectada. El historial se conserva.",
     })
 
     expect(mocks.getActivePageWithTokenByConnectionId).toHaveBeenCalledWith(
@@ -86,7 +92,7 @@ describe("disconnectPageAction", () => {
     formData.set("connectionId", "connection-1")
 
     await expect(disconnectPageAction({}, formData)).resolves.toEqual({
-      message: "Page disconnected. The history is kept.",
+      message: "Página desconectada. El historial se conserva.",
     })
 
     expect(mocks.disconnectPage).toHaveBeenCalledWith(
@@ -108,7 +114,7 @@ describe("disconnectPageAction", () => {
     formData.set("connectionId", "connection-1")
 
     await expect(disconnectPageAction({}, formData)).resolves.toEqual({
-      message: "Page disconnected. The history is kept.",
+      message: "Página desconectada. El historial se conserva.",
     })
 
     expect(mocks.disconnectPage).toHaveBeenCalledWith(
@@ -128,9 +134,99 @@ describe("disconnectPageAction", () => {
     formData.set("connectionId", "connection-1")
 
     await expect(disconnectPageAction({}, formData)).resolves.toEqual({
-      message: "Page disconnected. The history is kept.",
+      message: "Página desconectada. El historial se conserva.",
     })
 
     expect(mocks.unsubscribeFromWebhook).not.toHaveBeenCalled()
+  })
+
+  // Estados de la acción en español (ADR 0005): son el texto que se pinta
+  // debajo del botón, no logs.
+  it("answers in Spanish when the session or the page id are missing", async () => {
+    mocks.auth.mockResolvedValue(null)
+    await expect(disconnectPageAction({}, new FormData())).resolves.toEqual({
+      error: "No has iniciado sesión.",
+    })
+
+    mocks.auth.mockResolvedValue({ user: { id: "tenant-1" } })
+    await expect(disconnectPageAction({}, new FormData())).resolves.toEqual({
+      error: "Página inválida.",
+    })
+
+    mocks.getActivePageWithTokenByConnectionId.mockResolvedValue(null)
+    mocks.disconnectPage.mockResolvedValue(null)
+    const formData = new FormData()
+    formData.set("connectionId", "connection-1")
+    await expect(disconnectPageAction({}, formData)).resolves.toEqual({
+      error: "No encontramos esa página.",
+    })
+  })
+})
+
+describe("saveWebhookUrlAction", () => {
+  beforeEach(() => {
+    for (const mock of Object.values(mocks)) mock.mockReset()
+    mocks.auth.mockResolvedValue({ user: { id: "tenant-1" } })
+    mocks.updatePageWebhookUrl.mockResolvedValue({
+      id: "connection-1",
+      metaPageId: "meta-page-1",
+    })
+  })
+
+  const webhookForm = (webhookUrl: string, connectionId = "connection-1") => {
+    const formData = new FormData()
+    formData.set("connectionId", connectionId)
+    formData.set("webhookUrl", webhookUrl)
+    return formData
+  }
+
+  it("confirms the saved webhook in Spanish", async () => {
+    await expect(
+      saveWebhookUrlAction({}, webhookForm("https://hooks.vetta.app/resender"))
+    ).resolves.toEqual({ message: "Webhook actualizado." })
+
+    expect(mocks.updatePageWebhookUrl).toHaveBeenCalledWith(
+      "tenant-1",
+      "connection-1",
+      "https://hooks.vetta.app/resender"
+    )
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/connections")
+  })
+
+  it("propagates the rule that the domain module already states in Spanish", async () => {
+    mocks.updatePageWebhookUrl.mockRejectedValue(
+      new InvalidWebhookUrlError("La URL tiene que usar https.")
+    )
+
+    await expect(
+      saveWebhookUrlAction({}, webhookForm("http://localhost:5678/webhook"))
+    ).resolves.toEqual({ error: "La URL tiene que usar https." })
+
+    expect(mocks.revalidatePath).not.toHaveBeenCalled()
+  })
+
+  it("re-throws anything that is not a webhook URL error", async () => {
+    mocks.updatePageWebhookUrl.mockRejectedValue(new Error("connection lost"))
+
+    await expect(
+      saveWebhookUrlAction({}, webhookForm("https://hooks.vetta.app/resender"))
+    ).rejects.toThrow("connection lost")
+  })
+
+  it("answers in Spanish when the session, the page id or the page are missing", async () => {
+    mocks.auth.mockResolvedValue(null)
+    await expect(saveWebhookUrlAction({}, new FormData())).resolves.toEqual({
+      error: "No has iniciado sesión.",
+    })
+
+    mocks.auth.mockResolvedValue({ user: { id: "tenant-1" } })
+    await expect(saveWebhookUrlAction({}, new FormData())).resolves.toEqual({
+      error: "Página inválida.",
+    })
+
+    mocks.updatePageWebhookUrl.mockResolvedValue(null)
+    await expect(
+      saveWebhookUrlAction({}, webhookForm("https://hooks.vetta.app/resender"))
+    ).resolves.toEqual({ error: "No encontramos esa página." })
   })
 })

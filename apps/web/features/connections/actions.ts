@@ -22,11 +22,11 @@ export async function saveWebhookUrlAction(
   formData: FormData
 ): Promise<ConnectionActionState> {
   const session = await auth()
-  if (!session?.user?.id) return { error: "Not authenticated." }
+  if (!session?.user?.id) return { error: "No has iniciado sesión." }
 
   const connectionId = formData.get("connectionId")
   if (typeof connectionId !== "string" || !connectionId) {
-    return { error: "Invalid Page." }
+    return { error: "Página inválida." }
   }
 
   try {
@@ -36,7 +36,7 @@ export async function saveWebhookUrlAction(
       formData.get("webhookUrl")
     )
 
-    if (!updated) return { error: "Page not found." }
+    if (!updated) return { error: "No encontramos esa página." }
 
     if (posthog) {
       posthog.capture({
@@ -51,8 +51,11 @@ export async function saveWebhookUrlAction(
     }
 
     revalidatePath("/connections")
-    return { message: "Webhook saved." }
+    return { message: "Webhook actualizado." }
   } catch (error) {
+    // `normalizeWebhookUrl` (lib/pages/webhook-url.ts) ya devuelve su mensaje en
+    // español y solo lo consume esta pantalla, así que se propaga tal cual:
+    // distingue «tiene que ser https» de «no es una URL válida».
     if (error instanceof InvalidWebhookUrlError) {
       return { error: error.message }
     }
@@ -65,11 +68,11 @@ export async function disconnectPageAction(
   formData: FormData
 ): Promise<ConnectionActionState> {
   const session = await auth()
-  if (!session?.user?.id) return { error: "Not authenticated." }
+  if (!session?.user?.id) return { error: "No has iniciado sesión." }
 
   const connectionId = formData.get("connectionId")
   if (typeof connectionId !== "string" || !connectionId) {
-    return { error: "Invalid Page." }
+    return { error: "Página inválida." }
   }
 
   let pageToUnsubscribe: Awaited<
@@ -89,7 +92,7 @@ export async function disconnectPageAction(
   }
 
   const disconnected = await disconnectPage(session.user.id, connectionId)
-  if (!disconnected) return { error: "Page not found." }
+  if (!disconnected) return { error: "No encontramos esa página." }
 
   if (posthog) {
     posthog.capture({
@@ -120,5 +123,5 @@ export async function disconnectPageAction(
   }
 
   revalidatePath("/connections")
-  return { message: "Page disconnected. The history is kept." }
+  return { message: "Página desconectada. El historial se conserva." }
 }
