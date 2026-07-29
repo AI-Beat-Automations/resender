@@ -49,7 +49,7 @@ Resender.dev es una API relay SaaS para mensajes de Facebook, Instagram y WhatsA
 
 **Objetivo:** Que un dev o agencia que llega (de TikTok, Reddit, Google, o un link directo) entienda en menos de 30 segundos qué es Resender, por qué le conviene, y se registre.
 
-**CTA principal:** Botón de registro directo ("Get Started" / "Empezá gratis").
+**CTA principal:** Botón de registro directo ("Get Started" / "Empieza").
 
 #### Secciones en orden:
 
@@ -67,10 +67,10 @@ Resender.dev es una API relay SaaS para mensajes de Facebook, Instagram y WhatsA
 
 **HOW IT WORKS**
 - Flujo simplificado en 3-4 pasos visuales con íconos o ilustración:
-  1. Conectá tu página de Facebook / Instagram.
-  2. Configurá tu webhook URL.
-  3. Recibí los mensajes en tu endpoint.
-  4. Respondé vía API y Resender entrega el mensaje.
+  1. Conecta tu página de Facebook / Instagram.
+  2. Configura tu webhook URL.
+  3. Recibe los mensajes en tu endpoint.
+  4. Responde vía API y Resender entrega el mensaje.
 - Tono: simple, claro, técnico pero accesible.
 
 **FEATURES / QUÉ INCLUYE**
@@ -137,9 +137,9 @@ Resender.dev es una API relay SaaS para mensajes de Facebook, Instagram y WhatsA
 - Tabla comparativa lado a lado: ManyChat vs Resender.
 - Puntos clave a comunicar:
   - ManyChat cobra $39+/mes; Resender desde $15/mes.
-  - ManyChat incluye features que un dev no necesita (drag & drop builder, templates visuales, analytics de engagement). Estás pagando por cosas que no usás.
+  - ManyChat incluye features que un dev no necesita (drag & drop builder, templates visuales, analytics de engagement). Estás pagando por cosas que no usas.
   - Resender es solo API: limpia, directa, sin ruido.
-  - Si solo necesitás la API de Meta para procesar mensajes, Resender es lo que necesitás.
+  - Si solo necesitas la API de Meta para procesar mensajes, Resender es lo que necesitas.
 
 **FAQ DE PRICING**
 - ¿Qué pasa si me paso de los mensajes?
@@ -282,7 +282,7 @@ Contenido del post acá...
 
 ### Theming: Modo claro y modo oscuro
 
-El sitio debe soportar dos temas visuales con un toggle/switch visible en la navbar para alternar entre ellos. Este switch es temporal (para evaluación interna entre los founders) y no estará en la versión pública final. El color de acento (`#7773a5` violeta) resalta en ambos modos.
+> **Estado actual:** el switch cumplió su función (evaluación interna entre los founders) y **se removió**. El sitio público es **solo modo claro**: cada vista de marketing va envuelta en `.light` y `globals.css` declara los tokens claros con `:root, .light`, así que el sitio queda en claro sin importar el `prefers-color-scheme` del visitante. El modo oscuro que sigue abajo aplica **solo a la consola**, que conserva su toggle en el sidebar. El color de acento (`#7773a5` violeta) resalta en ambos modos.
 
 #### Modo Claro (Light)
 

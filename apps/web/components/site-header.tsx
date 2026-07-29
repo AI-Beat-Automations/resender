@@ -13,13 +13,14 @@ import {
 } from "@workspace/ui/components/sheet"
 
 import { SiteLogo } from "@/components/site-logo"
-import { ThemeToggle } from "@/components/theme-toggle"
 import { LanguageToggle } from "@/components/language-toggle"
 import { DOCS_URL } from "@/lib/site-config"
 import { getDictionary, localePath, type Locale } from "@/content/i18n"
 
-// Navbar público de marketing. Sticky, con logo, navegación, toggles de tema e
-// idioma y CTAs a la app existente (Login / Empezá). El menú mobile usa Sheet.
+// Navbar público de marketing. Sticky, con logo, navegación, toggle de idioma y
+// CTAs a la app existente (Login / Empieza). El menú mobile usa Sheet. El sitio
+// es solo modo claro (ver el wrapper `.light` de cada vista), así que acá no hay
+// switch de tema: ese vive únicamente en el sidebar de la consola.
 // Los docs son un sitio aparte (docs.resender.dev), así que ese link sale del
 // dominio y no se localiza.
 export function SiteHeader({ lang }: { lang: Locale }) {
@@ -34,6 +35,9 @@ export function SiteHeader({ lang }: { lang: Locale }) {
 
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur">
+      {/* Tres bloques repartidos por `justify-between`: logo, nav e idioma +
+          acceso. La nav queda en el espacio libre entre el logo y el cluster
+          derecho. */}
       <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-4 px-6">
         <SiteLogo href={localePath("/", lang)} label={dict.nav.home} />
 
@@ -47,21 +51,15 @@ export function SiteHeader({ lang }: { lang: Locale }) {
         </nav>
 
         <div className="hidden items-center gap-3 md:flex">
-          <ThemeToggle />
           <LanguageToggle />
-          <Button asChild variant="outline" size="sm">
-            <Link href={localePath("/login", lang)}>{dict.nav.login}</Link>
-          </Button>
+          {/* Variante `default` (primary), la misma que el CTA del hero. */}
           <Button asChild size="sm">
-            <Link href={localePath("/register", lang)}>
-              {dict.nav.getStarted}
-            </Link>
+            <Link href={localePath("/login", lang)}>{dict.nav.login}</Link>
           </Button>
         </div>
 
         {/* Menú mobile */}
         <div className="flex items-center gap-2 md:hidden">
-          <ThemeToggle />
           <LanguageToggle />
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild>
@@ -84,13 +82,8 @@ export function SiteHeader({ lang }: { lang: Locale }) {
                   </Button>
                 ))}
                 <div className="mt-4 flex flex-col gap-2">
-                  <Button asChild variant="outline" onClick={() => setOpen(false)}>
-                    <Link href={localePath("/login", lang)}>{dict.nav.login}</Link>
-                  </Button>
                   <Button asChild onClick={() => setOpen(false)}>
-                    <Link href={localePath("/register", lang)}>
-                      {dict.nav.getStarted}
-                    </Link>
+                    <Link href={localePath("/login", lang)}>{dict.nav.login}</Link>
                   </Button>
                 </div>
               </nav>

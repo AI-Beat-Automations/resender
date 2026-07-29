@@ -16,7 +16,8 @@
 |----------|---------------|---------|
 | **Idioma** | **Español primero** (la spec pedía inglés por defecto) | Se priorizó arrancar en español. Copy centralizado en `content/i18n/es.ts` para clonar a `en.ts` y sumar ruteo `/en · /es` después sin reescribir markup. **No** hay ruteo `[lang]` ni middleware todavía. `<html lang="es">`. |
 | **Paleta** | Aplicada **globalmente** (afecta también al dashboard) | Unificar la marca en toda la superficie. Se reemplazaron los tokens neutrales del `globals.css` compartido por la paleta crema/violeta. |
-| **Switch de tema** | Toggle claro/oscuro visible en la navbar | **Temporal**, para evaluación interna entre founders. Una vez elegido el modo, se remueve. |
+| **Switch de tema** | **Removido del sitio.** El modo definitivo es el **claro** | El toggle era temporal, para evaluación interna entre founders. Elegido el modo, se removió de la navbar. El sitio queda en claro por CSS: cada vista de marketing se envuelve en `.light`, y `globals.css` declara los tokens claros con `:root, .light` — así el sitio ignora el `.dark` que `next-themes` pueda poner en `<html>` (preferencia del SO, `localStorage` viejo, hotkey "d") sin depender de JS ni sufrir FOUC. **La consola conserva su switch y su modo oscuro.** |
+| **Registro de español** | **Tuteo neutro en todo el sitio** ("Conecta", "Empieza", "Necesitas") | El sitio nació en voseo rioplatense y el producto en tuteo neutro (ADR 0005), así que convivían dos registros en el mismo dominio. Se unificó la copy pública al registro del producto. |
 | **Arquitectura** | El marketing vive en el **mismo** `apps/web` que el dashboard | Evita un app separado; comparten UI package, tokens y fuentes. |
 | **URLs legales** | `/privacy` y `/data-deletion` **no se mueven** | Están hardcodeadas en el panel de Meta (ver `CONTEXT.md`). No entran bajo `[lang]`. |
 | **Vibra visual** | "Showpieces + acentos" IDE/código | Personalidad de developer sin recargar (referencia: Resend, Linear, Vercel). |
@@ -63,10 +64,10 @@ Tokens shadcn en hex, definidos para `:root` (claro) y `.dark` (oscuro). Acento 
 
 ## 3. Chrome compartido
 
-- **`SiteHeader`**: navbar sticky con blur, altura `h-16`. Logo + links (Precios, Blog, Docs) + toggle de tema + botones Login (outline) y "Empezá gratis" (primary). Menú mobile con `Sheet`.
+- **`SiteHeader`**: navbar sticky con blur, altura `h-16`. Logo + links (Precios, Blog, Docs) + toggle de idioma + botones Login (outline) y "Empieza" (primary). Menú mobile con `Sheet`. Sin toggle de tema: el sitio es solo modo claro.
 - **`SiteFooter`**: sección de contraste (morado oscuro / crema invertido), columnas Producto / Legal / Contacto, logo y copyright.
 - **`SiteBackground`**: patrón `BGPattern` variante **`grid`** (celdas ~40px), fijo al viewport, con `mask` fade en bordes y `fill` theme-aware (`color-mix(in oklab, var(--foreground) 10%, transparent)`). Solo en páginas de marketing, **no** en el dashboard. (Se probó `dots` primero; se cambió a `grid`.)
-- **`ThemeToggle`**: `Switch` sol/luna sobre next-themes (persistencia en localStorage). Convive con el hotkey "d". Temporal.
+- **`ThemeToggle`**: `Switch` sol/luna sobre next-themes (persistencia en localStorage). Convive con el hotkey "d". **Ya no se usa en el sitio**; queda solo en el sidebar de la consola (`features/shell/ui/app-sidebar.tsx`).
 
 ---
 
@@ -112,10 +113,10 @@ Historia del componente (por si sirve de contexto):
 - Kicker `// el problema`. Sección en tono base (se **quitó** el fondo `muted` para que no quede línea divisoria; blende con el background).
 - **Marquee de preguntas** (`question-marquee.tsx`): 2 renglones que se mueven en direcciones opuestas (CSS puro, bubbles redondeadas). Quejas/preguntas reales de usuarios (n8n, "algo más barato", agencias con muchos clientes, "algo sencillo y rápido").
 - **4 pain cards horizontales** (grid 2×2):
-  1. Pagás por funciones que ni abrís
+  1. Pagas por funciones que ni abres
   2. Conectar con Meta es un laberinto
   3. Malabares con varios clientes (agencias)
-  4. Necesitás algo simple y rápido
+  4. Necesitas algo simple y rápido
 
 ### 4.4 Cómo funciona (`how-it-works.tsx`)
 
@@ -205,7 +206,7 @@ Todo lo animado respeta `prefers-reduced-motion`.
 Se verificó que el dashboard comparta el tono del website. Ya estaba alineado en paleta, fuentes, tokens de card/panel y burbujas de mensajes. Se ajustó:
 
 1. **Logo** de marca `Resender.dev` arriba a la izquierda (mismo `SiteLogo`, apunta a `/connections`).
-2. **Header** sticky + blur + `h-16`, con el **toggle de tema** (igual que la navbar del website).
+2. **Header** sticky + blur + `h-16`, con el **toggle de tema**. (Con el rediseño v2 el toggle pasó al sidebar; y desde que el website quedó en modo claro fijo, es el **único** lugar donde vive.)
 3. **Títulos de página** de `font-semibold` → `font-bold`.
 
 No se tocó backend, auth ni lógica de dominio.
