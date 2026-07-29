@@ -1,0 +1,37 @@
+{
+  "name": "api",
+  "version": "0.0.1",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "wrangler deploy --dry-run --env=\"\" --outdir .wrangler/dry-run",
+    "dev": "wrangler dev --local",
+    "preview": "wrangler dev --local",
+    "deploy": "wrangler deploy",
+    "deploy:staging": "wrangler deploy --env staging",
+    "cf-typegen": "wrangler types worker-configuration.d.ts --env-file .dev.vars.example --env-interface Env",
+    "cf-typegen:check": "wrangler types worker-configuration.d.ts --env-file .dev.vars.example --env-interface Env --check",
+    "lint": "eslint src",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/swagger-ui": "0.6.1",
+    "@hono/zod-openapi": "1.5.1",
+    "@neondatabase/serverless": "1.1.0",
+    "@workspace/contracts": "*",
+    "hono": "4.12.32",
+    "stripe": "22.3.2",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "0.19.0",
+    "@workspace/eslint-config": "*",
+    "@workspace/typescript-config": "*",
+    "eslint": "^9",
+    "typescript": "^5",
+    "vitest": "4.1.9",
+    "wrangler": "4.114.0"
+  }
+}
