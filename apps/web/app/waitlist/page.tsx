@@ -3,9 +3,14 @@ import { redirect } from "next/navigation"
 import { Clock3 } from "lucide-react"
 
 import { auth, signOut } from "@/auth"
+import { PostHogIdentify } from "@/components/posthog-identify"
+import { SignOutForm } from "@/components/sign-out-form"
 import { AccessCard, AccessShell } from "@/features/auth/ui/access-shell"
 import { isUserWaitlisted } from "@/lib/auth/waitlist"
+import { privatePageMetadata } from "@/lib/seo"
 import { Button } from "@workspace/ui/components/button"
+
+export const metadata = privatePageMetadata("Lista de espera")
 
 // Aterrizaje de las cuentas que se registraron con el producto cerrado.
 // Vive fuera del grupo `(product)` a propósito: ese layout rebota aquí a los
@@ -15,21 +20,28 @@ export default async function WaitlistPage() {
   if (!session?.user?.id) redirect("/login")
   if (!(await isUserWaitlisted(session.user.id))) redirect("/connections")
 
+  async function signOutAction() {
+    "use server"
+    await signOut({ redirectTo: "/" })
+  }
+
   return (
     <AccessShell
       topbarEnd={
-        <form
-          action={async () => {
-            "use server"
-            await signOut({ redirectTo: "/" })
-          }}
-        >
+        // `SignOutForm` hace el `posthog.reset()` antes de la server action.
+        <SignOutForm action={signOutAction}>
           <Button type="submit" variant="outline">
             Cerrar sesión
           </Button>
-        </form>
+        </SignOutForm>
       }
     >
+      {/* Esta página está fuera de `(product)`, así que no hereda su identify.
+          Renderiza null, así que no toca el layout del `main`. */}
+      <PostHogIdentify
+        distinctId={session.user.id}
+        email={session.user.email}
+      />
       <AccessCard className="max-w-130 p-7.5">
         <span className="flex size-11 items-center justify-center rounded-full bg-muted text-muted-foreground">
           <Clock3 className="size-5" aria-hidden />

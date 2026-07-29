@@ -1,10 +1,14 @@
-"use client"
+import { cn } from "@workspace/ui/lib/utils"
 
-import * as React from "react"
-
-// Tipea el texto una sola vez al cargar la página (efecto máquina de escribir).
-// Con prefers-reduced-motion muestra el texto completo de una. El caret que
-// parpadea va aparte, en el hero, justo después de este componente.
+// Efecto máquina de escribir 100% CSS. El texto completo va en el HTML servido
+// y la animación solo revela su ancho, así que el H1 del hero llega entero al
+// crawler (antes se tipeaba con estado de React y el HTML prerenderizado salía
+// con el span vacío: "Developer-first." solo aparecía después de hidratar).
+//
+// El reveal usa `max-width` con un margen del 20% sobre el ancho estimado en
+// `ch`: si el glifo "0" de la fuente es más angosto que el promedio real, el
+// tope queda por encima del ancho natural y el texto nunca se corta.
+// `prefers-reduced-motion` lo muestra estático (ver globals.css).
 export function Typewriter({
   text,
   className,
@@ -12,27 +16,20 @@ export function Typewriter({
 }: {
   text: string
   className?: string
+  /** Milisegundos por caracter. */
   speed?: number
 }) {
-  const [count, setCount] = React.useState(0)
-
-  React.useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setCount(text.length)
-      return
-    }
-    const id = setInterval(() => {
-      setCount((c) => {
-        if (c >= text.length) {
-          clearInterval(id)
-          return c
-        }
-        return c + 1
-      })
-    }, speed)
-    return () => clearInterval(id)
-  }, [text, speed])
-
-  return <span className={className}>{text.slice(0, count)}</span>
+  return (
+    <span
+      className={cn("typewriter", className)}
+      style={
+        {
+          "--typewriter-chars": text.length,
+          "--typewriter-duration": `${text.length * speed}ms`,
+        } as React.CSSProperties
+      }
+    >
+      {text}
+    </span>
+  )
 }

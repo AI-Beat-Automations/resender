@@ -6,7 +6,7 @@ import { SiteFooter } from "@/components/site-footer"
 import { SiteBackground } from "@/components/site-background"
 
 export const metadata: Metadata = {
-  title: "Data Deletion Instructions · Resender",
+  title: "Data Deletion Instructions",
   description: "How to delete your data from Resender, operated by AI Beat.",
 }
 
@@ -15,9 +15,9 @@ const CONTACT_EMAIL = "info@resender.dev"
 
 export default function DataDeletionPage() {
   return (
-    <div className="flex min-h-svh flex-col">
+    <div className="light flex min-h-svh flex-col">
       <SiteBackground />
-      <SiteHeader />
+      <SiteHeader lang="es" />
       <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-12">
         <header className="mb-10">
           <h1 className="text-3xl font-semibold tracking-tight">
@@ -130,7 +130,7 @@ export default function DataDeletionPage() {
           </section>
         </div>
       </main>
-      <SiteFooter />
+      <SiteFooter lang="es" />
     </div>
   )
 }

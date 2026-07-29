@@ -5,6 +5,7 @@ import { useActionState } from "react"
 import { LoaderCircle, TriangleAlert } from "lucide-react"
 
 import type { AuthFormState } from "@/features/auth/actions"
+import { getDictionary, localePath, type Locale } from "@/content/i18n"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
@@ -17,18 +18,23 @@ type AuthAction = (
 type AuthFormProps = {
   action: AuthAction
   mode: "login" | "register"
+  lang: Locale
 }
 
-export function AuthForm({ action, mode }: AuthFormProps) {
+export function AuthForm({ action, mode, lang }: AuthFormProps) {
   const [state, formAction, pending] = useActionState(action, {})
   const isLogin = mode === "login"
   const hasError = Boolean(state.error)
+  const t = getDictionary(lang).auth.form
 
   return (
     <>
       <form action={formAction} className="mt-5 flex flex-col gap-3.5">
+        {/* El server action no ve el pathname: le pasamos el idioma para que
+            devuelva sus errores en el idioma de la página. */}
+        <input type="hidden" name="locale" value={lang} />
         <div className="grid gap-2">
-          <Label htmlFor="email">Email</Label>
+          <Label htmlFor="email">{t.email}</Label>
           <Input
             id="email"
             name="email"
@@ -37,11 +43,11 @@ export function AuthForm({ action, mode }: AuthFormProps) {
             required
             disabled={pending}
             aria-invalid={hasError}
-            placeholder="tu@empresa.com"
+            placeholder={t.emailPlaceholder}
           />
         </div>
         <div className="grid gap-2">
-          <Label htmlFor="password">Contraseña</Label>
+          <Label htmlFor="password">{t.password}</Label>
           <Input
             id="password"
             name="password"
@@ -52,13 +58,13 @@ export function AuthForm({ action, mode }: AuthFormProps) {
             disabled={pending}
             aria-invalid={hasError}
             aria-describedby={isLogin ? undefined : "password-hint"}
-            placeholder={isLogin ? undefined : "Al menos 8 caracteres"}
+            placeholder={isLogin ? undefined : t.passwordPlaceholder}
           />
           {/* El mínimo de contraseña se anuncia antes de enviar, no como error
               del servidor: en el alta es un requisito, no un fallo. */}
           {!isLogin && (
             <p id="password-hint" className="text-[13px] text-muted-foreground">
-              Al menos 8 caracteres.
+              {t.passwordHint}
             </p>
           )}
         </div>
@@ -75,22 +81,22 @@ export function AuthForm({ action, mode }: AuthFormProps) {
           {pending ? (
             <>
               <LoaderCircle className="size-4 animate-spin" aria-hidden />
-              Procesando…
+              {t.processing}
             </>
           ) : isLogin ? (
-            "Entrar"
+            t.signIn
           ) : (
-            "Crear cuenta"
+            t.createAccount
           )}
         </Button>
       </form>
       <p className="mt-4 text-center text-[13.5px] text-muted-foreground">
-        {isLogin ? "¿No tienes cuenta? " : "¿Ya tienes cuenta? "}
+        {isLogin ? t.noAccount : t.haveAccount}{" "}
         <Link
-          href={isLogin ? "/register" : "/login"}
+          href={localePath(isLogin ? "/register" : "/login", lang)}
           className="font-medium text-foreground underline-offset-4 hover:underline"
         >
-          {isLogin ? "Crear una" : "Iniciar sesión"}
+          {isLogin ? t.signUp : t.signInAction}
         </Link>
       </p>
     </>

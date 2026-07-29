@@ -10,8 +10,10 @@ import { Switch } from "@workspace/ui/components/switch"
 // (attribute="class" + persistencia en localStorage). Ver también el hotkey "d"
 // en components/theme-provider.tsx.
 //
-// NOTA: este switch es temporal, para evaluación interna entre los founders.
-// Una vez elegido el modo definitivo, se remueve (ver resender-website-spec.md §4).
+// ALCANCE: solo la consola (features/shell/ui/app-sidebar.tsx). El sitio público
+// terminó su evaluación interna y quedó en modo claro fijo, así que salió de la
+// navbar; cada vista de marketing se envuelve en `.light` y no responde a este
+// switch ni al hotkey. No borrar este componente: la consola sí lo usa.
 export function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme()
   const [mounted, setMounted] = React.useState(false)

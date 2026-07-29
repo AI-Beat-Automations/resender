@@ -7,6 +7,9 @@ import { ActivationPoller } from "@/features/billing/ui/activation-poller"
 import { AccessCard, AccessShell } from "@/features/auth/ui/access-shell"
 import { getStripe } from "@/lib/billing/stripe"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
+import { privatePageMetadata } from "@/lib/seo"
+
+export const metadata = privatePageMetadata("Activando tu suscripción")
 
 type BillingSuccessPageProps = {
   searchParams: Promise<{ session_id?: string }>

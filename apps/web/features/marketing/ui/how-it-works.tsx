@@ -2,17 +2,19 @@ import { Link2, Webhook, Inbox, Send } from "lucide-react"
 
 import { Section, SectionHeading } from "@/features/marketing/ui/section"
 import { Reveal } from "@/features/marketing/ui/reveal"
-import { dict } from "@/content/i18n/es"
+import { getDictionary, type Locale } from "@/content/i18n"
 
 const icons = [Link2, Webhook, Inbox, Send]
 
 // Línea de tiempo: nodos conectados por una línea (horizontal en desktop,
 // vertical en mobile). Cada paso aparece con un pequeño stagger al scrollear.
-export function HowItWorks() {
+export function HowItWorks({ lang }: { lang: Locale }) {
+  const dict = getDictionary(lang)
+
   return (
     <Section id="how-it-works">
       <SectionHeading
-        kicker="flujo"
+        kicker={dict.howItWorks.kicker}
         title={dict.howItWorks.title}
         subtitle={dict.howItWorks.subtitle}
       />
@@ -31,7 +33,7 @@ export function HowItWorks() {
                   <Icon className="size-5" />
                 </div>
                 <span className="mt-4 font-mono text-xs text-muted-foreground">
-                  Paso 0{i + 1}
+                  {dict.howItWorks.stepLabel} 0{i + 1}
                 </span>
                 <h3 className="mt-1 text-lg font-semibold">{step.title}</h3>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">

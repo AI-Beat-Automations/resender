@@ -4,6 +4,11 @@ status: accepted
 
 # Rediseño de la consola v2: alcance recortado, shell con sidebar, tokens del DS e idioma
 
+> **Enmendada en el punto del idioma por la
+> [ADR 0006](0006-access-screens-return-to-the-dictionary.md):** `/login` y `/register` leen su
+> texto del `Dict` porque tienen gemela en `/en`. Las otras siete rutas de producto siguen con el
+> español hardcoded que decide este documento.
+
 El rediseño parte de `Dashboard Resender v2.dc.html`, en el proyecto de diseño
 `claude.ai/design/p/f08ad4ae-6933-48f4-a750-b56f6946127b`, junto a `App Sidebar.dc.html` y el
 design system `resender-dev-design-system-52f374d5-…`. **v2 no es una revisión de la versión

@@ -3,6 +3,7 @@
 import { AuthError } from "next-auth"
 
 import { signIn } from "@/auth"
+import { getDictionary, type Locale } from "@/content/i18n"
 import {
   createUser,
   DuplicateEmailError,
@@ -15,17 +16,25 @@ export type AuthFormState = {
   error?: string
 }
 
+// El idioma llega en un input oculto del form (ver features/auth/ui/auth-form):
+// un server action no tiene acceso al pathname de la página que lo invocó.
+function localeOf(formData: FormData): Locale {
+  return formData.get("locale") === "en" ? "en" : "es"
+}
+
 export async function loginAction(
   _state: AuthFormState,
   formData: FormData
 ): Promise<AuthFormState> {
+  const errors = getDictionary(localeOf(formData)).auth.errors
+
   const input = validateAuthInput(
     formData.get("email"),
     formData.get("password")
   )
   // En login los errores son genéricos a propósito: no confirmamos si el
   // email existe (CONTEXT.md → «Usuario MVP»).
-  if (!input.ok) return { error: "Email o contraseña incorrectos." }
+  if (!input.ok) return { error: errors.invalidCredentials }
 
   try {
     await signIn("credentials", {
@@ -35,7 +44,7 @@ export async function loginAction(
     })
   } catch (error) {
     if (error instanceof AuthError) {
-      return { error: "Email o contraseña incorrectos." }
+      return { error: errors.invalidCredentials }
     }
     throw error
   }
@@ -47,6 +56,8 @@ export async function registerAction(
   _state: AuthFormState,
   formData: FormData
 ): Promise<AuthFormState> {
+  const locale = localeOf(formData)
+  const errors = getDictionary(locale).auth.errors
   const email = formData.get("email")
   const password = formData.get("password")
 
@@ -57,12 +68,13 @@ export async function registerAction(
     // En el alta, el email duplicado sí se nombra: aquí el usuario necesita
     // saber que ya tiene cuenta (CONTEXT.md → «Usuario MVP»).
     if (error instanceof DuplicateEmailError) {
-      return { error: "Ese email ya está registrado. Inicia sesión." }
+      return { error: errors.duplicateEmail }
     }
-    // `lib/auth/validation` ya devuelve su texto en español y solo lo consume
-    // la web, así que se propaga tal cual: dice qué campo falló.
+    // `lib/auth/validation` devuelve su texto en español y dice qué campo
+    // falló, así que en español se propaga tal cual. En inglés no hay
+    // equivalente traducido: ahí cae al genérico del diccionario.
     if (error instanceof InvalidAuthInputError) {
-      return { error: error.message }
+      return { error: locale === "es" ? error.message : errors.invalidInput }
     }
     throw error
   }
@@ -84,10 +96,7 @@ export async function registerAction(
     })
   } catch (error) {
     if (error instanceof AuthError) {
-      return {
-        error:
-          "Creamos tu cuenta, pero no pudimos iniciar la sesión. Entra desde Iniciar sesión.",
-      }
+      return { error: errors.createdNoSignin }
     }
     throw error
   }

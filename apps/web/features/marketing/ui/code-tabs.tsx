@@ -15,7 +15,15 @@ import {
 // ícono de portapapeles (arriba a la derecha del código) copia el tab activo.
 export type Snippet = { id: string; label: string; html: string; code: string }
 
-export function CodeTabs({ snippets }: { snippets: Snippet[] }) {
+export function CodeTabs({
+  snippets,
+  copyLabel,
+  copiedLabel,
+}: {
+  snippets: Snippet[]
+  copyLabel: string
+  copiedLabel: string
+}) {
   const [active, setActive] = React.useState(snippets[0]?.id ?? "")
   const [copied, setCopied] = React.useState(false)
 
@@ -49,7 +57,7 @@ export function CodeTabs({ snippets }: { snippets: Snippet[] }) {
         <button
           type="button"
           onClick={copy}
-          aria-label={copied ? "Copiado" : "Copiar código"}
+          aria-label={copied ? copiedLabel : copyLabel}
           className="absolute right-2 top-2 z-10 flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           {copied ? (

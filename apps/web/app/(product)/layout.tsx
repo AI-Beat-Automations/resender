@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation"
 
 import { auth, signOut } from "@/auth"
+import { PostHogIdentify } from "@/components/posthog-identify"
 import {
   QuotaNoticeBar,
   type QuotaNoticeView,
@@ -10,6 +11,11 @@ import { isUserWaitlisted } from "@/lib/auth/waitlist"
 import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
 import type { TenantEntitlement } from "@/lib/billing/entitlements"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
+import { privatePageMetadata } from "@/lib/seo"
+
+// La app logueada no tiene nada que hacer en el índice. Lo heredan
+// /connections, /messages y /settings.
+export const metadata = privatePageMetadata("Resender")
 
 export default async function ProductLayout({
   children,
@@ -38,6 +44,10 @@ export default async function ProductLayout({
     // Shell de dos columnas (ADR 0005): sidebar fijo, contenido con scroll
     // propio. El dashboard va sobre `--surface-app`, sin textura.
     <div className="flex h-svh overflow-hidden bg-[var(--surface-app)]">
+      <PostHogIdentify
+        distinctId={session.user.id}
+        email={session.user.email}
+      />
       <AppSidebar
         email={session.user.email ?? ""}
         signOutAction={signOutAction}

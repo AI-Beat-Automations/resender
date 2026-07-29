@@ -1,31 +1,11 @@
-import { redirect } from "next/navigation"
+import { getDictionary } from "@/content/i18n"
+import { RegisterView } from "@/features/auth/ui/register-view"
+import { privatePageMetadata } from "@/lib/seo"
 
-import { auth } from "@/auth"
-import { registerAction } from "@/features/auth/actions"
-import {
-  AccessCard,
-  AccessDocsLink,
-  AccessEyebrow,
-  AccessShell,
-} from "@/features/auth/ui/access-shell"
-import { AuthForm } from "@/features/auth/ui/auth-form"
+export const metadata = privatePageMetadata(
+  getDictionary("es").auth.register.title
+)
 
-export default async function RegisterPage() {
-  const session = await auth()
-  if (session?.user?.id) redirect("/connections")
-
-  return (
-    <AccessShell topbarEnd={<AccessDocsLink />}>
-      <AccessCard className="max-w-95 p-6.5">
-        <AccessEyebrow label="alta" />
-        <h1 className="mt-1.5 font-heading text-[22px] font-bold tracking-tight">
-          Crear cuenta.
-        </h1>
-        <p className="mt-2 text-[13.5px] text-muted-foreground">
-          Email y contraseña. No hay verificación por correo en el MVP.
-        </p>
-        <AuthForm action={registerAction} mode="register" />
-      </AccessCard>
-    </AccessShell>
-  )
+export default function RegisterPage() {
+  return <RegisterView lang="es" />
 }

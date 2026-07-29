@@ -6,6 +6,17 @@ import { cn } from "@workspace/ui/lib/utils"
 
 // Envuelve contenido para que aparezca (fade + slide-up) cuando entra al
 // viewport al scrollear. Respeta prefers-reduced-motion (aparece de una).
+//
+// El estado arranca en "static" a propósito: el HTML servido sale VISIBLE. Antes
+// arrancaba oculto y ~40% del contenido único de la landing (pain points y pasos
+// de "cómo funciona") se servía con `opacity-0`, a merced de que el renderer de
+// Google disparara el IntersectionObserver — que no scrollea, así que lo de
+// abajo del fold podía quedar invisible en su snapshot.
+//
+// Solo se pasa a "hidden" al montar, y únicamente si el bloque está debajo del
+// fold: animar algo que ya se está viendo produciría un parpadeo.
+type RevealState = "static" | "hidden" | "shown"
+
 export function Reveal({
   children,
   className,
@@ -16,23 +27,20 @@ export function Reveal({
   delay?: number
 }) {
   const ref = React.useRef<HTMLDivElement>(null)
-  const [shown, setShown] = React.useState(false)
+  const [state, setState] = React.useState<RevealState>("static")
 
   React.useEffect(() => {
     const el = ref.current
     if (!el) return
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return
+    if (el.getBoundingClientRect().top < window.innerHeight) return
 
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      // Sin animación: mostrar de una. setState de un disparo, intencional.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setShown(true)
-      return
-    }
+    setState("hidden")
 
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0]?.isIntersecting) {
-          setShown(true)
+          setState("shown")
           observer.disconnect()
         }
       },
@@ -48,7 +56,9 @@ export function Reveal({
       style={{ transitionDelay: `${delay}ms` }}
       className={cn(
         "transition-all duration-700 ease-out motion-reduce:transition-none",
-        shown ? "translate-y-0 opacity-100" : "translate-y-8 opacity-0",
+        state === "hidden"
+          ? "translate-y-8 opacity-0"
+          : "translate-y-0 opacity-100",
         className
       )}
     >

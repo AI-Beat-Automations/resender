@@ -1,13 +1,18 @@
 import { redirect } from "next/navigation"
 
 import { auth, signOut } from "@/auth"
+import { PostHogIdentify } from "@/components/posthog-identify"
+import { SignOutForm } from "@/components/sign-out-form"
 import { AccessEyebrow, AccessShell } from "@/features/auth/ui/access-shell"
 import { startCheckout } from "@/features/billing/actions"
 import { isUserWaitlisted } from "@/lib/auth/waitlist"
 import { PLANS } from "@/lib/billing/plans"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
+import { privatePageMetadata } from "@/lib/seo"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
+
+export const metadata = privatePageMetadata("Suscripción")
 
 // El plan destacado. El diseño marca Pro con el anillo violeta grueso.
 const RECOMMENDED_PLAN = "pro_monthly"
@@ -24,21 +29,28 @@ export default async function BillingPage() {
   if (await isUserWaitlisted(session.user.id)) redirect("/waitlist")
   if (await hasActiveSubscription(session.user.id)) redirect("/connections")
 
+  async function signOutAction() {
+    "use server"
+    await signOut({ redirectTo: "/" })
+  }
+
   return (
     <AccessShell
       topbarEnd={
-        <form
-          action={async () => {
-            "use server"
-            await signOut({ redirectTo: "/" })
-          }}
-        >
+        // `SignOutForm` hace el `posthog.reset()` antes de la server action.
+        <SignOutForm action={signOutAction}>
           <Button type="submit" variant="outline">
             Cerrar sesión
           </Button>
-        </form>
+        </SignOutForm>
       }
     >
+      {/* Esta página está fuera de `(product)`, así que no hereda su identify.
+          Renderiza null, así que no toca el layout del `main`. */}
+      <PostHogIdentify
+        distinctId={session.user.id}
+        email={session.user.email}
+      />
       <div className="flex w-full flex-col items-center">
         <AccessEyebrow label="pricing" />
         <h1 className="mt-2 font-heading text-3xl font-bold tracking-tight">

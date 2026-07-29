@@ -30,7 +30,11 @@ export async function POST(request: NextRequest) {
   let event: Stripe.Event
   try {
     // constructEventAsync usa WebCrypto: requerido en Cloudflare Workers.
-    event = await getStripe().webhooks.constructEventAsync(raw, signature, secret)
+    event = await getStripe().webhooks.constructEventAsync(
+      raw,
+      signature,
+      secret
+    )
   } catch (error) {
     console.error("stripe webhook signature verification failed", error)
     return new Response("bad signature", { status: 400 })
@@ -125,16 +129,29 @@ async function applySubscriptionSnapshot(event: Stripe.Event) {
     const isCanceled = subscription.status === "canceled"
     const isNew = event.type === "customer.subscription.created"
     if (isNew || isCanceled) {
-      posthog.capture({
-        distinctId: tenantId,
-        event: isCanceled ? "subscription canceled" : "subscription started",
-        properties: {
-          stripe_subscription_id: subscription.id,
-          status: subscription.status,
-          price_lookup_key:
-            item?.price.lookup_key ?? item?.price.id ?? "unknown",
-        },
-      })
+      const properties = {
+        stripe_subscription_id: subscription.id,
+        status: subscription.status,
+        price_lookup_key: item?.price.lookup_key ?? item?.price.id ?? "unknown",
+      }
+      // Dos capture con nombre literal en vez de un ternario en `event`: los
+      // nombres dinámicos no se pueden verificar estáticamente ni cruzar con la
+      // taxonomía de PostHog. El orden (cancelado primero) preserva la
+      // precedencia original: un `created` que ya llega cancelado sigue
+      // contando como cancelación.
+      if (isCanceled) {
+        posthog.capture({
+          distinctId: tenantId,
+          event: "subscription canceled",
+          properties,
+        })
+      } else {
+        posthog.capture({
+          distinctId: tenantId,
+          event: "subscription started",
+          properties,
+        })
+      }
       await posthog.flush()
     }
   }
