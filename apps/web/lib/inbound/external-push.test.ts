@@ -8,6 +8,14 @@ vi.mock("@/lib/db", () => ({
   getSql: () => sqlMock,
 }))
 
+// Mismo mock que en `features/connections` y `features/connect-meta`. Aquí es
+// imprescindible: el test mockea `fetch` y `pushInboundMessage` captura en
+// PostHog, así que con NEXT_PUBLIC_POSTHOG_KEY en el entorno el cliente real
+// intentaría hacer flush a través del fetch mockeado y el test fallaría.
+vi.mock("@/lib/posthog", () => ({
+  posthog: null,
+}))
+
 import { buildInboundPushPayload, pushInboundMessage } from "./external-push"
 
 const payload = {

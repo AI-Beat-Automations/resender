@@ -3,6 +3,7 @@ import { Inter, Space_Mono } from "next/font/google"
 import localFont from "next/font/local"
 
 import "@workspace/ui/globals.css"
+import { PostHogProvider } from "@/components/posthog-provider"
 import { ThemeProvider } from "@/components/theme-provider"
 import { cn } from "@workspace/ui/lib/utils"
 import { SITE_LEGAL_NAME, SITE_NAME, SITE_URL } from "@/lib/site-config"
@@ -74,7 +75,12 @@ export default function RootLayout({
       )}
     >
       <body>
-        <ThemeProvider>{children}</ThemeProvider>
+        {/* PostHogProvider va por fuera para que cualquier componente cliente
+            del árbol alcance `usePostHog()`. El init no vive aquí: lo hace
+            `instrumentation-client.ts` antes de la hidratación. */}
+        <PostHogProvider>
+          <ThemeProvider>{children}</ThemeProvider>
+        </PostHogProvider>
       </body>
     </html>
   )
