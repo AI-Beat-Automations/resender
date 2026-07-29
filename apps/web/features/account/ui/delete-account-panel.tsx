@@ -2,6 +2,7 @@
 
 import { useActionState } from "react"
 import { LoaderCircle } from "lucide-react"
+import { usePostHog } from "posthog-js/react"
 
 import {
   deleteAccountAction,
@@ -11,6 +12,7 @@ import {
   SettingsCard,
   SettingsCardTitle,
 } from "@/features/settings/ui/settings-card"
+import { isPostHogEnabled } from "@/lib/posthog-client"
 import { Button } from "@workspace/ui/components/button"
 import {
   Dialog,
@@ -29,8 +31,26 @@ import { Label } from "@workspace/ui/components/label"
 // del resto, y la confirmación en diálogo en vez de `window.confirm`
 // (ADR 0005). Sigue exigiendo escribir el email exacto de la cuenta.
 export function DeleteAccountPanel({ email }: { email: string }) {
+  const posthog = usePostHog()
+
+  // Mismo patrón que `change-password-panel`: el `reset()` se adelanta porque el
+  // camino feliz termina en un redirect, y si la acción devuelve error se
+  // recupera la identidad. Aquí pesa más que allí: el email mal escrito es un
+  // resultado rutinario de este diálogo, no un caso raro.
   const [state, action, pending] = useActionState<DeleteAccountState, FormData>(
-    deleteAccountAction,
+    async (previousState, formData) => {
+      const previousDistinctId = isPostHogEnabled
+        ? posthog.get_distinct_id()
+        : undefined
+      if (isPostHogEnabled) posthog.reset()
+
+      const result = await deleteAccountAction(previousState, formData)
+
+      if (result.error && previousDistinctId) {
+        posthog.identify(previousDistinctId)
+      }
+      return result
+    },
     {}
   )
 

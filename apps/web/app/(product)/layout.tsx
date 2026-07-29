@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation"
 
 import { auth, signOut } from "@/auth"
+import { PostHogIdentify } from "@/components/posthog-identify"
 import {
   QuotaNoticeBar,
   type QuotaNoticeView,
@@ -43,6 +44,10 @@ export default async function ProductLayout({
     // Shell de dos columnas (ADR 0005): sidebar fijo, contenido con scroll
     // propio. El dashboard va sobre `--surface-app`, sin textura.
     <div className="flex h-svh overflow-hidden bg-[var(--surface-app)]">
+      <PostHogIdentify
+        distinctId={session.user.id}
+        email={session.user.email}
+      />
       <AppSidebar
         email={session.user.email ?? ""}
         signOutAction={signOutAction}

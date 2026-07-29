@@ -12,6 +12,7 @@ import {
   type LucideIcon,
 } from "lucide-react"
 
+import { SignOutForm } from "@/components/sign-out-form"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { initialsFromEmail } from "@/lib/account/initials"
 import { Button } from "@workspace/ui/components/button"
@@ -118,7 +119,9 @@ export function AppSidebar({
           >
             {email}
           </span>
-          <form action={signOutAction}>
+          {/* `SignOutForm` hace el `posthog.reset()` antes de la server action:
+              sin él la identidad del usuario anterior sobrevive al logout. */}
+          <SignOutForm action={signOutAction}>
             <Button
               type="submit"
               variant="ghost"
@@ -128,7 +131,7 @@ export function AppSidebar({
             >
               <LogOut className="size-[15px]" aria-hidden />
             </Button>
-          </form>
+          </SignOutForm>
         </div>
       </div>
     </aside>
