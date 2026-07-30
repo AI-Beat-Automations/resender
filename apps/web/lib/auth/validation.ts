@@ -20,6 +20,7 @@ export type PasswordChangeInputResult =
   | { ok: false; error: string }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const EMAIL_MAX_LENGTH = 320
 const PASSWORD_MIN_LENGTH = 8
 const PASSWORD_MAX_LENGTH = 1024
 
@@ -34,7 +35,7 @@ export function validateAuthInput(
 ): AuthInputResult {
   const email = normalizeEmail(emailInput)
 
-  if (!EMAIL_RE.test(email)) {
+  if (email.length > EMAIL_MAX_LENGTH || !EMAIL_RE.test(email)) {
     return { ok: false, error: "Escribe un email válido." }
   }
 

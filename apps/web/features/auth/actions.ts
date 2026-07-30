@@ -1,14 +1,10 @@
 "use server"
 
-import { AuthError } from "next-auth"
+import { CredentialsSignin } from "next-auth"
 
 import { signIn } from "@/auth"
 import { getDictionary, type Locale } from "@/content/i18n"
-import {
-  createUser,
-  DuplicateEmailError,
-  InvalidAuthInputError,
-} from "@/lib/auth/users"
+import { BackendRpcError, registerUser } from "@/lib/backend/backend"
 import { validateAuthInput } from "@/lib/auth/validation"
 import { posthog } from "@/lib/posthog"
 
@@ -43,7 +39,7 @@ export async function loginAction(
       redirectTo: "/connections",
     })
   } catch (error) {
-    if (error instanceof AuthError) {
+    if (error instanceof CredentialsSignin) {
       return { error: errors.invalidCredentials }
     }
     throw error
@@ -60,26 +56,31 @@ export async function registerAction(
   const errors = getDictionary(locale).auth.errors
   const email = formData.get("email")
   const password = formData.get("password")
+  const input = validateAuthInput(email, password)
 
-  let newUser: Awaited<ReturnType<typeof createUser>> | null = null
+  if (!input.ok) {
+    return {
+      error: locale === "es" ? input.error : errors.invalidInput,
+    }
+  }
+
+  let newUser: Awaited<ReturnType<typeof registerUser>>
   try {
-    newUser = await createUser(email, password)
+    newUser = await registerUser(input.value)
   } catch (error) {
     // En el alta, el email duplicado sí se nombra: aquí el usuario necesita
     // saber que ya tiene cuenta (CONTEXT.md → «Usuario MVP»).
-    if (error instanceof DuplicateEmailError) {
+    if (
+      error instanceof BackendRpcError &&
+      error.classification.code === "validation_error" &&
+      error.classification.status === 409
+    ) {
       return { error: errors.duplicateEmail }
-    }
-    // `lib/auth/validation` devuelve su texto en español y dice qué campo
-    // falló, así que en español se propaga tal cual. En inglés no hay
-    // equivalente traducido: ahí cae al genérico del diccionario.
-    if (error instanceof InvalidAuthInputError) {
-      return { error: locale === "es" ? error.message : errors.invalidInput }
     }
     throw error
   }
 
-  if (posthog && newUser) {
+  if (posthog) {
     posthog.identify({
       distinctId: newUser.id,
       properties: { $set: { email: newUser.email } },
@@ -90,12 +91,12 @@ export async function registerAction(
 
   try {
     await signIn("credentials", {
-      email,
-      password,
+      email: input.value.email,
+      password: input.value.password,
       redirectTo: "/connections",
     })
   } catch (error) {
-    if (error instanceof AuthError) {
+    if (error instanceof CredentialsSignin) {
       return { error: errors.createdNoSignin }
     }
     throw error

@@ -5,6 +5,7 @@ import {
   AccountDeletionResultSchema,
   ApiKeyListSchema,
   ApiKeySchema,
+  AuthenticatedUserSchema,
   BackendHealthSchema,
   BillingStateSchema,
   CheckoutVerificationSchema,
@@ -22,6 +23,8 @@ import {
   type ApiKeyCreateRpcInput,
   type ApiKeyDto,
   type ApiKeyRevokeRpcInput,
+  type AuthenticateCredentialsRpcInput,
+  type AuthenticatedUserDto,
   type BillingPortalSessionRpcInput,
   type BillingStateDto,
   type ChangePasswordRpcInput,
@@ -36,6 +39,7 @@ import {
   type DeleteAccountRpcInput,
   type ProductAccessDto,
   type ProductShellDto,
+  type RegisterUserRpcInput,
   type RpcActor,
   type RpcPageDto,
   type PageIdRpcInput,
@@ -69,6 +73,13 @@ const SENSITIVE_BILLING_FIELDS = new Set([
   "token",
   "accessToken",
 ])
+const SENSITIVE_AUTH_FIELD_SUFFIXES = [
+  "hash",
+  "password",
+  "salt",
+  "secret",
+  "token",
+] as const
 
 export class BackendUnavailableError extends Error {
   constructor() {
@@ -113,6 +124,23 @@ export async function smokeBackend(): Promise<BackendHealthDto> {
   const parsed = BackendHealthSchema.safeParse(response)
   if (!parsed.success) throw new BackendProtocolError()
   return parsed.data
+}
+
+export async function authenticateCredentials(
+  input: AuthenticateCredentialsRpcInput
+): Promise<AuthenticatedUserDto | null> {
+  const response = await invokeBackend((backend) =>
+    backend.authenticateCredentials(input)
+  )
+  if (response === null) return null
+  return parseAuthenticatedUser(response, input.email)
+}
+
+export async function registerUser(
+  input: RegisterUserRpcInput
+): Promise<AuthenticatedUserDto> {
+  const response = await invokeBackend((backend) => backend.registerUser(input))
+  return parseAuthenticatedUser(response, input.email)
 }
 
 export async function getProductAccess(
@@ -384,6 +412,21 @@ function parseRpcPage(response: unknown): RpcPageDto {
   return sanitizeRpcPage(parsed.data)
 }
 
+function parseAuthenticatedUser(
+  response: unknown,
+  expectedEmail: string
+): AuthenticatedUserDto {
+  assertNoSensitiveAuthFields(response)
+  const parsed = AuthenticatedUserSchema.safeParse(response)
+  if (
+    !parsed.success ||
+    parsed.data.email.toLowerCase() !== expectedEmail.trim().toLowerCase()
+  ) {
+    throw new BackendProtocolError()
+  }
+  return parsed.data
+}
+
 function sanitizeRpcPage(page: RpcPageDto): RpcPageDto {
   return {
     ...page,
@@ -454,5 +497,24 @@ function assertNoSensitiveBillingFields(value: unknown): void {
       throw new BackendProtocolError()
     }
     assertNoSensitiveBillingFields(child)
+  }
+}
+
+function assertNoSensitiveAuthFields(value: unknown): void {
+  if (Array.isArray(value)) {
+    for (const item of value) assertNoSensitiveAuthFields(item)
+    return
+  }
+  if (!value || typeof value !== "object") return
+  for (const [key, child] of Object.entries(value)) {
+    const normalizedKey = key.toLowerCase().replaceAll(/[_-]/gu, "")
+    if (
+      SENSITIVE_AUTH_FIELD_SUFFIXES.some((suffix) =>
+        normalizedKey.endsWith(suffix)
+      )
+    ) {
+      throw new BackendProtocolError()
+    }
+    assertNoSensitiveAuthFields(child)
   }
 }

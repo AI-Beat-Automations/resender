@@ -14,6 +14,7 @@ import {
   BackendProtocolError,
   BackendRpcError,
   BackendUnavailableError,
+  authenticateCredentials,
   changePassword,
   createApiKey,
   createBillingPortalSession,
@@ -29,6 +30,7 @@ import {
   listApiKeys,
   listPages,
   revokeApiKey,
+  registerUser,
   rotateWebhookSecret,
   smokeBackend,
   updatePageWebhook,
@@ -141,6 +143,130 @@ describe("backend RPC adapter", () => {
       "BackendProtocolError: Backend response is invalid."
     )
     expect(JSON.stringify(error)).not.toMatch(/secret|must-not-leak/u)
+  })
+
+  it("authenticates and registers through RPC with validated safe user DTOs", async () => {
+    const authenticate = vi.fn().mockResolvedValue(authenticatedUser())
+    const register = vi
+      .fn()
+      .mockResolvedValue(authenticatedUser({ waitlisted: true }))
+    openNext.getCloudflareContext
+      .mockResolvedValueOnce({
+        env: { BACKEND: { authenticateCredentials: authenticate } },
+      })
+      .mockResolvedValueOnce({
+        env: { BACKEND: { registerUser: register } },
+      })
+
+    await expect(
+      authenticateCredentials({
+        email: "person@example.com",
+        password: "long-enough",
+      })
+    ).resolves.toEqual(authenticatedUser())
+    await expect(
+      registerUser({
+        email: "person@example.com",
+        password: "long-enough",
+      })
+    ).resolves.toEqual(authenticatedUser({ waitlisted: true }))
+    expect(authenticate).toHaveBeenCalledWith({
+      email: "person@example.com",
+      password: "long-enough",
+    })
+    expect(register).toHaveBeenCalledWith({
+      email: "person@example.com",
+      password: "long-enough",
+    })
+  })
+
+  it.each(["unknown", "wrong password", "deleted"] as const)(
+    "keeps %s credentials indistinguishable",
+    async () => {
+      const authenticate = vi.fn().mockResolvedValue(null)
+      openNext.getCloudflareContext.mockResolvedValue({
+        env: { BACKEND: { authenticateCredentials: authenticate } },
+      })
+
+      await expect(
+        authenticateCredentials({
+          email: "person@example.com",
+          password: "candidate-password",
+        })
+      ).resolves.toBeNull()
+    }
+  )
+
+  it.each([
+    ["malformed", { ...authenticatedUser(), id: "not-a-uuid" }],
+    ["another email", authenticatedUser({ email: "attacker@example.com" })],
+    [
+      "password hash",
+      { ...authenticatedUser(), passwordHash: "hash-must-not-cross" },
+    ],
+    [
+      "provider token",
+      { ...authenticatedUser(), metaUserAccessToken: "token-must-not-cross" },
+    ],
+    ["nested secret", { ...authenticatedUser(), extra: { salt: "leak" } }],
+  ])(
+    "rejects %s credential DTOs without retaining data",
+    async (_name, dto) => {
+      openNext.getCloudflareContext.mockResolvedValue({
+        env: {
+          BACKEND: {
+            authenticateCredentials: vi.fn().mockResolvedValue(dto),
+          },
+        },
+      })
+
+      const error = await captureError(
+        authenticateCredentials({
+          email: "person@example.com",
+          password: "candidate-password",
+        })
+      )
+
+      expect(error).toBeInstanceOf(BackendProtocolError)
+      expect(JSON.stringify(error)).not.toMatch(
+        /attacker@example|hash-must-not-cross|token-must-not-cross|leak/u
+      )
+    }
+  )
+
+  it("fails closed with sanitized unavailable and RPC credential errors", async () => {
+    openNext.getCloudflareContext
+      .mockRejectedValueOnce(new Error("binding-secret-must-not-leak"))
+      .mockResolvedValueOnce({
+        env: {
+          BACKEND: {
+            registerUser: vi.fn().mockRejectedValue({
+              code: "internal_error",
+              status: 500,
+              message: "database-secret-must-not-leak",
+            }),
+          },
+        },
+      })
+
+    const unavailable = await captureError(
+      authenticateCredentials({
+        email: "person@example.com",
+        password: "candidate-password",
+      })
+    )
+    const rpc = await captureError(
+      registerUser({
+        email: "person@example.com",
+        password: "candidate-password",
+      })
+    )
+
+    expect(unavailable).toBeInstanceOf(BackendUnavailableError)
+    expect(rpc).toBeInstanceOf(BackendRpcError)
+    expect(JSON.stringify([unavailable, rpc])).not.toMatch(
+      /binding-secret|database-secret|must-not-leak/u
+    )
   })
 
   it("passes only the session-derived actor to product access", async () => {
@@ -949,5 +1075,22 @@ function billingState() {
       blockCode: null,
       noticeLevel: null,
     },
+  }
+}
+
+function authenticatedUser(
+  overrides: Partial<{
+    id: string
+    email: string
+    waitlisted: boolean
+    createdAt: string
+  }> = {}
+) {
+  return {
+    id: ACTOR.userId,
+    email: "person@example.com",
+    waitlisted: false,
+    createdAt: "2026-07-30T18:00:00.000Z",
+    ...overrides,
   }
 }
