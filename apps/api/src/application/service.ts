@@ -745,11 +745,11 @@ export class ApiService {
     return { apiKey: generated.apiKey, record: apiKeyDto(record) }
   }
 
-  async revokeApiKey(actor: RpcActor, apiKeyId: string): Promise<void> {
+  async revokeApiKey(actor: RpcActor, apiKeyId: string): Promise<ApiKeyDto> {
     const { user } = await this.requireProductAccess(actor.userId)
-    if (!(await this.repository.revokeApiKey(user.id, apiKeyId))) {
-      throw notFound("API key")
-    }
+    const revoked = await this.repository.revokeApiKey(user.id, apiKeyId)
+    if (!revoked) throw notFound("API key")
+    return apiKeyDto(revoked)
   }
 
   async getBillingState(actor: RpcActor): Promise<BillingStateDto> {

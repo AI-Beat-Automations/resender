@@ -82,7 +82,7 @@ export interface WebAppApiContract {
     actor: RpcActor,
     input: ApiKeyCreateRpcInput
   ): Promise<CreatedApiKeyDto>
-  revokeApiKey(actor: RpcActor, input: ApiKeyRevokeRpcInput): Promise<void>
+  revokeApiKey(actor: RpcActor, input: ApiKeyRevokeRpcInput): Promise<ApiKeyDto>
 
   getBillingState(actor: RpcActor): Promise<BillingStateDto>
   createCheckoutSession(

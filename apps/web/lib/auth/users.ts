@@ -1,7 +1,7 @@
 import { getSql } from "@/lib/db"
 
 import { hashPassword, verifyPassword } from "./password"
-import { validateAuthInput, validatePasswordInput } from "./validation"
+import { validateAuthInput } from "./validation"
 
 export type UserRecord = {
   id: string
@@ -83,25 +83,6 @@ export async function authenticateUser(
 
   const valid = await verifyPassword(input.value.password, user.passwordHash)
   return valid ? user : null
-}
-
-export async function changeUserPassword(
-  userId: string,
-  passwordInput: unknown
-) {
-  const password = validatePasswordInput(passwordInput)
-  if (!password.ok) throw new InvalidAuthInputError(password.error)
-
-  const passwordHash = await hashPassword(password.value)
-  const sql = getSql()
-  const [row] = await sql<UserRow[]>`
-    update users
-    set password_hash = ${passwordHash}, updated_at = now()
-    where id = ${userId}
-    returning id, email, password_hash, waitlisted, created_at
-  `
-
-  return row ? mapUser(row) : null
 }
 
 function mapUser(row: UserRow): UserRecord {

@@ -198,7 +198,7 @@ describe("backend RPC readiness", () => {
       mockProductActor()
       const revokeApiKey = vi
         .spyOn(SqlRepository.prototype, "revokeApiKey")
-        .mockResolvedValue(false)
+        .mockResolvedValue(null)
 
       const error = await captureError(
         workerExports.WebAppApi.revokeApiKey(ACTOR, {
@@ -208,6 +208,37 @@ describe("backend RPC readiness", () => {
 
       expect(error).toMatchObject({ code: "not_found", status: 404 })
       expect(revokeApiKey).toHaveBeenCalledWith(ACTOR.userId, API_KEY_ID)
+    })
+
+    it("returns the exact revoked metadata while keeping the secret and hash absent", async () => {
+      mockProductActor()
+      const revokedAt = "2026-07-30T12:00:00.000Z"
+      vi.spyOn(SqlRepository.prototype, "revokeApiKey").mockResolvedValue({
+        id: API_KEY_ID,
+        label: "Production",
+        visiblePrefix: "pk_live_abcd1234",
+        status: "revoked",
+        createdAt: NOW,
+        lastUsedAt: null,
+        revokedAt,
+      })
+
+      const result = await workerExports.WebAppApi.revokeApiKey(ACTOR, {
+        apiKeyId: API_KEY_ID,
+      })
+
+      expect(result).toEqual({
+        id: API_KEY_ID,
+        label: "Production",
+        visiblePrefix: "pk_live_abcd1234",
+        status: "revoked",
+        createdAt: NOW,
+        lastUsedAt: null,
+        revokedAt,
+      })
+      expect(JSON.stringify(result)).not.toMatch(
+        /secretHash|pepper|tenantId|pk_live_[A-Za-z0-9_-]{20}/u
+      )
     })
   })
 

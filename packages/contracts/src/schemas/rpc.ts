@@ -192,6 +192,8 @@ export const ApiKeySchema = z.object({
   revokedAt: IsoDateSchema.nullable(),
 })
 
+export const ApiKeyListSchema = z.array(ApiKeySchema)
+
 export const CreatedApiKeySchema = z.object({
   apiKey: z.string().startsWith("pk_live_"),
   record: ApiKeySchema,
@@ -253,6 +255,7 @@ export type ConversationThreadRpcInput = z.infer<
   typeof ConversationThreadRpcInputSchema
 >
 export type ApiKeyDto = z.infer<typeof ApiKeySchema>
+export type ApiKeyListDto = z.infer<typeof ApiKeyListSchema>
 export type CreatedApiKeyDto = z.infer<typeof CreatedApiKeySchema>
 export type BillingStateDto = z.infer<typeof BillingStateSchema>
 export type AccountDeletionResultDto = z.infer<

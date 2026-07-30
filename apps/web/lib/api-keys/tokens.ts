@@ -1,23 +1,6 @@
-import { createHmac, randomBytes, timingSafeEqual } from "crypto"
+import { createHmac, timingSafeEqual } from "crypto"
 
 export const API_KEY_PREFIX = "pk_live_"
-
-export type GeneratedApiKey = {
-  apiKey: string
-  visiblePrefix: string
-  secretHash: string
-}
-
-export function generateApiKey(): GeneratedApiKey {
-  const secret = randomBytes(32).toString("base64url")
-  const apiKey = `${API_KEY_PREFIX}${secret}`
-
-  return {
-    apiKey,
-    visiblePrefix: `${API_KEY_PREFIX}${secret.slice(0, 8)}`,
-    secretHash: hashApiKey(apiKey),
-  }
-}
 
 export function hashApiKey(apiKey: string) {
   return createHmac("sha256", getApiKeyPepper())

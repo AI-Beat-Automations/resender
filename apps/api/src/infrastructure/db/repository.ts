@@ -261,15 +261,29 @@ export class SqlRepository {
     }
   }
 
-  async revokeApiKey(tenantId: string, apiKeyId: string): Promise<boolean> {
+  async revokeApiKey(
+    tenantId: string,
+    apiKeyId: string
+  ): Promise<ApiKeyDto | null> {
     const rows = await this.sql`
       update api_keys
       set status = 'revoked',
         revoked_at = coalesce(revoked_at, now())
       where tenant_id = ${tenantId} and id = ${apiKeyId}
-      returning id
+      returning id, label, visible_prefix, status, created_at, last_used_at,
+        revoked_at
     `
-    return Boolean(rows[0])
+    const row = rows[0]
+    if (!row) return null
+    return {
+      id: text(row.id),
+      label: text(row.label),
+      visiblePrefix: text(row.visible_prefix),
+      status: "revoked",
+      createdAt: iso(row.created_at),
+      lastUsedAt: nullableIso(row.last_used_at),
+      revokedAt: nullableIso(row.revoked_at),
+    }
   }
 
   async getSubscription(tenantId: string): Promise<SubscriptionRecord | null> {

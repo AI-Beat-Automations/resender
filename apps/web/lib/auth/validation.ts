@@ -21,6 +21,7 @@ export type PasswordChangeInputResult =
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const PASSWORD_MIN_LENGTH = 8
+const PASSWORD_MAX_LENGTH = 1024
 
 export function normalizeEmail(email: unknown) {
   if (typeof email !== "string") return ""
@@ -52,6 +53,12 @@ export function validatePasswordInput(
     return {
       ok: false,
       error: "La contraseña debe tener al menos 8 caracteres.",
+    }
+  }
+  if (password.length > PASSWORD_MAX_LENGTH) {
+    return {
+      ok: false,
+      error: "La contraseña no puede pasar de 1024 caracteres.",
     }
   }
 

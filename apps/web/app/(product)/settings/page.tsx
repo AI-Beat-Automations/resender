@@ -4,20 +4,20 @@ import { auth } from "@/auth"
 import { AccountIdentityPanel } from "@/features/account/ui/account-identity-panel"
 import { ChangePasswordPanel } from "@/features/account/ui/change-password-panel"
 import { DeleteAccountPanel } from "@/features/account/ui/delete-account-panel"
-import {
-  ApiKeysPanel,
-  type ApiKeyView,
-} from "@/features/api-keys/ui/api-keys-panel"
+import { ApiKeysPanel } from "@/features/api-keys/ui/api-keys-panel"
 import {
   SubscriptionPanel,
   type SubscriptionView,
 } from "@/features/billing/ui/subscription-panel"
 import { SettingsTabsNav } from "@/features/settings/ui/settings-tabs-nav"
-import { listApiKeys } from "@/lib/api-keys/api-keys"
 import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
 import type { TenantEntitlement } from "@/lib/billing/entitlements"
 import { getPlanByLookupKey } from "@/lib/billing/plans"
 import { getSubscriptionByTenantId } from "@/lib/billing/subscription"
+import {
+  loadSettingsAccount,
+  loadSettingsApiKeys,
+} from "@/lib/settings/page-data"
 import { resolveSettingsTab } from "@/lib/settings/settings-tabs"
 import { Separator } from "@workspace/ui/components/separator"
 
@@ -54,12 +54,11 @@ export default async function SettingsPage({
 
       <div className="mt-6">
         {tab === "cuenta" ? (
-          <AccountTab
-            email={session.user.email ?? ""}
-            tenantId={session.user.id}
-          />
+          <AccountTab actor={{ userId: session.user.id }} />
         ) : null}
-        {tab === "api-keys" ? <ApiKeysTab tenantId={session.user.id} /> : null}
+        {tab === "api-keys" ? (
+          <ApiKeysTab actor={{ userId: session.user.id }} />
+        ) : null}
         {tab === "suscripcion" ? (
           <SubscriptionTab tenantId={session.user.id} />
         ) : null}
@@ -68,7 +67,11 @@ export default async function SettingsPage({
   )
 }
 
-function AccountTab({ email, tenantId }: { email: string; tenantId: string }) {
+async function AccountTab({ actor }: { actor: { userId: string } }) {
+  const result = await loadSettingsAccount(actor)
+  if (result.kind === "redirect") redirect(result.destination)
+  const { email, tenantId } = result.data
+
   return (
     <div className="flex max-w-205 flex-col gap-4">
       <AccountIdentityPanel email={email} tenantId={tenantId} />
@@ -85,12 +88,13 @@ function AccountTab({ email, tenantId }: { email: string; tenantId: string }) {
   )
 }
 
-async function ApiKeysTab({ tenantId }: { tenantId: string }) {
-  const apiKeys = await listApiKeys(tenantId)
+async function ApiKeysTab({ actor }: { actor: { userId: string } }) {
+  const result = await loadSettingsApiKeys(actor)
+  if (result.kind === "redirect") redirect(result.destination)
 
   return (
     <div className="max-w-225">
-      <ApiKeysPanel apiKeys={apiKeys.map(toApiKeyView)} />
+      <ApiKeysPanel apiKeys={result.data} />
     </div>
   )
 }
@@ -136,19 +140,5 @@ function toSubscriptionView(
     messageLimit: entitlement?.limits?.messagesPerPeriod ?? null,
     pagesInUse: entitlement?.activePageCount ?? 0,
     pageLimit: entitlement?.limits?.maxPages ?? null,
-  }
-}
-
-function toApiKeyView(
-  apiKey: Awaited<ReturnType<typeof listApiKeys>>[number]
-): ApiKeyView {
-  return {
-    id: apiKey.id,
-    label: apiKey.label,
-    visiblePrefix: apiKey.visiblePrefix,
-    status: apiKey.status,
-    createdAt: apiKey.createdAt.toISOString(),
-    lastUsedAt: apiKey.lastUsedAt?.toISOString() ?? null,
-    revokedAt: apiKey.revokedAt?.toISOString() ?? null,
   }
 }

@@ -242,6 +242,31 @@ disconnected Pages:
    the authoritative Page list. Access changes redirect to waitlist/billing;
    protocol or tenant mismatches fail closed.
 
+## Validate the Settings RPC cutover
+
+The Settings account/API-key reads and the API-key, password, and account
+mutations use the `BACKEND` Service Binding exclusively. Billing remains Slice
+5, Auth.js authorize/register remains Slice 6, and OAuth remains Slice 7. The
+legacy public-send route still verifies opaque API keys locally; its format,
+hash, constant-time comparison, and pepper helpers remain until Slice 10.
+
+In staging:
+
+1. Confirm active and revoked API-key metadata stays ordered and tenant-scoped.
+   Hashes, pepper, tenant persistence fields, and full keys must not cross the
+   list/revoke DTOs.
+2. Create a key and copy it immediately. The full value is returned only in
+   Server Action state and must not enter URLs, cookies, hidden inputs, logs, or
+   analytics.
+3. Revoke a key from each tenant and verify foreign IDs return the same
+   tenant-scoped not-found result without changing either tenant's history.
+4. Change a password at the 8/1024-character boundaries and verify the current
+   Auth.js session ends at `/login?passwordChanged=1` only after RPC success.
+5. Test account deletion with a mismatched email, `deleted:false`, successful
+   cleanup, and Meta/Stripe cleanup failures. Only `deleted:true` signs out.
+   Operational records may contain the deletion boolean and cleanup
+   count/boolean, never provider IDs, tokens, subscription IDs, or raw errors.
+
 ## Configure secrets
 
 Set every secret separately for staging and production. Never paste values into

@@ -277,6 +277,55 @@ describe("RPC Page state and conversation history", () => {
   })
 })
 
+describe("API key persistence", () => {
+  it("returns only revoked metadata from a tenant-scoped revoke", async () => {
+    const sql = capturingSql([
+      [
+        {
+          id: "61c94a3a-c22f-47f8-ab1f-b797307cea31",
+          label: "Production",
+          visible_prefix: "pk_live_abcd1234",
+          status: "revoked",
+          created_at: "2026-07-29T18:00:00.000Z",
+          last_used_at: null,
+          revoked_at: "2026-07-30T19:00:00.000Z",
+          secret_hash: "hash-SECRET",
+          tenant_id: "tenant-SECRET",
+        },
+      ],
+    ])
+    const result = await new SqlRepository(sql.client).revokeApiKey(
+      "tenant_1",
+      "61c94a3a-c22f-47f8-ab1f-b797307cea31"
+    )
+
+    expect(result).toEqual({
+      id: "61c94a3a-c22f-47f8-ab1f-b797307cea31",
+      label: "Production",
+      visiblePrefix: "pk_live_abcd1234",
+      status: "revoked",
+      createdAt: "2026-07-29T18:00:00.000Z",
+      lastUsedAt: null,
+      revokedAt: "2026-07-30T19:00:00.000Z",
+    })
+    expect(sql.taggedStatements[0]).toContain("where tenant_id = ? and id = ?")
+    expect(JSON.stringify(result)).not.toMatch(
+      /hash-SECRET|tenant-SECRET|secret_hash|tenant_id/u
+    )
+  })
+
+  it("returns null when no tenant-owned key was revoked", async () => {
+    const repository = new SqlRepository(capturingSql([[]]).client)
+
+    await expect(
+      repository.revokeApiKey(
+        "tenant_1",
+        "61c94a3a-c22f-47f8-ab1f-b797307cea31"
+      )
+    ).resolves.toBeNull()
+  })
+})
+
 describe("subscription persistence ordering", () => {
   it("does not write or clean up for a terminal event from another subscription", async () => {
     const sql = capturingSql([[subscriptionRow()]])

@@ -14,13 +14,18 @@ import {
   BackendProtocolError,
   BackendRpcError,
   BackendUnavailableError,
+  changePassword,
+  createApiKey,
+  deleteAccount,
   disconnectPage,
   getConversationThread,
   getBackend,
   getProductAccess,
   getProductShell,
   listConversations,
+  listApiKeys,
   listPages,
+  revokeApiKey,
   rotateWebhookSecret,
   smokeBackend,
   updatePageWebhook,
@@ -363,6 +368,217 @@ describe("backend RPC adapter", () => {
     expect(JSON.stringify(error)).not.toMatch(/access_token|SECRET/u)
   })
 
+  it("lists API key metadata in canonical order without persistence fields or full keys", async () => {
+    const listApiKeysRpc = vi.fn().mockResolvedValue([
+      apiKeyDto({
+        id: API_KEY_ID,
+        createdAt: "2026-07-30T18:00:00.000Z",
+        secretHash: "hash-SECRET",
+        pepper: "pepper-SECRET",
+        tenantId: ACTOR.userId,
+        apiKey: API_KEY,
+      }),
+      apiKeyDto({
+        id: OTHER_API_KEY_ID,
+        status: "revoked",
+        createdAt: "2026-07-29T18:00:00.000Z",
+        revokedAt: "2026-07-30T19:00:00.000Z",
+      }),
+    ])
+    openNext.getCloudflareContext.mockResolvedValue({
+      env: { BACKEND: { listApiKeys: listApiKeysRpc } },
+    })
+
+    const result = await listApiKeys(ACTOR)
+
+    expect(listApiKeysRpc).toHaveBeenCalledWith(ACTOR)
+    expect(result.map((key) => key.id)).toEqual([API_KEY_ID, OTHER_API_KEY_ID])
+    expect(result[1]).toMatchObject({
+      status: "revoked",
+      revokedAt: "2026-07-30T19:00:00.000Z",
+    })
+    expect(JSON.stringify(result)).not.toMatch(
+      /hash-SECRET|pepper-SECRET|tenantId|apiKey|pk_live_a{20}/u
+    )
+  })
+
+  it.each([
+    [
+      "duplicate ids",
+      [apiKeyDto({ id: API_KEY_ID }), apiKeyDto({ id: API_KEY_ID })],
+    ],
+    [
+      "non-canonical order",
+      [
+        apiKeyDto({ createdAt: "2026-07-29T18:00:00.000Z" }),
+        apiKeyDto({
+          id: OTHER_API_KEY_ID,
+          createdAt: "2026-07-30T18:00:00.000Z",
+        }),
+      ],
+    ],
+    ["full key in the visible prefix", [apiKeyDto({ visiblePrefix: API_KEY })]],
+  ])("rejects API key lists with %s", async (_name, response) => {
+    openNext.getCloudflareContext.mockResolvedValue({
+      env: { BACKEND: { listApiKeys: vi.fn().mockResolvedValue(response) } },
+    })
+
+    await expect(listApiKeys(ACTOR)).rejects.toThrowError(BackendProtocolError)
+  })
+
+  it("creates and revokes API keys with exact actors, ids, and terminal status", async () => {
+    const create = vi.fn().mockResolvedValue({
+      apiKey: API_KEY,
+      record: apiKeyDto({
+        secretHash: "hash-SECRET",
+        pepper: "pepper-SECRET",
+      }),
+    })
+    const revoke = vi.fn().mockResolvedValue(
+      apiKeyDto({
+        status: "revoked",
+        revokedAt: "2026-07-30T19:00:00.000Z",
+      })
+    )
+    openNext.getCloudflareContext
+      .mockResolvedValueOnce({ env: { BACKEND: { createApiKey: create } } })
+      .mockResolvedValueOnce({ env: { BACKEND: { revokeApiKey: revoke } } })
+
+    const created = await createApiKey(ACTOR, { label: "Production" })
+    const revoked = await revokeApiKey(ACTOR, { apiKeyId: API_KEY_ID })
+
+    expect(create).toHaveBeenCalledWith(ACTOR, { label: "Production" })
+    expect(revoke).toHaveBeenCalledWith(ACTOR, { apiKeyId: API_KEY_ID })
+    expect(created).toEqual({
+      apiKey: API_KEY,
+      record: apiKeyDto(),
+    })
+    expect(revoked).toMatchObject({
+      id: API_KEY_ID,
+      status: "revoked",
+      revokedAt: "2026-07-30T19:00:00.000Z",
+    })
+    expect(JSON.stringify(created.record)).not.toMatch(/hash|pepper|SECRET/u)
+  })
+
+  it.each([
+    [
+      "create status",
+      "create",
+      {
+        apiKey: API_KEY,
+        record: apiKeyDto({
+          status: "revoked",
+          revokedAt: "2026-07-30T19:00:00.000Z",
+        }),
+      },
+    ],
+    [
+      "create secret",
+      "create",
+      { apiKey: "pk_live_SECRET", record: apiKeyDto() },
+    ],
+    [
+      "revoke id",
+      "revoke",
+      apiKeyDto({
+        id: OTHER_API_KEY_ID,
+        status: "revoked",
+        revokedAt: "2026-07-30T19:00:00.000Z",
+      }),
+    ],
+    ["revoke status", "revoke", apiKeyDto()],
+  ] as const)(
+    "rejects incoherent API key mutation response: %s",
+    async (_name, operation, response) => {
+      openNext.getCloudflareContext.mockResolvedValue({
+        env: {
+          BACKEND:
+            operation === "create"
+              ? { createApiKey: vi.fn().mockResolvedValue(response) }
+              : { revokeApiKey: vi.fn().mockResolvedValue(response) },
+        },
+      })
+
+      const result =
+        operation === "create"
+          ? createApiKey(ACTOR, { label: "Production" })
+          : revokeApiKey(ACTOR, { apiKeyId: API_KEY_ID })
+      const error = await captureError(result)
+
+      expect(error).toBeInstanceOf(BackendProtocolError)
+      expect(JSON.stringify(error)).not.toMatch(/pk_live_SECRET/u)
+    }
+  )
+
+  it("validates password and account-deletion RPC terminal responses", async () => {
+    const change = vi.fn().mockResolvedValue(undefined)
+    const remove = vi.fn().mockResolvedValue({
+      deleted: true,
+      metaUnsubscribeFailures: 2,
+      stripeCancellationFailed: true,
+      stripeSubscriptionId: "sub_SECRET",
+      pageAccessToken: "token_SECRET",
+    })
+    openNext.getCloudflareContext
+      .mockResolvedValueOnce({ env: { BACKEND: { changePassword: change } } })
+      .mockResolvedValueOnce({ env: { BACKEND: { deleteAccount: remove } } })
+
+    await expect(
+      changePassword(ACTOR, { newPassword: "long-enough" })
+    ).resolves.toBeUndefined()
+    const result = await deleteAccount(ACTOR, {
+      confirmEmail: "person@example.com",
+    })
+
+    expect(change).toHaveBeenCalledWith(ACTOR, {
+      newPassword: "long-enough",
+    })
+    expect(remove).toHaveBeenCalledWith(ACTOR, {
+      confirmEmail: "person@example.com",
+    })
+    expect(result).toEqual({
+      deleted: true,
+      metaUnsubscribeFailures: 2,
+      stripeCancellationFailed: true,
+    })
+    expect(JSON.stringify(result)).not.toMatch(
+      /sub_SECRET|token_SECRET|stripeSubscriptionId|pageAccessToken/u
+    )
+  })
+
+  it.each([
+    ["password", { changed: true }],
+    [
+      "deletion",
+      {
+        deleted: "yes",
+        metaUnsubscribeFailures: 0,
+        stripeCancellationFailed: false,
+        raw: "SECRET",
+      },
+    ],
+  ] as const)(
+    "rejects malformed %s terminal responses",
+    async (operation, response) => {
+      openNext.getCloudflareContext.mockResolvedValue({
+        env: {
+          BACKEND:
+            operation === "password"
+              ? { changePassword: vi.fn().mockResolvedValue(response) }
+              : { deleteAccount: vi.fn().mockResolvedValue(response) },
+        },
+      })
+
+      const result =
+        operation === "password"
+          ? changePassword(ACTOR, { newPassword: "long-enough" })
+          : deleteAccount(ACTOR, { confirmEmail: "person@example.com" })
+
+      await expect(result).rejects.toThrowError(BackendProtocolError)
+    }
+  )
+
   it("rejects a thread whose resource ownership is incoherent", async () => {
     const thread = vi.fn().mockResolvedValue({
       conversation: conversationDto(),
@@ -485,6 +701,9 @@ async function captureError(promise: Promise<unknown>): Promise<unknown> {
 
 const PAGE_ID = "f251bd5a-2772-489a-a725-43e2ea9d44ee"
 const OTHER_PAGE_ID = "f251bd5a-2772-489a-a725-43e2ea9d44ef"
+const API_KEY_ID = "61c94a3a-c22f-47f8-ab1f-b797307cea31"
+const OTHER_API_KEY_ID = "61c94a3a-c22f-47f8-ab1f-b797307cea32"
+const API_KEY = `pk_live_${"a".repeat(43)}`
 const CONVERSATION_ID = "9e2327a8-0c42-493e-bd6c-c08ed81010f0"
 const OTHER_CONVERSATION_ID = "9e2327a8-0c42-493e-bd6c-c08ed81010f1"
 
@@ -536,6 +755,19 @@ function pageDto(overrides: Record<string, unknown> = {}) {
     webhook: { url: null, signingEnabled: true },
     connectedAt: "2026-07-29T18:00:00.000Z",
     updatedAt: "2026-07-29T18:00:00.000Z",
+    ...overrides,
+  }
+}
+
+function apiKeyDto(overrides: Record<string, unknown> = {}) {
+  return {
+    id: API_KEY_ID,
+    label: "Production",
+    visiblePrefix: "pk_live_aaaaaaaa",
+    status: "active",
+    createdAt: "2026-07-30T18:00:00.000Z",
+    lastUsedAt: null,
+    revokedAt: null,
     ...overrides,
   }
 }
