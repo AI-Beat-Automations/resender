@@ -94,7 +94,7 @@ describe("Meta client security and compatibility", () => {
     ).rejects.toMatchObject({
       code: "provider_unavailable",
       status: 502,
-      message: "Rate limited",
+      message: "Meta is temporarily unavailable.",
     })
   })
 
@@ -119,7 +119,67 @@ describe("Meta client security and compatibility", () => {
     ).rejects.toMatchObject({
       code: "provider_unavailable",
       status: 502,
-      message: "Provider outage",
+      message: "Meta is temporarily unavailable.",
     })
+  })
+
+  it("never exposes a network error URL or access token from sendText", async () => {
+    const client = new MetaClient(
+      "app",
+      "secret",
+      vi.fn(async () => {
+        throw new Error(
+          "https://graph.facebook.com/me/messages?access_token=SECRET"
+        )
+      })
+    )
+
+    const result = await client.sendText({
+      pageAccessToken: "page-token",
+      recipientId: "psid",
+      text: "sensitive body",
+    })
+
+    expect(result).toMatchObject({
+      ok: false,
+      kind: "unavailable",
+      message: "Meta is temporarily unavailable.",
+    })
+    expect(JSON.stringify(result)).not.toMatch(
+      /SECRET|access_token|graph\\.facebook|sensitive body/u
+    )
+  })
+
+  it("maps a provider body to an allowlisted rejection message", async () => {
+    const client = new MetaClient(
+      "app",
+      "secret",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              error: {
+                message: "raw body https://example.test?access_token=SECRET",
+              },
+            }),
+            { status: 400 }
+          )
+      )
+    )
+
+    const result = await client.sendText({
+      pageAccessToken: "page-token",
+      recipientId: "psid",
+      text: "hello",
+    })
+
+    expect(result).toMatchObject({
+      ok: false,
+      kind: "rejected",
+      message: "Meta rejected the message.",
+    })
+    expect(JSON.stringify(result)).not.toMatch(
+      /SECRET|access_token|example\\.test/u
+    )
   })
 })

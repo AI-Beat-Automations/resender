@@ -3,19 +3,24 @@ import "server-only"
 import { getCloudflareContext } from "@opennextjs/cloudflare"
 import {
   BackendHealthSchema,
+  ConversationListSchema,
+  ConversationThreadSchema,
   ProductAccessSchema,
   ProductShellSchema,
+  RpcPageListSchema,
   type BackendHealthDto,
+  type ConversationListDto,
+  type ConversationListInput,
+  type ConversationThreadDto,
+  type ConversationThreadRpcInput,
   type ProductAccessDto,
   type ProductShellDto,
   type RpcActor,
+  type RpcPageDto,
   type WebAppApiContract,
 } from "@workspace/contracts"
 
-import {
-  classifyRpcError,
-  type RpcErrorClassification,
-} from "./rpc-error"
+import { classifyRpcError, type RpcErrorClassification } from "./rpc-error"
 
 const UNAVAILABLE_MESSAGE = "Backend service is unavailable."
 const REQUEST_FAILED_MESSAGE = "Backend request failed."
@@ -88,6 +93,58 @@ export async function getProductShell(
   if (parsed.data.tenantId !== actor.userId) {
     throw new BackendProtocolError()
   }
+  return parsed.data
+}
+
+export async function listConversations(
+  actor: RpcActor,
+  input: ConversationListInput
+): Promise<ConversationListDto> {
+  const response = await invokeBackend((backend) =>
+    backend.listConversations(actor, input)
+  )
+  const parsed = ConversationListSchema.safeParse(response)
+  if (!parsed.success) throw new BackendProtocolError()
+  if (
+    input.pageId &&
+    parsed.data.data.some(
+      (conversation) => conversation.page.id !== input.pageId
+    )
+  ) {
+    throw new BackendProtocolError()
+  }
+  return parsed.data
+}
+
+export async function getConversationThread(
+  actor: RpcActor,
+  input: ConversationThreadRpcInput
+): Promise<ConversationThreadDto> {
+  const response = await invokeBackend((backend) =>
+    backend.getConversationThread(actor, input)
+  )
+  const parsed = ConversationThreadSchema.safeParse(response)
+  if (!parsed.success) throw new BackendProtocolError()
+
+  const { conversation, messages } = parsed.data
+  if (
+    conversation.id !== input.conversationId ||
+    messages.some(
+      (message) =>
+        message.conversationId !== input.conversationId ||
+        message.pageId !== conversation.page.id ||
+        message.contactId !== conversation.contact.id
+    )
+  ) {
+    throw new BackendProtocolError()
+  }
+  return parsed.data
+}
+
+export async function listPages(actor: RpcActor): Promise<RpcPageDto[]> {
+  const response = await invokeBackend((backend) => backend.listPages(actor))
+  const parsed = RpcPageListSchema.safeParse(response)
+  if (!parsed.success) throw new BackendProtocolError()
   return parsed.data
 }
 

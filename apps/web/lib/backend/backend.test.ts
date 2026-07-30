@@ -14,9 +14,12 @@ import {
   BackendProtocolError,
   BackendRpcError,
   BackendUnavailableError,
+  getConversationThread,
   getBackend,
   getProductAccess,
   getProductShell,
+  listConversations,
+  listPages,
   smokeBackend,
 } from "./backend"
 
@@ -31,13 +34,11 @@ describe("backend RPC adapter", () => {
   })
 
   it("resolves the async OpenNext context for every call", async () => {
-    const health = vi
-      .fn()
-      .mockResolvedValue({
-        status: "ok",
-        service: "api",
-        entrypoint: "rpc",
-      })
+    const health = vi.fn().mockResolvedValue({
+      status: "ok",
+      service: "api",
+      entrypoint: "rpc",
+    })
     const fetch = vi.fn()
     openNext.getCloudflareContext.mockResolvedValue({
       env: { BACKEND: { fetch, health } },
@@ -80,7 +81,9 @@ describe("backend RPC adapter", () => {
     openNext.getCloudflareContext.mockResolvedValue({ env: {} })
 
     await expect(getBackend()).rejects.toThrowError(BackendUnavailableError)
-    await expect(getBackend()).rejects.toThrow("Backend service is unavailable.")
+    await expect(getBackend()).rejects.toThrow(
+      "Backend service is unavailable."
+    )
   })
 
   it("classifies backend failures without retaining raw messages", async () => {
@@ -216,8 +219,137 @@ describe("backend RPC adapter", () => {
     expect(JSON.stringify(error)).not.toMatch(/other@example/u)
   })
 
+  it("passes the exact actor and validates conversation and Page DTOs", async () => {
+    const conversations = vi.fn().mockResolvedValue({
+      data: [conversationDto()],
+      pagination: { hasMore: false, nextCursor: null },
+    })
+    const pages = vi.fn().mockResolvedValue([pageDto()])
+    openNext.getCloudflareContext
+      .mockResolvedValueOnce({
+        env: { BACKEND: { listConversations: conversations } },
+      })
+      .mockResolvedValueOnce({ env: { BACKEND: { listPages: pages } } })
+
+    await expect(
+      listConversations(ACTOR, { pageId: PAGE_ID, limit: 100 })
+    ).resolves.toMatchObject({ data: [{ id: CONVERSATION_ID }] })
+    await expect(listPages(ACTOR)).resolves.toMatchObject([
+      { id: PAGE_ID, name: "Support" },
+    ])
+    expect(conversations).toHaveBeenCalledWith(ACTOR, {
+      pageId: PAGE_ID,
+      limit: 100,
+    })
+    expect(pages).toHaveBeenCalledWith(ACTOR)
+  })
+
+  it("rejects a thread whose resource ownership is incoherent", async () => {
+    const thread = vi.fn().mockResolvedValue({
+      conversation: conversationDto(),
+      messages: [
+        messageDto({
+          conversationId: OTHER_CONVERSATION_ID,
+          text: "sensitive-body-must-not-leak",
+        }),
+      ],
+      pagination: { hasMore: false, nextCursor: null },
+      order: "newest_first",
+    })
+    openNext.getCloudflareContext.mockResolvedValue({
+      env: { BACKEND: { getConversationThread: thread } },
+    })
+
+    const error = await captureError(
+      getConversationThread(ACTOR, {
+        conversationId: CONVERSATION_ID,
+        limit: 100,
+      })
+    )
+
+    expect(thread).toHaveBeenCalledWith(ACTOR, {
+      conversationId: CONVERSATION_ID,
+      limit: 100,
+    })
+    expect(error).toBeInstanceOf(BackendProtocolError)
+    expect(JSON.stringify(error)).not.toMatch(/sensitive-body|must-not-leak/u)
+  })
+
+  it("strips unknown provider and persistence fields from a valid thread", async () => {
+    const thread = vi.fn().mockResolvedValue({
+      conversation: conversationDto(),
+      messages: [
+        messageDto({
+          providerResponse: { access_token: "SECRET" },
+          idempotencyKey: "SECRET-key",
+          idempotencyFingerprint: "SECRET-fingerprint",
+          token: "SECRET-token",
+        }),
+      ],
+      pagination: { hasMore: false, nextCursor: null },
+      order: "newest_first",
+    })
+    openNext.getCloudflareContext.mockResolvedValue({
+      env: { BACKEND: { getConversationThread: thread } },
+    })
+
+    const result = await getConversationThread(ACTOR, {
+      conversationId: CONVERSATION_ID,
+      limit: 100,
+    })
+
+    expect(result.messages).toHaveLength(1)
+    expect(JSON.stringify(result)).not.toMatch(
+      /SECRET|providerResponse|idempotency|fingerprint|token/u
+    )
+  })
+
+  it("rejects a conversation outside the requested Page", async () => {
+    const conversations = vi.fn().mockResolvedValue({
+      data: [
+        conversationDto({
+          page: {
+            id: OTHER_PAGE_ID,
+            providerPageId: "other",
+            name: "Other",
+          },
+        }),
+      ],
+      pagination: { hasMore: false, nextCursor: null },
+    })
+    openNext.getCloudflareContext.mockResolvedValue({
+      env: { BACKEND: { listConversations: conversations } },
+    })
+
+    await expect(
+      listConversations(ACTOR, { pageId: PAGE_ID, limit: 100 })
+    ).rejects.toThrowError(BackendProtocolError)
+  })
+
+  it("rejects a thread message for another contact", async () => {
+    const thread = vi.fn().mockResolvedValue({
+      conversation: conversationDto(),
+      messages: [messageDto({ contactId: "another-contact" })],
+      pagination: { hasMore: false, nextCursor: null },
+      order: "newest_first",
+    })
+    openNext.getCloudflareContext.mockResolvedValue({
+      env: { BACKEND: { getConversationThread: thread } },
+    })
+
+    await expect(
+      getConversationThread(ACTOR, {
+        conversationId: CONVERSATION_ID,
+        limit: 100,
+      })
+    ).rejects.toThrowError(BackendProtocolError)
+  })
+
   it("keeps the adapter guarded by Next server-only", async () => {
-    const source = await readFile(new URL("./backend.ts", import.meta.url), "utf8")
+    const source = await readFile(
+      new URL("./backend.ts", import.meta.url),
+      "utf8"
+    )
 
     expect(source.startsWith('import "server-only"')).toBe(true)
   })
@@ -230,4 +362,60 @@ async function captureError(promise: Promise<unknown>): Promise<unknown> {
     return error
   }
   throw new Error("Expected promise to reject")
+}
+
+const PAGE_ID = "f251bd5a-2772-489a-a725-43e2ea9d44ee"
+const OTHER_PAGE_ID = "f251bd5a-2772-489a-a725-43e2ea9d44ef"
+const CONVERSATION_ID = "9e2327a8-0c42-493e-bd6c-c08ed81010f0"
+const OTHER_CONVERSATION_ID = "9e2327a8-0c42-493e-bd6c-c08ed81010f1"
+
+function conversationDto(overrides: Record<string, unknown> = {}) {
+  return {
+    id: CONVERSATION_ID,
+    page: {
+      id: PAGE_ID,
+      providerPageId: "provider_page_1",
+      name: "Support",
+    },
+    contact: { id: "psid", name: null },
+    latestMessage: null,
+    lastMessageAt: "2026-07-29T18:00:00.000Z",
+    createdAt: "2026-07-29T18:00:00.000Z",
+    updatedAt: "2026-07-29T18:00:00.000Z",
+    ...overrides,
+  }
+}
+
+function messageDto(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "7ac2cc32-38cf-4d41-8c73-c6cf640d5b15",
+    conversationId: CONVERSATION_ID,
+    pageId: PAGE_ID,
+    contactId: "psid",
+    direction: "inbound",
+    status: "received",
+    type: "text",
+    text: "hello",
+    provider: { name: "meta", messageId: "mid.1" },
+    failure: null,
+    createdAt: "2026-07-29T18:00:00.000Z",
+    ...overrides,
+  }
+}
+
+function pageDto() {
+  return {
+    id: PAGE_ID,
+    provider: "meta",
+    providerPageId: "provider_page_1",
+    name: "Support",
+    status: "active",
+    tokenStatus: "valid",
+    tokenError: null,
+    tokenErrorAt: null,
+    disconnectedAt: null,
+    webhook: { url: null, signingEnabled: true },
+    connectedAt: "2026-07-29T18:00:00.000Z",
+    updatedAt: "2026-07-29T18:00:00.000Z",
+  }
 }

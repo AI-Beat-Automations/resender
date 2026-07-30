@@ -19,6 +19,8 @@ import {
 } from "../../domain/subscriptions"
 import type { Sql } from "./client"
 
+const SAFE_MESSAGE_FAILURE = "Meta could not deliver this message."
+
 export type UserRecord = {
   id: string
   email: string
@@ -1493,7 +1495,8 @@ export function messageDto(message: MessageRecord): MessageDto {
       name: "meta",
       messageId: message.providerMessageId,
     },
-    failure: message.error ? { message: message.error } : null,
+    failure:
+      message.status === "failed" ? { message: SAFE_MESSAGE_FAILURE } : null,
     createdAt: message.createdAt.toISOString(),
   }
 }

@@ -118,11 +118,11 @@ handwritten global `Env` interface or cast around a missing binding.
 The current `apps/web` Wrangler configuration declares `BACKEND` as a Service
 Binding to the API's named `WebAppApi` entrypoint:
 
-| Caller environment | Binding | Target Worker | Entrypoint |
-| --- | --- | --- | --- |
-| production `web` | `BACKEND` | `api` | `WebAppApi` |
-| staging `web` | `BACKEND` | `api-staging` | `WebAppApi` |
-| local development | `BACKEND` | local Worker named `api` | `WebAppApi` |
+| Caller environment | Binding   | Target Worker            | Entrypoint  |
+| ------------------ | --------- | ------------------------ | ----------- |
+| production `web`   | `BACKEND` | `api`                    | `WebAppApi` |
+| staging `web`      | `BACKEND` | `api-staging`            | `WebAppApi` |
+| local development  | `BACKEND` | local Worker named `api` | `WebAppApi` |
 
 Declare the service binding explicitly in every environment; service bindings
 are also non-inheritable. There must be no production HTTP fallback from RPC
@@ -156,7 +156,7 @@ and a temporary server-side caller running inside the real OpenNext request
 context must call `smokeBackend()` and receive exactly:
 
 ```json
-{"status":"ok","service":"api","entrypoint":"rpc"}
+{ "status": "ok", "service": "api", "entrypoint": "rpc" }
 ```
 
 Treat that first real adapter-to-RPC invocation as a mandatory gate. Do not
@@ -181,6 +181,36 @@ temporary dynamic OpenNext Route Handler received exactly the sentinel above
 and the API emitted an `entrypoint: "rpc"`, `event: "health"`, `status: 200`
 structured log. The temporary handler and local processes were removed
 immediately after the test; there is no committed smoke endpoint.
+
+### Slice 2 RPC-versus-SQL staging comparison
+
+The implementation environment did not have an approved staging database
+credential or tenant fixture, so this comparison remains a manual, read-only
+staging action. It must be completed before deploying the Slice 2 web
+consumer.
+
+1. Choose an approved tenant fixture with conversations on at least two Pages,
+   more than 100 conversations in total, and a thread with more than 100
+   messages.
+2. Through the staging `web -> BACKEND -> WebAppApi` binding, collect every
+   cursor page from `listConversations` with a limit of 100. Repeat with one
+   active or disconnected Page filter. For the selected conversation, collect
+   every cursor page from `getConversationThread`.
+3. In a separate read-only SQL session, query the same tenant and Page filter.
+   Compare only counts, stable IDs, Page IDs, directions, statuses, and
+   timestamps. Conversation order must be
+   `last_message_at desc, id desc`; message order from RPC must be reversed
+   once after all pages are collected and then match
+   `created_at asc, id asc`.
+4. Confirm an absent or foreign conversation returns `not_found`, a Page
+   filter cannot return another Page's conversations, and no result is
+   truncated at 100.
+5. Record pass/fail totals and timings only. Do not paste or log message text,
+   contact IDs/names, provider responses, failure bodies, tokens, URLs with
+   query strings, cookies, or database credentials.
+
+Delete any temporary comparison caller after the check. Do not add an HTTP
+fallback, dual-read path, or permanent debug route to perform this validation.
 
 ## Configure secrets
 

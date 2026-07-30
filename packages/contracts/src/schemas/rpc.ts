@@ -167,6 +167,8 @@ export const RpcPageSchema = PageSchema.extend({
   disconnectedAt: IsoDateSchema.nullable(),
 })
 
+export const RpcPageListSchema = z.array(RpcPageSchema)
+
 export const ConversationThreadRpcInputSchema = z.object({
   conversationId: UuidSchema,
   limit: LimitSchema.removeDefault().optional(),

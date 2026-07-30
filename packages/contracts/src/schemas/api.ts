@@ -105,6 +105,11 @@ export const ConversationListQuerySchema = z.object({
   cursor: CursorSchema.optional(),
 })
 
+export const ConversationListSchema = z.object({
+  data: z.array(ConversationSchema),
+  pagination: PaginationSchema,
+})
+
 export const MessageListQuerySchema = z.object({
   pageId: UuidSchema.optional(),
   conversationId: UuidSchema.optional(),
@@ -119,6 +124,13 @@ export const MessageListQuerySchema = z.object({
 export const ThreadMessageListQuerySchema = z.object({
   limit: LimitSchema,
   cursor: CursorSchema.optional(),
+})
+
+export const ConversationThreadSchema = z.object({
+  conversation: ConversationSchema,
+  messages: z.array(MessageSchema),
+  pagination: PaginationSchema,
+  order: z.literal("newest_first"),
 })
 
 export const SendMessageSchema = z.object({
@@ -156,14 +168,5 @@ export type ConversationListInput = z.infer<typeof ConversationListQuerySchema>
 export type MessageListInput = z.infer<typeof MessageListQuerySchema>
 export type SendMessageInput = z.infer<typeof SendMessageSchema>
 
-export type ConversationListDto = {
-  data: ConversationDto[]
-  pagination: PaginationDto
-}
-
-export type ConversationThreadDto = {
-  conversation: ConversationDto
-  messages: MessageDto[]
-  pagination: PaginationDto
-  order: "newest_first"
-}
+export type ConversationListDto = z.infer<typeof ConversationListSchema>
+export type ConversationThreadDto = z.infer<typeof ConversationThreadSchema>

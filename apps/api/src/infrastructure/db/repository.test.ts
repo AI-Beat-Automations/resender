@@ -3,11 +3,43 @@ import { describe, expect, it } from "vitest"
 import type { Sql } from "./client"
 import {
   SqlRepository,
+  messageDto,
+  type MessageRecord,
   type PageRecord,
   type SubscriptionUpsertInput,
 } from "./repository"
 
 type Row = Record<string, unknown>
+
+describe("message DTO safety", () => {
+  it("replaces a legacy persisted provider error with a controlled indicator", () => {
+    const dto = messageDto({
+      id: "7ac2cc32-38cf-4d41-8c73-c6cf640d5b15",
+      tenantId: "6b402566-9e1d-4739-bb61-81ac615a5469",
+      conversationId: "9e2327a8-0c42-493e-bd6c-c08ed81010f0",
+      pageId: "f251bd5a-2772-489a-a725-43e2ea9d44ee",
+      contactId: "psid",
+      direction: "outbound",
+      status: "failed",
+      text: "hello",
+      providerMessageId: null,
+      error:
+        "https://graph.facebook.com/me/messages?access_token=SECRET raw body",
+      providerResponse: { token: "SECRET" },
+      idempotencyKey: "order-1",
+      idempotencyFingerprint: "fingerprint-1",
+      createdAt: new Date("2026-07-29T18:00:00.000Z"),
+    } satisfies MessageRecord)
+
+    expect(dto.status).toBe("failed")
+    expect(dto.failure).toEqual({
+      message: "Meta could not deliver this message.",
+    })
+    expect(JSON.stringify(dto)).not.toMatch(
+      /SECRET|access_token|graph\\.facebook|raw body/u
+    )
+  })
+})
 
 describe("outbound idempotency reservation", () => {
   it("acquires the provider-call lease only after inserting a reservation", async () => {
@@ -89,6 +121,15 @@ describe("RPC Page state and conversation history", () => {
     const rows = Array.from({ length: 101 }, (_, index) =>
       messageRow({
         id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+        ...(index === 100
+          ? {
+              status: "failed",
+              error: "raw https://graph.facebook.com?access_token=SECRET body",
+              provider_response: {
+                error: { message: "access_token=SECRET" },
+              },
+            }
+          : {}),
         created_at: new Date(
           Date.parse("2026-07-29T18:00:00.000Z") - index * 1_000
         ).toISOString(),
@@ -113,6 +154,13 @@ describe("RPC Page state and conversation history", () => {
     expect(first.pagination).toMatchObject({ hasMore: true })
     expect(second.data).toHaveLength(1)
     expect([...first.data, ...second.data]).toHaveLength(101)
+    expect(second.data[0]).toMatchObject({
+      status: "failed",
+      failure: { message: "Meta could not deliver this message." },
+    })
+    expect(JSON.stringify([...first.data, ...second.data])).not.toMatch(
+      /SECRET|access_token|graph\\.facebook|raw body/u
+    )
     expect(sql.queries[0]?.statement).toContain(
       "order by created_at desc, id desc"
     )
@@ -169,8 +217,7 @@ describe("RPC Page state and conversation history", () => {
       token_error_at: null,
       webhook_url: record.webhookUrl,
       page_access_token_encrypted: record.pageAccessTokenEncrypted,
-      webhook_signing_secret_encrypted:
-        record.webhookSigningSecretEncrypted,
+      webhook_signing_secret_encrypted: record.webhookSigningSecretEncrypted,
       connected_at: record.connectedAt,
       disconnected_at: null,
       updated_at: record.updatedAt,

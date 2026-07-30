@@ -9,7 +9,7 @@ import type {
   MessageDto,
 } from "@workspace/contracts"
 
-import type { ConversationListItem, ThreadMessage } from "./read-model"
+import type { ConversationListItem, ThreadMessage } from "./view-model"
 
 const DEFAULT_PAGE_SIZE = 100
 

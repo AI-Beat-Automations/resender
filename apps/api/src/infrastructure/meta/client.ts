@@ -5,6 +5,10 @@ import { META_TIMEOUT_MS } from "../../config"
 const GRAPH_VERSION = "v23.0"
 const SUBSCRIBED_FIELDS =
   "messages,messaging_postbacks,messaging_policy_enforcement"
+const META_INVALID_TOKEN_MESSAGE =
+  "The Page access token is invalid. Reconnect the Page."
+const META_REJECTED_MESSAGE = "Meta rejected the message."
+const META_UNAVAILABLE_MESSAGE = "Meta is temporarily unavailable."
 
 export type MetaPage = {
   id: string
@@ -149,32 +153,41 @@ export class MetaClient {
             ? (body as Record<string, string>).message_id
             : null
         return messageId
-          ? { ok: true, messageId, response: body }
+          ? {
+              ok: true,
+              messageId,
+              response: { message_id: messageId },
+            }
           : {
               ok: false,
               kind: "unavailable",
-              message: "Meta returned an incomplete response.",
-              response: body,
+              message: META_UNAVAILABLE_MESSAGE,
+              response: null,
             }
       }
       const error = metaError(body)
+      const kind =
+        error.code === 190
+          ? "invalid_token"
+          : response.status >= 500 || response.status === 429
+            ? "unavailable"
+            : "rejected"
       return {
         ok: false,
-        kind:
-          error.code === 190
-            ? "invalid_token"
-            : response.status >= 500 || response.status === 429
-              ? "unavailable"
-              : "rejected",
-        message: error.message,
-        response: body,
+        kind,
+        message:
+          kind === "invalid_token"
+            ? META_INVALID_TOKEN_MESSAGE
+            : kind === "unavailable"
+              ? META_UNAVAILABLE_MESSAGE
+              : META_REJECTED_MESSAGE,
+        response: null,
       }
-    } catch (error) {
+    } catch {
       return {
         ok: false,
         kind: "unavailable",
-        message:
-          error instanceof Error ? error.message : "Meta request failed.",
+        message: META_UNAVAILABLE_MESSAGE,
         response: null,
       }
     }
@@ -206,13 +219,15 @@ export class MetaClient {
     }
     const body = await parseJson(response)
     if (!response.ok) {
-      const error = metaError(body)
       throw new ContractError({
         code:
           response.status >= 500 || response.status === 429
             ? "provider_unavailable"
             : "provider_rejected",
-        message: error.message,
+        message:
+          response.status >= 500 || response.status === 429
+            ? META_UNAVAILABLE_MESSAGE
+            : "Meta rejected the request.",
         status: response.status >= 500 || response.status === 429 ? 502 : 422,
       })
     }
@@ -231,10 +246,9 @@ export class MetaClient {
     }
     const body = await parseJson(response)
     if (!response.ok) {
-      const error = metaError(body)
       throw new ContractError({
         code: "provider_unavailable",
-        message: error.message,
+        message: META_UNAVAILABLE_MESSAGE,
         status: 502,
       })
     }
@@ -285,21 +299,17 @@ async function parseJson(response: Response): Promise<unknown> {
   }
 }
 
-function metaError(value: unknown): { code: number | null; message: string } {
+function metaError(value: unknown): { code: number | null } {
   if (!value || typeof value !== "object") {
-    return { code: null, message: "Meta request failed." }
+    return { code: null }
   }
   const error = (value as Record<string, unknown>).error
   if (!error || typeof error !== "object") {
-    return { code: null, message: "Meta request failed." }
+    return { code: null }
   }
   const record = error as Record<string, unknown>
   return {
     code: typeof record.code === "number" ? record.code : null,
-    message:
-      typeof record.message === "string"
-        ? record.message
-        : "Meta request failed.",
   }
 }
 
@@ -317,7 +327,7 @@ function requiredString(value: unknown, message: string): string {
 function providerNetworkError(): ContractError {
   return new ContractError({
     code: "provider_unavailable",
-    message: "Meta is temporarily unavailable.",
+    message: META_UNAVAILABLE_MESSAGE,
     status: 502,
   })
 }
