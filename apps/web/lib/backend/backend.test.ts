@@ -15,12 +15,15 @@ import {
   BackendRpcError,
   BackendUnavailableError,
   getBackend,
+  getProductAccess,
+  getProductShell,
   smokeBackend,
 } from "./backend"
 
 type AdapterBackend = Awaited<ReturnType<typeof getBackend>>
 type AdapterExposesFetcher = "fetch" extends keyof AdapterBackend ? true : false
 const ADAPTER_EXPOSES_FETCHER: AdapterExposesFetcher = false
+const ACTOR = { userId: "7ac2cc32-38cf-4d41-8c73-c6cf640d5b15" }
 
 describe("backend RPC adapter", () => {
   beforeEach(() => {
@@ -123,6 +126,94 @@ describe("backend RPC adapter", () => {
       "BackendProtocolError: Backend response is invalid."
     )
     expect(JSON.stringify(error)).not.toMatch(/secret|must-not-leak/u)
+  })
+
+  it("passes only the session-derived actor to product access", async () => {
+    const productAccess = vi.fn().mockResolvedValue({
+      userExists: true,
+      waitlisted: false,
+      subscriptionActive: true,
+      destination: "product",
+    })
+    openNext.getCloudflareContext.mockResolvedValue({
+      env: { BACKEND: { getProductAccess: productAccess } },
+    })
+
+    await expect(getProductAccess(ACTOR)).resolves.toEqual({
+      userExists: true,
+      waitlisted: false,
+      subscriptionActive: true,
+      destination: "product",
+    })
+    expect(productAccess).toHaveBeenCalledOnce()
+    expect(productAccess).toHaveBeenCalledWith(ACTOR)
+  })
+
+  it("rejects incoherent product access without retaining backend data", async () => {
+    const productAccess = vi.fn().mockResolvedValue({
+      userExists: false,
+      waitlisted: false,
+      subscriptionActive: false,
+      destination: "billing",
+      databaseUrl: "must-not-leak",
+    })
+    openNext.getCloudflareContext.mockResolvedValue({
+      env: { BACKEND: { getProductAccess: productAccess } },
+    })
+
+    const error = await captureError(getProductAccess(ACTOR))
+
+    expect(error).toBeInstanceOf(BackendProtocolError)
+    expect(JSON.stringify(error)).not.toMatch(/databaseUrl|must-not-leak/u)
+  })
+
+  it("accepts an older additive shell DTO for the same actor", async () => {
+    const productShell = vi.fn().mockResolvedValue({
+      tenantId: ACTOR.userId,
+      email: "person@example.com",
+      entitlement: {
+        priceLookupKey: "starter_monthly",
+        usage: 10,
+        messageLimit: 50_000,
+        activePageCount: 1,
+        pageLimit: 2,
+        blockCode: null,
+      },
+    })
+    openNext.getCloudflareContext.mockResolvedValue({
+      env: { BACKEND: { getProductShell: productShell } },
+    })
+
+    await expect(getProductShell(ACTOR)).resolves.toMatchObject({
+      tenantId: ACTOR.userId,
+      entitlement: { blockCode: null },
+    })
+    expect(productShell).toHaveBeenCalledOnce()
+    expect(productShell).toHaveBeenCalledWith(ACTOR)
+  })
+
+  it("rejects a shell for another actor without retaining its data", async () => {
+    const productShell = vi.fn().mockResolvedValue({
+      tenantId: "53a10f5b-5e16-47f3-b60e-e3c094630eb4",
+      email: "other@example.com",
+      entitlement: {
+        priceLookupKey: "starter_monthly",
+        usage: 0,
+        messageLimit: 50_000,
+        activePageCount: 0,
+        pageLimit: 2,
+        blockCode: null,
+        noticeLevel: null,
+      },
+    })
+    openNext.getCloudflareContext.mockResolvedValue({
+      env: { BACKEND: { getProductShell: productShell } },
+    })
+
+    const error = await captureError(getProductShell(ACTOR))
+
+    expect(error).toBeInstanceOf(BackendProtocolError)
+    expect(JSON.stringify(error)).not.toMatch(/other@example/u)
   })
 
   it("keeps the adapter guarded by Next server-only", async () => {

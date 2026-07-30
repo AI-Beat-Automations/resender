@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   entitlementHttpError,
+  entitlementNoticeLevel,
   evaluateEntitlement,
   PLAN_LIMITS,
 } from "./entitlements"
@@ -74,4 +75,23 @@ describe("evaluateEntitlement", () => {
       "info@resender.dev"
     )
   })
+
+  it.each([
+    ["below the warning threshold", 39_999, 1, null],
+    ["at the warning threshold", 40_000, 1, "warning"],
+    ["restricted by quota", 50_000, 1, "blocked"],
+    ["restricted by page count", 0, 3, "blocked"],
+  ] as const)(
+    "owns the shell notice decision %s",
+    (_state, usage, activePageCount, level) => {
+      const entitlement = evaluateEntitlement({
+        ...period,
+        priceLookupKey: "starter_monthly",
+        usage,
+        activePageCount,
+      })
+
+      expect(entitlementNoticeLevel(entitlement)).toBe(level)
+    }
+  )
 })

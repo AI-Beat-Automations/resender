@@ -163,6 +163,25 @@ Treat that first real adapter-to-RPC invocation as a mandatory gate. Do not
 add a permanent public route or UI for the smoke call, and remove any temporary
 caller before committing the Slice 1 consumer migration.
 
+The Slice 1 local gate passed on 2026-07-30 after
+`npx opennextjs-cloudflare build` in `apps/web`, followed from the repository
+root by:
+
+```bash
+npx wrangler dev \
+  -c apps/web/wrangler.jsonc \
+  -c apps/api/wrangler.jsonc \
+  --local --ip 127.0.0.1 --port 8799
+```
+
+No compatibility override was used: `web` used its configured `2026-07-01`
+date and `api` used `2026-07-29`, both supported by Wrangler 4.114.0's bundled
+runtime. Wrangler reported `BACKEND` (`api#WebAppApi`) as `[connected]`; a
+temporary dynamic OpenNext Route Handler received exactly the sentinel above
+and the API emitted an `entrypoint: "rpc"`, `event: "health"`, `status: 200`
+structured log. The temporary handler and local processes were removed
+immediately after the test; there is no committed smoke endpoint.
+
 ## Configure secrets
 
 Set every secret separately for staging and production. Never paste values into

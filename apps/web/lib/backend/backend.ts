@@ -3,7 +3,12 @@ import "server-only"
 import { getCloudflareContext } from "@opennextjs/cloudflare"
 import {
   BackendHealthSchema,
+  ProductAccessSchema,
+  ProductShellSchema,
   type BackendHealthDto,
+  type ProductAccessDto,
+  type ProductShellDto,
+  type RpcActor,
   type WebAppApiContract,
 } from "@workspace/contracts"
 
@@ -55,16 +60,44 @@ export async function getBackend(): Promise<WebAppApiContract> {
 }
 
 export async function smokeBackend(): Promise<BackendHealthDto> {
-  const backend = await getBackend()
-
-  let response: BackendHealthDto
-  try {
-    response = await backend.health()
-  } catch (error) {
-    throw new BackendRpcError(classifyRpcError(error))
-  }
-
+  const response = await invokeBackend((backend) => backend.health())
   const parsed = BackendHealthSchema.safeParse(response)
   if (!parsed.success) throw new BackendProtocolError()
   return parsed.data
+}
+
+export async function getProductAccess(
+  actor: RpcActor
+): Promise<ProductAccessDto> {
+  const response = await invokeBackend((backend) =>
+    backend.getProductAccess(actor)
+  )
+  const parsed = ProductAccessSchema.safeParse(response)
+  if (!parsed.success) throw new BackendProtocolError()
+  return parsed.data
+}
+
+export async function getProductShell(
+  actor: RpcActor
+): Promise<ProductShellDto> {
+  const response = await invokeBackend((backend) =>
+    backend.getProductShell(actor)
+  )
+  const parsed = ProductShellSchema.safeParse(response)
+  if (!parsed.success) throw new BackendProtocolError()
+  if (parsed.data.tenantId !== actor.userId) {
+    throw new BackendProtocolError()
+  }
+  return parsed.data
+}
+
+async function invokeBackend<T>(
+  operation: (backend: WebAppApiContract) => Promise<T>
+): Promise<T> {
+  const backend = await getBackend()
+  try {
+    return await operation(backend)
+  } catch (error) {
+    throw new BackendRpcError(classifyRpcError(error))
+  }
 }

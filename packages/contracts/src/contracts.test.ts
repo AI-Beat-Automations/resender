@@ -14,6 +14,8 @@ import {
   MetaPageSelectionSchema,
   MetaAuthorizationRpcInputSchema,
   PageSchema,
+  ProductAccessSchema,
+  ProductShellSchema,
   RpcPageSchema,
   SendMessageSchema,
   WebhookSecretSchema,
@@ -32,6 +34,95 @@ describe("public contracts", () => {
       BackendHealthSchema.safeParse({
         ...health,
         databaseUrl: "must-not-cross-the-boundary",
+      }).success
+    ).toBe(false)
+  })
+
+  it("keeps product access flags coherent with the destination", () => {
+    const valid = [
+      {
+        userExists: false,
+        waitlisted: false,
+        subscriptionActive: false,
+        destination: "waitlist",
+      },
+      {
+        userExists: true,
+        waitlisted: true,
+        subscriptionActive: false,
+        destination: "waitlist",
+      },
+      {
+        userExists: true,
+        waitlisted: false,
+        subscriptionActive: false,
+        destination: "billing",
+      },
+      {
+        userExists: true,
+        waitlisted: false,
+        subscriptionActive: true,
+        destination: "product",
+      },
+    ]
+    expect(valid.every((access) => ProductAccessSchema.safeParse(access).success))
+      .toBe(true)
+
+    expect(
+      ProductAccessSchema.safeParse({
+        userExists: false,
+        waitlisted: false,
+        subscriptionActive: false,
+        destination: "billing",
+      }).success
+    ).toBe(false)
+    expect(
+      ProductAccessSchema.safeParse({
+        userExists: true,
+        waitlisted: false,
+        subscriptionActive: false,
+        destination: "product",
+      }).success
+    ).toBe(false)
+    expect(
+      ProductAccessSchema.safeParse({
+        userExists: true,
+        waitlisted: true,
+        subscriptionActive: true,
+        destination: "waitlist",
+      }).success
+    ).toBe(false)
+  })
+
+  it("keeps the shell notice additive and coherent with restrictions", () => {
+    const base = {
+      tenantId: "7ac2cc32-38cf-4d41-8c73-c6cf640d5b15",
+      email: "person@example.com",
+      entitlement: {
+        priceLookupKey: "starter_monthly",
+        usage: 40_000,
+        messageLimit: 50_000,
+        activePageCount: 1,
+        pageLimit: 2,
+        blockCode: null,
+      },
+    }
+
+    expect(ProductShellSchema.safeParse(base).success).toBe(true)
+    expect(
+      ProductShellSchema.safeParse({
+        ...base,
+        entitlement: { ...base.entitlement, noticeLevel: "warning" },
+      }).success
+    ).toBe(true)
+    expect(
+      ProductShellSchema.safeParse({
+        ...base,
+        entitlement: {
+          ...base.entitlement,
+          blockCode: "quota_exceeded",
+          noticeLevel: "warning",
+        },
       }).success
     ).toBe(false)
   })

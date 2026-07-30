@@ -6,7 +6,8 @@ import { auth, signOut } from "@/auth"
 import { PostHogIdentify } from "@/components/posthog-identify"
 import { SignOutForm } from "@/components/sign-out-form"
 import { AccessCard, AccessShell } from "@/features/auth/ui/access-shell"
-import { isUserWaitlisted } from "@/lib/auth/waitlist"
+import { waitlistPageRedirect } from "@/lib/access/product-gates"
+import { getProductAccess } from "@/lib/backend/backend"
 import { privatePageMetadata } from "@/lib/seo"
 import { Button } from "@workspace/ui/components/button"
 
@@ -18,7 +19,10 @@ export const metadata = privatePageMetadata("Lista de espera")
 export default async function WaitlistPage() {
   const session = await auth()
   if (!session?.user?.id) redirect("/login")
-  if (!(await isUserWaitlisted(session.user.id))) redirect("/connections")
+  const destination = waitlistPageRedirect(
+    await getProductAccess({ userId: session.user.id })
+  )
+  if (destination) redirect(destination)
 
   async function signOutAction() {
     "use server"

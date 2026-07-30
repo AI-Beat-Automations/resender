@@ -100,7 +100,7 @@ describe("Worker runtime entrypoints", () => {
       userExists: false,
       waitlisted: false,
       subscriptionActive: false,
-      destination: "billing",
+      destination: "waitlist",
     })
   })
 
@@ -133,6 +133,7 @@ describe("Worker runtime entrypoints", () => {
         activePageCount: 1,
         pageLimit: 3,
         blockCode: null,
+        noticeLevel: null,
       },
     })
     const getConversationThread = vi
@@ -588,6 +589,7 @@ function productShell() {
       activePageCount: 1,
       pageLimit: 3,
       blockCode: null,
+      noticeLevel: null,
     },
   }
 }

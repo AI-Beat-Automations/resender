@@ -7,10 +7,15 @@ import {
   type QuotaNoticeView,
 } from "@/features/billing/ui/quota-notice-bar"
 import { AppSidebar } from "@/features/shell/ui/app-sidebar"
-import { isUserWaitlisted } from "@/lib/auth/waitlist"
-import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
-import type { TenantEntitlement } from "@/lib/billing/entitlements"
-import { hasActiveSubscription } from "@/lib/billing/subscription"
+import {
+  productPageRedirect,
+  productShellFailureDecision,
+  productShellNotice,
+} from "@/lib/access/product-gates"
+import {
+  getProductAccess,
+  getProductShell,
+} from "@/lib/backend/backend"
 import { privatePageMetadata } from "@/lib/seo"
 
 // La app logueada no tiene nada que hacer en el índice. Lo heredan
@@ -22,18 +27,31 @@ export default async function ProductLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   const session = await auth()
   if (!session?.user?.id) redirect("/login")
-  if (await isUserWaitlisted(session.user.id)) redirect("/waitlist")
-  if (!(await hasActiveSubscription(session.user.id))) redirect("/billing")
+  const actor = { userId: session.user.id }
+  const access = await getProductAccess(actor)
+  const destination = productPageRedirect(access)
+  if (destination) redirect(destination)
 
-  // El aviso no debe poder tirar el dashboard: si el entitlement no se puede
-  // resolver, la barra simplemente no aparece (los gates del hot path siguen
-  // siendo fail-closed por su cuenta).
+  // El backend conserva el ownership del entitlement y del umbral de aviso.
+  // Los errores de protocolo siempre abortan; un fallo operacional posterior
+  // al access gate solo omite la franja, como hacía la lectura anterior.
   let notice: QuotaNoticeView | null = null
+  let shellDestination: "/waitlist" | "/billing" | null = null
   try {
-    notice = toQuotaNoticeView(await getTenantEntitlement(session.user.id))
+    notice = productShellNotice(await getProductShell(actor))
   } catch (error) {
-    console.error("quota notice unavailable", error)
+    const decision = productShellFailureDecision(error)
+    if (decision.kind === "redirect") {
+      shellDestination = decision.destination
+    } else if (decision.kind === "omit_notice") {
+      console.error("product shell notice unavailable", decision.log)
+    } else {
+      throw error
+    }
   }
+  // `redirect()` throws; keep it outside the catch so Next owns the control
+  // flow instead of classifying it as a backend failure.
+  if (shellDestination) redirect(shellDestination)
 
   async function signOutAction() {
     "use server"
@@ -63,20 +81,4 @@ export default async function ProductLayout({
       </main>
     </div>
   )
-}
-
-function toQuotaNoticeView(
-  entitlement: TenantEntitlement
-): QuotaNoticeView | null {
-  const { notice, block, limits, activePageCount } = entitlement
-  if (notice.level === "none") return null
-
-  return {
-    level: notice.level,
-    usage: notice.usage,
-    limit: notice.limit,
-    blockCode: block?.code ?? null,
-    activePageCount,
-    maxPages: limits?.maxPages ?? null,
-  }
 }

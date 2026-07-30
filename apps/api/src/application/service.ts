@@ -33,6 +33,7 @@ import {
 } from "../config"
 import {
   entitlementHttpError,
+  entitlementNoticeLevel,
   evaluateEntitlement,
   isCanonicalPlanLookupKey,
   PLAN_LIMITS,
@@ -517,20 +518,24 @@ export class ApiService {
         userExists: false,
         waitlisted: false,
         subscriptionActive: false,
-        destination: "billing",
+        destination: "waitlist",
+      }
+    }
+    if (user.waitlisted) {
+      return {
+        userExists: true,
+        waitlisted: true,
+        subscriptionActive: false,
+        destination: "waitlist",
       }
     }
     const subscription = await this.repository.getSubscription(user.id)
     const subscriptionActive = isActiveSubscription(subscription)
     return {
       userExists: true,
-      waitlisted: user.waitlisted,
+      waitlisted: false,
       subscriptionActive,
-      destination: user.waitlisted
-        ? "waitlist"
-        : subscriptionActive
-          ? "product"
-          : "billing",
+      destination: subscriptionActive ? "product" : "billing",
     }
   }
 
@@ -1187,6 +1192,7 @@ function entitlementDto(entitlement: Entitlement) {
     activePageCount: entitlement.activePageCount,
     pageLimit: entitlement.limits?.maxPages ?? null,
     blockCode: entitlement.blockCode,
+    noticeLevel: entitlementNoticeLevel(entitlement),
   }
 }
 

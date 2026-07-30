@@ -10,6 +10,8 @@ export type EntitlementBlockCode =
   | "page_limit_exceeded"
   | "plan_unavailable"
 
+export type EntitlementNoticeLevel = "warning" | "blocked" | null
+
 export type Entitlement = {
   priceLookupKey: CanonicalPlanLookupKey | null
   periodStart: Date | null
@@ -18,6 +20,8 @@ export type Entitlement = {
   limits: { messagesPerPeriod: number; maxPages: number } | null
   blockCode: EntitlementBlockCode | null
 }
+
+const QUOTA_WARNING_RATIO = 0.8
 
 export function isCanonicalPlanLookupKey(
   value: string
@@ -87,4 +91,18 @@ export function entitlementHttpError(blockCode: EntitlementBlockCode): {
     message:
       "The plan or billing period is unavailable. Contact support at info@resender.dev.",
   }
+}
+
+export function entitlementNoticeLevel(
+  entitlement: Entitlement
+): EntitlementNoticeLevel {
+  if (entitlement.blockCode) return "blocked"
+  if (
+    entitlement.limits &&
+    entitlement.usage / entitlement.limits.messagesPerPeriod >=
+      QUOTA_WARNING_RATIO
+  ) {
+    return "warning"
+  }
+  return null
 }

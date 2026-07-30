@@ -92,26 +92,67 @@ export const AuthenticatedUserSchema = z.object({
   createdAt: IsoDateSchema,
 })
 
-export const ProductAccessSchema = z.object({
-  userExists: z.boolean(),
-  waitlisted: z.boolean(),
-  subscriptionActive: z.boolean(),
-  destination: z.enum(["waitlist", "billing", "product"]),
-})
+export const ProductAccessSchema = z
+  .object({
+    userExists: z.boolean(),
+    waitlisted: z.boolean(),
+    subscriptionActive: z.boolean(),
+    destination: z.enum(["waitlist", "billing", "product"]),
+  })
+  .superRefine((access, context) => {
+    const destination =
+      !access.userExists || access.waitlisted
+        ? "waitlist"
+        : access.subscriptionActive
+          ? "product"
+          : "billing"
+    const missingUserHasSafeFlags =
+      access.userExists || (!access.waitlisted && !access.subscriptionActive)
+    const waitlistWasShortCircuited =
+      !access.waitlisted || !access.subscriptionActive
+
+    if (
+      access.destination !== destination ||
+      !missingUserHasSafeFlags ||
+      !waitlistWasShortCircuited
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Product access fields are inconsistent.",
+      })
+    }
+  })
 
 export const ProductShellSchema = z.object({
   tenantId: UuidSchema,
   email: z.email(),
-  entitlement: z.object({
-    priceLookupKey: PlanLookupKeySchema.nullable(),
-    usage: z.number().int().nonnegative(),
-    messageLimit: z.number().int().positive().nullable(),
-    activePageCount: z.number().int().nonnegative(),
-    pageLimit: z.number().int().positive().nullable(),
-    blockCode: z
-      .enum(["quota_exceeded", "page_limit_exceeded", "plan_unavailable"])
-      .nullable(),
-  }),
+  entitlement: z
+    .object({
+      priceLookupKey: PlanLookupKeySchema.nullable(),
+      usage: z.number().int().nonnegative(),
+      messageLimit: z.number().int().positive().nullable(),
+      activePageCount: z.number().int().nonnegative(),
+      pageLimit: z.number().int().positive().nullable(),
+      blockCode: z
+        .enum(["quota_exceeded", "page_limit_exceeded", "plan_unavailable"])
+        .nullable(),
+      // Optional for the API-first rolling deployment. Older API versions do
+      // not emit it; web may only infer "blocked" from an existing blockCode.
+      noticeLevel: z.enum(["warning", "blocked"]).nullable().optional(),
+    })
+    .superRefine((entitlement, context) => {
+      if (
+        (entitlement.blockCode &&
+          entitlement.noticeLevel &&
+          entitlement.noticeLevel !== "blocked") ||
+        (!entitlement.blockCode && entitlement.noticeLevel === "blocked")
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "Entitlement notice fields are inconsistent.",
+        })
+      }
+    }),
 })
 
 export const AuthorizedMetaPageSchema = z.object({

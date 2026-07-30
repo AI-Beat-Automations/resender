@@ -88,6 +88,59 @@ describe("API key authentication", () => {
 })
 
 describe("product access gates", () => {
+  it("fails a deleted JWT session closed to the waitlist destination", async () => {
+    const getSubscription = vi.fn()
+    const service = serviceWithRepository({
+      getUserById: async () => null,
+      getSubscription,
+    })
+
+    await expect(service.getProductAccess(actor)).resolves.toEqual({
+      userExists: false,
+      waitlisted: false,
+      subscriptionActive: false,
+      destination: "waitlist",
+    })
+    expect(getSubscription).not.toHaveBeenCalled()
+  })
+
+  it("does not query subscription state for a waitlisted account", async () => {
+    const getSubscription = vi.fn()
+    const service = serviceWithRepository({
+      getUserById: async () => user({ waitlisted: true }),
+      getSubscription,
+    })
+
+    await expect(service.getProductAccess(actor)).resolves.toEqual({
+      userExists: true,
+      waitlisted: true,
+      subscriptionActive: false,
+      destination: "waitlist",
+    })
+    expect(getSubscription).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ["inactive", subscription({ status: "past_due" }), false, "billing"],
+    ["missing", null, false, "billing"],
+    ["active", subscription(), true, "product"],
+  ] as const)(
+    "maps an %s subscription to the canonical access destination",
+    async (_state, plan, subscriptionActive, destination) => {
+      const service = serviceWithRepository({
+        getUserById: async () => user(),
+        getSubscription: async () => plan,
+      })
+
+      await expect(service.getProductAccess(actor)).resolves.toEqual({
+        userExists: true,
+        waitlisted: false,
+        subscriptionActive,
+        destination,
+      })
+    }
+  )
+
   it.each([
     {
       name: "waitlisted account",
