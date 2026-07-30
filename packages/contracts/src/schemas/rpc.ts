@@ -10,6 +10,14 @@ import { CursorSchema, IsoDateSchema, LimitSchema, UuidSchema } from "./common"
 
 export const RpcActorSchema = z.object({ userId: UuidSchema })
 
+export const BackendHealthSchema = z
+  .object({
+    status: z.literal("ok"),
+    service: z.literal("api"),
+    entrypoint: z.literal("rpc"),
+  })
+  .strict()
+
 const EmailInputSchema = z.string().trim().max(320).pipe(z.email())
 const PasswordInputSchema = z.string().min(1).max(1024)
 const WebUrlInputSchema = z.string().max(2048).pipe(z.url())
@@ -166,6 +174,7 @@ export const AccountDeletionResultSchema = z.object({
 })
 
 export type RpcActor = z.infer<typeof RpcActorSchema>
+export type BackendHealthDto = z.infer<typeof BackendHealthSchema>
 export type AuthenticateCredentialsRpcInput = z.infer<
   typeof AuthenticateCredentialsRpcInputSchema
 >

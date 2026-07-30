@@ -4,6 +4,7 @@ import {
   ApiKeySchema,
   ApiKeyCreateRpcInputSchema,
   AuthenticatedUserSchema,
+  BackendHealthSchema,
   BillingStateSchema,
   CheckoutSessionRpcInputSchema,
   ConnectMetaPagesRpcInputSchema,
@@ -19,6 +20,22 @@ import {
 } from "./index"
 
 describe("public contracts", () => {
+  it("keeps the backend health DTO minimal and structured-cloneable", () => {
+    const health = BackendHealthSchema.parse({
+      status: "ok",
+      service: "api",
+      entrypoint: "rpc",
+    })
+
+    expect(structuredClone(health)).toEqual(health)
+    expect(
+      BackendHealthSchema.safeParse({
+        ...health,
+        databaseUrl: "must-not-cross-the-boundary",
+      }).success
+    ).toBe(false)
+  })
+
   it("keeps the v1 page id distinct from the provider id", () => {
     const result = PageSchema.safeParse({
       id: "7ac2cc32-38cf-4d41-8c73-c6cf640d5b15",

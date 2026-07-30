@@ -1,5 +1,6 @@
 import { WorkerEntrypoint } from "cloudflare:workers"
 import type {
+  BackendHealthDto,
   ConnectMetaPagesInput,
   ConversationListInput,
   ConversationThreadRpcInput,
@@ -35,6 +36,17 @@ export class WebAppApi
   extends WorkerEntrypoint<Env>
   implements WebAppApiContract
 {
+  health(): Promise<BackendHealthDto> {
+    // This is an RPC liveness sentinel, not dependency readiness. It must stay
+    // independent from the database, secrets, queues, and external providers.
+    const health: BackendHealthDto = {
+      status: "ok",
+      service: "api",
+      entrypoint: "rpc",
+    }
+    return this.run("health", undefined, () => Promise.resolve(health))
+  }
+
   // RPC currently has no trustworthy client-IP context. Credential throttling
   // remains a gate for the future web BFF/auth cutover; do not key it by the
   // caller-supplied email or actor.

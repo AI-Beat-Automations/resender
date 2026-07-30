@@ -12,6 +12,7 @@ import type {
   AuthenticateCredentialsRpcInput,
   AuthenticatedUserDto,
   AuthorizedMetaPageDto,
+  BackendHealthDto,
   BillingPortalSessionRpcInput,
   BillingStateDto,
   ChangePasswordRpcInput,
@@ -35,6 +36,8 @@ import type {
 } from "./schemas/rpc"
 
 export interface WebAppApiContract {
+  health(): Promise<BackendHealthDto>
+
   authenticateCredentials(
     input: AuthenticateCredentialsRpcInput
   ): Promise<AuthenticatedUserDto | null>

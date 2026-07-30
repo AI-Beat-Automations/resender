@@ -142,6 +142,27 @@ Review the generated `CloudflareEnv.BACKEND` type against
 connected before running the RPC smoke suite. Do not hand-edit
 `apps/web/cloudflare-env.d.ts`.
 
+### Slice 1 RPC gate
+
+Slice 0 validates the server-only adapter with a mocked OpenNext context and
+validates the API health method through the real named entrypoint in the
+Workers test runtime. This is layered coverage, not an end-to-end OpenNext
+adapter-to-RPC smoke test.
+
+Before migrating the first frontend consumer in Slice 1, run `web` and `api`
+together with a local Workers runtime whose supported compatibility date
+matches both configs. Wrangler must report the `BACKEND` binding as connected,
+and a temporary server-side caller running inside the real OpenNext request
+context must call `smokeBackend()` and receive exactly:
+
+```json
+{"status":"ok","service":"api","entrypoint":"rpc"}
+```
+
+Treat that first real adapter-to-RPC invocation as a mandatory gate. Do not
+add a permanent public route or UI for the smoke call, and remove any temporary
+caller before committing the Slice 1 consumer migration.
+
 ## Configure secrets
 
 Set every secret separately for staging and production. Never paste values into

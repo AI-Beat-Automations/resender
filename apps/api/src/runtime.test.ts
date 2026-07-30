@@ -104,6 +104,24 @@ describe("Worker runtime entrypoints", () => {
     })
   })
 
+  it("returns cloneable health over RPC without application dependencies", async () => {
+    const repository = vi.spyOn(SqlRepository.prototype, "getUserById")
+    const stripe = vi.spyOn(stripeTransport, "create")
+    const providerFetch = vi.spyOn(globalThis, "fetch")
+
+    const health = await workerExports.WebAppApi.health()
+
+    expect(health).toEqual({
+      status: "ok",
+      service: "api",
+      entrypoint: "rpc",
+    })
+    expect(structuredClone(health)).toEqual(health)
+    expect(repository).not.toHaveBeenCalled()
+    expect(stripe).not.toHaveBeenCalled()
+    expect(providerFetch).not.toHaveBeenCalled()
+  })
+
   it("keeps thread RPC callers compatible while forwarding pagination", async () => {
     vi.spyOn(ApiService.prototype, "getProductShell").mockResolvedValue({
       tenantId: ACTOR.userId,
