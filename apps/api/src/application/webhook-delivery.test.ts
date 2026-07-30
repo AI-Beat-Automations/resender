@@ -239,10 +239,12 @@ function recoveryPage(): PageRecord {
     status: "active",
     tokenStatus: "valid",
     tokenError: null,
+    tokenErrorAt: null,
     webhookUrl: "https://example.com/webhook",
     pageAccessTokenEncrypted: "encrypted",
     webhookSigningSecretEncrypted: "encrypted",
     connectedAt: new Date("2026-07-01T00:00:00.000Z"),
+    disconnectedAt: null,
     updatedAt: new Date("2026-07-29T18:00:00.000Z"),
   }
 }

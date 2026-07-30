@@ -8,6 +8,7 @@ import type {
   PageDto,
   PageListQuery,
   PaginationDto,
+  RpcPageDto,
 } from "@workspace/contracts"
 
 import { API_MAX_LIMIT } from "../../config"
@@ -61,10 +62,12 @@ export type PageRecord = {
   status: "active" | "disconnected"
   tokenStatus: "valid" | "invalid"
   tokenError: string | null
+  tokenErrorAt: Date | null
   webhookUrl: string | null
   pageAccessTokenEncrypted: string
   webhookSigningSecretEncrypted: string | null
   connectedAt: Date
+  disconnectedAt: Date | null
   updatedAt: Date
 }
 
@@ -319,8 +322,9 @@ export class SqlRepository {
     parameters.push(limit + 1)
     const rows = await this.sql.query(
       `select id, tenant_id, meta_page_id, name, status, token_status,
-         token_error, webhook_url, page_access_token_encrypted,
-         webhook_signing_secret_encrypted, connected_at, updated_at
+         token_error, token_error_at, webhook_url, page_access_token_encrypted,
+         webhook_signing_secret_encrypted, connected_at, disconnected_at,
+         updated_at
        from connected_pages
        where ${clauses.join(" and ")}
        order by updated_at desc, id desc
@@ -345,23 +349,25 @@ export class SqlRepository {
     }
   }
 
-  async listAllPages(tenantId: string): Promise<PageDto[]> {
+  async listAllPages(tenantId: string): Promise<RpcPageDto[]> {
     const rows = await this.sql`
       select id, tenant_id, meta_page_id, name, status, token_status,
-        token_error, webhook_url, page_access_token_encrypted,
-        webhook_signing_secret_encrypted, connected_at, updated_at
+        token_error, token_error_at, webhook_url, page_access_token_encrypted,
+        webhook_signing_secret_encrypted, connected_at, disconnected_at,
+        updated_at
       from connected_pages
       where tenant_id = ${tenantId}
       order by case when status = 'active' then 0 else 1 end, updated_at desc
     `
-    return rows.map((row) => pageDto(mapPage(row)))
+    return rows.map((row) => rpcPageDto(mapPage(row)))
   }
 
   async getPage(tenantId: string, pageId: string): Promise<PageRecord | null> {
     const rows = await this.sql`
       select id, tenant_id, meta_page_id, name, status, token_status,
-        token_error, webhook_url, page_access_token_encrypted,
-        webhook_signing_secret_encrypted, connected_at, updated_at
+        token_error, token_error_at, webhook_url, page_access_token_encrypted,
+        webhook_signing_secret_encrypted, connected_at, disconnected_at,
+        updated_at
       from connected_pages
       where tenant_id = ${tenantId} and id = ${pageId}
       limit 1
@@ -374,8 +380,9 @@ export class SqlRepository {
   ): Promise<PageRecord | null> {
     const rows = await this.sql`
       select id, tenant_id, meta_page_id, name, status, token_status,
-        token_error, webhook_url, page_access_token_encrypted,
-        webhook_signing_secret_encrypted, connected_at, updated_at
+        token_error, token_error_at, webhook_url, page_access_token_encrypted,
+        webhook_signing_secret_encrypted, connected_at, disconnected_at,
+        updated_at
       from connected_pages
       where meta_page_id = ${providerPageId} and status = 'active'
       limit 1
@@ -387,16 +394,17 @@ export class SqlRepository {
     tenantId: string,
     pageId: string,
     webhookUrl: string | null
-  ): Promise<PageDto | null> {
+  ): Promise<PageRecord | null> {
     const rows = await this.sql`
       update connected_pages
       set webhook_url = ${webhookUrl}, updated_at = now()
       where tenant_id = ${tenantId} and id = ${pageId}
       returning id, tenant_id, meta_page_id, name, status, token_status,
-        token_error, webhook_url, page_access_token_encrypted,
-        webhook_signing_secret_encrypted, connected_at, updated_at
+        token_error, token_error_at, webhook_url, page_access_token_encrypted,
+        webhook_signing_secret_encrypted, connected_at, disconnected_at,
+        updated_at
     `
-    return rows[0] ? pageDto(mapPage(rows[0])) : null
+    return rows[0] ? mapPage(rows[0]) : null
   }
 
   async rotateWebhookSecret(input: {
@@ -418,7 +426,7 @@ export class SqlRepository {
   async disconnectPage(
     tenantId: string,
     pageId: string
-  ): Promise<PageDto | null> {
+  ): Promise<PageRecord | null> {
     const rows = await this.sql`
       update connected_pages
       set status = 'disconnected',
@@ -426,10 +434,11 @@ export class SqlRepository {
         updated_at = now()
       where tenant_id = ${tenantId} and id = ${pageId}
       returning id, tenant_id, meta_page_id, name, status, token_status,
-        token_error, webhook_url, page_access_token_encrypted,
-        webhook_signing_secret_encrypted, connected_at, updated_at
+        token_error, token_error_at, webhook_url, page_access_token_encrypted,
+        webhook_signing_secret_encrypted, connected_at, disconnected_at,
+        updated_at
     `
-    return rows[0] ? pageDto(mapPage(rows[0])) : null
+    return rows[0] ? mapPage(rows[0]) : null
   }
 
   async markPageTokenInvalid(input: {
@@ -495,7 +504,7 @@ export class SqlRepository {
       name: string
       encryptedPageToken: string
     }>
-  ): Promise<PageDto[]> {
+  ): Promise<PageRecord[]> {
     if (pages.length === 0) return []
     const results = await this.sql.transaction((transaction) =>
       pages.map(
@@ -521,8 +530,9 @@ export class SqlRepository {
             updated_at = now()
           where connected_pages.tenant_id = excluded.tenant_id
           returning id, tenant_id, meta_page_id, name, status, token_status,
-            token_error, webhook_url, page_access_token_encrypted,
-            webhook_signing_secret_encrypted, connected_at, updated_at
+            token_error, token_error_at, webhook_url,
+            page_access_token_encrypted, webhook_signing_secret_encrypted,
+            connected_at, disconnected_at, updated_at
         `
       )
     )
@@ -530,7 +540,7 @@ export class SqlRepository {
     if (rows.length !== pages.length) {
       throw new Error("page ownership changed during connection")
     }
-    return rows.map((row) => pageDto(mapPage(row)))
+    return rows.map(mapPage)
   }
 
   async listConversations(
@@ -1372,12 +1382,14 @@ function mapPage(row: Record<string, unknown>): PageRecord {
     status: text(row.status) === "disconnected" ? "disconnected" : "active",
     tokenStatus: text(row.token_status) === "invalid" ? "invalid" : "valid",
     tokenError: nullableText(row.token_error),
+    tokenErrorAt: nullableDate(row.token_error_at),
     webhookUrl: nullableText(row.webhook_url),
     pageAccessTokenEncrypted: text(row.page_access_token_encrypted),
     webhookSigningSecretEncrypted: nullableText(
       row.webhook_signing_secret_encrypted
     ),
     connectedAt: date(row.connected_at),
+    disconnectedAt: nullableDate(row.disconnected_at),
     updatedAt: date(row.updated_at),
   }
 }
@@ -1396,6 +1408,15 @@ export function pageDto(page: PageRecord): PageDto {
     },
     connectedAt: page.connectedAt.toISOString(),
     updatedAt: page.updatedAt.toISOString(),
+  }
+}
+
+export function rpcPageDto(page: PageRecord): RpcPageDto {
+  return {
+    ...pageDto(page),
+    tokenError: page.tokenError,
+    tokenErrorAt: page.tokenErrorAt?.toISOString() ?? null,
+    disconnectedAt: page.disconnectedAt?.toISOString() ?? null,
   }
 }
 

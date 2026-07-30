@@ -104,6 +104,143 @@ describe("Worker runtime entrypoints", () => {
     })
   })
 
+  it("keeps thread RPC callers compatible while forwarding pagination", async () => {
+    vi.spyOn(ApiService.prototype, "getProductShell").mockResolvedValue({
+      tenantId: ACTOR.userId,
+      email: "person@example.com",
+      entitlement: {
+        priceLookupKey: "starter_monthly",
+        usage: 0,
+        messageLimit: 1_000,
+        activePageCount: 1,
+        pageLimit: 3,
+        blockCode: null,
+      },
+    })
+    const getConversationThread = vi
+      .spyOn(ApiService.prototype, "getConversationThread")
+      .mockResolvedValue({
+        conversation: {
+          id: "9e2327a8-0c42-493e-bd6c-c08ed81010f0",
+          page: {
+            id: "f251bd5a-2772-489a-a725-43e2ea9d44ee",
+            providerPageId: "page_runtime",
+            name: "Runtime Page",
+          },
+          contact: { id: "psid", name: null },
+          latestMessage: null,
+          lastMessageAt: "2026-07-29T18:00:00.000Z",
+          createdAt: "2026-07-29T18:00:00.000Z",
+          updatedAt: "2026-07-29T18:00:00.000Z",
+        },
+        messages: [],
+        pagination: { hasMore: false, nextCursor: null },
+        order: "newest_first",
+      })
+    const conversationId = "9e2327a8-0c42-493e-bd6c-c08ed81010f0"
+
+    await workerExports.WebAppApi.getConversationThread(ACTOR, {
+      conversationId,
+    })
+    await workerExports.WebAppApi.getConversationThread(ACTOR, {
+      conversationId,
+      limit: 25,
+      cursor: "next-page",
+    })
+
+    expect(getConversationThread).toHaveBeenNthCalledWith(
+      1,
+      ACTOR.userId,
+      conversationId,
+      { limit: 100, cursor: undefined }
+    )
+    expect(getConversationThread).toHaveBeenNthCalledWith(
+      2,
+      ACTOR.userId,
+      conversationId,
+      { limit: 25, cursor: "next-page" }
+    )
+  })
+
+  it("exposes explicit one-time webhook secret rotation over RPC", async () => {
+    vi.spyOn(ApiService.prototype, "getProductShell").mockResolvedValue(
+      productShell()
+    )
+    const rotateWebhookSecret = vi
+      .spyOn(ApiService.prototype, "rotateWebhookSecret")
+      .mockResolvedValue({
+        secret: "whsec_runtime",
+        createdAt: "2026-07-29T18:03:00.000Z",
+      })
+
+    await expect(
+      workerExports.WebAppApi.rotateWebhookSecret(ACTOR, {
+        pageId: "f251bd5a-2772-489a-a725-43e2ea9d44ee",
+      })
+    ).resolves.toEqual({
+      secret: "whsec_runtime",
+      createdAt: "2026-07-29T18:03:00.000Z",
+    })
+    expect(rotateWebhookSecret).toHaveBeenCalledWith(
+      ACTOR.userId,
+      "f251bd5a-2772-489a-a725-43e2ea9d44ee"
+    )
+  })
+
+  it.each([
+    ["waitlisted", true, "active", "account_waitlisted"],
+    ["inactive subscription", false, "past_due", "subscription_required"],
+    ["missing subscription", false, null, "subscription_required"],
+  ] as const)(
+    "blocks webhook secret rotation for a %s actor",
+    async (_state, waitlisted, subscriptionStatus, code) => {
+      vi.spyOn(SqlRepository.prototype, "getUserById").mockResolvedValue({
+        ...runtimeUser(),
+        waitlisted,
+      })
+      vi.spyOn(SqlRepository.prototype, "getSubscription").mockResolvedValue(
+        subscriptionStatus
+          ? { ...activeSubscription(), status: subscriptionStatus }
+          : null
+      )
+      const getPage = vi.spyOn(SqlRepository.prototype, "getPage")
+      const rotateWebhookSecret = vi.spyOn(
+        SqlRepository.prototype,
+        "rotateWebhookSecret"
+      )
+
+      const error = await captureError(
+        workerExports.WebAppApi.rotateWebhookSecret(ACTOR, {
+          pageId: "f251bd5a-2772-489a-a725-43e2ea9d44ee",
+        })
+      )
+
+      expect(error).toMatchObject({ code, status: 403 })
+      expect(getPage).not.toHaveBeenCalled()
+      expect(rotateWebhookSecret).not.toHaveBeenCalled()
+    }
+  )
+
+  it("preserves foreign-Page 404 after the rotation access gate", async () => {
+    vi.spyOn(ApiService.prototype, "getProductShell").mockResolvedValue(
+      productShell()
+    )
+    vi.spyOn(SqlRepository.prototype, "getPage").mockResolvedValue(null)
+    const rotateWebhookSecret = vi.spyOn(
+      SqlRepository.prototype,
+      "rotateWebhookSecret"
+    )
+
+    const error = await captureError(
+      workerExports.WebAppApi.rotateWebhookSecret(ACTOR, {
+        pageId: "f251bd5a-2772-489a-a725-43e2ea9d44ee",
+      })
+    )
+
+    expect(error).toMatchObject({ code: "not_found", status: 404 })
+    expect(rotateWebhookSecret).not.toHaveBeenCalled()
+  })
+
   it("runs the default primary Queue handler with a real MessageBatch", async () => {
     vi.spyOn(SqlRepository.prototype, "claimJob").mockResolvedValue(null)
     vi.spyOn(SqlRepository.prototype, "getJob").mockResolvedValue({
@@ -422,6 +559,21 @@ const ACTOR = {
 const JOB_ID = "d743db7b-d4b8-4911-bf01-c639816856fc"
 const MESSAGE_ID = "ef55c94e-b861-4d19-9f9b-b5689028de80"
 
+function productShell() {
+  return {
+    tenantId: ACTOR.userId,
+    email: "person@example.com",
+    entitlement: {
+      priceLookupKey: "starter_monthly" as const,
+      usage: 0,
+      messageLimit: 1_000,
+      activePageCount: 1,
+      pageLimit: 3,
+      blockCode: null,
+    },
+  }
+}
+
 function mockActiveTenant(): void {
   vi.spyOn(SqlRepository.prototype, "getApiKeyByHash").mockResolvedValue({
     id: "key_1",
@@ -470,10 +622,12 @@ function runtimePage(): PageRecord {
     status: "active",
     tokenStatus: "valid",
     tokenError: null,
+    tokenErrorAt: null,
     webhookUrl: "https://example.com/webhook",
     pageAccessTokenEncrypted: "encrypted",
     webhookSigningSecretEncrypted: "encrypted",
     connectedAt: new Date("2026-07-01T00:00:00.000Z"),
+    disconnectedAt: null,
     updatedAt: new Date("2026-07-29T18:00:00.000Z"),
   }
 }

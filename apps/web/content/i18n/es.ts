@@ -106,7 +106,7 @@ export const es: Dict = {
     title: "Una request y ya estás respondiendo",
     subtitle: "Un POST desde tu backend, desde n8n, desde donde sea.",
     filename: "reply.request",
-    replySample: "¡Sí! Te espero a las 15:00 👍",
+    textSample: "¡Sí! Te espero a las 15:00 👍",
     copy: "Copiar código",
     copied: "Copiado",
   },

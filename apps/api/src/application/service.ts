@@ -7,6 +7,7 @@ import type {
   ConversationListDto,
   ConversationListInput,
   ConversationThreadDto,
+  ConversationThreadRpcInput,
   CreatedApiKeyDto,
   DeliveryDto,
   MeDto,
@@ -19,6 +20,7 @@ import type {
   ProductAccessDto,
   ProductShellDto,
   RpcActor,
+  RpcPageDto,
   SendMessageInput,
 } from "@workspace/contracts"
 import { ContractError } from "@workspace/contracts"
@@ -41,6 +43,7 @@ import {
   decryptSecret,
   encryptSecret,
   generateApiKey,
+  generateIntegrationIdentifier,
   generateWebhookSigningSecret,
   hashApiKey,
   hashPassword,
@@ -54,6 +57,7 @@ import { createSql } from "../infrastructure/db/client"
 import {
   messageDto,
   pageDto,
+  rpcPageDto,
   SqlRepository,
   type MessageRecord,
   type PageRecord,
@@ -81,11 +85,15 @@ export type AuthenticatedApiKey = {
   apiKeyId: string
 }
 
+const DUMMY_PASSWORD_HASH =
+  "scrypt$cmVzZW5kZXItcnBjLWR1bW15$mpc4UMVvwELJGvPk2eEeNmpyNsoB1Nq3YK33obvkzaU09t0MoXXu8Qncm03RrkGXDwXQVyVEniZ4OlwR8ONXtg"
+
 export class ApiService {
   readonly meta: MetaClient
   private repositoryClient: SqlRepository | null = null
   private stripeClient: Stripe | null = null
   private readonly now: () => Date
+  private readonly passwordVerifier: typeof verifyPassword
 
   constructor(
     readonly env: Env,
@@ -94,6 +102,7 @@ export class ApiService {
       meta?: MetaClient
       stripe?: Stripe
       now?: () => Date
+      verifyPassword?: typeof verifyPassword
     } = {}
   ) {
     this.repositoryClient = dependencies.repository ?? null
@@ -101,6 +110,7 @@ export class ApiService {
       dependencies.meta ?? new MetaClient(env.META_APP_ID, env.META_APP_SECRET)
     this.stripeClient = dependencies.stripe ?? null
     this.now = dependencies.now ?? (() => new Date())
+    this.passwordVerifier = dependencies.verifyPassword ?? verifyPassword
   }
 
   get repository(): SqlRepository {
@@ -197,6 +207,26 @@ export class ApiService {
     pageId: string,
     webhookUrl: string | null
   ): Promise<PageDto> {
+    return pageDto(
+      await this.updatePageWebhookRecord(tenantId, pageId, webhookUrl)
+    )
+  }
+
+  async updatePageWebhookForRpc(
+    tenantId: string,
+    pageId: string,
+    webhookUrl: string | null
+  ): Promise<RpcPageDto> {
+    return rpcPageDto(
+      await this.updatePageWebhookRecord(tenantId, pageId, webhookUrl)
+    )
+  }
+
+  private async updatePageWebhookRecord(
+    tenantId: string,
+    pageId: string,
+    webhookUrl: string | null
+  ): Promise<PageRecord> {
     const pageBeforeUpdate = await this.requirePage(tenantId, pageId)
     const normalized = validateWebhookUrl(webhookUrl)
     if (normalized) await assertPublicWebhookDestination(normalized)
@@ -257,7 +287,9 @@ export class ApiService {
   async getConversationThread(
     tenantId: string,
     conversationId: string,
-    input: { limit: number; cursor?: string }
+    input: Omit<ConversationThreadRpcInput, "conversationId"> & {
+      limit: number
+    }
   ): Promise<ConversationThreadDto> {
     const conversation = await this.getConversation(tenantId, conversationId)
     const messages = await this.repository.listConversationMessages(
@@ -269,6 +301,7 @@ export class ApiService {
       conversation,
       messages: messages.data,
       pagination: messages.pagination,
+      order: "newest_first",
     }
   }
 
@@ -440,10 +473,14 @@ export class ApiService {
     email: string
     password: string
   }): Promise<ReturnType<typeof userDto> | null> {
-    const user = await this.repository.getUserByEmail(
-      normalizeEmail(input.email)
+    const email = normalizedEmail(input.email)
+    if (!email) return null
+    const user = await this.repository.getUserByEmail(email)
+    const passwordMatches = await this.passwordVerifier(
+      input.password,
+      user?.passwordHash ?? DUMMY_PASSWORD_HASH
     )
-    if (!user || !(await verifyPassword(input.password, user.passwordHash))) {
+    if (!user || !passwordMatches) {
       return null
     }
     return userDto(user)
@@ -554,9 +591,9 @@ export class ApiService {
     input: { code: string; redirectUri: string }
   ): Promise<MetaAuthorizationResultDto> {
     const { user } = await this.requireProductAccess(actor.userId)
-    validateReturnUrl(input.redirectUri)
+    const redirectUri = validateMetaRedirectUri(this.env, input.redirectUri)
     const token = await this.providerOperation("Meta", () =>
-      this.meta.exchangeAuthorizationCode(input)
+      this.meta.exchangeAuthorizationCode({ ...input, redirectUri })
     )
     await this.repository.saveMetaUserToken(
       user.id,
@@ -568,10 +605,22 @@ export class ApiService {
   async connectMetaPages(
     actor: RpcActor,
     input: ConnectMetaPagesInput
-  ): Promise<PageDto[]> {
+  ): Promise<RpcPageDto[]> {
     const { user } = await this.requireProductAccess(actor.userId)
     const ids = [...new Set(input.providerPageIds)]
-    if (ids.length === 0) return []
+    if (ids.length === 0) {
+      throw new ContractError({
+        code: "validation_error",
+        message: "Select at least one Page.",
+        status: 400,
+        details: [
+          {
+            path: "providerPageIds",
+            message: "Select at least one Page.",
+          },
+        ],
+      })
+    }
     const entitlement = await this.entitlement(user.id)
     if (!entitlement.limits) throw planError("plan_unavailable")
     const ownership = await this.repository.getPageOwnership(ids)
@@ -621,7 +670,7 @@ export class ApiService {
         )
         subscribed.push(page)
       }
-      return await this.repository.connectPages(
+      const pages = await this.repository.connectPages(
         user.id,
         selected.map((page) => ({
           providerPageId: page.id,
@@ -632,6 +681,7 @@ export class ApiService {
           ),
         }))
       )
+      return pages.map(rpcPageDto)
     } catch (error) {
       await Promise.allSettled(
         subscribed.map((page) =>
@@ -642,7 +692,7 @@ export class ApiService {
     }
   }
 
-  async disconnectPage(actor: RpcActor, pageId: string): Promise<PageDto> {
+  async disconnectPage(actor: RpcActor, pageId: string): Promise<RpcPageDto> {
     const { user } = await this.requireProductAccess(actor.userId)
     const page = await this.requirePage(user.id, pageId)
     try {
@@ -659,12 +709,12 @@ export class ApiService {
     }
     const disconnected = await this.repository.disconnectPage(user.id, pageId)
     if (!disconnected) throw notFound("Page")
-    return disconnected
+    return rpcPageDto(disconnected)
   }
 
   async listApiKeys(actor: RpcActor): Promise<ApiKeyDto[]> {
     const { user } = await this.requireProductAccess(actor.userId)
-    return this.repository.listApiKeys(user.id)
+    return (await this.repository.listApiKeys(user.id)).map(apiKeyDto)
   }
 
   async createApiKey(
@@ -687,7 +737,7 @@ export class ApiService {
       visiblePrefix: generated.visiblePrefix,
       secretHash: generated.secretHash,
     })
-    return { apiKey: generated.apiKey, record }
+    return { apiKey: generated.apiKey, record: apiKeyDto(record) }
   }
 
   async revokeApiKey(actor: RpcActor, apiKeyId: string): Promise<void> {
@@ -734,12 +784,13 @@ export class ApiService {
     if (!isCanonicalPlanLookupKey(input.priceLookupKey)) {
       throw planError("plan_unavailable")
     }
-    const returnUrl = validateReturnUrl(input.returnUrl)
+    const returnUrl = validateWebAppOrigin(
+      this.env,
+      input.returnUrl,
+      "returnUrl"
+    )
     if (isActiveSubscription(await this.repository.getSubscription(user.id))) {
-      return this.createBillingPortalSession(
-        actor,
-        appendPath(returnUrl, "/settings")
-      )
+      return this.createBillingPortalSession(actor, returnUrl)
     }
     let customerId = await this.repository.getStripeCustomerId(user.id)
     if (!customerId) {
@@ -763,6 +814,7 @@ export class ApiService {
     const checkout = await this.providerOperation("Stripe", () =>
       this.stripe.checkout.sessions.create({
         mode: "subscription",
+        integration_identifier: generateIntegrationIdentifier(),
         customer: customerId,
         line_items: [{ price: price.id, quantity: 1 }],
         metadata: { tenantId: user.id },
@@ -789,12 +841,13 @@ export class ApiService {
     returnUrl: string
   ): Promise<{ url: string }> {
     const user = await this.requireActor(actor)
+    const webAppOrigin = validateWebAppOrigin(this.env, returnUrl, "returnUrl")
     const customerId = await this.repository.getStripeCustomerId(user.id)
     if (!customerId) throw notFound("Billing customer")
     const portal = await this.providerOperation("Stripe", () =>
       this.stripe.billingPortal.sessions.create({
         customer: customerId,
-        return_url: validateReturnUrl(returnUrl),
+        return_url: appendPath(webAppOrigin, "/settings"),
       })
     )
     return { url: portal.url }
@@ -826,7 +879,7 @@ export class ApiService {
     confirmEmail: string
   ): Promise<AccountDeletionResultDto> {
     const user = await this.requireActor(actor)
-    if (confirmEmail !== user.email) {
+    if (normalizedEmail(confirmEmail) !== user.email) {
       throw new ContractError({
         code: "validation_error",
         message: "The confirmation email does not match this account.",
@@ -838,15 +891,13 @@ export class ApiService {
     const unsubscribeResults = await Promise.allSettled(
       context.pages
         .filter((page) => page.status === "active")
-        .map((page) =>
-          this.meta.unsubscribePage(
-            page.providerPageId,
-            decryptSecret(
-              this.env.TOKEN_ENCRYPTION_KEY,
-              page.encryptedPageToken
-            )
+        .map(async (page) => {
+          const pageAccessToken = decryptSecret(
+            this.env.TOKEN_ENCRYPTION_KEY,
+            page.encryptedPageToken
           )
-        )
+          await this.meta.unsubscribePage(page.providerPageId, pageAccessToken)
+        })
     )
     let stripeCancellationFailed = false
     if (context.stripeSubscriptionId) {
@@ -1148,6 +1199,18 @@ function userDto(user: UserRecord) {
   }
 }
 
+function apiKeyDto(apiKey: ApiKeyDto): ApiKeyDto {
+  return {
+    id: apiKey.id,
+    label: apiKey.label,
+    visiblePrefix: apiKey.visiblePrefix,
+    status: apiKey.status,
+    createdAt: apiKey.createdAt,
+    lastUsedAt: apiKey.lastUsedAt,
+    revokedAt: apiKey.revokedAt,
+  }
+}
+
 function isActiveSubscription(
   subscription: SubscriptionRecord | null
 ): boolean {
@@ -1155,8 +1218,8 @@ function isActiveSubscription(
 }
 
 function normalizeEmail(value: string): string {
-  const email = value.trim().toLowerCase()
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/u.test(email)) {
+  const email = normalizedEmail(value)
+  if (!email) {
     throw new ContractError({
       code: "validation_error",
       message: "A valid email is required.",
@@ -1164,6 +1227,11 @@ function normalizeEmail(value: string): string {
     })
   }
   return email
+}
+
+function normalizedEmail(value: string): string | null {
+  const email = value.trim().toLowerCase()
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/u.test(email) ? email : null
 }
 
 function invalidApiKey(): ContractError {
@@ -1221,38 +1289,128 @@ function invalidSignature(provider: string): ContractError {
   })
 }
 
-function validateReturnUrl(value: string): string {
+function validateMetaRedirectUri(env: Env, value: string): string {
+  const url = parseUrlInput(value, "redirectUri")
+  const origin = validateAllowedWebAppUrl(env, url, "redirectUri")
+  if (
+    url.origin !== origin ||
+    url.pathname !== "/api/meta/callback" ||
+    url.search ||
+    url.hash
+  ) {
+    throw invalidWebAppUrl(
+      "redirectUri",
+      "Meta redirect URI must be the configured callback URL."
+    )
+  }
+  return `${origin}/api/meta/callback`
+}
+
+function validateWebAppOrigin(
+  env: Env,
+  value: string,
+  field: "returnUrl"
+): string {
+  const url = parseUrlInput(value, field)
+  const origin = validateAllowedWebAppUrl(env, url, field)
+  if (url.origin !== origin || url.pathname !== "/" || url.search || url.hash) {
+    throw invalidWebAppUrl(
+      field,
+      "Return URL must be an allowed web application origin."
+    )
+  }
+  return origin
+}
+
+function parseUrlInput(value: string, field: string): URL {
   let url: URL
   try {
     url = new URL(value)
   } catch {
-    throw new ContractError({
-      code: "validation_error",
-      message: "A valid return URL is required.",
-      status: 400,
-    })
-  }
-  if (
-    url.protocol !== "https:" &&
-    !(
-      url.protocol === "http:" &&
-      ["localhost", "127.0.0.1"].includes(url.hostname)
-    )
-  ) {
-    throw new ContractError({
-      code: "validation_error",
-      message: "Return URLs must use HTTPS outside localhost.",
-      status: 400,
-    })
+    throw invalidWebAppUrl(field, "A valid URL is required.")
   }
   if (url.username || url.password) {
-    throw new ContractError({
-      code: "validation_error",
-      message: "Return URLs cannot contain credentials.",
-      status: 400,
-    })
+    throw invalidWebAppUrl(field, "URLs cannot contain credentials.")
   }
-  return url.toString()
+  return url
+}
+
+function validateAllowedWebAppUrl(env: Env, url: URL, field: string): string {
+  const origins = configuredWebAppOrigins(env)
+  if (!origins.has(url.origin)) {
+    throw invalidWebAppUrl(
+      field,
+      "URL origin is not allowed for this environment."
+    )
+  }
+  return url.origin
+}
+
+function configuredWebAppOrigins(env: Env): Set<string> {
+  const raw = envText(env, "WEB_APP_ORIGINS")
+  if (!raw) throw incompleteConfiguration()
+  let values: unknown
+  try {
+    values = JSON.parse(raw)
+  } catch {
+    throw incompleteConfiguration()
+  }
+  if (
+    !Array.isArray(values) ||
+    values.length === 0 ||
+    values.some((value) => typeof value !== "string")
+  ) {
+    throw incompleteConfiguration()
+  }
+  const origins = new Set<string>()
+  for (const value of values) {
+    let url: URL
+    try {
+      url = new URL(value)
+    } catch {
+      throw incompleteConfiguration()
+    }
+    const localHttp =
+      url.protocol === "http:" &&
+      ["localhost", "127.0.0.1"].includes(url.hostname) &&
+      ["development", "local"].includes(env.ENVIRONMENT)
+    if (
+      (url.protocol !== "https:" && !localHttp) ||
+      url.username ||
+      url.password ||
+      url.pathname !== "/" ||
+      url.search ||
+      url.hash ||
+      url.origin !== value.replace(/\/$/u, "")
+    ) {
+      throw incompleteConfiguration()
+    }
+    origins.add(url.origin)
+  }
+  return origins
+}
+
+function envText(env: Env, key: string): string | undefined {
+  if (!(key in env)) return undefined
+  const value = Reflect.get(env, key)
+  return typeof value === "string" ? value : undefined
+}
+
+function invalidWebAppUrl(field: string, message: string): ContractError {
+  return new ContractError({
+    code: "validation_error",
+    message,
+    status: 400,
+    details: [{ path: field, message }],
+  })
+}
+
+function incompleteConfiguration(): ContractError {
+  return new ContractError({
+    code: "internal_error",
+    message: "The API is not fully configured.",
+    status: 500,
+  })
 }
 
 function appendPath(origin: string, path: string): string {
@@ -1286,12 +1444,9 @@ function requiredConfiguration(env: Env): void {
     "STRIPE_WEBHOOK_SECRET",
   ] as const
   if (required.some((key) => !env[key])) {
-    throw new ContractError({
-      code: "internal_error",
-      message: "The API is not fully configured.",
-      status: 500,
-    })
+    throw incompleteConfiguration()
   }
+  configuredWebAppOrigins(env)
   apiKeyPepper(env)
 }
 

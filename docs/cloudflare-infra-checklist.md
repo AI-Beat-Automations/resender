@@ -343,15 +343,15 @@ En `https://resender.dev`:
 - [ ] **Send saliente** con una API key → valida **HMAC**:
 
   ```sh
-  curl -X POST 'https://resender.dev/api/meta/send' \
+  curl -i -X POST 'https://api.resender.dev/v1/messages' \
     -H 'Authorization: Bearer pk_live_...' \
     -H 'Content-Type: application/json' \
     -H 'Idempotency-Key: smoke-test-1' \
-    -d '{"pageId":"<meta_page_id>","recipientId":"<psid>","reply":"smoke test"}'
+    -d '{"pageId":"<internal_page_uuid>","recipientId":"<psid>","type":"text","text":"smoke test"}'
   ```
 
-  Repite el mismo curl: la segunda respuesta debe traer
-  `"idempotentReplay": true` y **no** mandar otro mensaje.
+  Repite el mismo curl: la segunda respuesta debe traer el header
+  `Idempotent-Replayed: true` y **no** mandar otro mensaje.
 - [ ] **Flujo de entrada completo**: mensaje real a la página → aparece en el
       dashboard → llega al webhook configurado → fila `success` en
       `external_webhook_deliveries`.

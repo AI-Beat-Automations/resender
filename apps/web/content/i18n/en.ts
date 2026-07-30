@@ -101,7 +101,7 @@ export const en: Dict = {
     title: "One request and you're already replying",
     subtitle: "A POST from your backend, from n8n, from wherever.",
     filename: "reply.request",
-    replySample: "Yes! See you today at 3:00 PM 👍",
+    textSample: "Yes! See you today at 3:00 PM 👍",
     copy: "Copy code",
     copied: "Copied",
   },

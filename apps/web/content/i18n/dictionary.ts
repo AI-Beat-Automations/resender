@@ -79,8 +79,8 @@ export type Dict = {
     title: string
     subtitle: string
     filename: string
-    // Texto de ejemplo que va en el body `reply` de los snippets de código.
-    replySample: string
+    // Texto de ejemplo que va en el body `text` de los snippets de código.
+    textSample: string
     copy: string
     copied: string
   }

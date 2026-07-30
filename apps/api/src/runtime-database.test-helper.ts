@@ -223,10 +223,12 @@ function pageRow(page: PageRecord): Row {
     status: page.status,
     token_status: page.tokenStatus,
     token_error: page.tokenError,
+    token_error_at: page.tokenErrorAt,
     webhook_url: page.webhookUrl,
     page_access_token_encrypted: page.pageAccessTokenEncrypted,
     webhook_signing_secret_encrypted: page.webhookSigningSecretEncrypted,
     connected_at: page.connectedAt,
+    disconnected_at: page.disconnectedAt,
     updated_at: page.updatedAt,
   }
 }

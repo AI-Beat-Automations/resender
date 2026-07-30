@@ -84,6 +84,125 @@ describe("outbound idempotency reservation", () => {
   })
 })
 
+describe("RPC Page state and conversation history", () => {
+  it("returns all conversation messages across pages in explicit descending order", async () => {
+    const rows = Array.from({ length: 101 }, (_, index) =>
+      messageRow({
+        id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+        created_at: new Date(
+          Date.parse("2026-07-29T18:00:00.000Z") - index * 1_000
+        ).toISOString(),
+      })
+    )
+    const sql = capturingQuerySql([rows, [rows[100] as Row]])
+    const repository = new SqlRepository(sql.client)
+    const conversationId = "9e2327a8-0c42-493e-bd6c-c08ed81010f0"
+
+    const first = await repository.listConversationMessages(
+      "tenant_1",
+      conversationId,
+      { limit: 100 }
+    )
+    const second = await repository.listConversationMessages(
+      "tenant_1",
+      conversationId,
+      { limit: 100, cursor: first.pagination.nextCursor ?? undefined }
+    )
+
+    expect(first.data).toHaveLength(100)
+    expect(first.pagination).toMatchObject({ hasMore: true })
+    expect(second.data).toHaveLength(1)
+    expect([...first.data, ...second.data]).toHaveLength(101)
+    expect(sql.queries[0]?.statement).toContain(
+      "order by created_at desc, id desc"
+    )
+    expect(sql.queries[1]?.statement).toContain("(created_at, id) <")
+  })
+
+  it("maps operational Page state without returning stored credentials", async () => {
+    const record = pageRecord()
+    const sql = capturingSql([
+      [
+        {
+          id: record.id,
+          tenant_id: record.tenantId,
+          meta_page_id: record.providerPageId,
+          name: record.name,
+          status: "disconnected",
+          token_status: "invalid",
+          token_error: "expired",
+          token_error_at: "2026-07-29T18:01:00.000Z",
+          webhook_url: record.webhookUrl,
+          page_access_token_encrypted: "encrypted-token",
+          webhook_signing_secret_encrypted: "encrypted-secret",
+          connected_at: record.connectedAt,
+          disconnected_at: "2026-07-29T18:02:00.000Z",
+          updated_at: record.updatedAt,
+        },
+      ],
+    ])
+
+    const [result] = await new SqlRepository(sql.client).listAllPages(
+      record.tenantId
+    )
+
+    expect(result).toMatchObject({
+      tokenError: "expired",
+      tokenErrorAt: "2026-07-29T18:01:00.000Z",
+      disconnectedAt: "2026-07-29T18:02:00.000Z",
+    })
+    expect(result).not.toHaveProperty("pageAccessTokenEncrypted")
+    expect(result).not.toHaveProperty("webhookSigningSecretEncrypted")
+  })
+
+  it("does not create or replace a signing secret during connect", async () => {
+    const statements: string[] = []
+    const record = pageRecord()
+    const row = {
+      id: record.id,
+      tenant_id: record.tenantId,
+      meta_page_id: record.providerPageId,
+      name: record.name,
+      status: record.status,
+      token_status: record.tokenStatus,
+      token_error: null,
+      token_error_at: null,
+      webhook_url: record.webhookUrl,
+      page_access_token_encrypted: record.pageAccessTokenEncrypted,
+      webhook_signing_secret_encrypted:
+        record.webhookSigningSecretEncrypted,
+      connected_at: record.connectedAt,
+      disconnected_at: null,
+      updated_at: record.updatedAt,
+    }
+    const tagged = async (strings: TemplateStringsArray) => {
+      statements.push(strings.join("?"))
+      return [row]
+    }
+    const client = Object.assign(tagged, {
+      query: async () => [],
+      transaction: async (
+        callback: (transaction: typeof tagged) => Promise<Row[]>[]
+      ) => Promise.all(callback(tagged)),
+    }) as unknown as Sql
+
+    const [connected] = await new SqlRepository(client).connectPages(
+      record.tenantId,
+      [
+        {
+          providerPageId: record.providerPageId,
+          name: record.name,
+          encryptedPageToken: "new-token",
+        },
+      ]
+    )
+
+    const mutation = statements[0]?.split("returning")[0] ?? ""
+    expect(mutation).not.toContain("webhook_signing_secret_encrypted")
+    expect(connected?.webhookSigningSecretEncrypted).toBe("encrypted-secret")
+  })
+})
+
 describe("subscription persistence ordering", () => {
   it("does not write or clean up for a terminal event from another subscription", async () => {
     const sql = capturingSql([[subscriptionRow()]])
@@ -437,6 +556,22 @@ function capturingSql(results: Row[][]): {
   return { client, taggedStatements }
 }
 
+function capturingQuerySql(results: Row[][]): {
+  client: Sql
+  queries: Array<{ statement: string; parameters: unknown[] }>
+} {
+  const queries: Array<{ statement: string; parameters: unknown[] }> = []
+  const tagged = async () => []
+  const client = Object.assign(tagged, {
+    query: async (statement: string, parameters: unknown[]) => {
+      queries.push({ statement, parameters })
+      return results.shift() ?? []
+    },
+    transaction: async () => [],
+  }) as unknown as Sql
+  return { client, queries }
+}
+
 function messageRow(overrides: Partial<Row>): Row {
   return {
     id: "7ac2cc32-38cf-4d41-8c73-c6cf640d5b15",
@@ -495,10 +630,12 @@ function pageRecord(): PageRecord {
     status: "active",
     tokenStatus: "valid",
     tokenError: null,
+    tokenErrorAt: null,
     webhookUrl: "https://example.com/webhook",
     pageAccessTokenEncrypted: "encrypted",
     webhookSigningSecretEncrypted: "encrypted-secret",
     connectedAt: new Date("2026-07-01T00:00:00.000Z"),
+    disconnectedAt: null,
     updatedAt: new Date("2026-07-29T00:00:00.000Z"),
   }
 }

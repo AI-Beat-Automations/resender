@@ -1,7 +1,8 @@
 # API Worker: manual Cloudflare runbook
 
-Status: phase 1 implementation only. None of the commands in this runbook were
-executed against a Cloudflare account while implementing the branch.
+Status: phase 1 implementation plus phase 2 preparation. None of the commands
+in this runbook were executed against a Cloudflare account while implementing
+the branch.
 
 The existing `web` Worker remains the production frontend, database owner, and
 live receiver for Meta and Stripe callbacks. Do not change provider callback
@@ -68,6 +69,75 @@ npx wrangler queues create webhook-deliveries-staging-dlq
 Do not add invented Queue IDs to `wrangler.jsonc`; Queue bindings use the exact
 names above.
 
+## Prepare phase 2 bindings per environment
+
+This section is preparation only. Do not change Wrangler configuration,
+Cloudflare bindings, variables, secrets, or deployed Workers until the phase 2
+cutover is explicitly approved.
+
+### API web-origin allowlist
+
+The API expects `WEB_APP_ORIGINS` to be a JSON array of exact frontend origins.
+It is independent from `PUBLIC_BASE_URL` and must never be derived from the
+request hostname. Missing, empty, malformed, or unlisted values fail closed.
+
+Before each environment is enabled, Arturo must approve and record:
+
+```text
+production WEB_APP_ORIGINS=["<approved-production-web-origin>"]
+staging    WEB_APP_ORIGINS=["<approved-staging-web-origin>"]
+local      WEB_APP_ORIGINS=["http://localhost:3000"]
+```
+
+Production and staging origins must use HTTPS and contain only the origin: no
+path, query, fragment, or credentials. Local HTTP is accepted only for
+`localhost`/`127.0.0.1` when `ENVIRONMENT` is `local` or `development`.
+
+When the approved values are later added to `apps/api/wrangler.jsonc`, repeat
+the complete `vars` object in every named environment. Wrangler bindings and
+variables are non-inheritable, so staging must declare its own
+`ENVIRONMENT`, `PUBLIC_BASE_URL`, and `WEB_APP_ORIGINS`; do not assume the
+top-level values carry over.
+
+After that future configuration change:
+
+```bash
+npm --workspace api run cf-typegen
+npm --workspace api run cf-typegen:check
+npm --workspace api run typecheck
+```
+
+Commit the generated declaration with the configuration change. Do not add a
+handwritten global `Env` interface or cast around a missing binding.
+
+### Web-to-API Service Binding
+
+In the future `apps/web` Wrangler configuration, `BACKEND` must be a Service
+Binding to the API's named `WebAppApi` entrypoint:
+
+| Caller environment | Binding | Target Worker | Entrypoint |
+| --- | --- | --- | --- |
+| production `web` | `BACKEND` | `api` | `WebAppApi` |
+| staging `web` | `BACKEND` | `api-staging` | `WebAppApi` |
+| local development | `BACKEND` | local Worker named `api` | `WebAppApi` |
+
+Declare the service binding explicitly in every environment; service bindings
+are also non-inheritable. There must be no production HTTP fallback from RPC
+to `https://api.resender.dev`.
+
+After the future `BACKEND` configuration change:
+
+```bash
+npm --workspace web run cf-typegen
+npm --workspace web run typecheck
+npm --workspace api run typecheck
+```
+
+Review the generated `CloudflareEnv.BACKEND` type against
+`WebAppApiContract`, and verify local Wrangler reports the binding as
+connected before running the RPC smoke suite. Do not hand-edit
+`apps/web/cloudflare-env.d.ts`.
+
 ## Configure secrets
 
 Set every secret separately for staging and production. Never paste values into
@@ -117,6 +187,11 @@ Smoke-test staging:
 - `GET /healthz` returns `200`.
 - `GET /readyz` returns `200` without exposing dependency details.
 - `/openapi.json` and `/openapi/download` contain the same document.
+- `/docs` loads Swagger UI from `/openapi.json`.
+- `WEB_APP_ORIGINS` accepts only the approved staging origin; the production
+  origin and arbitrary HTTPS origins are rejected.
+- The `BACKEND` Service Binding resolves to the staging API's `WebAppApi`
+  entrypoint once phase 2 configuration is approved and applied.
 - An absent, malformed, and revoked API key each fail without exposing tenant
   data.
 - A controlled Meta/Stripe test signature is accepted; an altered raw body is

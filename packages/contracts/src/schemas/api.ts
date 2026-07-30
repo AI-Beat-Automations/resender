@@ -147,6 +147,7 @@ export const DeliveryListQuerySchema = z.object({
 export type PaginationDto = z.infer<typeof PaginationSchema>
 export type MeDto = z.infer<typeof MeSchema>
 export type PageDto = z.infer<typeof PageSchema>
+export type WebhookSecretDto = z.infer<typeof WebhookSecretSchema>
 export type MessageDto = z.infer<typeof MessageSchema>
 export type ConversationDto = z.infer<typeof ConversationSchema>
 export type DeliveryDto = z.infer<typeof DeliverySchema>
@@ -164,4 +165,5 @@ export type ConversationThreadDto = {
   conversation: ConversationDto
   messages: MessageDto[]
   pagination: PaginationDto
+  order: "newest_first"
 }
