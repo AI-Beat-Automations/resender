@@ -1,7 +1,9 @@
 # API Worker: manual Cloudflare runbook
 
-Status: phase 1 implementation plus phase 2 preparation. None of the commands
-in this runbook were executed against a Cloudflare account while implementing
+Status: phase 1 implementation plus the phase 2 repository configuration
+checkpoint. The origin allowlists, Service Bindings, deterministic typegen,
+and generated types are present in the repository. None of the commands in
+this runbook were executed against a Cloudflare account while implementing
 the branch.
 
 The existing `web` Worker remains the production frontend, database owner, and
@@ -69,11 +71,12 @@ npx wrangler queues create webhook-deliveries-staging-dlq
 Do not add invented Queue IDs to `wrangler.jsonc`; Queue bindings use the exact
 names above.
 
-## Prepare phase 2 bindings per environment
+## Phase 2 bindings configured per environment
 
-This section is preparation only. Do not change Wrangler configuration,
-Cloudflare bindings, variables, secrets, or deployed Workers until the phase 2
-cutover is explicitly approved.
+This repository configuration has been applied after explicit approval. It
+does not deploy either Worker, create external resources, set secrets, change
+DNS/custom domains, or enable a public staging route. Those actions remain
+manual cutover steps.
 
 ### API web-origin allowlist
 
@@ -81,11 +84,11 @@ The API expects `WEB_APP_ORIGINS` to be a JSON array of exact frontend origins.
 It is independent from `PUBLIC_BASE_URL` and must never be derived from the
 request hostname. Missing, empty, malformed, or unlisted values fail closed.
 
-Before each environment is enabled, Arturo must approve and record:
+The approved repository values are:
 
 ```text
-production WEB_APP_ORIGINS=["<approved-production-web-origin>"]
-staging    WEB_APP_ORIGINS=["<approved-staging-web-origin>"]
+production WEB_APP_ORIGINS=["https://resender.dev"]
+staging    WEB_APP_ORIGINS=["https://staging.resender.dev"]
 local      WEB_APP_ORIGINS=["http://localhost:3000"]
 ```
 
@@ -93,13 +96,13 @@ Production and staging origins must use HTTPS and contain only the origin: no
 path, query, fragment, or credentials. Local HTTP is accepted only for
 `localhost`/`127.0.0.1` when `ENVIRONMENT` is `local` or `development`.
 
-When the approved values are later added to `apps/api/wrangler.jsonc`, repeat
-the complete `vars` object in every named environment. Wrangler bindings and
-variables are non-inheritable, so staging must declare its own
+The approved values are recorded in `apps/api/wrangler.jsonc`, with the
+complete `vars` object repeated in every named environment. Wrangler bindings
+and variables are non-inheritable, so staging declares its own
 `ENVIRONMENT`, `PUBLIC_BASE_URL`, and `WEB_APP_ORIGINS`; do not assume the
 top-level values carry over.
 
-After that future configuration change:
+After any future configuration change:
 
 ```bash
 npm --workspace api run cf-typegen
@@ -112,7 +115,7 @@ handwritten global `Env` interface or cast around a missing binding.
 
 ### Web-to-API Service Binding
 
-In the future `apps/web` Wrangler configuration, `BACKEND` must be a Service
+The current `apps/web` Wrangler configuration declares `BACKEND` as a Service
 Binding to the API's named `WebAppApi` entrypoint:
 
 | Caller environment | Binding | Target Worker | Entrypoint |
@@ -125,10 +128,11 @@ Declare the service binding explicitly in every environment; service bindings
 are also non-inheritable. There must be no production HTTP fallback from RPC
 to `https://api.resender.dev`.
 
-After the future `BACKEND` configuration change:
+After any future `BACKEND` configuration change:
 
 ```bash
 npm --workspace web run cf-typegen
+npm --workspace web run cf-typegen:check
 npm --workspace web run typecheck
 npm --workspace api run typecheck
 ```
@@ -166,6 +170,7 @@ migrations and the approved runtime URL for the Worker.
 ```bash
 npm --workspace @workspace/contracts run typecheck
 npm --workspace api run cf-typegen:check
+npm --workspace web run cf-typegen:check
 npm --workspace api run lint
 npm --workspace api run typecheck
 npm --workspace api run test:run
@@ -190,8 +195,10 @@ Smoke-test staging:
 - `/docs` loads Swagger UI from `/openapi.json`.
 - `WEB_APP_ORIGINS` accepts only the approved staging origin; the production
   origin and arbitrary HTTPS origins are rejected.
-- The `BACKEND` Service Binding resolves to the staging API's `WebAppApi`
-  entrypoint once phase 2 configuration is approved and applied.
+- The repository's `BACKEND` Service Binding resolves to the staging API's
+  `WebAppApi` entrypoint after both Workers are deployed. The web staging
+  environment intentionally has `routes: []` until its public route and DNS
+  are enabled manually.
 - An absent, malformed, and revoked API key each fail without exposing tenant
   data.
 - A controlled Meta/Stripe test signature is accepted; an altered raw body is
@@ -207,9 +214,9 @@ Only after staging evidence is approved:
 npm --workspace api run deploy
 ```
 
-Creating or deploying the Worker is not authorization to change DNS, the Meta
-callback, the Stripe webhook endpoint, or the `web` Worker service bindings.
-Those cutovers belong to phase 2.
+Creating or deploying the API Worker is not authorization to change DNS, the
+Meta callback, the Stripe webhook endpoint, enable the web staging route, or
+deploy the updated `web` Worker configuration. Those cutovers remain manual.
 
 ## Security and architecture notes
 

@@ -1,5 +1,5 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
+  "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "web",
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-07-01",
@@ -15,13 +15,35 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
+  "services": [
+    {
+      "binding": "BACKEND",
+      "service": "api",
+      "entrypoint": "WebAppApi"
+    }
+  ],
   "observability": {
     "enabled": true
   },
   // Único host que sirve el worker. `www` NO va acá: debe resolverse con una
   // Redirect Rule 301 hacia el ápex (ver el checklist de Cloudflare), no
   // sirviendo el mismo contenido en dos dominios.
-  "routes": [{ "pattern": "resender.dev", "custom_domain": true }]
+  "routes": [{ "pattern": "resender.dev", "custom_domain": true }],
+  "env": {
+    "staging": {
+      "name": "web-staging",
+      // Staging is binding-ready but intentionally has no public route in this
+      // repository checkpoint. DNS/domain activation remains a manual step.
+      "routes": [],
+      "services": [
+        {
+          "binding": "BACKEND",
+          "service": "api-staging",
+          "entrypoint": "WebAppApi"
+        }
+      ]
+    }
+  }
   // Los secretos (DATABASE_URL, AUTH_SECRET, etc.) NO van aquí: se cargan con
   // `wrangler secret put <NAME>` en producción y en `.dev.vars` para preview local.
 }

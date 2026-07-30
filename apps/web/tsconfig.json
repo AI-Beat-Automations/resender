@@ -17,6 +17,7 @@
     "**/*.ts",
     "**/*.tsx",
     "**/*.mts",
+    "../api/worker-configuration.d.ts",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],

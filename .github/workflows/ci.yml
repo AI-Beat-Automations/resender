@@ -23,6 +23,7 @@ jobs:
       - name: Lint, typecheck, test, build
         run: |
           npm --workspace api run cf-typegen:check
+          npm --workspace web run cf-typegen:check
           npx turbo lint typecheck test:run build
         env:
           # Valores dummy solo para que `next build` no falle en CI.

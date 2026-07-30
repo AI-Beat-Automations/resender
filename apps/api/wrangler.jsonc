@@ -12,6 +12,20 @@
   "vars": {
     "ENVIRONMENT": "production",
     "PUBLIC_BASE_URL": "https://api.resender.dev",
+    "WEB_APP_ORIGINS": "[\"https://resender.dev\"]",
+  },
+  "secrets": {
+    "required": [
+      "DATABASE_URL",
+      "AUTH_SECRET",
+      "API_KEY_PEPPER",
+      "TOKEN_ENCRYPTION_KEY",
+      "META_APP_ID",
+      "META_APP_SECRET",
+      "META_VERIFY_TOKEN",
+      "STRIPE_SECRET_KEY",
+      "STRIPE_WEBHOOK_SECRET",
+    ],
   },
   "triggers": {
     // Recovery only claims pending/processing jobs whose durable deadline is due.
@@ -59,6 +73,20 @@
       "vars": {
         "ENVIRONMENT": "staging",
         "PUBLIC_BASE_URL": "https://api-staging.resender.dev",
+        "WEB_APP_ORIGINS": "[\"https://staging.resender.dev\"]",
+      },
+      "secrets": {
+        "required": [
+          "DATABASE_URL",
+          "AUTH_SECRET",
+          "API_KEY_PEPPER",
+          "TOKEN_ENCRYPTION_KEY",
+          "META_APP_ID",
+          "META_APP_SECRET",
+          "META_VERIFY_TOKEN",
+          "STRIPE_SECRET_KEY",
+          "STRIPE_WEBHOOK_SECRET",
+        ],
       },
       "queues": {
         "producers": [

@@ -39,6 +39,22 @@ export type ConnectedPage = {
   pageAccessToken: string
 }
 
+type AccessTokenResponse = {
+  access_token?: string
+}
+
+type AuthorizedPagesResponse = {
+  data?: Array<{
+    id: string
+    name: string
+    access_token: string
+  }>
+}
+
+type SubscriptionResponse = {
+  success?: boolean
+}
+
 export class WebhookSubscriptionError extends Error {
   constructor(public readonly failedPageIds: string[]) {
     super("webhook subscription failed")
@@ -57,7 +73,7 @@ export async function exchangeCodeForUserToken(code: string): Promise<string> {
   tokenUrl.searchParams.set("code", code)
 
   const tokenRes = await fetch(tokenUrl)
-  const tokenData = await tokenRes.json()
+  const tokenData = await tokenRes.json<AccessTokenResponse>()
   if (!tokenRes.ok || !tokenData.access_token) {
     console.error("token exchange failed", tokenData)
     throw new Error("token exchange failed")
@@ -74,13 +90,13 @@ export async function exchangeCodeForUserToken(code: string): Promise<string> {
   longUrl.searchParams.set("fb_exchange_token", shortToken)
 
   const longRes = await fetch(longUrl)
-  const longData = await longRes.json()
+  const longData = await longRes.json<AccessTokenResponse>()
   if (!longRes.ok || !longData.access_token) {
     console.error("long-lived token exchange failed", longData)
     throw new Error("long-lived token exchange failed")
   }
 
-  return longData.access_token as string
+  return longData.access_token
 }
 
 // Páginas que el usuario administra + su page access token. Se vuelve a llamar
@@ -94,14 +110,13 @@ export async function listAuthorizedPages(
   pagesUrl.searchParams.set("access_token", userAccessToken)
 
   const pagesRes = await fetch(pagesUrl)
-  const pagesData = await pagesRes.json()
+  const pagesData = await pagesRes.json<AuthorizedPagesResponse>()
   if (!pagesRes.ok) {
     console.error("pages fetch failed", pagesData)
     throw new Error("pages fetch failed")
   }
 
-  type GraphPage = { id: string; name: string; access_token: string }
-  return ((pagesData.data ?? []) as GraphPage[]).map((p) => ({
+  return (pagesData.data ?? []).map((p) => ({
     pageId: p.id,
     name: p.name,
     pageAccessToken: p.access_token,
@@ -121,7 +136,7 @@ export async function subscribeToWebhook(
       access_token: pageAccessToken,
     }),
   })
-  const data = await res.json()
+  const data = await res.json<SubscriptionResponse>()
   if (!res.ok || !data.success) {
     console.error("subscribed_apps failed", pageId, data)
     return false
@@ -164,7 +179,7 @@ export async function unsubscribeFromWebhook(
   const url = new URL(`${GRAPH}/${pageId}/subscribed_apps`)
   url.searchParams.set("access_token", pageAccessToken)
   const res = await fetch(url, { method: "DELETE" })
-  const data = await res.json()
+  const data = await res.json<SubscriptionResponse>()
   if (!res.ok || !data.success) {
     console.error("subscribed_apps unsubscribe failed", pageId, data)
     return false
