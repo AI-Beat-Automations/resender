@@ -8,12 +8,15 @@
     "DATABASE_URL",
     "TOKEN_ENCRYPTION_KEY",
     "META_APP_SECRET",
+    "META_APP_ID",
     "META_VERIFY_TOKEN",
     "STRIPE_SECRET_KEY",
     "STRIPE_WEBHOOK_SECRET",
     "NODE_ENV",
     "NEXT_PUBLIC_META_APP_ID",
     "NEXT_PUBLIC_META_CONFIG_ID",
+    "ENVIRONMENT",
+    "PUBLIC_BASE_URL",
     "NEXT_PUBLIC_POSTHOG_KEY",
     "NEXT_PUBLIC_POSTHOG_HOST"
   ],
@@ -21,7 +24,7 @@
     "build": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": [".next/**", "!.next/cache/**"]
+      "outputs": [".next/**", "!.next/cache/**", ".wrangler/**"]
     },
     "lint": {
       "dependsOn": ["^lint"]
