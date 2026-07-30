@@ -6,7 +6,9 @@ import {
   AuthenticatedUserSchema,
   BackendHealthSchema,
   BillingStateSchema,
+  BillingPortalSessionRpcInputSchema,
   CheckoutSessionRpcInputSchema,
+  CheckoutVerificationSchema,
   ConnectMetaPagesRpcInputSchema,
   ConversationThreadRpcInputSchema,
   CreatedApiKeySchema,
@@ -18,6 +20,7 @@ import {
   ProductShellSchema,
   RpcPageSchema,
   SendMessageSchema,
+  StripeRedirectSchema,
   WebhookSecretSchema,
 } from "./index"
 
@@ -65,8 +68,9 @@ describe("public contracts", () => {
         destination: "product",
       },
     ]
-    expect(valid.every((access) => ProductAccessSchema.safeParse(access).success))
-      .toBe(true)
+    expect(
+      valid.every((access) => ProductAccessSchema.safeParse(access).success)
+    ).toBe(true)
 
     expect(
       ProductAccessSchema.safeParse({
@@ -304,7 +308,33 @@ describe("public contracts", () => {
     expect(
       CheckoutSessionRpcInputSchema.safeParse({
         priceLookupKey: "",
-        returnUrl: "javascript:alert(1)",
+        origin: "javascript:alert(1)",
+      }).success
+    ).toBe(false)
+    expect(
+      BillingPortalSessionRpcInputSchema.safeParse({
+        origin: "not-a-url",
+      }).success
+    ).toBe(false)
+    expect(
+      CheckoutSessionRpcInputSchema.safeParse({
+        priceLookupKey: "starter_monthly",
+      }).success
+    ).toBe(false)
+    expect(BillingPortalSessionRpcInputSchema.safeParse({}).success).toBe(false)
+    expect(
+      CheckoutSessionRpcInputSchema.parse({
+        priceLookupKey: "starter_monthly",
+        returnUrl: "https://resender.dev",
+      })
+    ).toEqual({
+      priceLookupKey: "starter_monthly",
+      origin: "https://resender.dev",
+    })
+    expect(
+      BillingPortalSessionRpcInputSchema.safeParse({
+        origin: "https://resender.dev",
+        returnUrl: "https://resender.dev",
       }).success
     ).toBe(false)
     expect(
@@ -331,5 +361,25 @@ describe("public contracts", () => {
         ),
       }).success
     ).toBe(false)
+  })
+
+  it("keeps Stripe redirect and verification DTOs minimal", () => {
+    const redirect = StripeRedirectSchema.parse({
+      url: "https://checkout.stripe.com/c/pay/session",
+      stripeCustomerId: "cus_must_not_cross",
+      stripeSubscriptionId: "sub_must_not_cross",
+    })
+    const verification = CheckoutVerificationSchema.parse({
+      complete: true,
+      customer: "cus_must_not_cross",
+    })
+
+    expect(redirect).toEqual({
+      url: "https://checkout.stripe.com/c/pay/session",
+    })
+    expect(verification).toEqual({ complete: true })
+    expect(JSON.stringify({ redirect, verification })).not.toMatch(
+      /cus_|sub_|customerId|subscriptionId/u
+    )
   })
 })

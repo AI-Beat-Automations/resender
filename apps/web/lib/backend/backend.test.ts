@@ -16,10 +16,13 @@ import {
   BackendUnavailableError,
   changePassword,
   createApiKey,
+  createBillingPortalSession,
+  createCheckoutSession,
   deleteAccount,
   disconnectPage,
   getConversationThread,
   getBackend,
+  getBillingState,
   getProductAccess,
   getProductShell,
   listConversations,
@@ -29,6 +32,7 @@ import {
   rotateWebhookSecret,
   smokeBackend,
   updatePageWebhook,
+  verifyCheckoutSession,
 } from "./backend"
 
 type AdapterBackend = Awaited<ReturnType<typeof getBackend>>
@@ -511,6 +515,161 @@ describe("backend RPC adapter", () => {
     }
   )
 
+  it("validates billing RPC DTOs and passes only the exact actor and minimal inputs", async () => {
+    const getState = vi.fn().mockResolvedValue({
+      ...billingState(),
+      serverVersion: 2,
+    })
+    const createCheckout = vi.fn().mockResolvedValue({
+      url: "https://checkout.stripe.com/c/pay/session-token",
+    })
+    const createPortal = vi.fn().mockResolvedValue({
+      url: "https://billing.stripe.com/p/session/portal-token",
+    })
+    const verify = vi.fn().mockResolvedValue({ complete: false })
+    openNext.getCloudflareContext
+      .mockResolvedValueOnce({
+        env: { BACKEND: { getBillingState: getState } },
+      })
+      .mockResolvedValueOnce({
+        env: { BACKEND: { createCheckoutSession: createCheckout } },
+      })
+      .mockResolvedValueOnce({
+        env: { BACKEND: { createBillingPortalSession: createPortal } },
+      })
+      .mockResolvedValueOnce({
+        env: { BACKEND: { verifyCheckoutSession: verify } },
+      })
+
+    await expect(getBillingState(ACTOR)).resolves.toEqual(billingState())
+    await expect(
+      createCheckoutSession(ACTOR, {
+        priceLookupKey: "starter_monthly",
+        origin: "https://resender.dev",
+      })
+    ).resolves.toEqual({
+      url: "https://checkout.stripe.com/c/pay/session-token",
+    })
+    await expect(
+      createBillingPortalSession(ACTOR, {
+        origin: "https://resender.dev",
+      })
+    ).resolves.toEqual({
+      url: "https://billing.stripe.com/p/session/portal-token",
+    })
+    await expect(
+      verifyCheckoutSession(ACTOR, {
+        sessionId: "cs_test_1234567890abcdef",
+      })
+    ).resolves.toEqual({ complete: false })
+
+    expect(getState).toHaveBeenCalledWith(ACTOR)
+    expect(createCheckout).toHaveBeenCalledWith(ACTOR, {
+      priceLookupKey: "starter_monthly",
+      origin: "https://resender.dev",
+    })
+    expect(createPortal).toHaveBeenCalledWith(ACTOR, {
+      origin: "https://resender.dev",
+    })
+    expect(verify).toHaveBeenCalledWith(ACTOR, {
+      sessionId: "cs_test_1234567890abcdef",
+    })
+  })
+
+  it.each([
+    ["http", "http://checkout.stripe.com/c/pay/token", "checkout"],
+    ["foreign host", "https://attacker.example/session", "checkout"],
+    [
+      "checkout host for portal",
+      "https://checkout.stripe.com/c/pay/token",
+      "portal",
+    ],
+    [
+      "sensitive checkout field",
+      "https://checkout.stripe.com/c/pay/token",
+      "checkout-sensitive",
+    ],
+  ] as const)(
+    "rejects %s Stripe redirect responses",
+    async (_name, url, kind) => {
+      const response = {
+        url,
+        ...(kind === "checkout-sensitive"
+          ? { stripeCustomerId: "cus_must_not_cross" }
+          : {}),
+      }
+      openNext.getCloudflareContext.mockResolvedValue({
+        env: {
+          BACKEND:
+            kind === "portal"
+              ? {
+                  createBillingPortalSession: vi
+                    .fn()
+                    .mockResolvedValue(response),
+                }
+              : { createCheckoutSession: vi.fn().mockResolvedValue(response) },
+        },
+      })
+
+      const result =
+        kind === "portal"
+          ? createBillingPortalSession(ACTOR, {
+              origin: "https://resender.dev",
+            })
+          : createCheckoutSession(ACTOR, {
+              priceLookupKey: "starter_monthly",
+              origin: "https://resender.dev",
+            })
+      const error = await captureError(result)
+
+      expect(error).toBeInstanceOf(BackendProtocolError)
+      expect(JSON.stringify(error)).not.toMatch(/cus_must_not_cross|attacker/u)
+    }
+  )
+
+  it.each([
+    ["billing state", "state"],
+    ["verification", "verification"],
+  ] as const)(
+    "rejects sensitive identifiers in %s responses",
+    async (_name, operation) => {
+      const response =
+        operation === "state"
+          ? {
+              ...billingState(),
+              subscription: {
+                ...billingState().subscription,
+                stripeSubscriptionId: "sub_must_not_cross",
+              },
+            }
+          : {
+              complete: true,
+              customerId: "cus_must_not_cross",
+            }
+      openNext.getCloudflareContext.mockResolvedValue({
+        env: {
+          BACKEND:
+            operation === "state"
+              ? { getBillingState: vi.fn().mockResolvedValue(response) }
+              : {
+                  verifyCheckoutSession: vi.fn().mockResolvedValue(response),
+                },
+        },
+      })
+
+      const result =
+        operation === "state"
+          ? getBillingState(ACTOR)
+          : verifyCheckoutSession(ACTOR, {
+              sessionId: "cs_live_1234567890abcdef",
+            })
+      const error = await captureError(result)
+
+      expect(error).toBeInstanceOf(BackendProtocolError)
+      expect(JSON.stringify(error)).not.toMatch(/cus_|sub_/u)
+    }
+  )
+
   it("validates password and account-deletion RPC terminal responses", async () => {
     const change = vi.fn().mockResolvedValue(undefined)
     const remove = vi.fn().mockResolvedValue({
@@ -769,5 +928,26 @@ function apiKeyDto(overrides: Record<string, unknown> = {}) {
     lastUsedAt: null,
     revokedAt: null,
     ...overrides,
+  }
+}
+
+function billingState() {
+  return {
+    subscription: {
+      status: "active",
+      priceLookupKey: "starter_monthly",
+      currentPeriodStart: "2026-07-01T00:00:00.000Z",
+      currentPeriodEnd: "2026-08-01T00:00:00.000Z",
+      cancelAtPeriodEnd: false,
+    },
+    entitlement: {
+      priceLookupKey: "starter_monthly",
+      usage: 100,
+      messageLimit: 50_000,
+      activePageCount: 1,
+      pageLimit: 2,
+      blockCode: null,
+      noticeLevel: null,
+    },
   }
 }

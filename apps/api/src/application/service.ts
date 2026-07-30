@@ -753,7 +753,7 @@ export class ApiService {
   }
 
   async getBillingState(actor: RpcActor): Promise<BillingStateDto> {
-    const user = await this.requireActor(actor)
+    const user = await this.requireApprovedActor(actor)
     const [subscription, entitlement] = await Promise.all([
       this.repository.getSubscription(user.id),
       this.entitlement(user.id),
@@ -776,26 +776,15 @@ export class ApiService {
 
   async createCheckoutSession(
     actor: RpcActor,
-    input: { priceLookupKey: string; returnUrl: string }
+    input: { priceLookupKey: string; origin: string }
   ): Promise<{ url: string }> {
-    const user = await this.requireActor(actor)
-    if (user.waitlisted) {
-      throw new ContractError({
-        code: "account_waitlisted",
-        message: "This account is still on the waitlist.",
-        status: 403,
-      })
-    }
+    const user = await this.requireApprovedActor(actor)
     if (!isCanonicalPlanLookupKey(input.priceLookupKey)) {
       throw planError("plan_unavailable")
     }
-    const returnUrl = validateWebAppOrigin(
-      this.env,
-      input.returnUrl,
-      "returnUrl"
-    )
+    const origin = validateWebAppOrigin(this.env, input.origin)
     if (isActiveSubscription(await this.repository.getSubscription(user.id))) {
-      return this.createBillingPortalSession(actor, returnUrl)
+      return this.createBillingPortalSession(actor, origin)
     }
     let customerId = await this.repository.getStripeCustomerId(user.id)
     if (!customerId) {
@@ -825,28 +814,24 @@ export class ApiService {
         metadata: { tenantId: user.id },
         subscription_data: { metadata: { tenantId: user.id } },
         success_url: appendPath(
-          returnUrl,
+          origin,
           "/billing/success?session_id={CHECKOUT_SESSION_ID}"
         ),
-        cancel_url: appendPath(returnUrl, "/billing"),
+        cancel_url: appendPath(origin, "/billing"),
       })
     )
     if (!checkout.url) {
-      throw new ContractError({
-        code: "provider_unavailable",
-        message: "Stripe did not return a Checkout URL.",
-        status: 502,
-      })
+      throw invalidStripeRedirect()
     }
-    return { url: checkout.url }
+    return { url: validateStripeRedirect(checkout.url, "checkout") }
   }
 
   async createBillingPortalSession(
     actor: RpcActor,
-    returnUrl: string
+    origin: string
   ): Promise<{ url: string }> {
-    const user = await this.requireActor(actor)
-    const webAppOrigin = validateWebAppOrigin(this.env, returnUrl, "returnUrl")
+    const { user } = await this.requireProductAccess(actor.userId)
+    const webAppOrigin = validateWebAppOrigin(this.env, origin)
     const customerId = await this.repository.getStripeCustomerId(user.id)
     if (!customerId) throw notFound("Billing customer")
     const portal = await this.providerOperation("Stripe", () =>
@@ -855,20 +840,32 @@ export class ApiService {
         return_url: appendPath(webAppOrigin, "/settings"),
       })
     )
-    return { url: portal.url }
+    return { url: validateStripeRedirect(portal.url, "portal") }
   }
 
   async verifyCheckoutSession(
     actor: RpcActor,
     sessionId: string
   ): Promise<CheckoutVerificationDto> {
-    const user = await this.requireActor(actor)
+    const user = await this.requireApprovedActor(actor)
     const checkout = await this.providerOperation("Stripe", () =>
       this.stripe.checkout.sessions.retrieve(sessionId)
     )
     const tenantId = checkout.metadata?.tenantId?.trim()
     if (tenantId !== user.id) throw notFound("Checkout session")
     return { complete: checkout.status === "complete" }
+  }
+
+  private async requireApprovedActor(actor: RpcActor): Promise<UserRecord> {
+    const user = await this.requireActor(actor)
+    if (user.waitlisted) {
+      throw new ContractError({
+        code: "account_waitlisted",
+        message: "This account is still on the waitlist.",
+        status: 403,
+      })
+    }
+    return user
   }
 
   async changePassword(actor: RpcActor, newPassword: string): Promise<void> {
@@ -1321,17 +1318,14 @@ function validateMetaRedirectUri(env: Env, value: string): string {
   return `${origin}/api/meta/callback`
 }
 
-function validateWebAppOrigin(
-  env: Env,
-  value: string,
-  field: "returnUrl"
-): string {
+function validateWebAppOrigin(env: Env, value: string): string {
+  const field = "origin"
   const url = parseUrlInput(value, field)
   const origin = validateAllowedWebAppUrl(env, url, field)
   if (url.origin !== origin || url.pathname !== "/" || url.search || url.hash) {
     throw invalidWebAppUrl(
       field,
-      "Return URL must be an allowed web application origin."
+      "Origin must be an allowed web application origin."
     )
   }
   return origin
@@ -1430,6 +1424,39 @@ function incompleteConfiguration(): ContractError {
 
 function appendPath(origin: string, path: string): string {
   return new URL(path, origin).toString()
+}
+
+function validateStripeRedirect(
+  value: string,
+  surface: "checkout" | "portal"
+): string {
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    throw invalidStripeRedirect()
+  }
+  const hostname =
+    surface === "checkout" ? "checkout.stripe.com" : "billing.stripe.com"
+  if (
+    url.protocol !== "https:" ||
+    url.hostname !== hostname ||
+    url.port ||
+    url.username ||
+    url.password ||
+    url.hash
+  ) {
+    throw invalidStripeRedirect()
+  }
+  return url.toString()
+}
+
+function invalidStripeRedirect(): ContractError {
+  return new ContractError({
+    code: "provider_unavailable",
+    message: "Stripe did not return a valid redirect URL.",
+    status: 502,
+  })
 }
 
 function stripeId(

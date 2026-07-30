@@ -33,6 +33,7 @@ import type {
   RegisterUserRpcInput,
   RpcActor,
   RpcPageDto,
+  StripeRedirectDto,
 } from "./schemas/rpc"
 
 export interface WebAppApiContract {
@@ -88,11 +89,11 @@ export interface WebAppApiContract {
   createCheckoutSession(
     actor: RpcActor,
     input: CheckoutSessionRpcInput
-  ): Promise<{ url: string }>
+  ): Promise<StripeRedirectDto>
   createBillingPortalSession(
     actor: RpcActor,
     input: BillingPortalSessionRpcInput
-  ): Promise<{ url: string }>
+  ): Promise<StripeRedirectDto>
   verifyCheckoutSession(
     actor: RpcActor,
     input: CheckoutVerificationRpcInput

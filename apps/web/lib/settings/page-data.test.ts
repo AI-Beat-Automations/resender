@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest"
-import type { ApiKeyDto, ProductShellDto } from "@workspace/contracts"
+import type {
+  ApiKeyDto,
+  BillingStateDto,
+  ProductShellDto,
+} from "@workspace/contracts"
 
 import {
   BackendProtocolError,
@@ -7,7 +11,11 @@ import {
   BackendUnavailableError,
 } from "@/lib/backend/backend"
 
-import { loadSettingsAccount, loadSettingsApiKeys } from "./page-data"
+import {
+  loadSettingsAccount,
+  loadSettingsApiKeys,
+  loadSettingsBilling,
+} from "./page-data"
 
 const ACTOR = { userId: "7ac2cc32-38cf-4d41-8c73-c6cf640d5b15" }
 
@@ -24,6 +32,7 @@ describe("Settings page data", () => {
     })
     expect(dependencies.getProductShell).toHaveBeenCalledWith(ACTOR)
     expect(dependencies.listApiKeys).not.toHaveBeenCalled()
+    expect(dependencies.getBillingState).not.toHaveBeenCalled()
   })
 
   it("loads active and revoked API key history without fetching account shell", async () => {
@@ -49,6 +58,7 @@ describe("Settings page data", () => {
     })
     expect(dependencies.listApiKeys).toHaveBeenCalledWith(ACTOR)
     expect(dependencies.getProductShell).not.toHaveBeenCalled()
+    expect(dependencies.getBillingState).not.toHaveBeenCalled()
     expect(JSON.stringify(result)).not.toMatch(
       /secretHash|pepper|tenantId|pk_live_[A-Za-z0-9_-]{20}/u
     )
@@ -65,6 +75,57 @@ describe("Settings page data", () => {
       dependencies.getProductShell.mockRejectedValue(error)
 
       await expect(loadSettingsAccount(ACTOR, dependencies)).resolves.toEqual({
+        kind: "redirect",
+        destination,
+      })
+    }
+  )
+
+  it.each([null, "past_due", "canceled"] as const)(
+    "redirects a subscription-tab race with status %s",
+    async (status) => {
+      const dependencies = dependenciesWith()
+      dependencies.getBillingState.mockResolvedValue({
+        ...billingState(),
+        subscription:
+          status === null ? null : { ...billingState().subscription!, status },
+      })
+
+      await expect(loadSettingsBilling(ACTOR, dependencies)).resolves.toEqual({
+        kind: "redirect",
+        destination: "/billing",
+      })
+    }
+  )
+
+  it("loads only the safe billing DTO for the subscription tab", async () => {
+    const dependencies = dependenciesWith()
+
+    const result = await loadSettingsBilling(ACTOR, dependencies)
+
+    expect(result).toEqual({
+      kind: "ready",
+      data: billingState(),
+    })
+    expect(dependencies.getBillingState).toHaveBeenCalledWith(ACTOR)
+    expect(dependencies.getProductShell).not.toHaveBeenCalled()
+    expect(dependencies.listApiKeys).not.toHaveBeenCalled()
+    expect(JSON.stringify(result)).not.toMatch(
+      /cus_|sub_|stripeCustomerId|stripeSubscriptionId/u
+    )
+  })
+
+  it.each([
+    [rpcError("account_waitlisted", "access", 403), "/waitlist"],
+    [rpcError("not_found", "not_found", 404), "/waitlist"],
+    [rpcError("subscription_required", "access", 403), "/billing"],
+  ] as const)(
+    "maps billing access races to redirects",
+    async (error, destination) => {
+      const dependencies = dependenciesWith()
+      dependencies.getBillingState.mockRejectedValue(error)
+
+      await expect(loadSettingsBilling(ACTOR, dependencies)).resolves.toEqual({
         kind: "redirect",
         destination,
       })
@@ -98,11 +159,16 @@ describe("Settings page data", () => {
     accountDependencies.getProductShell.mockRejectedValue(error)
     const keyDependencies = dependenciesWith()
     keyDependencies.listApiKeys.mockRejectedValue(error)
+    const billingDependencies = dependenciesWith()
+    billingDependencies.getBillingState.mockRejectedValue(error)
 
     await expect(loadSettingsAccount(ACTOR, accountDependencies)).rejects.toBe(
       error
     )
     await expect(loadSettingsApiKeys(ACTOR, keyDependencies)).rejects.toBe(
+      error
+    )
+    await expect(loadSettingsBilling(ACTOR, billingDependencies)).rejects.toBe(
       error
     )
   })
@@ -112,6 +178,28 @@ function dependenciesWith(input: { apiKeys?: ApiKeyDto[] } = {}) {
   return {
     getProductShell: vi.fn(async () => shell()),
     listApiKeys: vi.fn(async () => input.apiKeys ?? [apiKey()]),
+    getBillingState: vi.fn(async () => billingState()),
+  }
+}
+
+function billingState(): BillingStateDto {
+  return {
+    subscription: {
+      status: "active",
+      priceLookupKey: "starter_monthly",
+      currentPeriodStart: "2026-07-01T00:00:00.000Z",
+      currentPeriodEnd: "2026-08-01T00:00:00.000Z",
+      cancelAtPeriodEnd: false,
+    },
+    entitlement: {
+      priceLookupKey: "starter_monthly",
+      usage: 10,
+      messageLimit: 50_000,
+      activePageCount: 1,
+      pageLimit: 2,
+      blockCode: null,
+      noticeLevel: null,
+    },
   }
 }
 

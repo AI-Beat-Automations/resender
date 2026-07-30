@@ -561,7 +561,7 @@ describe("web application URL allowlists", () => {
     await expect(
       service.createCheckoutSession(actor, {
         priceLookupKey: "starter_monthly",
-        returnUrl: "https://resender.dev",
+        origin: "https://resender.dev",
       })
     ).rejects.toMatchObject({ code: "internal_error", status: 500 })
   })
@@ -576,17 +576,17 @@ describe("web application URL allowlists", () => {
     await expect(
       service.createCheckoutSession(actor, {
         priceLookupKey: "starter_monthly",
-        returnUrl: "https://attacker.example",
+        origin: "https://attacker.example",
       })
     ).rejects.toMatchObject({
       code: "validation_error",
       status: 400,
-      details: [{ path: "returnUrl" }],
+      details: [{ path: "origin" }],
     })
     await expect(
       service.createCheckoutSession(actor, {
         priceLookupKey: "starter_monthly",
-        returnUrl: "https://resender.dev/redirect",
+        origin: "https://resender.dev/redirect",
       })
     ).rejects.toMatchObject({ code: "validation_error", status: 400 })
     expect(getSubscription).not.toHaveBeenCalled()
@@ -594,7 +594,7 @@ describe("web application URL allowlists", () => {
 
   it("constructs Checkout paths on the allowed origin", async () => {
     const createCheckout = vi.fn(async () => ({
-      url: "https://checkout.stripe.test/session",
+      url: "https://checkout.stripe.com/c/pay/session",
     }))
     const service = serviceWithRepository(
       {
@@ -611,7 +611,7 @@ describe("web application URL allowlists", () => {
 
     await service.createCheckoutSession(actor, {
       priceLookupKey: "starter_monthly",
-      returnUrl: "https://resender.dev/",
+      origin: "https://resender.dev/",
     })
 
     expect(createCheckout).toHaveBeenCalledWith(
@@ -722,7 +722,7 @@ describe("Stripe provider boundaries and duplicate cleanup", () => {
     await expect(
       service.createCheckoutSession(actor, {
         priceLookupKey: "starter_monthly",
-        returnUrl: "https://resender.dev",
+        origin: "https://resender.dev",
       })
     ).rejects.toMatchObject({
       name: "ContractError",

@@ -382,7 +382,7 @@ describe("Worker runtime entrypoints", () => {
       () =>
         workerExports.WebAppApi.createCheckoutSession(ACTOR, {
           priceLookupKey: "starter_monthly",
-          returnUrl: "https://app.resender.dev",
+          origin: "https://app.resender.dev",
         }),
     ],
   ] as const)(

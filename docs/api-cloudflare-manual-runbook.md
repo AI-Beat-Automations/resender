@@ -267,6 +267,40 @@ In staging:
    Operational records may contain the deletion boolean and cleanup
    count/boolean, never provider IDs, tokens, subscription IDs, or raw errors.
 
+## Validate the Billing RPC cutover
+
+The `/billing` Checkout action, `/billing/success` verification, Settings
+subscription read, and Customer Portal action use the `BACKEND` Service Binding
+exclusively. The API Worker is the only Stripe client for those flows and
+builds every `/billing`, `/billing/success`, and `/settings` return path from an
+exact `WEB_APP_ORIGINS` entry. The legacy web Stripe webhook and its local
+subscription mirror remain temporarily until the callback cutover slice; do
+not remove or repoint that webhook as part of Slice 5.
+
+In staging:
+
+1. Set `APP_URL` to the exact web origin and confirm Checkout ignores request
+   `Host`/forwarded-host values. The API must reject paths, credentials,
+   arbitrary HTTPS origins, and an absent or malformed `WEB_APP_ORIGINS`.
+2. Start monthly Starter and Pro Checkout Sessions. Confirm the lookup-key
+   allowlist rejects any other plan, there is no trial, no
+   `payment_method_types`, and `integration_identifier` matches
+   `resender_[a-z]{8}`.
+3. Confirm Checkout redirects only to `https://checkout.stripe.com` and Portal
+   only to `https://billing.stripe.com`. Never copy these session URLs into
+   logs, analytics, cookies, tickets, or persistent browser storage.
+4. Test waitlisted, deleted, unsubscribed, and active tenants. Portal requires
+   an active subscription even if a Stripe customer mapping exists; a missing
+   customer returns the safe billing path without exposing the customer ID.
+5. Return through `/billing/success` with missing, malformed, foreign, open,
+   and complete `cs_test_`/`cs_live_` sessions. Only an owned complete session
+   renders the activation wait. It never grants access: only the signed Stripe
+   webhook may write the active subscription state.
+6. Inspect RPC/RSC/Action payloads and operational logs. Customer IDs,
+   subscription IDs, Stripe keys, raw provider errors, and Checkout session IDs
+   must not appear. Provider and binding failures must stay sanitized and fail
+   closed.
+
 ## Configure secrets
 
 Set every secret separately for staging and production. Never paste values into

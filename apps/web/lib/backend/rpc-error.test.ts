@@ -192,7 +192,7 @@ describe("classifyRpcError", () => {
           message: "access-token-secret",
         },
         {
-          path: "returnUrl",
+          path: "origin",
           message: "duplicate raw message",
         },
       ],
@@ -209,6 +209,7 @@ describe("classifyRpcError", () => {
       details: [
         { field: "returnUrl", issue: "invalid" },
         { field: "providerPageIds", issue: "invalid" },
+        { field: "origin", issue: "invalid" },
       ],
     })
     expect(JSON.stringify(result)).not.toMatch(

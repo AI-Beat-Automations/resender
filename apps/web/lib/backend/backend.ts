@@ -6,6 +6,8 @@ import {
   ApiKeyListSchema,
   ApiKeySchema,
   BackendHealthSchema,
+  BillingStateSchema,
+  CheckoutVerificationSchema,
   ConversationListSchema,
   ConversationThreadSchema,
   CreatedApiKeySchema,
@@ -13,13 +15,19 @@ import {
   ProductShellSchema,
   RpcPageSchema,
   RpcPageListSchema,
+  StripeRedirectSchema,
   WebhookSecretSchema,
   type BackendHealthDto,
   type AccountDeletionResultDto,
   type ApiKeyCreateRpcInput,
   type ApiKeyDto,
   type ApiKeyRevokeRpcInput,
+  type BillingPortalSessionRpcInput,
+  type BillingStateDto,
   type ChangePasswordRpcInput,
+  type CheckoutSessionRpcInput,
+  type CheckoutVerificationDto,
+  type CheckoutVerificationRpcInput,
   type ConversationListDto,
   type ConversationListInput,
   type ConversationThreadDto,
@@ -32,6 +40,7 @@ import {
   type RpcPageDto,
   type PageIdRpcInput,
   type PageWebhookUpdateRpcInput,
+  type StripeRedirectDto,
   type WebhookSecretDto,
   type WebAppApiContract,
 } from "@workspace/contracts"
@@ -43,6 +52,23 @@ const REQUEST_FAILED_MESSAGE = "Backend request failed."
 const INVALID_RESPONSE_MESSAGE = "Backend response is invalid."
 const API_KEY_VISIBLE_PREFIX = /^pk_live_[A-Za-z0-9_-]{8}$/u
 const API_KEY_SECRET = /^pk_live_[A-Za-z0-9_-]{43}$/u
+const STRIPE_REDIRECT_HOSTS = {
+  checkout: "checkout.stripe.com",
+  portal: "billing.stripe.com",
+} as const
+const SENSITIVE_BILLING_FIELDS = new Set([
+  "customer",
+  "customerId",
+  "stripeCustomerId",
+  "subscriptionId",
+  "stripeSubscriptionId",
+  "secret",
+  "secretKey",
+  "stripeSecretKey",
+  "apiKey",
+  "token",
+  "accessToken",
+])
 
 export class BackendUnavailableError extends Error {
   constructor() {
@@ -274,6 +300,51 @@ export async function revokeApiKey(
   return revoked
 }
 
+export async function getBillingState(
+  actor: RpcActor
+): Promise<BillingStateDto> {
+  const response = await invokeBackend((backend) =>
+    backend.getBillingState(actor)
+  )
+  assertNoSensitiveBillingFields(response)
+  const parsed = BillingStateSchema.safeParse(response)
+  if (!parsed.success) throw new BackendProtocolError()
+  return parsed.data
+}
+
+export async function createCheckoutSession(
+  actor: RpcActor,
+  input: CheckoutSessionRpcInput
+): Promise<StripeRedirectDto> {
+  const response = await invokeBackend((backend) =>
+    backend.createCheckoutSession(actor, input)
+  )
+  return parseStripeRedirect(response, ["checkout", "portal"])
+}
+
+export async function createBillingPortalSession(
+  actor: RpcActor,
+  input: BillingPortalSessionRpcInput
+): Promise<StripeRedirectDto> {
+  const response = await invokeBackend((backend) =>
+    backend.createBillingPortalSession(actor, input)
+  )
+  return parseStripeRedirect(response, ["portal"])
+}
+
+export async function verifyCheckoutSession(
+  actor: RpcActor,
+  input: CheckoutVerificationRpcInput
+): Promise<CheckoutVerificationDto> {
+  const response = await invokeBackend((backend) =>
+    backend.verifyCheckoutSession(actor, input)
+  )
+  assertNoSensitiveBillingFields(response)
+  const parsed = CheckoutVerificationSchema.safeParse(response)
+  if (!parsed.success) throw new BackendProtocolError()
+  return parsed.data
+}
+
 export async function changePassword(
   actor: RpcActor,
   input: ChangePasswordRpcInput
@@ -338,4 +409,50 @@ function assertSafeApiKeyMetadata(apiKey: ApiKeyDto) {
 function compareApiKeyOrder(left: ApiKeyDto, right: ApiKeyDto) {
   const byCreatedAt = right.createdAt.localeCompare(left.createdAt)
   return byCreatedAt || right.id.localeCompare(left.id)
+}
+
+function parseStripeRedirect(
+  response: unknown,
+  surfaces: Array<keyof typeof STRIPE_REDIRECT_HOSTS>
+): StripeRedirectDto {
+  assertNoSensitiveBillingFields(response)
+  const parsed = StripeRedirectSchema.safeParse(response)
+  if (!parsed.success) throw new BackendProtocolError()
+  let url: URL
+  try {
+    url = new URL(parsed.data.url)
+  } catch {
+    throw new BackendProtocolError()
+  }
+  if (
+    url.protocol !== "https:" ||
+    url.port ||
+    url.username ||
+    url.password ||
+    url.hash ||
+    !surfaces.some((surface) => url.hostname === STRIPE_REDIRECT_HOSTS[surface])
+  ) {
+    throw new BackendProtocolError()
+  }
+  return { url: url.toString() }
+}
+
+function assertNoSensitiveBillingFields(value: unknown): void {
+  if (Array.isArray(value)) {
+    for (const item of value) assertNoSensitiveBillingFields(item)
+    return
+  }
+  if (!value || typeof value !== "object") return
+  for (const [key, child] of Object.entries(value)) {
+    const normalizedKey = key.toLowerCase()
+    if (
+      SENSITIVE_BILLING_FIELDS.has(key) ||
+      normalizedKey.endsWith("customerid") ||
+      normalizedKey.endsWith("subscriptionid") ||
+      normalizedKey.includes("stripesecret")
+    ) {
+      throw new BackendProtocolError()
+    }
+    assertNoSensitiveBillingFields(child)
+  }
 }

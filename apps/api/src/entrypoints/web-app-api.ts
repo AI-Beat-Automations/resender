@@ -234,7 +234,7 @@ export class WebAppApi
 
   createCheckoutSession(
     actor: RpcActor,
-    input: { priceLookupKey: string; returnUrl: string }
+    input: { priceLookupKey: string; origin: string }
   ) {
     return this.runForActor("create_checkout_session", actor, (parsedActor) =>
       this.service().createCheckoutSession(
@@ -244,14 +244,14 @@ export class WebAppApi
     )
   }
 
-  createBillingPortalSession(actor: RpcActor, input: { returnUrl: string }) {
+  createBillingPortalSession(actor: RpcActor, input: { origin: string }) {
     return this.runForActor(
       "create_billing_portal_session",
       actor,
       (parsedActor) =>
         this.service().createBillingPortalSession(
           parsedActor,
-          parseRpcInput(BillingPortalSessionRpcInputSchema, input).returnUrl
+          parseRpcInput(BillingPortalSessionRpcInputSchema, input).origin
         )
     )
   }

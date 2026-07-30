@@ -10,15 +10,14 @@ import {
   type SubscriptionView,
 } from "@/features/billing/ui/subscription-panel"
 import { SettingsTabsNav } from "@/features/settings/ui/settings-tabs-nav"
-import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
-import type { TenantEntitlement } from "@/lib/billing/entitlements"
 import { getPlanByLookupKey } from "@/lib/billing/plans"
-import { getSubscriptionByTenantId } from "@/lib/billing/subscription"
 import {
   loadSettingsAccount,
   loadSettingsApiKeys,
+  loadSettingsBilling,
 } from "@/lib/settings/page-data"
 import { resolveSettingsTab } from "@/lib/settings/settings-tabs"
+import type { BillingStateDto } from "@workspace/contracts"
 import { Separator } from "@workspace/ui/components/separator"
 
 type SettingsPageProps = {
@@ -60,7 +59,7 @@ export default async function SettingsPage({
           <ApiKeysTab actor={{ userId: session.user.id }} />
         ) : null}
         {tab === "suscripcion" ? (
-          <SubscriptionTab tenantId={session.user.id} />
+          <SubscriptionTab actor={{ userId: session.user.id }} />
         ) : null}
       </div>
     </div>
@@ -99,17 +98,10 @@ async function ApiKeysTab({ actor }: { actor: { userId: string } }) {
   )
 }
 
-async function SubscriptionTab({ tenantId }: { tenantId: string }) {
-  const subscription = await getSubscriptionByTenantId(tenantId)
-
-  // El entitlement solo alimenta el consumo: si no se puede resolver, la
-  // pestaña muestra el bloqueo con soporte en vez de tirar la pantalla.
-  let entitlement: TenantEntitlement | null = null
-  try {
-    entitlement = await getTenantEntitlement(tenantId)
-  } catch (error) {
-    console.error("tenant entitlement unavailable", error)
-  }
+async function SubscriptionTab({ actor }: { actor: { userId: string } }) {
+  const result = await loadSettingsBilling(actor)
+  if (result.kind === "redirect") redirect(result.destination)
+  const { subscription, entitlement } = result.data
 
   return (
     <div className="max-w-160">
@@ -123,10 +115,8 @@ async function SubscriptionTab({ tenantId }: { tenantId: string }) {
 }
 
 function toSubscriptionView(
-  subscription: NonNullable<
-    Awaited<ReturnType<typeof getSubscriptionByTenantId>>
-  >,
-  entitlement: TenantEntitlement | null
+  subscription: NonNullable<BillingStateDto["subscription"]>,
+  entitlement: BillingStateDto["entitlement"]
 ): SubscriptionView {
   const plan = getPlanByLookupKey(subscription.priceLookupKey)
 
@@ -134,11 +124,11 @@ function toSubscriptionView(
     planName: plan?.name ?? subscription.priceLookupKey,
     planPriceMonthlyUsd: plan?.priceMonthlyUsd ?? null,
     status: subscription.status,
-    currentPeriodEnd: subscription.currentPeriodEnd?.toISOString() ?? null,
+    currentPeriodEnd: subscription.currentPeriodEnd,
     cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
-    usage: entitlement?.usage ?? 0,
-    messageLimit: entitlement?.limits?.messagesPerPeriod ?? null,
-    pagesInUse: entitlement?.activePageCount ?? 0,
-    pageLimit: entitlement?.limits?.maxPages ?? null,
+    usage: entitlement.usage,
+    messageLimit: entitlement.messageLimit,
+    pagesInUse: entitlement.activePageCount,
+    pageLimit: entitlement.pageLimit,
   }
 }

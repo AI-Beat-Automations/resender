@@ -46,14 +46,31 @@ export const DeleteAccountRpcInputSchema = z.object({
   confirmEmail: EmailInputSchema.transform((email) => email.toLowerCase()),
 })
 
-export const CheckoutSessionRpcInputSchema = z.object({
-  priceLookupKey: z.string().trim().min(1).max(100),
-  returnUrl: WebUrlInputSchema,
-})
+const BillingOriginRpcInputSchema = z
+  .object({
+    origin: WebUrlInputSchema.optional(),
+    // Rolling-deployment compatibility for the pre-Slice-5 web Worker. New
+    // callers send only `origin`; the API normalizes this alias immediately.
+    returnUrl: WebUrlInputSchema.optional(),
+  })
+  .superRefine((input, context) => {
+    if (Boolean(input.origin) === Boolean(input.returnUrl)) {
+      context.addIssue({
+        code: "custom",
+        path: ["origin"],
+        message: "Exactly one web application origin is required.",
+      })
+    }
+  })
+  .transform((input) => ({ origin: input.origin ?? input.returnUrl! }))
 
-export const BillingPortalSessionRpcInputSchema = z.object({
-  returnUrl: WebUrlInputSchema,
-})
+export const CheckoutSessionRpcInputSchema = z
+  .object({
+    priceLookupKey: z.string().trim().min(1).max(100),
+  })
+  .and(BillingOriginRpcInputSchema)
+
+export const BillingPortalSessionRpcInputSchema = BillingOriginRpcInputSchema
 
 export const CheckoutVerificationRpcInputSchema = z.object({
   sessionId: z
@@ -212,6 +229,14 @@ export const BillingStateSchema = z.object({
   entitlement: ProductShellSchema.shape.entitlement,
 })
 
+export const StripeRedirectSchema = z.object({
+  url: WebUrlInputSchema,
+})
+
+export const CheckoutVerificationSchema = z.object({
+  complete: z.boolean(),
+})
+
 export const AccountDeletionResultSchema = z.object({
   deleted: z.boolean(),
   metaUnsubscribeFailures: z.number().int().nonnegative(),
@@ -258,6 +283,8 @@ export type ApiKeyDto = z.infer<typeof ApiKeySchema>
 export type ApiKeyListDto = z.infer<typeof ApiKeyListSchema>
 export type CreatedApiKeyDto = z.infer<typeof CreatedApiKeySchema>
 export type BillingStateDto = z.infer<typeof BillingStateSchema>
+export type StripeRedirectDto = z.infer<typeof StripeRedirectSchema>
+export type CheckoutVerificationDto = z.infer<typeof CheckoutVerificationSchema>
 export type AccountDeletionResultDto = z.infer<
   typeof AccountDeletionResultSchema
 >
@@ -268,10 +295,6 @@ export type ConnectMetaPagesInput = z.infer<
 
 export type MetaAuthorizationResultDto = {
   authorized: true
-}
-
-export type CheckoutVerificationDto = {
-  complete: boolean
 }
 
 export type RpcConversationDto = z.infer<typeof ConversationSchema>

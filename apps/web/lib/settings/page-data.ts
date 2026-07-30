@@ -1,9 +1,15 @@
 import "server-only"
 
-import type { ApiKeyDto, ProductShellDto, RpcActor } from "@workspace/contracts"
+import type {
+  ApiKeyDto,
+  BillingStateDto,
+  ProductShellDto,
+  RpcActor,
+} from "@workspace/contracts"
 
 import {
   BackendRpcError,
+  getBillingState,
   getProductShell,
   listApiKeys,
 } from "@/lib/backend/backend"
@@ -17,11 +23,13 @@ export type SettingsLoadResult<T> =
 type SettingsPageDependencies = {
   getProductShell(actor: RpcActor): Promise<ProductShellDto>
   listApiKeys(actor: RpcActor): Promise<ApiKeyDto[]>
+  getBillingState(actor: RpcActor): Promise<BillingStateDto>
 }
 
 const DEFAULT_DEPENDENCIES: SettingsPageDependencies = {
   getProductShell,
   listApiKeys,
+  getBillingState,
 }
 
 export async function loadSettingsAccount(
@@ -48,6 +56,23 @@ export async function loadSettingsApiKeys(
   try {
     const apiKeys = await dependencies.listApiKeys(actor)
     return { kind: "ready", data: apiKeys }
+  } catch (error) {
+    const destination = settingsAccessDestination(error)
+    if (destination) return { kind: "redirect", destination }
+    throw error
+  }
+}
+
+export async function loadSettingsBilling(
+  actor: RpcActor,
+  dependencies: SettingsPageDependencies = DEFAULT_DEPENDENCIES
+): Promise<SettingsLoadResult<BillingStateDto>> {
+  try {
+    const state = await dependencies.getBillingState(actor)
+    if (state.subscription?.status !== "active") {
+      return { kind: "redirect", destination: "/billing" }
+    }
+    return { kind: "ready", data: state }
   } catch (error) {
     const destination = settingsAccessDestination(error)
     if (destination) return { kind: "redirect", destination }

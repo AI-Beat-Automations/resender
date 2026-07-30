@@ -25,6 +25,7 @@ const VALIDATION_FIELDS = [
   "label",
   "apiKeyId",
   "priceLookupKey",
+  "origin",
   "returnUrl",
   "sessionId",
   "code",

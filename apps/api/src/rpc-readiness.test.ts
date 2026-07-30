@@ -58,8 +58,16 @@ describe("backend RPC readiness", () => {
     const invalidCheckout = await captureError(
       workerExports.WebAppApi.createCheckoutSession(ACTOR, {
         priceLookupKey: "",
-        returnUrl: "not-a-url",
+        origin: "not-a-url",
       })
+    )
+    const missingCheckoutOrigin = await captureError(
+      workerExports.WebAppApi.createCheckoutSession(ACTOR, {
+        priceLookupKey: "starter_monthly",
+      } as never)
+    )
+    const missingPortalOrigin = await captureError(
+      workerExports.WebAppApi.createBillingPortalSession(ACTOR, {} as never)
     )
     const invalidSession = await captureError(
       workerExports.WebAppApi.verifyCheckoutSession(ACTOR, {
@@ -96,6 +104,8 @@ describe("backend RPC readiness", () => {
       invalidLabel,
       invalidKeyId,
       invalidCheckout,
+      missingCheckoutOrigin,
+      missingPortalOrigin,
       invalidSession,
       emptyPages,
       duplicatePages,
@@ -509,7 +519,7 @@ describe("backend RPC readiness", () => {
       const error = await captureError(
         workerExports.WebAppApi.createCheckoutSession(ACTOR, {
           priceLookupKey: "starter_monthly",
-          returnUrl: "https://app.resender.dev",
+          origin: "https://app.resender.dev",
         })
       )
 
@@ -556,7 +566,7 @@ describe("backend RPC readiness", () => {
       const error = await captureError(
         workerExports.WebAppApi.createCheckoutSession(ACTOR, {
           priceLookupKey: "attacker_price",
-          returnUrl: "https://app.resender.dev",
+          origin: "https://app.resender.dev",
         })
       )
 
@@ -567,7 +577,7 @@ describe("backend RPC readiness", () => {
       expect(createStripe).not.toHaveBeenCalled()
     })
 
-    it("builds Checkout and Portal paths on the exact allowed origin", async () => {
+    it("normalizes the legacy returnUrl alias before creating Checkout", async () => {
       setAllowedOrigins()
       vi.spyOn(SqlRepository.prototype, "getUserById").mockResolvedValue(
         runtimeUser()
@@ -579,13 +589,90 @@ describe("backend RPC readiness", () => {
         SqlRepository.prototype,
         "getStripeCustomerId"
       ).mockResolvedValue("cus_internal")
+      const createCheckout = vi.fn(async () => ({
+        url: "https://checkout.stripe.com/c/pay/legacy-session",
+      }))
+      mockStripe({
+        prices: {
+          list: vi.fn(async () => ({ data: [{ id: "price_internal" }] })),
+        },
+        checkout: { sessions: { create: createCheckout } },
+      })
+
+      const result = await workerExports.WebAppApi.createCheckoutSession(
+        ACTOR,
+        {
+          priceLookupKey: "starter_monthly",
+          returnUrl: "https://app.resender.dev",
+        } as never
+      )
+
+      expect(result).toEqual({
+        url: "https://checkout.stripe.com/c/pay/legacy-session",
+      })
+      expect(createCheckout).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success_url:
+            "https://app.resender.dev/billing/success?session_id={CHECKOUT_SESSION_ID}",
+          cancel_url: "https://app.resender.dev/billing",
+        })
+      )
+    })
+
+    it.each([
+      ["foreign origin", "https://attacker.example"],
+      ["non-root path", "https://app.resender.dev/redirect"],
+      ["non-web protocol", "javascript:alert(1)"],
+    ])(
+      "rejects legacy returnUrl with %s before Stripe access",
+      async (_name, returnUrl) => {
+        setAllowedOrigins()
+        vi.spyOn(SqlRepository.prototype, "getUserById").mockResolvedValue(
+          runtimeUser()
+        )
+        const getSubscription = vi.spyOn(
+          SqlRepository.prototype,
+          "getSubscription"
+        )
+        const createStripe = vi.spyOn(stripeTransport, "create")
+
+        const error = await captureError(
+          workerExports.WebAppApi.createCheckoutSession(ACTOR, {
+            priceLookupKey: "starter_monthly",
+            returnUrl,
+          } as never)
+        )
+
+        expect(error).toMatchObject({
+          code: "validation_error",
+          status: 400,
+          details: [{ path: "origin" }],
+        })
+        expect(getSubscription).not.toHaveBeenCalled()
+        expect(createStripe).not.toHaveBeenCalled()
+        expect(JSON.stringify(error)).not.toMatch(/attacker|javascript/u)
+      }
+    )
+
+    it("builds Checkout and Portal paths on the exact allowed origin", async () => {
+      setAllowedOrigins()
+      vi.spyOn(SqlRepository.prototype, "getUserById").mockResolvedValue(
+        runtimeUser()
+      )
+      vi.spyOn(SqlRepository.prototype, "getSubscription")
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(activeSubscription())
+      vi.spyOn(
+        SqlRepository.prototype,
+        "getStripeCustomerId"
+      ).mockResolvedValue("cus_internal")
       const createCheckout = vi.fn<
         (input: Record<string, unknown>) => Promise<{ url: string }>
       >(async () => ({
-        url: "https://checkout.stripe.test/session",
+        url: "https://checkout.stripe.com/c/pay/session",
       }))
       const createPortal = vi.fn(async () => ({
-        url: "https://billing.stripe.test/session",
+        url: "https://billing.stripe.com/p/session/portal",
       }))
       mockStripe({
         prices: {
@@ -599,24 +686,29 @@ describe("backend RPC readiness", () => {
         ACTOR,
         {
           priceLookupKey: "starter_monthly",
-          returnUrl: "https://app.resender.dev",
+          origin: "https://app.resender.dev",
         }
       )
       const portal = await workerExports.WebAppApi.createBillingPortalSession(
         ACTOR,
         {
-          returnUrl: "https://app.resender.dev",
+          origin: "https://app.resender.dev",
         }
       )
 
       expect(checkout).toEqual({
-        url: "https://checkout.stripe.test/session",
+        url: "https://checkout.stripe.com/c/pay/session",
       })
-      expect(portal).toEqual({ url: "https://billing.stripe.test/session" })
+      expect(portal).toEqual({
+        url: "https://billing.stripe.com/p/session/portal",
+      })
       expect(createCheckout).toHaveBeenCalledWith(
         expect.objectContaining({
           integration_identifier: expect.stringMatching(/^resender_[a-z]{8}$/u),
           customer: "cus_internal",
+          subscription_data: {
+            metadata: { tenantId: ACTOR.userId },
+          },
           success_url:
             "https://app.resender.dev/billing/success?session_id={CHECKOUT_SESSION_ID}",
           cancel_url: "https://app.resender.dev/billing",
@@ -625,11 +717,80 @@ describe("backend RPC readiness", () => {
       expect(createCheckout.mock.calls[0]?.[0]).not.toHaveProperty(
         "payment_method_types"
       )
+      expect(createCheckout.mock.calls[0]?.[0]).not.toHaveProperty(
+        "trial_period_days"
+      )
+      expect(
+        (
+          createCheckout.mock.calls[0]?.[0] as {
+            subscription_data?: Record<string, unknown>
+          }
+        ).subscription_data
+      ).not.toHaveProperty("trial_period_days")
       expect(createPortal).toHaveBeenCalledWith({
         customer: "cus_internal",
         return_url: "https://app.resender.dev/settings",
       })
       expect(JSON.stringify({ checkout, portal })).not.toContain("cus_internal")
+    })
+
+    it.each([
+      [
+        "waitlisted",
+        runtimeUser({ waitlisted: true }),
+        null,
+        "account_waitlisted",
+      ],
+      ["unsubscribed", runtimeUser(), null, "subscription_required"],
+    ] as const)(
+      "blocks %s actors from Portal even when a customer could be stored",
+      async (_name, actorUser, subscription, code) => {
+        vi.spyOn(SqlRepository.prototype, "getUserById").mockResolvedValue(
+          actorUser
+        )
+        vi.spyOn(SqlRepository.prototype, "getSubscription").mockResolvedValue(
+          subscription
+        )
+        const customer = vi
+          .spyOn(SqlRepository.prototype, "getStripeCustomerId")
+          .mockResolvedValue("cus_stored")
+        const createStripe = vi.spyOn(stripeTransport, "create")
+
+        const error = await captureError(
+          workerExports.WebAppApi.createBillingPortalSession(ACTOR, {
+            origin: "https://app.resender.dev",
+          })
+        )
+
+        expect(error).toMatchObject({ code, status: 403 })
+        expect(customer).not.toHaveBeenCalled()
+        expect(createStripe).not.toHaveBeenCalled()
+      }
+    )
+
+    it("returns a safe not-found when an active tenant has no Portal customer", async () => {
+      setAllowedOrigins()
+      vi.spyOn(SqlRepository.prototype, "getUserById").mockResolvedValue(
+        runtimeUser()
+      )
+      vi.spyOn(SqlRepository.prototype, "getSubscription").mockResolvedValue(
+        activeSubscription()
+      )
+      vi.spyOn(
+        SqlRepository.prototype,
+        "getStripeCustomerId"
+      ).mockResolvedValue(null)
+      const createStripe = vi.spyOn(stripeTransport, "create")
+
+      const error = await captureError(
+        workerExports.WebAppApi.createBillingPortalSession(ACTOR, {
+          origin: "https://app.resender.dev",
+        })
+      )
+
+      expect(error).toMatchObject({ code: "not_found", status: 404 })
+      expect(JSON.stringify(error)).not.toMatch(/customer|cus_/u)
+      expect(createStripe).not.toHaveBeenCalled()
     })
 
     it("enforces Checkout-session ownership during verification", async () => {
@@ -656,6 +817,77 @@ describe("backend RPC readiness", () => {
 
       expect(error).toMatchObject({ code: "not_found", status: 404 })
       expect(JSON.stringify(error)).not.toContain("cus_must_not_cross")
+    })
+
+    it.each([
+      ["complete", "complete", true],
+      ["open", "open", false],
+    ] as const)(
+      "returns only verified=%s for an owned %s Checkout",
+      async (_name, status, complete) => {
+        vi.spyOn(SqlRepository.prototype, "getUserById").mockResolvedValue(
+          runtimeUser()
+        )
+        mockStripe({
+          checkout: {
+            sessions: {
+              retrieve: vi.fn(async () => ({
+                status,
+                metadata: { tenantId: ACTOR.userId },
+                customer: "cus_must_not_cross",
+                subscription: "sub_must_not_cross",
+              })),
+            },
+          },
+        })
+
+        const result = await workerExports.WebAppApi.verifyCheckoutSession(
+          ACTOR,
+          { sessionId: "cs_live_1234567890abcdef" }
+        )
+
+        expect(result).toEqual({ complete })
+        expect(JSON.stringify(result)).not.toMatch(/cus_|sub_|customer/u)
+      }
+    )
+
+    it("rejects non-Stripe redirect URLs without returning provider data", async () => {
+      setAllowedOrigins()
+      vi.spyOn(SqlRepository.prototype, "getUserById").mockResolvedValue(
+        runtimeUser()
+      )
+      vi.spyOn(SqlRepository.prototype, "getSubscription").mockResolvedValue(
+        null
+      )
+      vi.spyOn(
+        SqlRepository.prototype,
+        "getStripeCustomerId"
+      ).mockResolvedValue("cus_internal")
+      mockStripe({
+        prices: {
+          list: vi.fn(async () => ({ data: [{ id: "price_internal" }] })),
+        },
+        checkout: {
+          sessions: {
+            create: vi.fn(async () => ({
+              url: "https://attacker.example/steal?session=secret",
+            })),
+          },
+        },
+      })
+
+      const error = await captureError(
+        workerExports.WebAppApi.createCheckoutSession(ACTOR, {
+          priceLookupKey: "starter_monthly",
+          origin: "https://app.resender.dev",
+        })
+      )
+
+      expect(error).toMatchObject({
+        code: "provider_unavailable",
+        status: 502,
+      })
+      expect(JSON.stringify(error)).not.toMatch(/attacker|session=secret/u)
     })
   })
 
