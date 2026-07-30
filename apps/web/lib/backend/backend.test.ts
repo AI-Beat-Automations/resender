@@ -14,13 +14,16 @@ import {
   BackendProtocolError,
   BackendRpcError,
   BackendUnavailableError,
+  disconnectPage,
   getConversationThread,
   getBackend,
   getProductAccess,
   getProductShell,
   listConversations,
   listPages,
+  rotateWebhookSecret,
   smokeBackend,
+  updatePageWebhook,
 } from "./backend"
 
 type AdapterBackend = Awaited<ReturnType<typeof getBackend>>
@@ -244,6 +247,122 @@ describe("backend RPC adapter", () => {
     expect(pages).toHaveBeenCalledWith(ACTOR)
   })
 
+  it("sanitizes Page state and rejects duplicate Page ids", async () => {
+    const rawTokenError = "access_token=SECRET legacy provider response"
+    const listPagesRpc = vi
+      .fn()
+      .mockResolvedValueOnce([
+        pageDto({
+          tokenStatus: "invalid",
+          tokenError: rawTokenError,
+          tokenErrorAt: "2026-07-29T18:01:00.000Z",
+          pageAccessTokenEncrypted: "ciphertext-SECRET",
+          webhookSigningSecretEncrypted: "signing-SECRET",
+        }),
+      ])
+      .mockResolvedValueOnce([pageDto(), pageDto()])
+    openNext.getCloudflareContext
+      .mockResolvedValueOnce({ env: { BACKEND: { listPages: listPagesRpc } } })
+      .mockResolvedValueOnce({ env: { BACKEND: { listPages: listPagesRpc } } })
+
+    const result = await listPages(ACTOR)
+
+    expect(result[0]?.tokenError).toBe(
+      "The Page credential is invalid. Reconnect the Page."
+    )
+    expect(JSON.stringify(result)).not.toMatch(
+      /access_token|SECRET|pageAccessToken|webhookSigningSecret|ciphertext/u
+    )
+    await expect(listPages(ACTOR)).rejects.toThrowError(BackendProtocolError)
+  })
+
+  it("validates Page mutation identities and terminal statuses", async () => {
+    const update = vi.fn().mockResolvedValue(pageDto())
+    const disconnect = vi
+      .fn()
+      .mockResolvedValue(pageDto({ status: "disconnected" }))
+    const rotate = vi.fn().mockResolvedValue({
+      secret: "whsec_reveal_once",
+      createdAt: "2026-07-29T18:03:00.000Z",
+      persistedSecret: "must-not-leak",
+    })
+    openNext.getCloudflareContext
+      .mockResolvedValueOnce({
+        env: { BACKEND: { updatePageWebhook: update } },
+      })
+      .mockResolvedValueOnce({
+        env: { BACKEND: { disconnectPage: disconnect } },
+      })
+      .mockResolvedValueOnce({
+        env: { BACKEND: { rotateWebhookSecret: rotate } },
+      })
+
+    await expect(
+      updatePageWebhook(ACTOR, {
+        pageId: PAGE_ID,
+        webhookUrl: "https://example.com/hook",
+      })
+    ).resolves.toMatchObject({ id: PAGE_ID, status: "active" })
+    await expect(
+      disconnectPage(ACTOR, { pageId: PAGE_ID })
+    ).resolves.toMatchObject({ id: PAGE_ID, status: "disconnected" })
+    const secret = await rotateWebhookSecret(ACTOR, { pageId: PAGE_ID })
+
+    expect(update).toHaveBeenCalledWith(ACTOR, {
+      pageId: PAGE_ID,
+      webhookUrl: "https://example.com/hook",
+    })
+    expect(disconnect).toHaveBeenCalledWith(ACTOR, { pageId: PAGE_ID })
+    expect(rotate).toHaveBeenCalledWith(ACTOR, { pageId: PAGE_ID })
+    expect(secret).toEqual({
+      secret: "whsec_reveal_once",
+      createdAt: "2026-07-29T18:03:00.000Z",
+    })
+    expect(JSON.stringify(secret)).not.toContain("persistedSecret")
+  })
+
+  it.each([
+    ["update", "disconnected", OTHER_PAGE_ID],
+    ["disconnect", "active", PAGE_ID],
+  ] as const)(
+    "rejects incoherent %s Page mutation responses",
+    async (operation, status, id) => {
+      const rpc = vi.fn().mockResolvedValue(pageDto({ id, status }))
+      openNext.getCloudflareContext.mockResolvedValue({
+        env: {
+          BACKEND:
+            operation === "update"
+              ? { updatePageWebhook: rpc }
+              : { disconnectPage: rpc },
+        },
+      })
+
+      const result =
+        operation === "update"
+          ? updatePageWebhook(ACTOR, { pageId: PAGE_ID, webhookUrl: null })
+          : disconnectPage(ACTOR, { pageId: PAGE_ID })
+
+      await expect(result).rejects.toThrowError(BackendProtocolError)
+    }
+  )
+
+  it("rejects malformed signing-secret responses without retaining them", async () => {
+    const rotate = vi.fn().mockResolvedValue({
+      secret: "access_token=SECRET",
+      createdAt: "not-a-date",
+    })
+    openNext.getCloudflareContext.mockResolvedValue({
+      env: { BACKEND: { rotateWebhookSecret: rotate } },
+    })
+
+    const error = await captureError(
+      rotateWebhookSecret(ACTOR, { pageId: PAGE_ID })
+    )
+
+    expect(error).toBeInstanceOf(BackendProtocolError)
+    expect(JSON.stringify(error)).not.toMatch(/access_token|SECRET/u)
+  })
+
   it("rejects a thread whose resource ownership is incoherent", async () => {
     const thread = vi.fn().mockResolvedValue({
       conversation: conversationDto(),
@@ -403,7 +522,7 @@ function messageDto(overrides: Record<string, unknown> = {}) {
   }
 }
 
-function pageDto() {
+function pageDto(overrides: Record<string, unknown> = {}) {
   return {
     id: PAGE_ID,
     provider: "meta",
@@ -417,5 +536,6 @@ function pageDto() {
     webhook: { url: null, signingEnabled: true },
     connectedAt: "2026-07-29T18:00:00.000Z",
     updatedAt: "2026-07-29T18:00:00.000Z",
+    ...overrides,
   }
 }

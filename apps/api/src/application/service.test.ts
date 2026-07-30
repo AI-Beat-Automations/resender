@@ -448,6 +448,36 @@ describe("tenant-owned resources", () => {
     expect(rotateWebhookSecret).not.toHaveBeenCalled()
   })
 
+  it("returns tenant-scoped 404 without updating a disconnected Page webhook", async () => {
+    const updatePageWebhook = vi.fn()
+    const service = serviceWithRepository({
+      getPage: async () => page({ status: "disconnected" }),
+      updatePageWebhook,
+    })
+
+    await expect(
+      service.updatePageWebhook(
+        "tenant_1",
+        PAGE_ID,
+        "https://93.184.216.34/webhook"
+      )
+    ).rejects.toMatchObject({ code: "not_found", status: 404 })
+    expect(updatePageWebhook).not.toHaveBeenCalled()
+  })
+
+  it("returns tenant-scoped 404 without rotating a disconnected Page secret", async () => {
+    const rotateWebhookSecret = vi.fn()
+    const service = serviceWithRepository({
+      getPage: async () => page({ status: "disconnected" }),
+      rotateWebhookSecret,
+    })
+
+    await expect(
+      service.rotateWebhookSecret("tenant_1", PAGE_ID)
+    ).rejects.toMatchObject({ code: "not_found", status: 404 })
+    expect(rotateWebhookSecret).not.toHaveBeenCalled()
+  })
+
   it("reveals a rotated signing secret once and persists only ciphertext", async () => {
     const rotatedAt = new Date("2026-07-29T18:03:00.000Z")
     const persistedInputs: Array<{
@@ -485,8 +515,10 @@ describe("tenant-owned resources", () => {
   })
 
   it("keeps public and RPC Page mappings separate", async () => {
+    const rawTokenError = "access_token=SECRET raw provider response"
     const updated = page({
-      tokenError: "expired",
+      tokenStatus: "invalid",
+      tokenError: rawTokenError,
       tokenErrorAt: new Date("2026-07-29T18:01:00.000Z"),
       disconnectedAt: new Date("2026-07-29T18:02:00.000Z"),
     })
@@ -508,11 +540,14 @@ describe("tenant-owned resources", () => {
 
     expect(publicPage).not.toHaveProperty("tokenError")
     expect(rpcPage).toMatchObject({
-      tokenError: "expired",
+      tokenError: "The Page credential is invalid. Reconnect the Page.",
       tokenErrorAt: "2026-07-29T18:01:00.000Z",
       disconnectedAt: "2026-07-29T18:02:00.000Z",
     })
     expect(rpcPage).not.toHaveProperty("pageAccessTokenEncrypted")
+    expect(JSON.stringify(rpcPage)).not.toMatch(
+      /access_token|SECRET|raw provider response/u
+    )
   })
 })
 

@@ -212,6 +212,36 @@ consumer.
 Delete any temporary comparison caller after the check. Do not add an HTTP
 fallback, dual-read path, or permanent debug route to perform this validation.
 
+## Validate the Connections RPC cutover
+
+The `/connections` list, webhook URL update, disconnect, and signing-secret
+rotation use the `BACKEND` Service Binding exclusively. There is no SQL or Meta
+fallback in those paths. `/connections/select`, OAuth state/code/callback
+handling, and Meta user/Page token persistence deliberately remain on the
+legacy web path until frontend migration Slice 7.
+
+In staging, verify with two tenants and active, token-invalid, unsigned, and
+disconnected Pages:
+
+1. A tenant sees only its Pages, with active/valid, active/invalid, then
+   disconnected ordering. Raw provider token errors and encrypted credential
+   fields must not appear in RSC payloads, HTML, browser logs, or analytics.
+2. An unsigned Page cannot save a non-empty webhook URL. It can clear a legacy
+   URL. HTTP, including localhost, is rejected in the form; use an HTTPS tunnel
+   for development. The API remains authoritative for public-destination/SSRF
+   validation.
+3. Creating or rotating a signing secret requires confirmation. Copy the
+   revealed value immediately: it is returned once in action state and must
+   never enter a URL, cookie, hidden input, log, analytics event, or database
+   plaintext. Rotation invalidates the previous secret.
+4. Update and rotation against a foreign or disconnected Page return the same
+   tenant-scoped `not_found` result and do not mutate it.
+5. Disconnect requires confirmation, preserves history, and remains locally
+   authoritative even if Meta unsubscribe fails.
+6. A temporary product-shell failure hides only quota metadata while retaining
+   the authoritative Page list. Access changes redirect to waitlist/billing;
+   protocol or tenant mismatches fail closed.
+
 ## Configure secrets
 
 Set every secret separately for staging and production. Never paste values into

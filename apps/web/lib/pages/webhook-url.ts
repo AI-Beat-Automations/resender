@@ -2,16 +2,7 @@ export type WebhookUrlResult =
   | { ok: true; value: string | null }
   | { ok: false; error: string }
 
-export type WebhookUrlMode = "development" | "production"
-
-type WebhookUrlOptions = {
-  mode?: WebhookUrlMode
-}
-
-export function normalizeWebhookUrl(
-  input: unknown,
-  options: WebhookUrlOptions = {}
-): WebhookUrlResult {
+export function normalizeWebhookUrl(input: unknown): WebhookUrlResult {
   if (typeof input !== "string") return { ok: true, value: null }
 
   const value = input.trim()
@@ -23,32 +14,12 @@ export function normalizeWebhookUrl(
       return { ok: true, value: url.toString() }
     }
 
-    if (
-      url.protocol === "http:" &&
-      resolveWebhookUrlMode(options) === "development" &&
-      isLocalHttpUrl(url)
-    ) {
-      return { ok: true, value: url.toString() }
-    }
-
     return {
       ok: false,
       error:
-        "La URL tiene que usar https. Solo se permite http en localhost, para desarrollo.",
+        "La URL tiene que usar HTTPS. Para desarrollo, usa un túnel HTTPS.",
     }
   } catch {
     return { ok: false, error: "Escribe una URL válida." }
   }
-}
-
-function resolveWebhookUrlMode(options: WebhookUrlOptions): WebhookUrlMode {
-  if (options.mode) return options.mode
-  return process.env.NODE_ENV === "production" ? "production" : "development"
-}
-
-function isLocalHttpUrl(url: URL) {
-  const hostname = url.hostname.toLowerCase().replace(/^\[(.*)\]$/, "$1")
-  return (
-    hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1"
-  )
 }

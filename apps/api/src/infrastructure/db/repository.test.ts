@@ -178,7 +178,7 @@ describe("RPC Page state and conversation history", () => {
           name: record.name,
           status: "disconnected",
           token_status: "invalid",
-          token_error: "expired",
+          token_error: "access_token=SECRET raw provider response",
           token_error_at: "2026-07-29T18:01:00.000Z",
           webhook_url: record.webhookUrl,
           page_access_token_encrypted: "encrypted-token",
@@ -195,12 +195,15 @@ describe("RPC Page state and conversation history", () => {
     )
 
     expect(result).toMatchObject({
-      tokenError: "expired",
+      tokenError: "The Page credential is invalid. Reconnect the Page.",
       tokenErrorAt: "2026-07-29T18:01:00.000Z",
       disconnectedAt: "2026-07-29T18:02:00.000Z",
     })
     expect(result).not.toHaveProperty("pageAccessTokenEncrypted")
     expect(result).not.toHaveProperty("webhookSigningSecretEncrypted")
+    expect(JSON.stringify(result)).not.toMatch(
+      /access_token|SECRET|raw provider response/u
+    )
   })
 
   it("does not create or replace a signing secret during connect", async () => {
@@ -247,6 +250,30 @@ describe("RPC Page state and conversation history", () => {
     const mutation = statements[0]?.split("returning")[0] ?? ""
     expect(mutation).not.toContain("webhook_signing_secret_encrypted")
     expect(connected?.webhookSigningSecretEncrypted).toBe("encrypted-secret")
+  })
+
+  it("guards webhook and signing-secret mutations with active Page status", async () => {
+    const sql = capturingSql([[], []])
+    const repository = new SqlRepository(sql.client)
+
+    await expect(
+      repository.updatePageWebhook(
+        "tenant_1",
+        pageRecord().id,
+        "https://example.com/new-hook"
+      )
+    ).resolves.toBeNull()
+    await expect(
+      repository.rotateWebhookSecret({
+        tenantId: "tenant_1",
+        pageId: pageRecord().id,
+        encryptedSecret: "encrypted-new-secret",
+      })
+    ).resolves.toBeNull()
+
+    expect(sql.taggedStatements).toHaveLength(2)
+    expect(sql.taggedStatements[0]).toContain("and status = 'active'")
+    expect(sql.taggedStatements[1]).toContain("and status = 'active'")
   })
 })
 

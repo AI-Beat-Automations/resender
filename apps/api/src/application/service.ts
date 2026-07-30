@@ -228,7 +228,7 @@ export class ApiService {
     pageId: string,
     webhookUrl: string | null
   ): Promise<PageRecord> {
-    const pageBeforeUpdate = await this.requirePage(tenantId, pageId)
+    const pageBeforeUpdate = await this.requireActivePage(tenantId, pageId)
     const normalized = validateWebhookUrl(webhookUrl)
     if (normalized) await assertPublicWebhookDestination(normalized)
     if (normalized && !pageBeforeUpdate.webhookSigningSecretEncrypted) {
@@ -258,7 +258,7 @@ export class ApiService {
     tenantId: string,
     pageId: string
   ): Promise<{ secret: string; createdAt: string }> {
-    await this.requirePage(tenantId, pageId)
+    await this.requireActivePage(tenantId, pageId)
     const secret = generateWebhookSigningSecret()
     const createdAt = await this.repository.rotateWebhookSecret({
       tenantId,
@@ -1150,6 +1150,15 @@ export class ApiService {
   ): Promise<PageRecord> {
     const page = await this.repository.getPage(tenantId, pageId)
     if (!page) throw notFound("Page")
+    return page
+  }
+
+  private async requireActivePage(
+    tenantId: string,
+    pageId: string
+  ): Promise<PageRecord> {
+    const page = await this.requirePage(tenantId, pageId)
+    if (page.status !== "active") throw notFound("Page")
     return page
   }
 

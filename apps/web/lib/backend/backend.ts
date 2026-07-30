@@ -7,7 +7,9 @@ import {
   ConversationThreadSchema,
   ProductAccessSchema,
   ProductShellSchema,
+  RpcPageSchema,
   RpcPageListSchema,
+  WebhookSecretSchema,
   type BackendHealthDto,
   type ConversationListDto,
   type ConversationListInput,
@@ -17,6 +19,9 @@ import {
   type ProductShellDto,
   type RpcActor,
   type RpcPageDto,
+  type PageIdRpcInput,
+  type PageWebhookUpdateRpcInput,
+  type WebhookSecretDto,
   type WebAppApiContract,
 } from "@workspace/contracts"
 
@@ -145,6 +150,51 @@ export async function listPages(actor: RpcActor): Promise<RpcPageDto[]> {
   const response = await invokeBackend((backend) => backend.listPages(actor))
   const parsed = RpcPageListSchema.safeParse(response)
   if (!parsed.success) throw new BackendProtocolError()
+  const seenPageIds = new Set<string>()
+  return parsed.data.map((page) => {
+    if (seenPageIds.has(page.id)) throw new BackendProtocolError()
+    seenPageIds.add(page.id)
+    return sanitizeRpcPage(page)
+  })
+}
+
+export async function updatePageWebhook(
+  actor: RpcActor,
+  input: PageWebhookUpdateRpcInput
+): Promise<RpcPageDto> {
+  const response = await invokeBackend((backend) =>
+    backend.updatePageWebhook(actor, input)
+  )
+  const page = parseRpcPage(response)
+  if (page.id !== input.pageId || page.status !== "active") {
+    throw new BackendProtocolError()
+  }
+  return page
+}
+
+export async function disconnectPage(
+  actor: RpcActor,
+  input: PageIdRpcInput
+): Promise<RpcPageDto> {
+  const response = await invokeBackend((backend) =>
+    backend.disconnectPage(actor, input)
+  )
+  const page = parseRpcPage(response)
+  if (page.id !== input.pageId || page.status !== "disconnected") {
+    throw new BackendProtocolError()
+  }
+  return page
+}
+
+export async function rotateWebhookSecret(
+  actor: RpcActor,
+  input: PageIdRpcInput
+): Promise<WebhookSecretDto> {
+  const response = await invokeBackend((backend) =>
+    backend.rotateWebhookSecret(actor, input)
+  )
+  const parsed = WebhookSecretSchema.safeParse(response)
+  if (!parsed.success) throw new BackendProtocolError()
   return parsed.data
 }
 
@@ -156,5 +206,21 @@ async function invokeBackend<T>(
     return await operation(backend)
   } catch (error) {
     throw new BackendRpcError(classifyRpcError(error))
+  }
+}
+
+function parseRpcPage(response: unknown): RpcPageDto {
+  const parsed = RpcPageSchema.safeParse(response)
+  if (!parsed.success) throw new BackendProtocolError()
+  return sanitizeRpcPage(parsed.data)
+}
+
+function sanitizeRpcPage(page: RpcPageDto): RpcPageDto {
+  return {
+    ...page,
+    tokenError:
+      page.tokenStatus === "invalid"
+        ? "The Page credential is invalid. Reconnect the Page."
+        : null,
   }
 }

@@ -400,7 +400,9 @@ export class SqlRepository {
     const rows = await this.sql`
       update connected_pages
       set webhook_url = ${webhookUrl}, updated_at = now()
-      where tenant_id = ${tenantId} and id = ${pageId}
+      where tenant_id = ${tenantId}
+        and id = ${pageId}
+        and status = 'active'
       returning id, tenant_id, meta_page_id, name, status, token_status,
         token_error, token_error_at, webhook_url, page_access_token_encrypted,
         webhook_signing_secret_encrypted, connected_at, disconnected_at,
@@ -419,7 +421,9 @@ export class SqlRepository {
       set webhook_signing_secret_encrypted = ${input.encryptedSecret},
         webhook_signing_secret_rotated_at = now(),
         updated_at = now()
-      where tenant_id = ${input.tenantId} and id = ${input.pageId}
+      where tenant_id = ${input.tenantId}
+        and id = ${input.pageId}
+        and status = 'active'
       returning webhook_signing_secret_rotated_at
     `
     return rows[0] ? date(rows[0].webhook_signing_secret_rotated_at) : null
@@ -1416,7 +1420,10 @@ export function pageDto(page: PageRecord): PageDto {
 export function rpcPageDto(page: PageRecord): RpcPageDto {
   return {
     ...pageDto(page),
-    tokenError: page.tokenError,
+    tokenError:
+      page.tokenStatus === "invalid"
+        ? "The Page credential is invalid. Reconnect the Page."
+        : null,
     tokenErrorAt: page.tokenErrorAt?.toISOString() ?? null,
     disconnectedAt: page.disconnectedAt?.toISOString() ?? null,
   }

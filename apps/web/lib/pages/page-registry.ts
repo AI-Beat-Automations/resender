@@ -3,7 +3,6 @@ import { decryptSecret, encryptSecret } from "@/lib/crypto/encryption"
 import { getSql } from "@/lib/db"
 
 import type { PageOwnershipRow } from "./page-selection"
-import { normalizeWebhookUrl } from "./webhook-url"
 
 export type PageStatus = "active" | "disconnected"
 export type PageTokenStatus = "valid" | "invalid"
@@ -48,13 +47,6 @@ export class PageOwnershipError extends Error {
   constructor(public readonly metaPageId: string) {
     super("page already belongs to another tenant")
     this.name = "PageOwnershipError"
-  }
-}
-
-export class InvalidWebhookUrlError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = "InvalidWebhookUrlError"
   }
 }
 
@@ -160,57 +152,6 @@ export async function getPageOwnership(
   }))
 }
 
-export async function listTenantPages(tenantId: string) {
-  const sql = getSql()
-  const rows = await sql<ConnectedPageRow[]>`
-    select id, tenant_id, meta_page_id, name, status, token_status,
-      token_error, token_error_at, webhook_url, connected_at, disconnected_at,
-      created_at, updated_at
-    from connected_pages
-    where tenant_id = ${tenantId}
-    order by case when status = 'active' then 0 else 1 end, updated_at desc
-  `
-
-  return rows.map(mapConnectedPage)
-}
-
-export async function updatePageWebhookUrl(
-  tenantId: string,
-  connectionId: string,
-  webhookUrlInput: unknown
-) {
-  const normalized = normalizeWebhookUrl(webhookUrlInput)
-  if (!normalized.ok) throw new InvalidWebhookUrlError(normalized.error)
-
-  const sql = getSql()
-  const [row] = await sql<ConnectedPageRow[]>`
-    update connected_pages
-    set webhook_url = ${normalized.value}, updated_at = now()
-    where id = ${connectionId} and tenant_id = ${tenantId} and status = 'active'
-    returning id, tenant_id, meta_page_id, name, status, token_status,
-      token_error, token_error_at, webhook_url, connected_at, disconnected_at,
-      created_at, updated_at
-  `
-
-  return row ? mapConnectedPage(row) : null
-}
-
-export async function disconnectPage(tenantId: string, connectionId: string) {
-  const sql = getSql()
-  const [row] = await sql<ConnectedPageRow[]>`
-    update connected_pages
-    set status = 'disconnected',
-        disconnected_at = coalesce(disconnected_at, now()),
-        updated_at = now()
-    where id = ${connectionId} and tenant_id = ${tenantId}
-    returning id, tenant_id, meta_page_id, name, status, token_status,
-      token_error, token_error_at, webhook_url, connected_at, disconnected_at,
-      created_at, updated_at
-  `
-
-  return row ? mapConnectedPage(row) : null
-}
-
 export async function getActivePageTokenForTenant(
   tenantId: string,
   metaPageId: string
@@ -242,31 +183,6 @@ export async function getActivePageWithTokenForTenant(
     from connected_pages
     where tenant_id = ${tenantId}
       and meta_page_id = ${metaPageId}
-      and status = 'active'
-    limit 1
-  `
-
-  if (!row) return null
-
-  return {
-    page: mapConnectedPage(row),
-    pageAccessToken: decryptSecret(row.page_access_token_encrypted),
-  }
-}
-
-export async function getActivePageWithTokenByConnectionId(
-  tenantId: string,
-  connectionId: string
-) {
-  const sql = getSql()
-  const [row] = await sql<ConnectedPageWithTokenRow[]>`
-    select id, tenant_id, meta_page_id, name, status, token_status,
-      token_error, token_error_at, webhook_url, connected_at, disconnected_at,
-      created_at, updated_at,
-      page_access_token_encrypted
-    from connected_pages
-    where id = ${connectionId}
-      and tenant_id = ${tenantId}
       and status = 'active'
     limit 1
   `
