@@ -82,8 +82,10 @@ subscription, or has no usable API key. Do not issue a manual `UPDATE`, invent
 ciphertext, bypass the product gates, or weaken readiness. With explicit
 authorization, either restore legitimate access through the supported
 account/billing/API-key flows and rotate the secret normally, or disconnect the
-Page through the supported UI/RPC flow. If neither path is authorized, leave
-readiness unavailable and escalate the ownership decision.
+Page through the supported UI/RPC flow with tenant-owner authorization.
+Disconnect preserves history; it is not permission to delete or rewrite the
+Page row. If neither path is authorized, leave readiness unavailable and
+escalate the ownership decision.
 
 ## Create resources
 

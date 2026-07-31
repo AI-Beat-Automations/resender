@@ -13,8 +13,8 @@
     "cf-typegen": "CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false wrangler types worker-configuration.d.ts --env-file .dev.vars.example --env-interface Env",
     "cf-typegen:check": "CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false wrangler types worker-configuration.d.ts --env-file .dev.vars.example --env-interface Env --check",
     "lint": "eslint src",
-    "test": "vitest",
-    "test:run": "vitest run",
+    "test": "CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false vitest",
+    "test:run": "CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -66,6 +66,7 @@ describe("readiness queries", () => {
     ["a fractional count", [{ count: 1.5 }]],
     ["a negative count", [{ count: -1 }]],
     ["a non-finite count", [{ count: Number.NaN }]],
+    ["an infinite count", [{ count: Number.POSITIVE_INFINITY }]],
   ])("fails closed for %s", async (_name, rows) => {
     const repository = new SqlRepository(fakeSql([rows]))
 

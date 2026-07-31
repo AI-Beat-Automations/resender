@@ -45,6 +45,40 @@ describe("phase-2 ownership boundaries", () => {
     )
   })
 
+  it("isolates API tests from product development secrets", async () => {
+    const [vitestConfig, testWranglerConfig, apiPackageSource] =
+      await Promise.all([
+        readFile(path.join(API_ROOT, "vitest.config.ts"), "utf8"),
+        readFile(path.join(API_ROOT, "test/wrangler.jsonc"), "utf8"),
+        readFile(path.join(API_ROOT, "package.json"), "utf8"),
+      ])
+    const apiPackage = JSON.parse(apiPackageSource) as {
+      scripts: Record<string, string>
+    }
+    const testConfigPath = path.join(API_ROOT, "test/wrangler.jsonc")
+
+    expect(path.dirname(testConfigPath)).not.toBe(API_ROOT)
+    await expectPathMissing(
+      path.join(path.dirname(testConfigPath), ".dev.vars")
+    )
+    expect(vitestConfig).toContain(
+      'const TEST_WRANGLER_CONFIG = "./test/wrangler.jsonc"'
+    )
+    expect(vitestConfig).not.toMatch(
+      /wrangler:\s*\{\s*configPath:\s*["']\.\/wrangler\.jsonc["']/u
+    )
+    expect(testWranglerConfig).toContain('"main": "../src/index.ts"')
+    expect(testWranglerConfig).toContain(
+      '"compatibility_flags": ["nodejs_compat"]'
+    )
+    expect(testWranglerConfig).not.toContain('"secrets"')
+    for (const script of ["test", "test:run"]) {
+      expect(apiPackage.scripts[script]).toMatch(
+        /^CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false vitest/u
+      )
+    }
+  })
+
   it("keeps maintained web sources free of backend domain imports", async () => {
     const files = await sourceFiles(WEB_ROOT)
     const violations: string[] = []

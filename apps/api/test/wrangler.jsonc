@@ -1,0 +1,42 @@
+{
+  "$schema": "../../../node_modules/wrangler/config-schema.json",
+  "name": "api-test",
+  "main": "../src/index.ts",
+  "compatibility_date": "2026-07-29",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "ENVIRONMENT": "test",
+    "PUBLIC_BASE_URL": "https://api.test.invalid",
+    "WEB_APP_ORIGINS": "[\"https://app.resender.dev\"]",
+  },
+  "queues": {
+    "producers": [
+      {
+        "binding": "WEBHOOK_DELIVERIES",
+        "queue": "webhook-deliveries",
+      },
+    ],
+    "consumers": [
+      {
+        "queue": "webhook-deliveries",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5,
+        "max_retries": 5,
+        "dead_letter_queue": "webhook-deliveries-dlq",
+      },
+      {
+        "queue": "webhook-deliveries-dlq",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5,
+        "max_retries": 5,
+      },
+    ],
+  },
+  "ratelimits": [
+    {
+      "name": "API_RATE_LIMITER",
+      "namespace_id": "9999",
+      "simple": { "limit": 600, "period": 60 },
+    },
+  ],
+}
