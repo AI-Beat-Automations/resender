@@ -6,6 +6,7 @@
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   "preview_urls": true,
+  "routes": [{ "pattern": "api.resender.dev", "custom_domain": true }],
   // Neon HTTP remains deliberate in phase 1. Hyperdrive is a separate
   // migration and is explicitly excluded by docs/phase-1-api-migration.md.
   "placement": { "mode": "smart" },
@@ -70,6 +71,12 @@
   "env": {
     "staging": {
       "name": "api-staging",
+      "routes": [
+        {
+          "pattern": "api-staging.resender.dev",
+          "custom_domain": true,
+        },
+      ],
       "vars": {
         "ENVIRONMENT": "staging",
         "PUBLIC_BASE_URL": "https://api-staging.resender.dev",

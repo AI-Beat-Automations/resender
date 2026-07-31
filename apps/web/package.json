@@ -9,6 +9,8 @@
     "start": "next start",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy --env=\"\"",
+    "build:staging": "opennextjs-cloudflare build",
+    "deploy:staging": "npm run build:staging && opennextjs-cloudflare deploy --env staging",
     "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload --env=\"\"",
     "cf-typegen": "CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false wrangler types cloudflare-env.d.ts --config wrangler.jsonc --config ../api/wrangler.jsonc --env-file .dev.vars.example --env-interface CloudflareEnv",
     "cf-typegen:check": "CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false wrangler types cloudflare-env.d.ts --config wrangler.jsonc --config ../api/wrangler.jsonc --env-file .dev.vars.example --env-interface CloudflareEnv --check",

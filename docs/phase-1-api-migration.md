@@ -3,8 +3,9 @@
 > **Documento histórico y superseded.** Conserva el plan y las decisiones de
 > la baseline de Fase 1; no describe el ownership actual del repositorio. La
 > implementación y el PRD vigentes son
-> [Fase 2 — API migration/frontend](./phase-2-api-migration-frontend.md), junto
-> con el runbook operativo actual. En este documento, expresiones como
+> [`api-cloudflare-manual-runbook.md`](./api-cloudflare-manual-runbook.md),
+> junto con [`CONTEXT.md`](../CONTEXT.md), describen el estado operativo actual.
+> En este documento, expresiones como
 > “arquitectura vigente”, “contexto actual” o “handlers que hoy viven en Next”
 > deben leerse exclusivamente dentro de aquella baseline de Fase 1.
 >
@@ -19,7 +20,8 @@
 - **Objetivo:** construir el backend separado sin cambiar el comportamiento del frontend actual.
 - **Resultado desplegable:** un nuevo Worker `api` basado en Hono, con API pública, RPC interno, consumo de Queues, OpenAPI y observabilidad propios.
 - **Condición de seguridad:** durante esta fase no se cambian las URLs productivas de Meta o Stripe y `apps/web` sigue atendiendo el producto actual.
-- **Siguiente fase:** [Fase 2 — API migration/frontend](./phase-2-api-migration-frontend.md).
+- **Estado actual:** [`api-cloudflare-manual-runbook.md`](./api-cloudflare-manual-runbook.md)
+  y [`CONTEXT.md`](../CONTEXT.md).
 - **Decisión anulada:** no usar como autoridad el ADR de ownership/separación que se eliminó. Este documento contiene la arquitectura vigente para la baseline de Fase 1, no para el repositorio actual.
 
 ## Resumen ejecutivo

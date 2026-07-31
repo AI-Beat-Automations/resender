@@ -81,9 +81,10 @@ names above.
 ## Phase 2 bindings configured per environment
 
 This repository configuration has been applied after explicit approval. It
-does not deploy either Worker, create external resources, set secrets, change
-DNS/custom domains, or enable a public staging route. Those actions remain
-manual cutover steps.
+declares the production and staging custom domains, but does not deploy either
+Worker, create external resources, set secrets, change DNS, attach those
+domains in the Cloudflare account, or issue TLS certificates. Those actions
+remain manual cutover steps.
 
 ### API web-origin allowlist
 
@@ -221,11 +222,11 @@ fallback, dual-read path, or permanent debug route to perform this validation.
 
 ## Validate the Connections RPC cutover
 
-The `/connections` list, webhook URL update, disconnect, and signing-secret
-rotation use the `BACKEND` Service Binding exclusively. There is no SQL or Meta
-fallback in those paths. `/connections/select`, OAuth state/code/callback
-handling, and Meta user/Page token persistence deliberately remain on the
-legacy web path until frontend migration Slice 7.
+The `/connections` list, selection, webhook URL update, disconnect,
+signing-secret rotation, OAuth code exchange, and Meta user/Page token
+persistence use the `BACKEND` Service Binding. Web retains only browser-facing
+OAuth state/cookie and redirect handling. There is no SQL, provider-client, or
+HTTP fallback in these paths.
 
 In staging, verify with two tenants and active, token-invalid, unsigned, and
 disconnected Pages:
@@ -430,34 +431,159 @@ change was performed as part of this checkpoint.
 ## Validate before deployment
 
 ```bash
-npm --workspace @workspace/contracts run typecheck
+npm --workspace @workspace/contracts run typecheck -- --incremental false
+npm --workspace @workspace/ui run typecheck -- --incremental false
 npm --workspace api run cf-typegen:check
 npm --workspace web run cf-typegen:check
 npm --workspace api run lint
 npm --workspace web run lint
-npm --workspace api run typecheck
-npm --workspace web run typecheck
+npm --workspace api run typecheck -- --incremental false
+npm --workspace web run typecheck -- --incremental false
 npm --workspace api run test:run
 npm --workspace web run test:run
 npm --workspace api run build
 npm --workspace web run build
-npm --workspace web exec opennextjs-cloudflare build
+npm --workspace web exec -- opennextjs-cloudflare build
 npx wrangler deploy --dry-run --env="" -c apps/web/wrangler.jsonc
+npx wrangler deploy --dry-run --env staging -c apps/api/wrangler.jsonc
+npx wrangler deploy --dry-run --env staging -c apps/web/wrangler.jsonc
 ```
 
-The API `build` script and the final web Wrangler command are deploy dry-runs.
-The web `build` and OpenNext commands compile and package the frontend. None of
-these commands deploys a Worker.
+The API `build` script and all Wrangler commands with `--dry-run` only package
+their Workers. The web `build` and OpenNext commands compile and package the
+frontend. None of these commands deploys a Worker.
 
-## Deploy without moving traffic
+### Integrated local acceptance server
+
+`npm run dev` is the full local acceptance server. It first rebuilds OpenNext,
+then starts one Wrangler multi-config runtime with both
+`apps/web/wrangler.jsonc` and `apps/api/wrangler.jsonc` in local mode. Wrangler
+must print `BACKEND` (`api#WebAppApi`) as `[connected]`; a `503` binding result
+means the topology is invalid and blocks acceptance.
+
+```bash
+npm run dev
+```
+
+In another terminal, verify the web Worker and all three binding-backed
+compatibility proxies:
+
+```bash
+curl --fail --show-error --silent http://localhost:8787/ > /dev/null
+test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
+  --request POST --header 'content-type: application/json' --data '{}' \
+  http://localhost:8787/api/meta/send)" = "401"
+test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
+  --request POST --header 'content-type: application/json' \
+  --header 'x-hub-signature-256: invalid-smoke-signature' --data '{}' \
+  http://localhost:8787/api/meta/webhook)" = "400"
+test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
+  --request POST --header 'content-type: application/json' \
+  --header 'stripe-signature: invalid-smoke-signature' --data '{}' \
+  http://localhost:8787/api/stripe/webhook)" = "400"
+```
+
+Stop the root process after the smoke. OpenNext does not watch source files in
+this topology: restart `npm run dev` after code or configuration changes so it
+rebuilds the bundle. `npm run dev:next` is UI-only Next development and does
+not provide a connected `BACKEND`; it is not an RPC acceptance server.
+
+## Custom domains: declared configuration and external activation
+
+The source of truth in Wrangler declares exactly these custom-domain routes:
+
+| Environment | Worker        | Declarative route                  |
+| ----------- | ------------- | ---------------------------------- |
+| production  | `api`         | `api.resender.dev`                 |
+| production  | `web`         | `resender.dev`                     |
+| staging     | `api-staging` | `api-staging.resender.dev`         |
+| staging     | `web-staging` | `staging.resender.dev`             |
+
+Every route is an object with `custom_domain: true`. The staging web
+`BACKEND` remains bound to `api-staging#WebAppApi`; production remains bound to
+`api#WebAppApi`. Declaring these values in git does not activate a route,
+change DNS, deploy a Worker, or prove TLS readiness.
+
+For each of the four hostnames, perform and record this procedure separately:
+
+1. Confirm the `resender.dev` zone is **Active** in Cloudflare and that
+   authoritative NS lookup returns the Cloudflare nameservers:
+
+   ```bash
+   dig NS resender.dev +short
+   ```
+
+2. Confirm the hostname is free before deployment. Inspect Cloudflare DNS and
+   **Workers & Pages → Domains & Routes** for an existing DNS record, custom
+   domain, or Worker route using the exact hostname. Cross-check without
+   mutation:
+
+   ```bash
+   dig A api.resender.dev +short
+   dig AAAA api.resender.dev +short
+   dig CNAME api.resender.dev +short
+   ```
+
+   Repeat for `api-staging.resender.dev`, `resender.dev`, and
+   `staging.resender.dev`. Do not delete or overwrite an unknown owner; resolve
+   the conflict first.
+
+3. Validate the repository config and package without account mutation:
+
+   ```bash
+   npm --workspace api run cf-typegen:check
+   npm --workspace web run cf-typegen:check
+   npx wrangler deploy --dry-run --env="" -c apps/api/wrangler.jsonc
+   npx wrangler deploy --dry-run --env staging -c apps/api/wrangler.jsonc
+   npx wrangler deploy --dry-run --env="" -c apps/web/wrangler.jsonc
+   npx wrangler deploy --dry-run --env staging -c apps/web/wrangler.jsonc
+   ```
+
+4. Only after approval, deploy in API-first order. Wrangler then reconciles the
+   declared custom domain with the Cloudflare account. Do not also create a
+   competing dashboard route.
+5. After each deploy, wait for Cloudflare to show the custom domain as active
+   with a valid certificate. Verify authoritative DNS, TLS hostname validation,
+   and the expected endpoint:
+
+   ```bash
+   dig api-staging.resender.dev +short
+   curl --fail --show-error --silent https://api-staging.resender.dev/healthz
+   curl --fail --show-error --silent https://api-staging.resender.dev/readyz
+   curl --fail --show-error --silent https://staging.resender.dev/ > /dev/null
+   ```
+
+   Repeat against `api.resender.dev` and `resender.dev` for production. A DNS
+   answer alone is insufficient; both HTTPS requests and certificate hostname
+   validation must succeed.
+
+No custom-domain, DNS, TLS, Worker deployment, or Cloudflare-account action in
+this section was executed while implementing the repository configuration.
+
+## Staging deployment and smoke sequence
 
 After the resources and secrets exist:
 
 ```bash
 npm --workspace api run deploy:staging
+curl --fail --show-error --silent --retry 5 --retry-all-errors \
+  https://api-staging.resender.dev/readyz
+APP_URL=https://staging.resender.dev npm --workspace web run deploy:staging
+curl --fail --show-error --silent --retry 5 --retry-all-errors \
+  https://staging.resender.dev/ > /dev/null
 ```
 
-Smoke-test staging:
+The web build consumes `APP_URL`, `NEXT_PUBLIC_META_APP_ID`,
+`NEXT_PUBLIC_META_CONFIG_ID`, `NEXT_PUBLIC_POSTHOG_KEY`, and
+`NEXT_PUBLIC_POSTHOG_HOST` at build time. Supply the approved staging values in
+the operator environment before the web command; do not rely on production
+values or an ignored `.env`. `APP_URL` must be exactly
+`https://staging.resender.dev`. The `NEXT_PUBLIC_*` values are intentionally
+public but still must come from the approved staging configuration. OpenNext
+build itself is environment-neutral and receives no `--env`; only the deploy
+step selects the Wrangler environment with `--env staging`.
+
+Then smoke-test staging in a browser and through the binding:
 
 - `GET /healthz` returns `200`.
 - `GET /readyz` returns `200` without exposing dependency details.
@@ -466,9 +592,13 @@ Smoke-test staging:
 - `WEB_APP_ORIGINS` accepts only the approved staging origin; the production
   origin and arbitrary HTTPS origins are rejected.
 - The repository's `BACKEND` Service Binding resolves to the staging API's
-  `WebAppApi` entrypoint after both Workers are deployed. The web staging
-  environment intentionally has `routes: []` until its public route and DNS
-  are enabled manually.
+  `WebAppApi` entrypoint after both Workers are deployed.
+- Log in through `https://staging.resender.dev`, open Connections, Messages,
+  Billing, and Settings, and complete a read-only action on each RPC-backed
+  screen. A binding failure or HTTP fallback is a failure.
+- An unauthenticated `POST /api/meta/send` returns `401`; an invalid signed
+  `POST /api/meta/webhook` returns `400`. These exercise the web-to-API proxy
+  route without creating a provider side effect.
 - An absent, malformed, and revoked API key each fail without exposing tenant
   data.
 - A controlled Meta/Stripe test signature is accepted; an altered raw body is
@@ -491,8 +621,15 @@ npm --workspace web run deploy
 ```
 
 Creating or deploying the API Worker is not authorization to change DNS, the
-Meta callback, the Stripe webhook endpoint, enable the web staging route, or
-deploy the updated `web` Worker configuration. Those cutovers remain manual.
+Meta callback, the Stripe webhook endpoint, or deploy the updated `web` Worker
+configuration. Those cutovers remain manual.
+
+Production deploys never run on merge. `.github/workflows/deploy.yml` accepts
+only a manual `workflow_dispatch` from `refs/heads/main` with the exact
+confirmation `DEPLOY_PRODUCTION`, and the job uses the GitHub `production`
+environment. Before the first run, Arturo must configure **required reviewers**
+for that environment in GitHub repository settings. The confirmation string is
+not a substitute for environment approval.
 
 ## Security and architecture notes
 
@@ -515,8 +652,22 @@ deploy the updated `web` Worker configuration. Those cutovers remain manual.
 
 ## Rollback
 
+For staging, roll back web first, verify the browser and proxy smokes against
+the previous compatible API, then roll back API only if required:
+
+```bash
+npx wrangler rollback --env staging -c apps/web/wrangler.jsonc
+npx wrangler rollback --env staging -c apps/api/wrangler.jsonc
+```
+
+For production, use the same order with `--env=""` under the production
+environment approval. Record the selected version IDs and sanitized smoke
+results. Do not detach custom domains or rewrite DNS during an application
+rollback unless the incident is specifically a domain-routing failure and the
+previous route owner is known.
+
 Before the callback cutover is recorded, provider traffic is assumed to point
-at `web`, so rollback is limited:
+at `web`, so the remaining rollback is limited:
 
 1. Stop test traffic to `api`.
 2. Roll back the `api` Worker version in Cloudflare.

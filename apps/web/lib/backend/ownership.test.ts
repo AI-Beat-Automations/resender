@@ -86,6 +86,19 @@ describe("phase-2 ownership boundaries", () => {
     expect(ciWorkflow).toContain(
       "npm --workspace @workspace/contracts run test:run"
     )
+    expect(ciWorkflow).toContain(
+      "npm --workspace web exec -- opennextjs-cloudflare build"
+    )
+    for (const workspace of [
+      "@workspace/contracts",
+      "@workspace/ui",
+      "api",
+      "web",
+    ]) {
+      expect(ciWorkflow).toContain(
+        `npm --workspace ${workspace} run typecheck -- --incremental false`
+      )
+    }
     expect(workflow).not.toContain("DATABASE_URL: ${{ secrets.DATABASE_URL_MIGRATIONS }}\n\n      - name: Deploy web")
     expect(workflow).toContain('test "$status" = "400"')
     expect(workflow).toContain("https://api.resender.dev/readyz")
@@ -93,6 +106,154 @@ describe("phase-2 ownership boundaries", () => {
     expect(apiPackage).toContain('wrangler deploy --dry-run --env=\\"\\"')
     expect(webPackage).toContain('opennextjs-cloudflare deploy --env=\\"\\"')
     expect(webPackage).toContain('opennextjs-cloudflare upload --env=\\"\\"')
+  })
+
+  it("declares exact production and staging routes with connected service bindings", async () => {
+    const [apiConfig, webConfig, webPackageSource] = await Promise.all([
+      readFile(path.join(API_ROOT, "wrangler.jsonc"), "utf8"),
+      readFile(path.join(WEB_ROOT, "wrangler.jsonc"), "utf8"),
+      readFile(path.join(WEB_ROOT, "package.json"), "utf8"),
+    ])
+    const webPackage = JSON.parse(webPackageSource) as {
+      scripts: Record<string, string>
+    }
+
+    expect(apiConfig.match(/"pattern": "api\.resender\.dev"/gu)).toHaveLength(1)
+    expect(
+      apiConfig.match(/"pattern": "api-staging\.resender\.dev"/gu)
+    ).toHaveLength(1)
+    expect(apiConfig).toMatch(
+      /"pattern": "api\.resender\.dev", "custom_domain": true/u
+    )
+    expect(apiConfig).toMatch(
+      /"pattern": "api-staging\.resender\.dev",\s+"custom_domain": true/gu
+    )
+
+    expect(webConfig.match(/"pattern": "resender\.dev"/gu)).toHaveLength(1)
+    expect(
+      webConfig.match(/"pattern": "staging\.resender\.dev"/gu)
+    ).toHaveLength(1)
+    expect(webConfig).toMatch(
+      /"pattern": "resender\.dev", "custom_domain": true/u
+    )
+    expect(webConfig).toMatch(
+      /"pattern": "staging\.resender\.dev",\s+"custom_domain": true/u
+    )
+    expect(webConfig).toMatch(
+      /"binding": "BACKEND",\s+"service": "api",\s+"entrypoint": "WebAppApi"/u
+    )
+    expect(webConfig).toMatch(
+      /"binding": "BACKEND",\s+"service": "api-staging",\s+"entrypoint": "WebAppApi"/u
+    )
+
+    expect(webPackage.scripts["build:staging"]).toBe(
+      "opennextjs-cloudflare build"
+    )
+    expect(webPackage.scripts["deploy:staging"]).toBe(
+      "npm run build:staging && opennextjs-cloudflare deploy --env staging"
+    )
+  })
+
+  it("keeps production deployment manual, confirmed, main-only and environment-gated", async () => {
+    const workflow = await readFile(
+      path.join(REPO_ROOT, ".github/workflows/deploy.yml"),
+      "utf8"
+    )
+
+    expect(workflow).not.toMatch(/^\s+push:/mu)
+    expect(workflow).toMatch(
+      /workflow_dispatch:\s+inputs:\s+confirm:[\s\S]*required: true[\s\S]*type: string/u
+    )
+    expect(workflow).toContain("inputs.confirm == 'DEPLOY_PRODUCTION'")
+    expect(workflow).toContain("github.ref == 'refs/heads/main'")
+    expect(workflow).toMatch(/^\s+environment: production$/mu)
+  })
+
+  it("documents staging order, build-time vars, custom-domain checks and rollback", async () => {
+    const [runbook, checklist, phaseOne] = await Promise.all([
+      readFile(
+        path.join(REPO_ROOT, "docs/api-cloudflare-manual-runbook.md"),
+        "utf8"
+      ),
+      readFile(
+        path.join(REPO_ROOT, "docs/cloudflare-infra-checklist.md"),
+        "utf8"
+      ),
+      readFile(path.join(REPO_ROOT, "docs/phase-1-api-migration.md"), "utf8"),
+    ])
+    const orderedMarkers = [
+      "npm --workspace api run deploy:staging",
+      "https://api-staging.resender.dev/readyz",
+      "npm --workspace web run deploy:staging",
+      "https://staging.resender.dev/",
+    ]
+    let cursor = -1
+    for (const marker of orderedMarkers) {
+      const next = runbook.indexOf(marker, cursor + 1)
+      expect(next).toBeGreaterThan(cursor)
+      cursor = next
+    }
+
+    for (const hostname of [
+      "api.resender.dev",
+      "api-staging.resender.dev",
+      "resender.dev",
+      "staging.resender.dev",
+    ]) {
+      expect(runbook).toContain(hostname)
+    }
+    for (const variable of [
+      "APP_URL",
+      "NEXT_PUBLIC_META_APP_ID",
+      "NEXT_PUBLIC_META_CONFIG_ID",
+      "NEXT_PUBLIC_POSTHOG_KEY",
+      "NEXT_PUBLIC_POSTHOG_HOST",
+    ]) {
+      expect(runbook).toContain(variable)
+    }
+    expect(runbook).toContain("required reviewers")
+    expect(runbook).toContain("No custom-domain, DNS, TLS, Worker deployment")
+    expect(runbook).toContain("wrangler rollback --env staging")
+
+    expect(checklist).toContain("Documento histórico/superseded")
+    expect(checklist).toContain("api-cloudflare-manual-runbook.md")
+    expect(checklist).not.toMatch(
+      /wrangler\s+secret\s+put|wrangler\s+deploy|npm\s+run\s+deploy/u
+    )
+    expect(phaseOne).not.toContain("phase-2-api-migration-frontend.md")
+  })
+
+  it("uses one integrated local Wrangler runtime for RPC acceptance", async () => {
+    const [rootPackageSource, devScript, runbook] = await Promise.all([
+      readFile(path.join(REPO_ROOT, "package.json"), "utf8"),
+      readFile(path.join(REPO_ROOT, "scripts/dev.mjs"), "utf8"),
+      readFile(
+        path.join(REPO_ROOT, "docs/api-cloudflare-manual-runbook.md"),
+        "utf8"
+      ),
+    ])
+    const rootPackage = JSON.parse(rootPackageSource) as {
+      scripts: Record<string, string>
+    }
+
+    expect(rootPackage.scripts.dev).toBe("node scripts/dev.mjs")
+    expect(rootPackage.scripts["dev:next"]).toBe(
+      "npm --workspace web run dev"
+    )
+    expect(devScript).toContain(
+      '"exec", "--", "opennextjs-cloudflare", "build"'
+    )
+    expect(devScript).toContain('"apps/web/wrangler.jsonc"')
+    expect(devScript).toContain('"apps/api/wrangler.jsonc"')
+    expect(devScript).toContain('"--local"')
+    expect(devScript).not.toContain('"--remote"')
+    expect(runbook).toContain("as `[connected]`")
+    expect(runbook).toContain('= "401"')
+    expect(runbook).toContain('= "400"')
+    expect(runbook).toContain("/api/meta/webhook")
+    expect(runbook).toContain("/api/stripe/webhook")
+    expect(runbook).toContain("restart `npm run dev`")
+    expect(runbook).toContain("UI-only Next development")
   })
 
   it("marks the phase-1 plan as historical without contradicting private compatibility", async () => {

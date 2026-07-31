@@ -32,9 +32,12 @@
   "env": {
     "staging": {
       "name": "web-staging",
-      // Staging is binding-ready but intentionally has no public route in this
-      // repository checkpoint. DNS/domain activation remains a manual step.
-      "routes": [],
+      "routes": [
+        {
+          "pattern": "staging.resender.dev",
+          "custom_domain": true
+        }
+      ],
       "services": [
         {
           "binding": "BACKEND",

@@ -32,6 +32,8 @@ jobs:
 
       - name: Nonincremental typecheck
         run: |
+          npm --workspace @workspace/contracts run typecheck -- --incremental false
+          npm --workspace @workspace/ui run typecheck -- --incremental false
           npm --workspace api run typecheck -- --incremental false
           npm --workspace web run typecheck -- --incremental false
 
@@ -74,7 +76,7 @@ jobs:
 
       - name: Package web Worker without upload
         run: |
-          npm --workspace web exec opennextjs-cloudflare build
+          npm --workspace web exec -- opennextjs-cloudflare build
           npx wrangler deploy --dry-run --env="" --config apps/web/wrangler.jsonc --outdir .wrangler/preview-dry-run
         env:
           NEXT_PUBLIC_META_APP_ID: ${{ vars.NEXT_PUBLIC_META_APP_ID }}

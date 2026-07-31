@@ -1,9 +1,12 @@
 name: Deploy
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type DEPLOY_PRODUCTION to run the production deployment
+        required: true
+        type: string
 
 concurrency:
   group: deploy-production
@@ -11,7 +14,9 @@ concurrency:
 
 jobs:
   deploy:
+    if: github.ref == 'refs/heads/main' && inputs.confirm == 'DEPLOY_PRODUCTION'
     runs-on: ubuntu-latest
+    environment: production
     steps:
       - uses: actions/checkout@v4
 
