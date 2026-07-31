@@ -73,6 +73,11 @@ export type PageRecord = {
   updatedAt: Date
 }
 
+export type ConnectPagesResult =
+  | { kind: "connected"; pages: PageRecord[] }
+  | { kind: "ownership_conflict"; pages: [] }
+  | { kind: "page_limit_exceeded"; pages: [] }
+
 export type MessageRecord = {
   id: string
   tenantId: string
@@ -523,21 +528,75 @@ export class SqlRepository {
       providerPageId: string
       name: string
       encryptedPageToken: string
-    }>
-  ): Promise<PageRecord[]> {
-    if (pages.length === 0) return []
-    const results = await this.sql.transaction((transaction) =>
-      pages.map(
-        (page) => transaction`
+    }>,
+    maxPages: number
+  ): Promise<ConnectPagesResult> {
+    if (pages.length === 0) return { kind: "connected", pages: [] }
+    const payload = JSON.stringify(
+      pages.map((page) => ({
+        provider_page_id: page.providerPageId,
+        name: page.name,
+        encrypted_page_token: page.encryptedPageToken,
+      }))
+    )
+    const transactionResults = await this.sql.transaction((transaction) => [
+      transaction`select pg_advisory_xact_lock(8245901273104221)`,
+      transaction`
+        with requested as (
+          select distinct provider_page_id, name, encrypted_page_token
+          from jsonb_to_recordset(${payload}::jsonb) as page(
+            provider_page_id text,
+            name text,
+            encrypted_page_token text
+          )
+        ),
+        checks as (
+          select
+            exists(
+              select 1
+              from connected_pages existing
+              join requested on requested.provider_page_id = existing.meta_page_id
+              where existing.tenant_id <> ${tenantId}
+            ) as ownership_conflict,
+            (
+              select count(*)::integer
+              from connected_pages
+              where tenant_id = ${tenantId} and status = 'active'
+            ) as active_page_count,
+            (
+              select count(*)::integer
+              from requested
+              left join connected_pages existing
+                on existing.meta_page_id = requested.provider_page_id
+              where existing.id is null
+                or (
+                  existing.tenant_id = ${tenantId}
+                  and existing.status = 'disconnected'
+                )
+            ) as requested_slots
+        ),
+        allowed as (
+          select
+            not ownership_conflict
+              and active_page_count + requested_slots <= ${maxPages}
+              as may_connect,
+            ownership_conflict,
+            active_page_count + requested_slots > ${maxPages}
+              as page_limit_exceeded
+          from checks
+        ),
+        connected as (
           insert into connected_pages (
             tenant_id, meta_page_id, name, page_access_token_encrypted
           )
-          values (
+          select
             ${tenantId},
-            ${page.providerPageId},
-            ${page.name},
-            ${page.encryptedPageToken}
-          )
+            requested.provider_page_id,
+            requested.name,
+            requested.encrypted_page_token
+          from requested
+          cross join allowed
+          where allowed.may_connect
           on conflict (meta_page_id) do update set
             name = excluded.name,
             status = 'active',
@@ -553,14 +612,61 @@ export class SqlRepository {
             token_error, token_error_at, webhook_url,
             page_access_token_encrypted, webhook_signing_secret_encrypted,
             connected_at, disconnected_at, updated_at
-        `
-      )
-    )
-    const rows = results.flat()
-    if (rows.length !== pages.length) {
-      throw new Error("page ownership changed during connection")
+        )
+        select 'connected' as result_kind,
+          id, tenant_id, meta_page_id, name, status, token_status,
+          token_error, token_error_at, webhook_url,
+          page_access_token_encrypted, webhook_signing_secret_encrypted,
+          connected_at, disconnected_at, updated_at
+        from connected
+        union all
+        select
+          case
+            when ownership_conflict then 'ownership_conflict'
+            else 'page_limit_exceeded'
+          end as result_kind,
+          null::uuid, null::uuid, null::text, null::text, null::text,
+          null::text, null::text, null::timestamptz, null::text, null::text,
+          null::text, null::timestamptz, null::timestamptz, null::timestamptz
+        from allowed
+        where not may_connect
+        union all
+        -- Force the statement itself to fail if a non-locking rolling writer
+        -- wins an ON CONFLICT race after our snapshot. Because this assertion
+        -- is in the DML statement, PostgreSQL rolls back every row in the
+        -- batch instead of letting the repository notice after commit.
+        select
+          (
+            'atomic_page_connection_' ||
+            (select count(*)::text from connected)
+          )::uuid::text as result_kind,
+          null::uuid, null::uuid, null::text, null::text, null::text,
+          null::text, null::text, null::timestamptz, null::text, null::text,
+          null::text, null::timestamptz, null::timestamptz, null::timestamptz
+        from allowed
+        where may_connect
+          and (select count(*) from connected)
+            <> (select count(*) from requested)
+      `,
+    ])
+    const rows = transactionResults[1] ?? []
+    const resultKind = text(rows[0]?.result_kind)
+    if (resultKind === "ownership_conflict") {
+      return { kind: "ownership_conflict", pages: [] }
     }
-    return rows.map(mapPage)
+    if (resultKind === "page_limit_exceeded") {
+      return { kind: "page_limit_exceeded", pages: [] }
+    }
+    if (
+      resultKind !== "connected" ||
+      rows.length !== new Set(pages.map((page) => page.providerPageId)).size
+    ) {
+      throw new Error("atomic Page connection did not persist the full batch")
+    }
+    return {
+      kind: "connected",
+      pages: rows.map(mapPage),
+    }
   }
 
   async listConversations(

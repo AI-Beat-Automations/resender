@@ -208,6 +208,7 @@ describe("RPC Page state and conversation history", () => {
 
   it("does not create or replace a signing secret during connect", async () => {
     const statements: string[] = []
+    const parameters: unknown[][] = []
     const record = pageRecord()
     const row = {
       id: record.id,
@@ -225,9 +226,16 @@ describe("RPC Page state and conversation history", () => {
       disconnected_at: null,
       updated_at: record.updatedAt,
     }
-    const tagged = async (strings: TemplateStringsArray) => {
-      statements.push(strings.join("?"))
-      return [row]
+    const tagged = async (
+      strings: TemplateStringsArray,
+      ...values: unknown[]
+    ) => {
+      const statement = strings.join("?")
+      statements.push(statement)
+      parameters.push(values)
+      return statement.includes("pg_advisory_xact_lock")
+        ? []
+        : [{ ...row, result_kind: "connected" }]
     }
     const client = Object.assign(tagged, {
       query: async () => [],
@@ -236,7 +244,7 @@ describe("RPC Page state and conversation history", () => {
       ) => Promise.all(callback(tagged)),
     }) as unknown as Sql
 
-    const [connected] = await new SqlRepository(client).connectPages(
+    const result = await new SqlRepository(client).connectPages(
       record.tenantId,
       [
         {
@@ -244,12 +252,75 @@ describe("RPC Page state and conversation history", () => {
           name: record.name,
           encryptedPageToken: "new-token",
         },
-      ]
+      ],
+      2
     )
 
-    const mutation = statements[0]?.split("returning")[0] ?? ""
+    expect(result.kind).toBe("connected")
+    const connected = result.kind === "connected" ? result.pages[0] : undefined
+    const mutation = statements[1]?.split("returning")[0] ?? ""
     expect(mutation).not.toContain("webhook_signing_secret_encrypted")
     expect(connected?.webhookSigningSecretEncrypted).toBe("encrypted-secret")
+    expect(JSON.parse(String(parameters[1]?.[0]))).toEqual([
+      {
+        provider_page_id: record.providerPageId,
+        name: record.name,
+        encrypted_page_token: "new-token",
+      },
+    ])
+  })
+
+  it.each(["ownership_conflict", "page_limit_exceeded"] as const)(
+    "returns the atomic %s branch without persisting a partial batch",
+    async (resultKind) => {
+      const sql = metaConnectSql([{ result_kind: resultKind }])
+      const result = await new SqlRepository(sql.client).connectPages(
+        "tenant_1",
+        [
+          {
+            providerPageId: "page_1",
+            name: "One",
+            encryptedPageToken: "ciphertext",
+          },
+        ],
+        2
+      )
+
+      expect(result).toEqual({ kind: resultKind, pages: [] })
+      expect(sql.committedWrites()).toBe(0)
+      expect(sql.statements[0]).toContain("pg_advisory_xact_lock")
+      expect(sql.statements[1]).toContain("active_page_count + requested_slots")
+      expect(sql.statements[1]).toContain("existing.tenant_id <>")
+    }
+  )
+
+  it("rolls back the whole batch when a non-locking writer causes a partial ON CONFLICT result", async () => {
+    const sql = metaConnectSql([], { simulatePartialConflict: true })
+    const repository = new SqlRepository(sql.client)
+
+    await expect(
+      repository.connectPages(
+        "tenant_1",
+        [
+          {
+            providerPageId: "page_1",
+            name: "One",
+            encryptedPageToken: "ciphertext-1",
+          },
+          {
+            providerPageId: "page_2",
+            name: "Two",
+            encryptedPageToken: "ciphertext-2",
+          },
+        ],
+        2
+      )
+    ).rejects.toThrow("invalid input syntax for type uuid")
+
+    expect(sql.committedWrites()).toBe(0)
+    expect(sql.statements[1]).toContain("(select count(*) from connected)")
+    expect(sql.statements[1]).toContain("<> (select count(*) from requested)")
+    expect(sql.statements[1]).toContain("::uuid::text as result_kind")
   })
 
   it("guards webhook and signing-secret mutations with active Page status", async () => {
@@ -661,6 +732,54 @@ function fakeSql(results: Row[][]): Sql {
     query: async () => [],
     transaction: async () => [],
   }) as unknown as Sql
+}
+
+function metaConnectSql(
+  resultRows: Row[],
+  options: { simulatePartialConflict?: boolean } = {}
+): {
+  client: Sql
+  statements: string[]
+  committedWrites: () => number
+} {
+  const statements: string[] = []
+  let stagedWrites = 0
+  let committedWrites = 0
+  const tagged = async (strings: TemplateStringsArray) => {
+    const statement = strings.join("?")
+    statements.push(statement)
+    if (statement.includes("pg_advisory_xact_lock")) return []
+    if (options.simulatePartialConflict) {
+      stagedWrites = 1
+      throw new Error(
+        'invalid input syntax for type uuid: "atomic_page_connection_1"'
+      )
+    }
+    if (resultRows.some((row) => row.result_kind === "connected")) {
+      stagedWrites = resultRows.length
+    }
+    return resultRows
+  }
+  const client = Object.assign(tagged, {
+    query: async () => [],
+    transaction: async (
+      callback: (transaction: typeof tagged) => Promise<Row[]>[]
+    ) => {
+      try {
+        const results = await Promise.all(callback(tagged))
+        committedWrites += stagedWrites
+        return results
+      } catch (error) {
+        stagedWrites = 0
+        throw error
+      }
+    },
+  }) as unknown as Sql
+  return {
+    client,
+    statements,
+    committedWrites: () => committedWrites,
+  }
 }
 
 function capturingSql(results: Row[][]): {

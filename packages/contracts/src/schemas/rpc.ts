@@ -84,6 +84,10 @@ export const MetaAuthorizationRpcInputSchema = z.object({
   redirectUri: WebUrlInputSchema,
 })
 
+export const MetaAuthorizationResultSchema = z.object({
+  authorized: z.literal(true),
+})
+
 export const ConnectMetaPagesRpcInputSchema = z.object({
   providerPageIds: z
     .array(ProviderPageIdInputSchema)
@@ -293,9 +297,9 @@ export type ConnectMetaPagesInput = z.infer<
   typeof ConnectMetaPagesRpcInputSchema
 >
 
-export type MetaAuthorizationResultDto = {
-  authorized: true
-}
+export type MetaAuthorizationResultDto = z.infer<
+  typeof MetaAuthorizationResultSchema
+>
 
 export type RpcConversationDto = z.infer<typeof ConversationSchema>
 export type RpcMessageDto = z.infer<typeof MessageSchema>

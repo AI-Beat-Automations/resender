@@ -12,6 +12,8 @@ import {
   ConversationListSchema,
   ConversationThreadSchema,
   CreatedApiKeySchema,
+  MetaAuthorizationResultSchema,
+  MetaPageSelectionSchema,
   ProductAccessSchema,
   ProductShellSchema,
   RpcPageSchema,
@@ -35,8 +37,12 @@ import {
   type ConversationListInput,
   type ConversationThreadDto,
   type ConversationThreadRpcInput,
+  type ConnectMetaPagesInput,
   type CreatedApiKeyDto,
   type DeleteAccountRpcInput,
+  type MetaAuthorizationResultDto,
+  type MetaAuthorizationRpcInput,
+  type MetaPageSelectionDto,
   type ProductAccessDto,
   type ProductShellDto,
   type RegisterUserRpcInput,
@@ -80,6 +86,11 @@ const SENSITIVE_AUTH_FIELD_SUFFIXES = [
   "secret",
   "token",
 ] as const
+const SAFE_META_TOKEN_FIELDS = new Set([
+  "tokenstatus",
+  "tokenerror",
+  "tokenerrorat",
+])
 
 export class BackendUnavailableError extends Error {
   constructor() {
@@ -166,6 +177,74 @@ export async function getProductShell(
     throw new BackendProtocolError()
   }
   return parsed.data
+}
+
+export async function exchangeMetaAuthorizationCode(
+  actor: RpcActor,
+  input: MetaAuthorizationRpcInput
+): Promise<MetaAuthorizationResultDto> {
+  const response = await invokeBackend((backend) =>
+    backend.exchangeMetaAuthorizationCode(actor, input)
+  )
+  assertNoSensitiveMetaFields(response)
+  const parsed = MetaAuthorizationResultSchema.safeParse(response)
+  if (!parsed.success) throw new BackendProtocolError()
+  return parsed.data
+}
+
+export async function listAuthorizedMetaPages(
+  actor: RpcActor
+): Promise<MetaPageSelectionDto> {
+  const response = await invokeBackend((backend) =>
+    backend.listAuthorizedMetaPages(actor)
+  )
+  assertNoSensitiveMetaFields(response)
+  const parsed = MetaPageSelectionSchema.safeParse(response)
+  if (!parsed.success) throw new BackendProtocolError()
+
+  const seenIds = new Set<string>()
+  for (const page of parsed.data.pages) {
+    if (seenIds.has(page.providerPageId)) throw new BackendProtocolError()
+    seenIds.add(page.providerPageId)
+  }
+  if (
+    parsed.data.remainingSlots !==
+    Math.max(0, parsed.data.maxPages - parsed.data.activePageCount)
+  ) {
+    throw new BackendProtocolError()
+  }
+  return parsed.data
+}
+
+export async function connectMetaPages(
+  actor: RpcActor,
+  input: ConnectMetaPagesInput
+): Promise<RpcPageDto[]> {
+  const response = await invokeBackend((backend) =>
+    backend.connectMetaPages(actor, input)
+  )
+  assertNoSensitiveMetaFields(response)
+  const parsed = RpcPageListSchema.safeParse(response)
+  if (!parsed.success) throw new BackendProtocolError()
+
+  const allowedProviderIds = new Set(input.providerPageIds)
+  const seenPageIds = new Set<string>()
+  const seenProviderIds = new Set<string>()
+  for (const page of parsed.data) {
+    if (
+      !allowedProviderIds.has(page.providerPageId) ||
+      seenPageIds.has(page.id) ||
+      seenProviderIds.has(page.providerPageId)
+    ) {
+      throw new BackendProtocolError()
+    }
+    seenPageIds.add(page.id)
+    seenProviderIds.add(page.providerPageId)
+  }
+  if (seenProviderIds.size !== allowedProviderIds.size) {
+    throw new BackendProtocolError()
+  }
+  return parsed.data.map(sanitizeRpcPage)
 }
 
 export async function listConversations(
@@ -516,5 +595,27 @@ function assertNoSensitiveAuthFields(value: unknown): void {
       throw new BackendProtocolError()
     }
     assertNoSensitiveAuthFields(child)
+  }
+}
+
+function assertNoSensitiveMetaFields(value: unknown): void {
+  if (Array.isArray(value)) {
+    for (const item of value) assertNoSensitiveMetaFields(item)
+    return
+  }
+  if (!value || typeof value !== "object") return
+  for (const [key, child] of Object.entries(value)) {
+    const normalizedKey = key.toLowerCase().replaceAll(/[_-]/gu, "")
+    if (
+      (normalizedKey.includes("token") &&
+        !SAFE_META_TOKEN_FIELDS.has(normalizedKey)) ||
+      normalizedKey.includes("secret") ||
+      normalizedKey === "code" ||
+      normalizedKey.endsWith("authorizationcode") ||
+      normalizedKey.endsWith("authcode")
+    ) {
+      throw new BackendProtocolError()
+    }
+    assertNoSensitiveMetaFields(child)
   }
 }

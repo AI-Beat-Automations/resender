@@ -580,7 +580,7 @@ export class ApiService {
           state:
             owner?.tenantId === user.id && owner.status === "active"
               ? "already_connected"
-              : owner?.status === "active"
+              : owner
                 ? "owned_by_other_tenant"
                 : "selectable",
         }
@@ -629,11 +629,7 @@ export class ApiService {
     const entitlement = await this.entitlement(user.id)
     if (!entitlement.limits) throw planError("plan_unavailable")
     const ownership = await this.repository.getPageOwnership(ids)
-    if (
-      ownership.some(
-        (item) => item.status === "active" && item.tenantId !== user.id
-      )
-    ) {
+    if (ownership.some((item) => item.tenantId !== user.id)) {
       throw new ContractError({
         code: "provider_rejected",
         message: "One or more selected Pages belong to another account.",
@@ -667,34 +663,34 @@ export class ApiService {
         status: 422,
       })
     }
-    const subscribed: typeof selected = []
-    try {
-      for (const page of selected) {
-        await this.providerOperation("Meta", () =>
-          this.meta.subscribePage(page.id, page.accessToken)
-        )
-        subscribed.push(page)
-      }
-      const pages = await this.repository.connectPages(
-        user.id,
-        selected.map((page) => ({
-          providerPageId: page.id,
-          name: page.name,
-          encryptedPageToken: encryptSecret(
-            this.env.TOKEN_ENCRYPTION_KEY,
-            page.accessToken
-          ),
-        }))
+    for (const page of selected) {
+      await this.providerOperation("Meta", () =>
+        this.meta.subscribePage(page.id, page.accessToken)
       )
-      return pages.map(rpcPageDto)
-    } catch (error) {
-      await Promise.allSettled(
-        subscribed.map((page) =>
-          this.meta.unsubscribePage(page.id, page.accessToken)
-        )
-      )
-      throw error
     }
+    const result = await this.repository.connectPages(
+      user.id,
+      selected.map((page) => ({
+        providerPageId: page.id,
+        name: page.name,
+        encryptedPageToken: encryptSecret(
+          this.env.TOKEN_ENCRYPTION_KEY,
+          page.accessToken
+        ),
+      })),
+      entitlement.limits.maxPages
+    )
+    if (result.kind === "ownership_conflict") {
+      throw new ContractError({
+        code: "not_found",
+        message: "One or more selected Pages are unavailable.",
+        status: 404,
+      })
+    }
+    if (result.kind === "page_limit_exceeded") {
+      throw planError("page_limit_exceeded")
+    }
+    return result.pages.map(rpcPageDto)
   }
 
   async disconnectPage(actor: RpcActor, pageId: string): Promise<RpcPageDto> {

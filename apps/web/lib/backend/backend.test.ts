@@ -16,17 +16,20 @@ import {
   BackendUnavailableError,
   authenticateCredentials,
   changePassword,
+  connectMetaPages,
   createApiKey,
   createBillingPortalSession,
   createCheckoutSession,
   deleteAccount,
   disconnectPage,
+  exchangeMetaAuthorizationCode,
   getConversationThread,
   getBackend,
   getBillingState,
   getProductAccess,
   getProductShell,
   listConversations,
+  listAuthorizedMetaPages,
   listApiKeys,
   listPages,
   revokeApiKey,
@@ -961,6 +964,80 @@ describe("backend RPC adapter", () => {
       getConversationThread(ACTOR, {
         conversationId: CONVERSATION_ID,
         limit: 100,
+      })
+    ).rejects.toThrowError(BackendProtocolError)
+  })
+
+  it("accepts safe Meta DTO fields and requires an exact connect result set", async () => {
+    const connect = vi.fn().mockResolvedValue([
+      pageDto({
+        tokenStatus: "invalid",
+        tokenError: "raw backend copy",
+        tokenErrorAt: "2026-07-30T18:00:00.000Z",
+      }),
+    ])
+    openNext.getCloudflareContext.mockResolvedValue({
+      env: { BACKEND: { connectMetaPages: connect } },
+    })
+
+    await expect(
+      connectMetaPages(ACTOR, { providerPageIds: ["provider_page_1"] })
+    ).resolves.toMatchObject([
+      {
+        providerPageId: "provider_page_1",
+        tokenStatus: "invalid",
+        tokenError: "The Page credential is invalid. Reconnect the Page.",
+      },
+    ])
+
+    connect.mockResolvedValue([])
+    await expect(
+      connectMetaPages(ACTOR, { providerPageIds: ["provider_page_1"] })
+    ).rejects.toThrowError(BackendProtocolError)
+  })
+
+  it.each([
+    { pageAccessTokenEncrypted: "ciphertext" },
+    { encryptedPageToken: "ciphertext" },
+    { metaUserAccessTokenEncrypted: "ciphertext" },
+    { authorizationCode: "secret-code" },
+    { clientSecret: "secret" },
+  ])("rejects sensitive Meta response aliases %#", async (leak) => {
+    const list = vi.fn().mockResolvedValue({
+      pages: [
+        {
+          providerPageId: "provider_page_1",
+          name: "Support",
+          state: "selectable",
+          ...leak,
+        },
+      ],
+      maxPages: 2,
+      activePageCount: 0,
+      remainingSlots: 2,
+    })
+    openNext.getCloudflareContext.mockResolvedValue({
+      env: { BACKEND: { listAuthorizedMetaPages: list } },
+    })
+
+    await expect(listAuthorizedMetaPages(ACTOR)).rejects.toThrowError(
+      BackendProtocolError
+    )
+  })
+
+  it("rejects sensitive fields even when the authorization shape is otherwise valid", async () => {
+    const exchange = vi.fn().mockResolvedValue({
+      authorized: true,
+      pageAccessTokenEncrypted: "ciphertext",
+    })
+    openNext.getCloudflareContext.mockResolvedValue({
+      env: { BACKEND: { exchangeMetaAuthorizationCode: exchange } },
+    })
+
+    await expect(
+      exchangeMetaAuthorizationCode(ACTOR, {
+        code: "one-time-code",
+        redirectUri: "https://resender.dev/api/meta/callback",
       })
     ).rejects.toThrowError(BackendProtocolError)
   })

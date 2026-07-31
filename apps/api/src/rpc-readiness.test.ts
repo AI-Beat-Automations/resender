@@ -7,6 +7,7 @@ import { ApiService } from "./application/service"
 import { encryptSecret, hashPassword } from "./infrastructure/crypto/secrets"
 import {
   SqlRepository,
+  type PageRecord,
   type SubscriptionRecord,
   type UserRecord,
 } from "./infrastructure/db/repository"
@@ -908,6 +909,12 @@ describe("backend RPC readiness", () => {
           redirectUri: "https://app.resender.dev/connections",
         })
       )
+      const evilOrigin = await captureError(
+        workerExports.WebAppApi.exchangeMetaAuthorizationCode(ACTOR, {
+          code: "authorization-code",
+          redirectUri: "https://evil.example/api/meta/callback",
+        })
+      )
       const result =
         await workerExports.WebAppApi.exchangeMetaAuthorizationCode(ACTOR, {
           code: "authorization-code",
@@ -915,6 +922,11 @@ describe("backend RPC readiness", () => {
         })
 
       expect(invalid).toMatchObject({
+        code: "validation_error",
+        status: 400,
+        details: [{ path: "redirectUri" }],
+      })
+      expect(evilOrigin).toMatchObject({
         code: "validation_error",
         status: 400,
         details: [{ path: "redirectUri" }],
@@ -932,6 +944,51 @@ describe("backend RPC readiness", () => {
       expect(ciphertext).not.toContain("meta-token-must-not-cross")
     })
 
+    it("returns only minimal selectable Page data and treats disconnected foreign ownership as unavailable", async () => {
+      mockProductActor()
+      vi.spyOn(SqlRepository.prototype, "countActivePages").mockResolvedValue(0)
+      vi.spyOn(SqlRepository.prototype, "getUsage").mockResolvedValue(0)
+      vi.spyOn(
+        SqlRepository.prototype,
+        "getMetaUserTokenEncrypted"
+      ).mockResolvedValue(
+        encryptSecret(String(env.TOKEN_ENCRYPTION_KEY), "user-token")
+      )
+      vi.spyOn(MetaClient.prototype, "listPages").mockResolvedValue([
+        { id: "page_free", name: "Free", accessToken: "page-token-free" },
+        {
+          id: "page_foreign",
+          name: "Foreign",
+          accessToken: "page-token-foreign",
+        },
+      ])
+      vi.spyOn(SqlRepository.prototype, "getPageOwnership").mockResolvedValue([
+        {
+          providerPageId: "page_foreign",
+          tenantId: OTHER_ACTOR_ID,
+          status: "disconnected",
+        },
+      ])
+
+      const result =
+        await workerExports.WebAppApi.listAuthorizedMetaPages(ACTOR)
+
+      expect(result).toEqual({
+        pages: [
+          { providerPageId: "page_free", name: "Free", state: "selectable" },
+          {
+            providerPageId: "page_foreign",
+            name: "Foreign",
+            state: "owned_by_other_tenant",
+          },
+        ],
+        maxPages: 2,
+        activePageCount: 0,
+        remainingSlots: 2,
+      })
+      expect(JSON.stringify(result)).not.toMatch(/token|cipher/iu)
+    })
+
     it("rejects foreign Page ownership and plan overflow before provider writes", async () => {
       mockProductActor()
       vi.spyOn(SqlRepository.prototype, "countActivePages")
@@ -943,7 +1000,7 @@ describe("backend RPC readiness", () => {
           {
             providerPageId: "page_foreign",
             tenantId: OTHER_ACTOR_ID,
-            status: "active",
+            status: "disconnected",
           },
         ])
         .mockResolvedValueOnce([])
@@ -973,7 +1030,7 @@ describe("backend RPC readiness", () => {
       expect(connectPages).not.toHaveBeenCalled()
     })
 
-    it("unsubscribes every subscribed Page when all-or-nothing persistence fails", async () => {
+    it("does not unsubscribe an app-wide Meta subscription after persistence loses a race", async () => {
       mockProductActor()
       vi.spyOn(SqlRepository.prototype, "countActivePages").mockResolvedValue(0)
       vi.spyOn(SqlRepository.prototype, "getUsage").mockResolvedValue(0)
@@ -1020,15 +1077,115 @@ describe("backend RPC readiness", () => {
       ])
       expect(connectPages).toHaveBeenCalledOnce()
       expect(connectPages.mock.calls[0]?.[1]).toHaveLength(2)
+      expect(connectPages.mock.calls[0]?.[2]).toBe(2)
       for (const page of connectPages.mock.calls[0]?.[1] ?? []) {
         expect(page.encryptedPageToken).not.toContain("page-token")
       }
-      expect(unsubscribePage.mock.calls).toEqual([
-        ["page_1", "page-token-1"],
-        ["page_2", "page-token-2"],
-      ])
+      expect(unsubscribePage).not.toHaveBeenCalled()
       expect(JSON.stringify(error)).not.toContain("page-token")
       expect(JSON.stringify(error)).not.toContain("user-token")
+    })
+
+    it("atomically admits only one concurrent connection for the final plan slot", async () => {
+      mockProductActor()
+      vi.spyOn(SqlRepository.prototype, "countActivePages").mockResolvedValue(1)
+      vi.spyOn(SqlRepository.prototype, "getUsage").mockResolvedValue(0)
+      vi.spyOn(SqlRepository.prototype, "getPageOwnership").mockResolvedValue(
+        []
+      )
+      vi.spyOn(
+        SqlRepository.prototype,
+        "getMetaUserTokenEncrypted"
+      ).mockResolvedValue(
+        encryptSecret(String(env.TOKEN_ENCRYPTION_KEY), "user-token")
+      )
+      vi.spyOn(MetaClient.prototype, "listPages").mockResolvedValue([
+        { id: "page_1", name: "One", accessToken: "page-token-1" },
+        { id: "page_2", name: "Two", accessToken: "page-token-2" },
+      ])
+      vi.spyOn(MetaClient.prototype, "subscribePage").mockResolvedValue()
+
+      let entered = 0
+      let release!: () => void
+      const bothEntered = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      let activePages = 1
+      vi.spyOn(SqlRepository.prototype, "connectPages").mockImplementation(
+        async (tenantId, pages, maxPages) => {
+          entered += 1
+          if (entered === 2) release()
+          await bothEntered
+          if (activePages + pages.length > maxPages) {
+            return { kind: "page_limit_exceeded", pages: [] }
+          }
+          activePages += pages.length
+          return {
+            kind: "connected",
+            pages: pages.map((page) =>
+              runtimePage({
+                tenantId,
+                providerPageId: page.providerPageId,
+                name: page.name,
+                pageAccessTokenEncrypted: page.encryptedPageToken,
+              })
+            ),
+          }
+        }
+      )
+
+      const results = await Promise.allSettled([
+        workerExports.WebAppApi.connectMetaPages(ACTOR, {
+          providerPageIds: ["page_1"],
+        }),
+        workerExports.WebAppApi.connectMetaPages(ACTOR, {
+          providerPageIds: ["page_2"],
+        }),
+      ])
+
+      expect(
+        results.filter((result) => result.status === "fulfilled")
+      ).toHaveLength(1)
+      const rejected = results.find((result) => result.status === "rejected")
+      expect(rejected).toMatchObject({
+        status: "rejected",
+        reason: { code: "page_limit_exceeded", status: 403 },
+      })
+      expect(activePages).toBe(2)
+    })
+
+    it("returns neutral not_found and never unsubscribes when ownership changes after precheck", async () => {
+      mockProductActor()
+      vi.spyOn(SqlRepository.prototype, "countActivePages").mockResolvedValue(0)
+      vi.spyOn(SqlRepository.prototype, "getUsage").mockResolvedValue(0)
+      vi.spyOn(SqlRepository.prototype, "getPageOwnership").mockResolvedValue(
+        []
+      )
+      vi.spyOn(
+        SqlRepository.prototype,
+        "getMetaUserTokenEncrypted"
+      ).mockResolvedValue(
+        encryptSecret(String(env.TOKEN_ENCRYPTION_KEY), "user-token")
+      )
+      vi.spyOn(MetaClient.prototype, "listPages").mockResolvedValue([
+        { id: "page_race", name: "Race", accessToken: "page-token" },
+      ])
+      vi.spyOn(MetaClient.prototype, "subscribePage").mockResolvedValue()
+      const unsubscribe = vi.spyOn(MetaClient.prototype, "unsubscribePage")
+      vi.spyOn(SqlRepository.prototype, "connectPages").mockResolvedValue({
+        kind: "ownership_conflict",
+        pages: [],
+      })
+
+      const error = await captureError(
+        workerExports.WebAppApi.connectMetaPages(ACTOR, {
+          providerPageIds: ["page_race"],
+        })
+      )
+
+      expect(error).toMatchObject({ code: "not_found", status: 404 })
+      expect(JSON.stringify(error)).not.toContain("page_race")
+      expect(unsubscribe).not.toHaveBeenCalled()
     })
 
     it("preserves typed provider errors without leaking tokens", async () => {
@@ -1107,6 +1264,26 @@ function activeSubscription(
     currentPeriodEnd: new Date("2026-08-01T00:00:00.000Z"),
     cancelAtPeriodEnd: false,
     lastStripeEventAt: new Date("2026-07-01T00:00:00.000Z"),
+    ...overrides,
+  }
+}
+
+function runtimePage(overrides: Partial<PageRecord> = {}): PageRecord {
+  return {
+    id: "f251bd5a-2772-489a-a725-43e2ea9d44ee",
+    tenantId: ACTOR.userId,
+    providerPageId: "page_1",
+    name: "Page",
+    status: "active",
+    tokenStatus: "valid",
+    tokenError: null,
+    tokenErrorAt: null,
+    webhookUrl: null,
+    pageAccessTokenEncrypted: "encrypted-page-token",
+    webhookSigningSecretEncrypted: null,
+    connectedAt: new Date(NOW),
+    disconnectedAt: null,
+    updatedAt: new Date(NOW),
     ...overrides,
   }
 }

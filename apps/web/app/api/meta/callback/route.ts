@@ -1,15 +1,19 @@
 import { NextResponse, type NextRequest } from "next/server"
 
 import { auth } from "@/auth"
-import { isUserWaitlisted } from "@/lib/auth/waitlist"
-import { hasActiveSubscription } from "@/lib/billing/subscription"
 import {
-  assertSecretEncryptionConfigured,
-  SecretEncryptionConfigError,
-} from "@/lib/crypto/encryption"
-import { APP_URL, STATE_COOKIE, exchangeCodeForUserToken } from "@/lib/meta"
-import { saveMetaUserAccessToken } from "@/lib/pages/meta-user-token"
-import { posthog } from "@/lib/posthog"
+  BackendRpcError,
+  BackendProtocolError,
+  BackendUnavailableError,
+  exchangeMetaAuthorizationCode,
+} from "@/lib/backend/backend"
+import {
+  configuredAppOrigin,
+  expiredMetaStateCookieOptions,
+  META_STATE_COOKIE,
+  metaRedirectUri,
+  validateMetaState,
+} from "@/lib/meta/oauth"
 
 // Meta redirige aquí con ?code=...&state=... tras aprobar el diálogo.
 // El callback ya no conecta nada (ADR 0004): solo persiste cifrado el user
@@ -19,54 +23,97 @@ import { posthog } from "@/lib/posthog"
 export const runtime = "nodejs"
 
 export async function GET(request: NextRequest) {
+  const appOrigin = configuredAppOrigin()
   const session = await auth()
   if (!session?.user?.id) {
-    return NextResponse.redirect(new URL("/login", APP_URL))
-  }
-
-  if (await isUserWaitlisted(session.user.id)) {
-    return NextResponse.redirect(new URL("/waitlist", APP_URL))
-  }
-
-  if (!(await hasActiveSubscription(session.user.id))) {
-    return NextResponse.redirect(new URL("/billing", APP_URL))
+    return clearedRedirect("/login", appOrigin)
   }
 
   const params = request.nextUrl.searchParams
   const code = params.get("code")
   const state = params.get("state")
-  const error = params.get("error")
-
-  const connections = new URL("/connections", APP_URL)
-  const fail = (reason: string) => {
-    connections.searchParams.set("meta", "error")
-    connections.searchParams.set("reason", reason)
-    const res = NextResponse.redirect(connections)
-    res.cookies.delete(STATE_COOKIE)
-    return res
+  let stateResult: ReturnType<typeof validateMetaState>
+  try {
+    stateResult = validateMetaState(
+      state,
+      request.cookies.get(META_STATE_COOKIE)?.value
+    )
+  } catch {
+    return failedRedirect("backend_invalid", appOrigin)
+  }
+  if (stateResult !== "valid") {
+    return failedRedirect(`state_${stateResult}`, appOrigin)
   }
 
-  // el usuario canceló o Meta devolvió error
-  if (error || !code) return fail(error ?? "missing_code")
+  if (params.has("error")) {
+    return failedRedirect("provider_cancelled", appOrigin)
+  }
+  if (!code) return failedRedirect("missing_code", appOrigin)
 
-  // CSRF: el state del query debe coincidir con la cookie que sembró /start
-  const expected = request.cookies.get(STATE_COOKIE)?.value
-  if (!state || !expected || state !== expected) return fail("state_mismatch")
+  // Consume the one-time browser state before crossing the service boundary.
+  // The response is prepared and its cookie expired before the RPC begins.
+  request.cookies.delete(META_STATE_COOKIE)
+  const response = failedRedirect("backend_unavailable", appOrigin)
 
   try {
-    assertSecretEncryptionConfigured()
-    const userToken = await exchangeCodeForUserToken(code)
-    await saveMetaUserAccessToken(session.user.id, userToken)
-
-    const res = NextResponse.redirect(new URL("/connections/select", APP_URL))
-    res.cookies.delete(STATE_COOKIE)
-    return res
+    await exchangeMetaAuthorizationCode(
+      { userId: session.user.id },
+      { code, redirectUri: metaRedirectUri() }
+    )
+    response.headers.set(
+      "location",
+      new URL("/connections/select", appOrigin).toString()
+    )
+    return response
   } catch (error) {
-    if (posthog) posthog.captureException(error, session.user.id)
-    console.error("meta connection failed", error)
-    if (error instanceof SecretEncryptionConfigError) {
-      return fail("configuration_failed")
+    if (error instanceof BackendRpcError) {
+      if (error.classification.destination) {
+        response.headers.set(
+          "location",
+          new URL(error.classification.destination, appOrigin).toString()
+        )
+      } else if (error.classification.kind === "provider") {
+        response.headers.set(
+          "location",
+          failureUrl("meta_session_expired", appOrigin).toString()
+        )
+      } else {
+        response.headers.set(
+          "location",
+          failureUrl("exchange_failed", appOrigin).toString()
+        )
+      }
+      return response
     }
-    return fail("exchange_failed")
+    if (error instanceof BackendUnavailableError) return response
+    if (error instanceof BackendProtocolError) {
+      response.headers.set(
+        "location",
+        failureUrl("backend_invalid", appOrigin).toString()
+      )
+      return response
+    }
+    response.headers.set(
+      "location",
+      failureUrl("exchange_failed", appOrigin).toString()
+    )
+    return response
   }
+}
+
+function failedRedirect(reason: string, appOrigin: URL) {
+  return clearedRedirect(failureUrl(reason, appOrigin), appOrigin)
+}
+
+function failureUrl(reason: string, appOrigin: URL) {
+  const url = new URL("/connections", appOrigin)
+  url.searchParams.set("meta", "error")
+  url.searchParams.set("reason", reason)
+  return url
+}
+
+function clearedRedirect(destination: string | URL, appOrigin: URL) {
+  const response = NextResponse.redirect(new URL(destination, appOrigin))
+  response.cookies.set(META_STATE_COOKIE, "", expiredMetaStateCookieOptions())
+  return response
 }
