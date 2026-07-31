@@ -109,11 +109,13 @@ describe("phase-2 ownership boundaries", () => {
   })
 
   it("declares exact production and staging routes with connected service bindings", async () => {
-    const [apiConfig, webConfig, webPackageSource] = await Promise.all([
-      readFile(path.join(API_ROOT, "wrangler.jsonc"), "utf8"),
-      readFile(path.join(WEB_ROOT, "wrangler.jsonc"), "utf8"),
-      readFile(path.join(WEB_ROOT, "package.json"), "utf8"),
-    ])
+    const [apiConfig, webConfig, typegenScript, webPackageSource] =
+      await Promise.all([
+        readFile(path.join(API_ROOT, "wrangler.jsonc"), "utf8"),
+        readFile(path.join(WEB_ROOT, "wrangler.jsonc"), "utf8"),
+        readFile(path.join(WEB_ROOT, "scripts/cf-typegen.mjs"), "utf8"),
+        readFile(path.join(WEB_ROOT, "package.json"), "utf8"),
+      ])
     const webPackage = JSON.parse(webPackageSource) as {
       scripts: Record<string, string>
     }
@@ -144,6 +146,17 @@ describe("phase-2 ownership boundaries", () => {
     )
     expect(webConfig).toMatch(
       /"binding": "BACKEND",\s+"service": "api-staging",\s+"entrypoint": "WebAppApi"/u
+    )
+    expect(typegenScript).toContain("experimental_readRawConfig")
+    expect(typegenScript).toContain("delete rawConfig.main")
+    expect(typegenScript).toContain('"../api/wrangler.jsonc"')
+    expect(typegenScript).toContain('"--env-file"')
+    expect(typegenScript).toContain('CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV: "false"')
+    expect(webPackage.scripts["cf-typegen"]).toBe(
+      "node scripts/cf-typegen.mjs"
+    )
+    expect(webPackage.scripts["cf-typegen:check"]).toBe(
+      "node scripts/cf-typegen.mjs --check"
     )
 
     expect(webPackage.scripts["build:staging"]).toBe(

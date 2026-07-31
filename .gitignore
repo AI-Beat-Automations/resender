@@ -44,6 +44,7 @@ yarn-error.log*
 # cloudflare / opennext
 .open-next/
 .wrangler/
+.wrangler-typegen.json
 .dev.vars*
 !.dev.vars.example
 !**/.dev.vars.example

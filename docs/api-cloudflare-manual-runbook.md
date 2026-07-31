@@ -145,6 +145,14 @@ npm --workspace web run typecheck
 npm --workspace api run typecheck
 ```
 
+Web type generation derives `.wrangler-typegen.json` from the tracked
+`apps/web/wrangler.jsonc` with Wrangler's own JSONC parser, then omits only
+`main`. This preserves the real `ASSETS`, routes and production/staging
+`BACKEND` bindings while preventing the ignored `.open-next/worker.js` build
+artifact from changing generated declarations. The derived config is ignored
+and is not a second source of truth; `cf-typegen:check` still executes
+Wrangler's real `types --check`.
+
 Review the generated `CloudflareEnv.BACKEND` type against
 `WebAppApiContract`, and verify local Wrangler reports the binding as
 connected before running the RPC smoke suite. Do not hand-edit
