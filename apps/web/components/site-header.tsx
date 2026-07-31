@@ -21,8 +21,8 @@ import { getDictionary, localePath, type Locale } from "@/content/i18n"
 // CTAs a la app existente (Login / Empieza). El menú mobile usa Sheet. El sitio
 // es solo modo claro (ver el wrapper `.light` de cada vista), así que acá no hay
 // switch de tema: ese vive únicamente en el sidebar de la consola.
-// Los docs son un sitio aparte (docs.resender.dev), así que ese link sale del
-// dominio y no se localiza.
+// Los docs viven fuera del sitio de marketing, así que ese link sale del
+// dominio y no se localiza. DOCS_URL apunta a la referencia pública vigente.
 export function SiteHeader({ lang }: { lang: Locale }) {
   const [open, setOpen] = React.useState(false)
   const dict = getDictionary(lang)

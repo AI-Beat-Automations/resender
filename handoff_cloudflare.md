@@ -1,5 +1,9 @@
 # Handoff — Migración a Cloudflare (Workers + OpenNext)
 
+> **Documento historico/superseded.** Registra la migracion inicial a un solo
+> Worker. No es autoridad para la arquitectura, rutas, retries ni ownership
+> actuales; usa `CONTEXT.md` y `docs/api-cloudflare-manual-runbook.md`.
+>
 > Documento de traspaso para continuar el trabajo en una sesión nueva.
 > Contexto: conversación de arquitectura del 2026-07-21 entre Arturo y Claude.
 > Objetivo de la próxima sesión: **implementar la migración a Cloudflare** siguiendo las decisiones ya tomadas aquí.

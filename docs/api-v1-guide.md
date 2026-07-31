@@ -36,15 +36,28 @@ receive a response and cannot know whether the request completed. The replay
 returns the stored result without another Meta call or quota charge. Reusing
 the key with a different body returns `409 idempotency_conflict`.
 
+A `409 idempotency_conflict` does not prove the key is free. It can mean that
+the same key and fingerprint are still in progress, or that the key is already
+associated with another body or a legacy reservation. For the same logical
+send, preserve the exact key and body while resolving uncertainty. Use a new
+key when changing the body or intentionally creating another logical send.
+
 A new accepted message returns `201`. An idempotent replay returns `200` with
-`Idempotent-Replayed: true`. The API does not automatically retry an outbound
-Meta send. A `422` or `502` response whose error
-`details` includes `messageId` identifies a persisted provider attempt and a
-completed idempotency key. Repeating that key returns the stored failed result
-and does not call Meta again. If the caller intentionally wants a new provider
-attempt after that response, it must send a new logical request with a new
-`Idempotency-Key`. A pre-Meta error without `details.messageId` did not reserve
-or complete the key; it is not evidence of a persisted provider attempt.
+`Idempotent-Replayed: true`. For each newly reserved outbound request, Resender
+makes one Meta provider attempt. If the client response is uncertain, repeat
+the same request with the same key and body: v1 replays the stored result
+without sending again. This client retry is separate from customer webhook
+delivery, which automatically retries retryable failures under the
+at-least-once policy below.
+
+A `422` or `502` response whose error `details` includes `messageId` identifies
+a persisted provider attempt and a completed idempotency key. Repeating that
+key returns the stored failed result and does not call Meta again. If the
+caller intentionally wants a new provider attempt after that response, it
+must send a new logical request with a new `Idempotency-Key`. For a `422` or
+`502` provider response without `details.messageId`, no provider attempt was
+persisted and the request did not reserve or complete the key. This conclusion
+does not apply to `409` or to unrelated error statuses.
 
 ## Customer webhook delivery
 
@@ -125,8 +138,10 @@ Migration procedure:
 4. Generate a stable `Idempotency-Key` for every logical send. Retain it while
    resolving client-side network uncertainty. After a `422`/`502` containing
    `details.messageId`, use a new key only when intentionally starting a new
-   provider attempt. Without `details.messageId`, the error occurred before
-   the key was reserved/completed, so do not treat it as a stored replay.
+   provider attempt. For `422`/`502` only, absence of `details.messageId`
+   means no provider attempt was persisted and no completed replay exists.
+   Handle `409` separately: keep the same body with that key while resolving
+   an in-progress send, and never change the body under an already used key.
 5. Update response parsing for the v1 `data` envelope and canonical error
    codes.
 6. Test new sends, same-key/same-body replay, and same-key/different-body
@@ -167,3 +182,10 @@ Removal is blocked until all of the following are true:
 
 If any condition is missing at the proposed sunset, extend the approved window
 and update customer communication; do not silently remove the endpoint.
+
+The independently hosted `docs.resender.dev` site must be updated and verified
+against the current OpenAPI document before any product link or `/docs`
+redirect points back to it. Until then, public navigation uses the Swagger UI
+at `https://api.resender.dev/docs`. Browsers or search engines that cached the
+previous permanent redirect may still reach the external site, so updating
+that site remains a blocking cutover task rather than an optional cleanup.

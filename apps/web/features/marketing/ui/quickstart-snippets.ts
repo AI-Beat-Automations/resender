@@ -9,7 +9,7 @@ export function buildSnippets(text: string) {
       lang: "bash",
       code: `curl -X POST https://api.resender.dev/v1/messages \\
   -H "Authorization: Bearer pk_live_..." \\
-  -H "Idempotency-Key: reply-7ac2cc32-001" \\
+  -H "Idempotency-Key: message-7ac2cc32-001" \\
   -H "Content-Type: application/json" \\
   -d '{
     "pageId": "7ac2cc32-38cf-4d41-8c73-c6cf640d5b15",
@@ -26,7 +26,7 @@ export function buildSnippets(text: string) {
   method: "POST",
   headers: {
     Authorization: \`Bearer \${process.env.RESENDER_KEY}\`,
-    "Idempotency-Key": "reply-7ac2cc32-001",
+    "Idempotency-Key": "message-7ac2cc32-001",
     "Content-Type": "application/json",
   },
   body: JSON.stringify({
@@ -48,7 +48,7 @@ requests.post(
     "https://api.resender.dev/v1/messages",
     headers={
         "Authorization": f"Bearer {os.environ['RESENDER_KEY']}",
-        "Idempotency-Key": "reply-7ac2cc32-001",
+        "Idempotency-Key": "message-7ac2cc32-001",
     },
     json={
         "pageId": "7ac2cc32-38cf-4d41-8c73-c6cf640d5b15",

@@ -130,7 +130,10 @@ Timeline de 3–4 pasos con íconos (lucide), nodos conectados por una línea, `
   - Fix de legibilidad en oscuro: `defaultColor: false` para que los tokens sean CSS vars y alternen con `.dark` (antes el color claro quedaba fijo e ilegible).
 - **Números de línea** vía counters CSS sobre `.line` (clase `.code-panel`).
 - **Botón de copiar**: ícono de portapapeles solo (Copy → Check), **arriba a la derecha del código** (no en la fila de tabs).
-- Snippet = el POST real a `/api/meta/send`, con placeholders (nunca secretos).
+- Snippet = el POST publico real a
+  `https://api.resender.dev/v1/messages`, con `Idempotency-Key` obligatorio,
+  `pageId` UUID interno, `recipientId`, `type` y `text`. Todos los valores son
+  placeholders (nunca secretos).
 
 ---
 
@@ -217,7 +220,10 @@ No se tocó backend, auth ni lógica de dominio.
 
 - **Stripe Checkout**: pendiente (backend). Hoy los CTA de planes van a `/register`.
 - **i18n con ruteo** `/en · /es` + middleware/proxy: pendiente. El copy ya está centralizado para facilitarlo. Cuidar de **no** mover `/privacy` ni `/data-deletion`.
-- **Docs** como subdominio (`docs.resender.dev`): fuera de alcance (existe una `/docs` pública como página).
+- **Docs externos**: `docs.resender.dev` sigue fuera de este repo y hoy publica
+  el contrato legado. Hasta que se actualice y verifique, navbar/footer y el
+  redirect temporal `/docs` apuntan al Swagger vigente en
+  `https://api.resender.dev/docs`.
 - **PostHog / analytics**: pendiente (requiere key en env).
 - **Discord**: el link del footer es placeholder hasta tener la invitación real.
 - **Precios/límites**: confirmados los de Starter/Pro; sujetos a cambio de producto.

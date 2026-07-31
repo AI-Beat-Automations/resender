@@ -33,6 +33,12 @@ Customer webhook delivery is at least once. Verify `Resender-Signature` over
 `Resender-Event-Id`. Retry and DLQ behavior is documented in the guide above
 and in [`docs/api-dlq-runbook.md`](docs/api-dlq-runbook.md).
 
+If an outbound response is uncertain, retry the same request with the same
+`Idempotency-Key` and body. That client retry replays the stored result without
+another Meta send. It is separate from customer webhook delivery, where
+Resender automatically retries retryable failures under its at-least-once
+policy.
+
 The old `POST https://resender.dev/api/meta/send` endpoint is deprecated.
 There is no approved retirement date; the operational approval placeholders
 and removal gates are maintained in the migration guide.

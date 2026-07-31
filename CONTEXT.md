@@ -19,7 +19,7 @@ En el MVP, el registro con email y password deja entrar al usuario inmediatament
 El registro esta abierto, pero el acceso al producto esta cerrado por una bandera `users.waitlisted`. Una cuenta nueva nace con `waitlisted = true` y aterriza en la pantalla `/waitlist`, que le indica que le avisaremos por email cuando su acceso este listo. Solo con `waitlisted = false` el usuario entra a `Connections`, `Messages` y `Settings`.
 La bandera se lee de base de datos en cada request (no vive en el JWT), asi que sacar a alguien de la waitlist surte efecto sin pedirle volver a iniciar sesion. El criterio es fail-closed: si no se puede confirmar la bandera, no hay acceso.
 Las cuentas que ya existian cuando se introdujo la waitlist quedan con `waitlisted = false`, para no bloquear la cuenta de revision de Meta. Aprobar a un usuario es hoy una operacion manual por SQL; no hay panel de administracion en esta version.
-La waitlist tambien cierra las puertas fuera de la UI: el OAuth de Meta (`/api/meta/start` y `/api/meta/callback`) redirige a `/waitlist` y la API externa de salida responde `403` si el tenant esta en waitlist.
+La waitlist tambien cierra las puertas fuera de la UI: el navegador sigue entrando por `/api/meta/start` y vuelve a `/api/meta/callback`, pero esos handlers de Next solo controlan sesion/state y delegan acceso e intercambio de codigo al Worker `api` por RPC. La API publica v1 responde `403` si el tenant esta en waitlist.
 
 ### API Token
 La integración externa (N8N/IA) no reutiliza la sesión web. Se autentica con una API key opaca separada emitida por Resender para el tenant.
@@ -62,16 +62,18 @@ Si una página ya conectada pertenece al mismo tenant y se vuelve a autorizar en
 Desconectar una página elimina o desactiva la conexión para futuros envíos y recepciones, pero conserva el historial de conversaciones y mensajes como bitácora.
 
 ### Entrega de entrantes al sistema externo
-El MVP usa `push`: tras persistir un mensaje entrante, Resender lo reenvía de forma no bloqueante al sistema externo del tenant.
+El Worker `api` persiste cada mensaje entrante y su job antes de publicarlo en Cloudflare Queues. La entrega al sistema externo es **at-least-once**: reintenta fallos recuperables y puede entregar el mismo evento mas de una vez.
 La URL de destino externo se configura por página. Si una página no tiene `webhookUrl`, el mensaje entrante se persiste igual y aparece en la bitácora, pero no se reenvía.
 La `webhookUrl` debe usar HTTPS para destinos reales; HTTP queda reservado a desarrollo local.
-El payload reenviado al sistema externo incluye contexto minimo pero rico de `tenant`, `page`, `conversation` y `message`.
+El payload reenviado incluye `id` de evento, `type`, `createdAt` y contexto de `page`, `conversation` y `message`. Cada request se firma en `Resender-Signature` sobre `<eventId>.<timestamp>.<rawJsonBody>` y lleva `Resender-Event-Id`; el receptor debe verificar la firma y deduplicar por ese ID.
 
 ### API externa de salida
-La API externa de salida usa API key opaca por header `Authorization: Bearer ...`.
-`POST /api/meta/send` recibe `pageId`, `recipientId`, `reply` y puede recibir `conversationId` opcional para facilitar persistencia y auditoria del mensaje saliente.
-Si `conversationId` viene informado, debe coincidir con `pageId` y `recipientId`; si no coincide, la request se rechaza con `400`.
+La API externa de salida vive en `https://api.resender.dev`, usa API key opaca por header `Authorization: Bearer ...` y toma su contrato de `/openapi.json`.
+`POST /v1/messages` exige `Idempotency-Key` (1–200 caracteres) y un body con `pageId` (UUID interno de Resender), `recipientId`, `"type": "text"` y `text`; puede recibir `conversationId` UUID opcional para facilitar persistencia y auditoria del mensaje saliente.
+Si `conversationId` viene informado, debe coincidir con `pageId` y `recipientId`; si no coincide, la request se rechaza con `404 not_found`.
 Los mensajes salientes se persisten tanto en exito como en fallo, usando `status` para distinguir el resultado del envio.
+Ante una respuesta incierta, el cliente repite la misma key y el mismo body: el replay devuelve el resultado guardado sin otro envio a Meta ni otro cargo de cuota. Esto es distinto de los retries automaticos de entrega del webhook del cliente.
+El antiguo `POST https://resender.dev/api/meta/send` esta deprecated y queda solo como compatibilidad temporal; la ventana y los gates de retiro se mantienen en `docs/api-v1-guide.md`.
 
 ### Semantica visual de Messages
 En la bitacora, el color principal representa direccion: entrante verde y saliente amarillo. Si un saliente falla, conserva el amarillo pero muestra un indicador de error por estado.
@@ -89,7 +91,7 @@ La pantalla separada se llama `Connections` y vive en la ruta `/connections`.
 
 ### Gestion de paginas en Connections
 `Connections` es la pantalla operativa de Meta. Cada pagina conectada puede mostrar y editar su `webhookUrl`, ademas de desconectarse.
-La `webhookUrl` se guarda con accion explicita mediante boton `Guardar`.
+La `webhookUrl` se guarda con accion explicita mediante boton `Guardar`; la UI delega la mutacion al Worker `api` por RPC y no escribe la base directamente.
 Desconectar una pagina requiere confirmacion explicita y debe advertir que se conserva el historial.
 
 ### Gestion de API keys en Settings
@@ -108,7 +110,7 @@ La Page de revision es la pagina de Facebook conectada dentro de la cuenta de re
 El Usuario Messenger de prueba es una cuenta de Facebook controlada por AI Beat/Resender que se usa para grabar el screencast y enviar DMs a la Page de revision mientras la app esta en modo Development o pendiente de aprobacion. Esta cuenta debe tener el rol/relacion necesaria en Meta para que sus mensajes lleguen al webhook antes de que `pages_messaging` este aprobado en Live. No se comparten credenciales personales de Facebook/Messenger con Meta; al revisor se le entrega la cuenta de revision de Resender y pasos claros.
 
 ### Automatizacion demo
-La automatizacion demo es el sistema externo conectado al `webhookUrl` de la Page de revision. Su objetivo no es cambiar el modelo de producto ni convertir Resender en bot, sino demostrar durante App Review que el flujo completo de `pages_messaging` funciona: DM entrante, persistencia, push externo, respuesta por `/api/meta/send` y recepcion del mensaje en Messenger.
+La automatizacion demo es el sistema externo conectado al `webhookUrl` de la Page de revision. Su objetivo no es cambiar el modelo de producto ni convertir Resender en bot, sino demostrar durante App Review que el flujo completo de `pages_messaging` funciona: DM entrante, persistencia, entrega externa firmada, respuesta por `POST https://api.resender.dev/v1/messages` y recepcion del mensaje en Messenger.
 
 ### Identidad legal
 La entidad que opera Resender es **AI Beat**. `Resender` es el nombre del producto; `AI Beat` es la empresa responsable que figura en los documentos legales (politica de privacidad, terminos).
@@ -131,15 +133,15 @@ Resender NO usa el Data Deletion Callback de Meta (el `signed_request` trae un F
 ### Configuracion de revision Meta
 Para el envio actual a Meta App Review, Resender solicita solo permisos de Messenger: `pages_messaging`, `pages_manage_metadata` y `pages_show_list`. No se solicitan permisos de Instagram, WhatsApp, Business Management ni otros permisos extra en esta revision.
 Los permisos viven en el `config_id` de Facebook Login for Business, no en codigo. El `config_id` usado para esta revision es nuevo y dedicado a este envio de Messenger; quedo configurado solo con `pages_manage_metadata`, `pages_messaging` y `pages_show_list`. En particular, `business_management` queda fuera del alcance de Messenger porque Resender no administra Business Manager, WABAs, cuentas publicitarias ni assets de negocio en este flujo. El panel de Meta debe mantenerse alineado con el alcance real del producto: listar paginas autorizadas, suscribir/desuscribir paginas al webhook y enviar/responder mensajes de Messenger.
-El dominio canonico para el envio es `resender.dev`. Las URLs publicas que deben cargarse en Meta Dashboard son `https://resender.dev/privacy` como Privacy Policy URL y `https://resender.dev/data-deletion` como Data Deletion Instructions URL.
+`resender.dev` es el dominio canonico de la aplicacion y de las paginas legales. Las URLs legales que deben cargarse en Meta Dashboard son `https://resender.dev/privacy` y `https://resender.dev/data-deletion`. El codigo de los callbacks externos pertenece al Worker `api`: los destinos de cutover son `https://api.resender.dev/webhooks/meta` para Messenger y `https://api.resender.dev/webhooks/stripe` para Stripe. El cambio en los dashboards de proveedores es una operacion manual y no se considera ejecutado sin la evidencia del runbook. El callback de navegador de OAuth permanece en `https://resender.dev/api/meta/callback` para validar state/sesion antes del RPC.
 
-### Documentacion publica del flujo (`/docs`)
-La pagina publica `/docs` documenta, en ingles y para developers externos, el flujo de integracion en 3 pasos. Vocabulario canonico en ingles (alineado con el modelo existente):
+### Documentacion publica del flujo (`https://api.resender.dev/docs`)
+Swagger UI en `https://api.resender.dev/docs`, el JSON en `/openapi.json` y la descarga en `/openapi/download` exponen el mismo contrato OpenAPI 3.1. El sitio de marketing y su redirect local `/docs` deben apuntar a ese Swagger mientras `docs.resender.dev` siga publicando el contrato legado. Vocabulario canonico en ingles (alineado con el modelo existente):
 - **Channel** = pagina de Facebook conectada (ver [Gestion de paginas en Connections]).
 - **Inbound message** = mensaje del cliente que Resender hace push al `webhookUrl` del developer (ver [Entrega de entrantes al sistema externo]). Tiene `direction: "inbound"`, `status: "received"`. NO se llama "response"/"respuesta".
-- **Reply** = respuesta del developer al cliente via `POST /api/meta/send` (ver [API externa de salida]).
-Resuelto: en el spec original "respuesta" apuntaba al mensaje que llega al webhook; eso es un **inbound message**, no una response. La unica "response" es el **reply** que sale por el endpoint.
-Gotcha documentado: el campo `pageId` de `POST /api/meta/send` se matchea contra `meta_page_id`, asi que el developer debe pasar el `page.metaPageId` del payload entrante (no el `page.id` interno). `recipientId` = el `conversation.contactId` del payload entrante.
+- **Outbound message** = respuesta del developer al cliente via `POST /v1/messages` (ver [API externa de salida]).
+Resuelto: en el spec original "respuesta" apuntaba al mensaje que llega al webhook; eso es un **inbound message**, no una response. El envio que sale por la API es un **outbound message**.
+Gotcha documentado: el `pageId` de `POST /v1/messages` es el UUID interno `data[].id` de `GET /v1/pages` o `data.page.id` del evento entrante, nunca `providerPageId`. `recipientId` corresponde a `data.conversation.contact.id`.
 
 ### Borrado de cuenta (account deletion)
 "Delete account" en `Settings` borra **todo** el tenant (cuenta, paginas, conversaciones, mensajes, API keys); no hay borrado parcial en el MVP. Es inmediato y transaccional en produccion; los backups se purgan en ≤30 dias. Antes de borrar, se intenta best-effort dar de baja cada pagina activa del webhook de Meta. Requiere confirmacion destructiva (reescribir el email de la cuenta). Se implementa con FKs `on delete cascade` (migracion `0002`), que reemplazan el `on delete restrict` original. Cuidado: con cascade, borrar una fila de `connected_pages` arrastraria su historial; hoy nada borra paginas (ver [Desconexión de páginas], que es UPDATE no DELETE).
@@ -189,7 +191,7 @@ A partir del **80%** del consumo del período aparece una barra de alerta **glob
 No hay email transaccional en esta entrega (no existe canal de correo en el repo). Pendiente: la FAQ pública promete "Te avisamos cuando te acercás al límite" dos veces en `content/i18n/es.ts`, que un cliente lee como email; hay que reescribirla para que apunte al dashboard.
 
 ### Gate de suscripcion
-Segundo gate en serie despues de la [Waitlist]: la waitlist decide quien puede entrar, la suscripcion decide quien puede usar. Un usuario con `waitlisted = false` pero sin suscripcion activa aterriza en la pagina de pricing. El acceso existe solo con status `active` en la tabla `subscriptions`; cualquier otro estado es **bloqueo total**: dashboard, OAuth de Meta y `POST /api/meta/send` (403) quedan cerrados, y los webhooks entrantes de Meta del tenant se descartan sin persistir (respondiendo `200` a Meta para no degradar la app). Mismo patron que la waitlist: se lee de base de datos en cada request, fail-closed, nunca del JWT ni de la API de Stripe en el hot path.
+Segundo gate en serie despues de la [Waitlist]: la waitlist decide quien puede entrar, la suscripcion decide quien puede usar. Un usuario con `waitlisted = false` pero sin suscripcion activa aterriza en la pagina de pricing. El acceso existe solo con status `active` en la tabla `subscriptions`; cualquier otro estado es **bloqueo total**: dashboard, OAuth de Meta y `POST /v1/messages` (403) quedan cerrados, y los webhooks entrantes de Meta del tenant se descartan sin persistir (respondiendo `200` a Meta para no degradar la app). Mismo patron que la waitlist: se lee de base de datos en cada request, fail-closed, nunca del JWT ni de la API de Stripe en el hot path.
 
 ### Sin trial
 No hay periodo de prueba: para usar el producto hay que pagar. El primer cobro ocurre dentro del propio Stripe Checkout y no existe logica de trial en ninguna capa (ni `trial_period_days` en Checkout ni flags propios en base de datos).
@@ -198,4 +200,4 @@ No hay periodo de prueba: para usar el producto hay que pagar. El primer cobro o
 Resender no maneja datos de tarjeta: la compra se hace en la pagina de Checkout hosteada por Stripe (redirect) y toda la gestion posterior (cambiar plan, actualizar tarjeta, cancelar) ocurre en el Customer Portal de Stripe, enlazado desde `Settings`. La cancelacion es `cancel_at_period_end`: quien pago el mes lo usa completo. El servidor solo crea sesiones de Checkout/Portal via API con la secret key.
 
 ### Webhook de Stripe
-El estado de las suscripciones se replica en Postgres consumiendo webhooks firmados de Stripe en `app/api/stripe/webhook` (verificacion con `STRIPE_WEBHOOK_SECRET`, espejo del patron HMAC del webhook de Meta). Eventos relevantes: `checkout.session.completed` y `customer.subscription.created/updated/deleted`, procesados con upsert idempotente sobre la tabla `subscriptions`. En desarrollo se usa `stripe listen` (Stripe CLI) para recibirlos en local.
+El Worker `api` replica el estado de las suscripciones en Postgres consumiendo webhooks firmados de Stripe en `POST https://api.resender.dev/webhooks/stripe` (verificacion con `STRIPE_WEBHOOK_SECRET` sobre el body crudo). Eventos relevantes: `checkout.session.completed` y `customer.subscription.created/updated/deleted`, procesados con upsert idempotente sobre la tabla `subscriptions`. En desarrollo se usa `stripe listen` (Stripe CLI) para recibirlos en local.

@@ -3,6 +3,13 @@
 > Contraparte del trabajo de código en la rama `feat/cloudflare-opennext`.
 > Todo lo de esta guía se hace en dashboards/CLI, no toca el repo.
 >
+> **Documento histórico/superseded.** Describe la etapa de un solo Worker y no
+> debe ejecutarse de punta a punta sobre la arquitectura actual. Para el Worker
+> `api`, staging, callbacks y ownership de secretos usa
+> [`api-cloudflare-manual-runbook.md`](api-cloudflare-manual-runbook.md). En
+> particular, los pasos 8–9 de abajo son un registro historico: sus URLs y
+> comandos no describen el target actual ni prueban que un cutover haya ocurrido.
+>
 > **Orden recomendado:** los pasos 1–4 se pueden hacer en cualquier momento.
 > El paso 6 (primer deploy) necesita 1, 3 y 5. El custom domain (6.3) necesita
 > que la zona DNS esté activa (paso 2, puede tardar horas). Meta y Stripe
