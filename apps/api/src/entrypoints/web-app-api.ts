@@ -30,12 +30,31 @@ import type { ZodType } from "zod"
 
 import { ApiService } from "../application/service"
 import { API_MAX_LIMIT } from "../config"
+import { apiRouter } from "../http/router"
 import { log } from "../observability/logger"
 
 export class WebAppApi
   extends WorkerEntrypoint<Env>
   implements WebAppApiContract
 {
+  async fetch(request: Request): Promise<Response> {
+    const pathname = new URL(request.url).pathname
+    const allowedMethods = callbackMethods(pathname)
+
+    if (!allowedMethods) {
+      return new Response("not found", { status: 404 })
+    }
+
+    if (!allowedMethods.some((method) => method === request.method)) {
+      return new Response("method not allowed", {
+        status: 405,
+        headers: { Allow: allowedMethods.join(", ") },
+      })
+    }
+
+    return apiRouter.fetch(request, this.env, this.ctx)
+  }
+
   health(): Promise<BackendHealthDto> {
     // This is an RPC liveness sentinel, not dependency readiness. It must stay
     // independent from the database, secrets, queues, and external providers.
@@ -332,6 +351,17 @@ export class WebAppApi
       })
       throw contract
     }
+  }
+}
+
+function callbackMethods(pathname: string): readonly string[] | undefined {
+  switch (pathname) {
+    case "/webhooks/meta":
+      return ["GET", "POST"]
+    case "/webhooks/stripe":
+      return ["POST"]
+    default:
+      return undefined
   }
 }
 

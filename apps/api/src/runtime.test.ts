@@ -104,6 +104,87 @@ describe("Worker runtime entrypoints", () => {
     })
   })
 
+  it("allows only exact provider callback paths and methods through named fetch", async () => {
+    const repository = vi.spyOn(SqlRepository.prototype, "getUserById")
+    const providerFetch = vi.spyOn(globalThis, "fetch")
+
+    const [
+      unknown,
+      trailingSlash,
+      nestedCallback,
+      metaMethod,
+      stripeMethod,
+    ] = await Promise.all([
+      workerExports.WebAppApi.fetch(
+        new Request("https://backend.internal/v1/messages", {
+          method: "POST",
+          body: "{}",
+        })
+      ),
+      workerExports.WebAppApi.fetch(
+        new Request("https://backend.internal/webhooks/meta/")
+      ),
+      workerExports.WebAppApi.fetch(
+        new Request("https://backend.internal/webhooks/meta/extra")
+      ),
+      workerExports.WebAppApi.fetch(
+        new Request("https://backend.internal/webhooks/meta", {
+          method: "PUT",
+          body: "{}",
+        })
+      ),
+      workerExports.WebAppApi.fetch(
+        new Request("https://backend.internal/webhooks/stripe")
+      ),
+    ])
+
+    expect(unknown.status).toBe(404)
+    expect(await unknown.text()).toBe("not found")
+    expect(trailingSlash.status).toBe(404)
+    expect(nestedCallback.status).toBe(404)
+    expect(metaMethod.status).toBe(405)
+    expect(metaMethod.headers.get("allow")).toBe("GET, POST")
+    expect(stripeMethod.status).toBe(405)
+    expect(stripeMethod.headers.get("allow")).toBe("POST")
+    expect(repository).not.toHaveBeenCalled()
+    expect(providerFetch).not.toHaveBeenCalled()
+  })
+
+  it("delegates the Meta challenge through named fetch to the shared router", async () => {
+    const response = await workerExports.WebAppApi.fetch(
+      new Request(
+        "https://backend.internal/webhooks/meta?hub.mode=subscribe&hub.verify_token=development-only&hub.challenge=named-fetch-challenge"
+      )
+    )
+
+    expect(response.status).toBe(200)
+    expect(await response.text()).toBe("named-fetch-challenge")
+  })
+
+  it.each([
+    ["/webhooks/meta", "x-hub-signature-256"],
+    ["/webhooks/stripe", "stripe-signature"],
+  ])(
+    "delegates essential %s signature headers and raw body through named fetch",
+    async (path, header) => {
+      const response = await workerExports.WebAppApi.fetch(
+        new Request(`https://backend.internal${path}`, {
+          method: "POST",
+          headers: {
+            [header]: "invalid-byte-identical-signature",
+            "content-type": "application/json",
+          },
+          body: '{"raw":"byte-identical"}',
+        })
+      )
+
+      expect(response.status).toBe(400)
+      expect(await response.json()).toMatchObject({
+        error: { code: "invalid_signature" },
+      })
+    }
+  )
+
   it("returns cloneable health over RPC without application dependencies", async () => {
     const repository = vi.spyOn(SqlRepository.prototype, "getUserById")
     const stripe = vi.spyOn(stripeTransport, "create")

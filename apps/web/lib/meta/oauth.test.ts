@@ -99,4 +99,15 @@ describe("Meta OAuth browser state", () => {
       )
     ).toBe("mismatch")
   })
+
+  it.each([
+    `${NOW}.${STATE}`,
+    `${NOW}..${"a".repeat(43)}`,
+    `${NOW}.${STATE}.`,
+    `.${STATE}.${"a".repeat(43)}`,
+    `${NOW}.${STATE}.${"a".repeat(42)}`,
+    `${NOW}.${STATE}.${"a".repeat(44)}`,
+  ])("rejects malformed state with missing or invalid groups: %s", (cookie) => {
+    expect(validateMetaState(STATE, cookie, NOW)).toBe("mismatch")
+  })
 })

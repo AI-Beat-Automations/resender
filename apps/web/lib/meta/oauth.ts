@@ -80,9 +80,12 @@ export function validateMetaState(
   const match = STATE_PATTERN.exec(cookieValue)
   if (!match?.groups) return "mismatch"
 
-  const payload = `${match.groups.issuedAt}.${match.groups.state}`
+  const { issuedAt, state, signature } = match.groups
+  if (!issuedAt || !state || !signature) return "mismatch"
+
+  const payload = `${issuedAt}.${state}`
   const expectedSignature = Buffer.from(signState(payload))
-  const actualSignature = Buffer.from(match.groups.signature)
+  const actualSignature = Buffer.from(signature)
   if (
     expectedSignature.byteLength !== actualSignature.byteLength ||
     !timingSafeEqual(expectedSignature, actualSignature)
@@ -90,16 +93,16 @@ export function validateMetaState(
     return "mismatch"
   }
 
-  const issuedAt = Number(match.groups.issuedAt)
+  const issuedAtNumber = Number(issuedAt)
   if (
-    !Number.isSafeInteger(issuedAt) ||
-    issuedAt > now + STATE_FUTURE_SKEW_MS ||
-    now - issuedAt > STATE_TTL_SECONDS * 1000
+    !Number.isSafeInteger(issuedAtNumber) ||
+    issuedAtNumber > now + STATE_FUTURE_SKEW_MS ||
+    now - issuedAtNumber > STATE_TTL_SECONDS * 1000
   ) {
     return "expired"
   }
 
-  const expected = Buffer.from(match.groups.state)
+  const expected = Buffer.from(state)
   const actual = Buffer.from(returnedState)
   if (
     expected.byteLength !== actual.byteLength ||

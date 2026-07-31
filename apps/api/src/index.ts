@@ -4,16 +4,14 @@ import {
   recoverWebhookJobs,
 } from "./application/webhook-delivery"
 import { WebAppApi } from "./entrypoints/web-app-api"
-import { createApp } from "./http/app"
+import { apiRouter } from "./http/router"
 import { log } from "./observability/logger"
-
-const app = createApp()
 
 export { WebAppApi }
 
 export default {
   fetch(request, env, context) {
-    return app.fetch(request, env, context)
+    return apiRouter.fetch(request, env, context)
   },
 
   async queue(batch, env) {

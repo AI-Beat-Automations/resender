@@ -1,14 +1,19 @@
 # API Worker: manual Cloudflare runbook
 
-Status: phase 1 implementation plus the phase 2 repository configuration
-checkpoint. The origin allowlists, Service Bindings, deterministic typegen,
-and generated types are present in the repository. None of the commands in
-this runbook were executed against a Cloudflare account while implementing
-the branch.
+Status: phase 1 implementation plus the phase 2 repository configuration and
+callback-proxy checkpoints. The origin allowlists, Service Bindings,
+deterministic typegen, generated types, API callback ownership, and thin legacy
+web callback proxies are present in the repository. None of the deploy,
+provider-dashboard, DNS, secret, or other Cloudflare-account commands in this
+runbook were executed while implementing the branch.
 
-The existing `web` Worker remains the production frontend, database owner, and
-live receiver for Meta and Stripe callbacks. Do not change provider callback
-URLs until phase 2 has been reviewed and deployed.
+The existing `web` Worker remains the production frontend and database
+migration owner. In code, its legacy Meta and Stripe callback Route Handlers
+are now streaming proxies to the API through `BACKEND`; they contain no
+signature verification, provider client, database write, analytics, or domain
+side effect. Until the ordered callback cutover below is executed and recorded,
+assume the provider dashboards still point at those legacy web URLs. Do not
+disable either endpoint based only on the repository state.
 
 ## Preconditions
 
@@ -273,9 +278,9 @@ The `/billing` Checkout action, `/billing/success` verification, Settings
 subscription read, and Customer Portal action use the `BACKEND` Service Binding
 exclusively. The API Worker is the only Stripe client for those flows and
 builds every `/billing`, `/billing/success`, and `/settings` return path from an
-exact `WEB_APP_ORIGINS` entry. The legacy web Stripe webhook and its local
-subscription mirror remain temporarily until the callback cutover slice; do
-not remove or repoint that webhook as part of Slice 5.
+exact `WEB_APP_ORIGINS` entry. The legacy web Stripe callback URL is retained as
+a thin Service Binding proxy until the ordered callback cutover is complete;
+it no longer owns subscription mirroring in the repository implementation.
 
 In staging:
 
@@ -324,6 +329,40 @@ Repeat with `--env staging`. `API_KEY_PEPPER`, password hashing, and
 existing credentials/tokens cannot be read. Use a direct Neon URL for schema
 migrations and the approved runtime URL for the Worker.
 
+## Callback proxy cutover (not executed)
+
+This sequence is an operational gate, not a record of completed work. Preserve
+the order so a provider event has exactly one domain owner throughout the
+cutover:
+
+1. Deploy the API Worker version that owns `GET` and `POST /webhooks/meta` and
+   `POST /webhooks/stripe`.
+2. Smoke the API endpoints directly with a controlled Meta challenge and
+   controlled signed Meta and Stripe fixtures. Alter one byte and each
+   signature to confirm rejection. Verify each accepted event creates exactly
+   one expected side effect.
+3. Deploy the web Worker version whose legacy callback handlers proxy the raw
+   request through `BACKEND`. A missing or failed binding must return the fixed
+   `503` so providers retry.
+4. Smoke the legacy web callback URLs end to end: repeat the Meta challenge and
+   signed Meta/Stripe fixtures, confirm API status/headers/body pass through,
+   and confirm there is still exactly one domain side effect with no local web
+   write or provider call.
+5. Manually update the Meta App Dashboard callback and Stripe webhook endpoint
+   only after the API and proxy evidence above passes. Record the exact
+   environment, UTC time, operator, and sanitized result; never record
+   challenge tokens, signatures, raw bodies, or provider secrets.
+6. Observe API callback status/latency, signature failures, Queue backlog,
+   retries, DLQ, deduplication, and database effects for the approved window.
+   Confirm provider retries do not create duplicate messages, subscriptions,
+   or outbound jobs.
+7. Disable the old provider-dashboard endpoints only after the observation
+   evidence is approved. Keep the legacy web proxy code available for the
+   agreed rollback window; do not remove the legacy send path in this slice.
+
+No Meta/Stripe Dashboard, DNS, secret, Worker deployment, or old-endpoint
+change was performed as part of this checkpoint.
+
 ## Validate before deployment
 
 ```bash
@@ -331,12 +370,20 @@ npm --workspace @workspace/contracts run typecheck
 npm --workspace api run cf-typegen:check
 npm --workspace web run cf-typegen:check
 npm --workspace api run lint
+npm --workspace web run lint
 npm --workspace api run typecheck
+npm --workspace web run typecheck
 npm --workspace api run test:run
+npm --workspace web run test:run
 npm --workspace api run build
+npm --workspace web run build
+npm --workspace web exec opennextjs-cloudflare build
+npx wrangler deploy --dry-run --env="" -c apps/web/wrangler.jsonc
 ```
 
-The `build` script is a Wrangler dry run. It does not deploy.
+The API `build` script and the final web Wrangler command are deploy dry-runs.
+The web `build` and OpenNext commands compile and package the frontend. None of
+these commands deploys a Worker.
 
 ## Deploy without moving traffic
 
@@ -398,7 +445,8 @@ deploy the updated `web` Worker configuration. Those cutovers remain manual.
 
 ## Rollback
 
-Provider traffic still points at `web`, so rollback is limited:
+Before the callback cutover is recorded, provider traffic is assumed to point
+at `web`, so rollback is limited:
 
 1. Stop test traffic to `api`.
 2. Roll back the `api` Worker version in Cloudflare.
@@ -406,6 +454,12 @@ Provider traffic still points at `web`, so rollback is limited:
    `web` inserts.
 4. Do not purge the Queue or DLQ. Inspect and reconcile jobs using the DLQ
    runbook.
+
+After dashboard cutover, first repoint the affected provider dashboard to the
+last verified legacy web proxy endpoint, then confirm `BACKEND` reaches the
+last healthy API version. Do not re-enable removed web domain logic or point
+both provider endpoints at independent receivers; either can produce duplicate
+side effects.
 
 The source files `docs/domain.md` and `prd_api_separation.md` referenced by the
 planning document were absent. `CONTEXT.md`, migrations `0001`–`0009`, current
