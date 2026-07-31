@@ -325,15 +325,22 @@ export function createApp(
     context.json({ status: "ok", service: "api" }, 200)
   )
   app.get("/readyz", async (context) => {
-    try {
-      const ready = await context.get("service").ready()
-      return context.json(
-        { status: ready ? "ready" : "unavailable" },
-        ready ? 200 : 503
-      )
-    } catch {
-      return context.json({ status: "unavailable" }, 503)
-    }
+    const readiness = await context
+      .get("service")
+      .ready()
+      .catch(() => ({ ready: false, category: "database" }) as const)
+    const status = readiness.ready ? 200 : 503
+    log(readiness.ready ? "info" : "warn", {
+      entrypoint: "fetch",
+      event: "readiness_check",
+      requestId: context.get("requestId"),
+      status,
+      readinessCategory: readiness.category,
+    })
+    return context.json(
+      { status: readiness.ready ? "ready" : "unavailable" },
+      status
+    )
   })
 
   app.openapi(meRoute, async (context) =>

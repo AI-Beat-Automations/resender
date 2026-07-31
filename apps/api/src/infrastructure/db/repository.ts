@@ -141,7 +141,15 @@ export class SqlRepository {
         and webhook_url is not null
         and webhook_signing_secret_encrypted is null
     `
-    return number(rowValue(rows[0], "count"), 0)
+    const count = rowValue(rows[0], "count")
+    if (
+      typeof count !== "number" ||
+      !Number.isSafeInteger(count) ||
+      count < 0
+    ) {
+      throw new Error("invalid unsigned webhook page count")
+    }
+    return count
   }
 
   async getUserById(id: string): Promise<UserRecord | null> {

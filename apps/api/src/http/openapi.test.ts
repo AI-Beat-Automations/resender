@@ -115,6 +115,110 @@ describe("OpenAPI document", () => {
     log.mockRestore()
   })
 
+  it("serves exact ready status and logs only the sanitized success category", async () => {
+    const info = vi.spyOn(console, "log").mockImplementation(() => undefined)
+    const ready = vi.fn().mockResolvedValue({
+      ready: true,
+      category: "ready",
+    })
+    const response = await createApp({
+      serviceFactory: () => ({ ready }) as unknown as ApiService,
+    }).request(
+      "http://localhost/readyz",
+      { headers: { "x-request-id": "readiness-success" } },
+      {} as Env
+    )
+
+    expect(response.status).toBe(200)
+    expect(await response.text()).toBe('{"status":"ready"}')
+    expect(info.mock.calls.map(([record]) => record)).toContainEqual({
+      worker: "api",
+      entrypoint: "fetch",
+      event: "readiness_check",
+      requestId: "readiness-success",
+      status: 200,
+      readinessCategory: "ready",
+    })
+    info.mockRestore()
+  })
+
+  it.each(["configuration", "database", "unsigned_webhook_pages"] as const)(
+    "keeps the public 503 generic while logging the sanitized %s category",
+    async (category) => {
+      const info = vi.spyOn(console, "log").mockImplementation(() => undefined)
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined)
+      const ready = vi.fn().mockResolvedValue({
+        ready: false,
+        category,
+      })
+      const response = await createApp({
+        serviceFactory: () => ({ ready }) as unknown as ApiService,
+      }).request(
+        "http://localhost/readyz",
+        { headers: { "x-request-id": "readiness-failure" } },
+        {} as Env
+      )
+
+      expect(response.status).toBe(503)
+      expect(await response.text()).toBe('{"status":"unavailable"}')
+      const readinessLog = warn.mock.calls
+        .map(([record]) => record)
+        .find(
+          (record) =>
+            typeof record === "object" &&
+            record !== null &&
+            "event" in record &&
+            record.event === "readiness_check"
+        )
+      expect(readinessLog).toEqual({
+        worker: "api",
+        entrypoint: "fetch",
+        event: "readiness_check",
+        requestId: "readiness-failure",
+        status: 503,
+        readinessCategory: category,
+      })
+      expect(JSON.stringify([readinessLog, ...info.mock.calls])).not.toMatch(
+        /exception|message|stack|secret|tenant/iu
+      )
+      warn.mockRestore()
+      info.mockRestore()
+    }
+  )
+
+  it("sanitizes an unexpected readiness exception as a database failure", async () => {
+    const info = vi.spyOn(console, "log").mockImplementation(() => undefined)
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined)
+    const ready = vi
+      .fn()
+      .mockRejectedValue(
+        new Error("postgres://user:secret@internal/tenant-sensitive")
+      )
+    const response = await createApp({
+      serviceFactory: () => ({ ready }) as unknown as ApiService,
+    }).request(
+      "http://localhost/readyz",
+      { headers: { "x-request-id": "readiness-error" } },
+      {} as Env
+    )
+
+    expect(response.status).toBe(503)
+    expect(await response.text()).toBe('{"status":"unavailable"}')
+    expect(warn.mock.calls.map(([record]) => record)).toContainEqual({
+      worker: "api",
+      entrypoint: "fetch",
+      event: "readiness_check",
+      requestId: "readiness-error",
+      status: 503,
+      readinessCategory: "database",
+    })
+    expect(
+      JSON.stringify([...warn.mock.calls, ...info.mock.calls])
+    ).not.toMatch(/postgres|secret|tenant-sensitive|message|stack/iu)
+    warn.mockRestore()
+    info.mockRestore()
+  })
+
   it("rejects an oversized callback before parsing or signature verification", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined)
     const info = vi.spyOn(console, "log").mockImplementation(() => undefined)

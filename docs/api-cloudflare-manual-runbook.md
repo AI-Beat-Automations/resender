@@ -64,6 +64,27 @@ The API also refuses to enable a webhook URL on a Page without a signing
 secret. Rotate first, store the one-time value at the receiver, then set the
 URL. Existing Pages without a customer URL do not block readiness.
 
+`GET /readyz` deliberately returns only `{"status":"unavailable"}` with status
+`503` for every failure. Correlate its `x-request-id` with the structured
+`readiness_check` log and use only its sanitized `readinessCategory`:
+
+- `configuration`: validate the presence and syntax of the approved Worker
+  variables and secrets without printing their values.
+- `database`: validate database reachability and the readiness queries. This
+  category also covers a malformed unsigned-Page count; never treat it as zero.
+- `unsigned_webhook_pages`: use the read-only query above to identify the
+  blocking Pages through an approved database session.
+- `ready`: both database checks passed and no configured webhook lacks a
+  signing secret.
+
+Stop if a blocking Page belongs to a tenant that is waitlisted, lacks an active
+subscription, or has no usable API key. Do not issue a manual `UPDATE`, invent
+ciphertext, bypass the product gates, or weaken readiness. With explicit
+authorization, either restore legitimate access through the supported
+account/billing/API-key flows and rotate the secret normally, or disconnect the
+Page through the supported UI/RPC flow. If neither path is authorized, leave
+readiness unavailable and escalate the ownership decision.
+
 ## Create resources
 
 Authenticate manually, then run these from the repository root:

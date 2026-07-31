@@ -736,12 +736,99 @@ describe("conversation thread pagination", () => {
 })
 
 describe("readiness", () => {
+  it("reports ready after running both database checks concurrently", async () => {
+    let resolvePing: ((value: boolean) => void) | undefined
+    const ping = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolvePing = resolve
+        })
+    )
+    const countUnsignedWebhookPages = vi.fn(async () => 0)
+    const service = serviceWithRepository({
+      ping,
+      countUnsignedWebhookPages,
+    })
+
+    const readiness = service.ready()
+    await vi.waitFor(() => {
+      expect(ping).toHaveBeenCalledOnce()
+      expect(countUnsignedWebhookPages).toHaveBeenCalledOnce()
+    })
+    resolvePing?.(true)
+
+    await expect(readiness).resolves.toEqual({
+      ready: true,
+      category: "ready",
+    })
+  })
+
+  it("categorizes a false database ping without exposing details", async () => {
+    const service = serviceWithRepository({
+      ping: async () => false,
+      countUnsignedWebhookPages: async () => 0,
+    })
+
+    await expect(service.ready()).resolves.toEqual({
+      ready: false,
+      category: "database",
+    })
+  })
+
+  it("categorizes invalid configuration before accessing the repository", async () => {
+    const ping = vi.fn(async () => true)
+    const countUnsignedWebhookPages = vi.fn(async () => 0)
+    const service = serviceWithRepository({
+      ping,
+      countUnsignedWebhookPages,
+    })
+    service.env.DATABASE_URL = ""
+
+    await expect(service.ready()).resolves.toEqual({
+      ready: false,
+      category: "configuration",
+    })
+    expect(ping).not.toHaveBeenCalled()
+    expect(countUnsignedWebhookPages).not.toHaveBeenCalled()
+  })
+
+  it("categorizes database exceptions without returning their message", async () => {
+    const service = serviceWithRepository({
+      ping: async () => {
+        throw new Error("postgres://user:secret@internal/tenant-id")
+      },
+      countUnsignedWebhookPages: async () => 0,
+    })
+
+    await expect(service.ready()).resolves.toEqual({
+      ready: false,
+      category: "database",
+    })
+  })
+
+  it("categorizes an invalid unsigned-Page count as a database failure", async () => {
+    const service = serviceWithRepository({
+      ping: async () => true,
+      countUnsignedWebhookPages: async () => {
+        throw new Error("invalid unsigned webhook page count")
+      },
+    })
+
+    await expect(service.ready()).resolves.toEqual({
+      ready: false,
+      category: "database",
+    })
+  })
+
   it("blocks cutover while a configured webhook lacks a signing secret", async () => {
     const service = serviceWithRepository({
       ping: async () => true,
       countUnsignedWebhookPages: async () => 1,
     })
-    await expect(service.ready()).resolves.toBe(false)
+    await expect(service.ready()).resolves.toEqual({
+      ready: false,
+      category: "unsigned_webhook_pages",
+    })
   })
 })
 

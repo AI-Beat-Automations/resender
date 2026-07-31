@@ -129,13 +129,28 @@ export class ApiService {
     return this.stripeClient
   }
 
-  async ready(): Promise<boolean> {
-    requiredConfiguration(this.env)
-    const [databaseReady, unsignedWebhookPages] = await Promise.all([
-      this.repository.ping(),
-      this.repository.countUnsignedWebhookPages(),
-    ])
-    return databaseReady && unsignedWebhookPages === 0
+  async ready(): Promise<ReadinessResult> {
+    try {
+      requiredConfiguration(this.env)
+    } catch {
+      return { ready: false, category: "configuration" }
+    }
+
+    try {
+      const [databaseReady, unsignedWebhookPages] = await Promise.all([
+        this.repository.ping(),
+        this.repository.countUnsignedWebhookPages(),
+      ])
+      if (!databaseReady) {
+        return { ready: false, category: "database" }
+      }
+      if (unsignedWebhookPages > 0) {
+        return { ready: false, category: "unsigned_webhook_pages" }
+      }
+      return { ready: true, category: "ready" }
+    } catch {
+      return { ready: false, category: "database" }
+    }
   }
 
   async authenticateApiKey(value: string | null): Promise<AuthenticatedApiKey> {
@@ -1529,6 +1544,12 @@ function requiredConfiguration(env: Env): void {
 
 export const PLAN_LOOKUP_KEYS = Object.keys(PLAN_LIMITS)
 export type StoredOutboundMessage = MessageRecord
+export type ReadinessResult =
+  | { ready: true; category: "ready" }
+  | {
+      ready: false
+      category: "configuration" | "database" | "unsigned_webhook_pages"
+    }
 
 function apiKeyPepper(env: Env): string {
   const value = env.API_KEY_PEPPER || env.AUTH_SECRET

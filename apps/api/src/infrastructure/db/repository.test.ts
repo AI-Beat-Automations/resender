@@ -41,6 +41,55 @@ describe("message DTO safety", () => {
   })
 })
 
+describe("readiness queries", () => {
+  it("accepts only the exact database ping sentinel", async () => {
+    await expect(
+      new SqlRepository(fakeSql([[{ ok: 1 }]])).ping()
+    ).resolves.toBe(true)
+    for (const rows of [[], [{ ok: 0 }], [{ ok: "1" }]]) {
+      await expect(new SqlRepository(fakeSql([rows])).ping()).resolves.toBe(
+        false
+      )
+    }
+  })
+
+  it("returns a non-negative integer unsigned-webhook count", async () => {
+    const repository = new SqlRepository(fakeSql([[{ count: 2 }]]))
+
+    await expect(repository.countUnsignedWebhookPages()).resolves.toBe(2)
+  })
+
+  it.each([
+    ["an absent row", []],
+    ["an absent count", [{}]],
+    ["a string count", [{ count: "1" }]],
+    ["a fractional count", [{ count: 1.5 }]],
+    ["a negative count", [{ count: -1 }]],
+    ["a non-finite count", [{ count: Number.NaN }]],
+  ])("fails closed for %s", async (_name, rows) => {
+    const repository = new SqlRepository(fakeSql([rows]))
+
+    await expect(repository.countUnsignedWebhookPages()).rejects.toThrow(
+      "invalid unsigned webhook page count"
+    )
+  })
+
+  it("propagates a database query exception to the service boundary", async () => {
+    const tagged = async () => {
+      throw new Error("database transport failed")
+    }
+    const sql = Object.assign(tagged, {
+      query: async () => [],
+      transaction: async () => [],
+    }) as unknown as Sql
+    const repository = new SqlRepository(sql)
+
+    await expect(repository.countUnsignedWebhookPages()).rejects.toThrow(
+      "database transport failed"
+    )
+  })
+})
+
 describe("outbound idempotency reservation", () => {
   it("acquires the provider-call lease only after inserting a reservation", async () => {
     const repository = new SqlRepository(fakeSql([[], [{ tenant_id: "t1" }]]))
