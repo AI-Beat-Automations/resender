@@ -2,7 +2,10 @@
 
 > Documento de especificación para la construcción del sitio web de Resender.dev.
 > Fecha: 21 de julio de 2026.
-> Este documento es la fuente de verdad. Todo lo que se construya debe seguir lo que está acá.
+> Este documento es la fuente de verdad del sitio de marketing, con un override:
+> la referencia tecnica publica vigente es `https://api.resender.dev/docs`.
+> `docs.resender.dev` no vuelve a recibir links ni redirects hasta que su
+> contenido se actualice y verifique contra la OpenAPI actual.
 
 ---
 
@@ -27,7 +30,7 @@ Resender.dev es una API relay SaaS para mensajes de Facebook, Instagram y WhatsA
 | Home (Landing) | `/` | Página principal de conversión. Incluye secciones de How It Works y About. |
 | Pricing | `/pricing` | Página dedicada con la tabla completa de planes y comparación con ManyChat. |
 | Blog | `/blog` | Listado de posts. Cada post en `/blog/[slug]`. |
-| Docs | `docs.resender.dev` | Subdominio separado. Documentación técnica con búsqueda. |
+| Docs | `https://api.resender.dev/docs` | Swagger generado por la OpenAPI vigente. |
 
 **Navbar:** Logo (link a home) | Pricing | Blog | Docs (link externo) | **[Login]** (botón outline, va al dashboard existente) | **[Get Started]** (botón primario, va a registro)
 
@@ -207,9 +210,14 @@ Contenido del post acá...
 
 ---
 
-### 3.4 DOCS (`docs.resender.dev`)
+### 3.4 DOCS (`https://api.resender.dev/docs`)
 
 **Objetivo:** Que un desarrollador pueda implementar Resender sin hablar con nadie.
+
+**Estado vigente:** Swagger UI, `/openapi.json` y `/openapi/download` son las
+referencias canonicas. El sitio dedicado con busqueda en `docs.resender.dev`
+sigue siendo un objetivo futuro y no debe enlazarse mientras publique el
+contrato legado.
 
 #### Estructura del sidebar:
 
@@ -376,11 +384,11 @@ Contenido del post acá...
 
 ### Docs
 
-- Subdominio: `docs.resender.dev`.
-- Herramienta dedicada (Fumadocs, Nextra, o Mintlify).
-- Búsqueda integrada.
-- Sidebar con navegación por secciones.
-- Contenido en inglés y español.
+- Referencia actual: `https://api.resender.dev/docs`.
+- OpenAPI JSON: `https://api.resender.dev/openapi.json`.
+- Descarga: `https://api.resender.dev/openapi/download`.
+- Futuro, despues de migrar y verificar contenido: sitio dedicado en
+  `docs.resender.dev` con busqueda, sidebar e ingles/español.
 
 ### SEO
 
@@ -413,7 +421,8 @@ Contenido del post acá...
 
 Basado en el documento de Lanzamiento, las prioridades (en negrita) son:
 
-1. **Docs** (Arturo) — Documentación técnica en docs.resender.dev.
+1. **Docs** (Arturo) — Contrato vigente en `https://api.resender.dev/docs`;
+   migrar y verificar `docs.resender.dev` antes de volver a enlazarlo.
 2. **Versión de la web en inglés** — i18n implementado.
 3. **Conectar Stripe** (Arturo) — Pagos funcionando.
 4. **Plantilla de n8n** — Ejemplo listo para que los usuarios arranquen rápido.

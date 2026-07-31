@@ -6,6 +6,13 @@
 >
 > Un agente debería poder leer este archivo y reproducir el resultado sin rehacer trabajo creativo
 > (especialmente **el copy en inglés**, que está transcripto completo más abajo).
+>
+> **Override vigente de API (2026-07-30).** Este handoff conserva contexto
+> histórico de la rama, pero cualquier ejemplo técnico debe seguir la OpenAPI
+> de `https://api.resender.dev/openapi.json`: envíos por `POST /v1/messages`,
+> `Idempotency-Key` obligatorio y `pageId` UUID interno. La referencia pública
+> es `https://api.resender.dev/docs`; `docs.resender.dev` no debe enlazarse de
+> nuevo hasta que deje de publicar el contrato legado.
 
 ---
 
@@ -65,16 +72,19 @@ Aplica en landing, pricing, **blog** (posts + CTA) y metadatos SEO. ⚠️ Cuida
 Reemplazar en **todo el copy visible** (landing, pricing, blog, docs, footer, metadatos SEO/OG).
 
 **NO tocar** (rompería o sería incorrecto):
-- Identificadores de código y rutas: `/api/meta/send`, `lib/meta.ts`, `features/connect-meta/…`,
+- Identificadores internos de código: `lib/meta.ts`, `features/connect-meta/…`,
   `import.meta.url`.
-- Campos de la API / payloads: `metaPageId`, `metaMessageId`, la key `meta` de la respuesta JSON,
-  placeholders `<meta-message-id>`.
+- Identificadores internos o historicos como `metaPageId`, `metaMessageId` y la
+  key `meta` no se renombran a ciegas en codigo. Tampoco se presentan como
+  contrato publico v1: la OpenAPI vigente usa `providerPageId` y
+  `provider.messageId`.
 - **Páginas legales** (`/privacy`, `/terms`, `/data-deletion`): nombran la entidad legal
   "Meta Platforms" — se dejan.
 - Pantallas internas de la app logueada (connections/settings/etc.).
 - En **docs**: cambiar solo la prosa de marca ("the Page's Facebook ID", "Facebook's raw passthrough
-  response"), **manteniendo** los tokens de código (`meta`, `metaPageId`, rutas `api/meta/send`,
-  referencias a archivos fuente).
+  response"), manteniendo tokens que sigan formando parte del contrato vigente. La ruta
+  `/api/meta/send`, `reply` y el Meta Page ID solo pueden aparecer etiquetados como contrato legado
+  dentro de una guia de migracion; los ejemplos activos usan API v1.
 
 ### 1.4 Blog: "Actualizaciones" → "Novedades"
 
@@ -816,10 +826,29 @@ From now on, every incoming message arrives at n8n as JSON:
 
 ​```json
 {
-  "tenant": { "id": "ten_123" },
-  "page": { "id": "pg_456", "metaPageId": "102938475610111" },
-  "conversation": { "id": "conv_789", "contactId": "6543210987654321" },
-  "message": { "direction": "inbound", "status": "received", "text": "Hi!" }
+  "id": "evt_feb9cf7355c04b7eb44a",
+  "type": "message.received",
+  "createdAt": "2026-07-30T18:00:00.000Z",
+  "data": {
+    "page": {
+      "id": "7ac2cc32-38cf-4d41-8c73-c6cf640d5b15",
+      "providerPageId": "102938475610111",
+      "name": "Acme Support"
+    },
+    "conversation": {
+      "id": "9e2327a8-0c42-493e-bd6c-c08ed81010f0",
+      "contact": { "id": "6543210987654321", "name": null }
+    },
+    "message": {
+      "id": "ef55c94e-b861-4d19-9f9b-b5689028de80",
+      "direction": "inbound",
+      "status": "received",
+      "type": "text",
+      "text": "Hi!",
+      "provider": { "name": "meta", "messageId": "mid.1" },
+      "createdAt": "2026-07-30T18:00:00.000Z"
+    }
+  }
 }
 ​```
 
@@ -828,17 +857,22 @@ From now on, every incoming message arrives at n8n as JSON:
 Add an **HTTP Request** node pointing to Resender's outbound endpoint:
 
 ​```bash
-curl -X POST https://resender.dev/api/meta/send \
-  -H "Authorization: Bearer pk_live_your_secret" \
+curl -X POST https://api.resender.dev/v1/messages \
+  -H "Authorization: Bearer pk_live_..." \
+  -H "Idempotency-Key: n8n-message-6543210987654321-001" \
   -H "Content-Type: application/json" \
   -d '{
-    "pageId": "102938475610111",
+    "pageId": "7ac2cc32-38cf-4d41-8c73-c6cf640d5b15",
     "recipientId": "6543210987654321",
-    "reply": "Thanks for reaching out! How can we help?"
+    "type": "text",
+    "text": "Thanks for reaching out! How can we help?"
   }'
 ​```
 
-> Heads up: `pageId` is the `page.metaPageId` from the incoming payload (not the internal `page.id`), and `recipientId` is the `conversation.contactId`.
+> Heads up: `pageId` is the internal `data.page.id` UUID from the incoming
+> event (never `providerPageId`), and `recipientId` is
+> `data.conversation.contact.id`. Reuse the same idempotency key and body when
+> retrying one logical send.
 
 ## Done
 
@@ -852,9 +886,11 @@ With those two nodes you've got a working bot on Messenger, without paying for f
 
 ## SECCIÓN 11 — Docs (menciones de marca)
 
-En `app/docs/page.mdx`, solo prosa de marca:
+En la documentacion publica, solo prosa de marca:
 - "…matches this value against the Page's **Facebook** ID…"
 - "**`meta`** is **Facebook's** raw passthrough response — … treat it as **Facebook's** contract."
 
-Mantener sin cambios: la key `meta`, `metaPageId`, `metaMessageId`, rutas `api/meta/send`,
-placeholders y referencias a archivos fuente.
+Mantener sin cambios los identificadores que sigan en la OpenAPI. Cualquier
+mencion de `metaPageId`, `metaMessageId`, `/api/meta/send` o `reply` que
+describa el contrato anterior debe etiquetarse como historica o de migracion;
+no se reutiliza en quickstarts vigentes.

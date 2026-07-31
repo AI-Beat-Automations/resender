@@ -1,116 +1,115 @@
 "use server"
 
-import { headers } from "next/headers"
+import "server-only"
+
 import { redirect } from "next/navigation"
+import {
+  BillingPortalSessionRpcInputSchema,
+  CheckoutSessionRpcInputSchema,
+  type RpcActor,
+} from "@workspace/contracts"
 
 import { auth } from "@/auth"
-import { isUserWaitlisted } from "@/lib/auth/waitlist"
-import { isPlanLookupKey } from "@/lib/billing/plans"
-import { getStripe } from "@/lib/billing/stripe"
 import {
-  getStripeCustomerId,
-  hasActiveSubscription,
-  setStripeCustomerId,
-} from "@/lib/billing/subscription"
+  BackendRpcError,
+  createBillingPortalSession,
+  createCheckoutSession,
+} from "@/lib/backend/backend"
+import { isPlanLookupKey } from "@/lib/billing/plans"
 
-// Las URLs de retorno de Stripe deben apuntar al mismo host del request: la
-// cookie de sesión es host-only, y si APP_URL difiere (www vs apex) el
-// regreso del Checkout aterriza sin sesión y rebota a /login.
-async function getAppUrl(): Promise<string> {
-  const requestHeaders = await headers()
-  const host = requestHeaders.get("host")
-  if (host) {
-    const proto = requestHeaders.get("x-forwarded-proto") ?? "https"
-    return `${proto}://${host}`
-  }
-  const appUrl = process.env.APP_URL
-  if (!appUrl) throw new Error("APP_URL is required")
-  return appUrl
-}
+type BillingActionOutcome =
+  | { kind: "redirect"; destination: "/waitlist" | "/billing" }
+  | { kind: "stripe"; url: string }
 
-// Crea la Checkout Session hosteada por Stripe para el plan elegido y
-// redirige. El primer cobro ocurre dentro del propio Checkout (sin trial).
+// Checkout and Customer Portal stay hosted by Stripe. Next authenticates the
+// action, sends only the plan plus the configured web origin, then redirects to
+// the API-validated Stripe URL. Stripe state and secrets never enter this app.
 export async function startCheckout(lookupKey: string): Promise<void> {
+  const actor = await authenticatedActor()
+  if (!actor) redirect("/login")
   if (!isPlanLookupKey(lookupKey)) redirect("/billing")
 
-  const session = await auth()
-  if (!session?.user?.id) redirect("/login")
-  if (await isUserWaitlisted(session.user.id)) redirect("/waitlist")
+  const input = CheckoutSessionRpcInputSchema.safeParse({
+    priceLookupKey: lookupKey,
+    origin: configuredAppOrigin(),
+  })
+  if (!input.success) throw new Error("APP_URL must be an exact web origin.")
 
-  // Con suscripción activa no hay segundo Checkout: la gestión (cambiar plan,
-  // cancelar) vive en el Customer Portal.
-  if (await hasActiveSubscription(session.user.id)) {
-    await openPortal()
-  }
-
-  const stripe = getStripe()
-  const customerId = await ensureStripeCustomer(
-    session.user.id,
-    session.user.email ?? undefined
+  const outcome = await performBillingMutation(
+    () => createCheckoutSession(actor, input.data),
+    "checkout"
   )
-
-  const prices = await stripe.prices.list({
-    lookup_keys: [lookupKey],
-    limit: 1,
-  })
-  const price = prices.data[0]
-  if (!price) {
-    throw new Error(`No Stripe price found for lookup key ${lookupKey}`)
-  }
-
-  // `session_id` permite a /billing/success verificar server-side que el
-  // Checkout es de este usuario y está completado (no abre acceso: eso sigue
-  // siendo del webhook).
-  const appUrl = await getAppUrl()
-  const checkout = await stripe.checkout.sessions.create({
-    mode: "subscription",
-    customer: customerId,
-    line_items: [{ price: price.id, quantity: 1 }],
-    metadata: { tenantId: session.user.id },
-    subscription_data: { metadata: { tenantId: session.user.id } },
-    success_url: `${appUrl}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${appUrl}/billing`,
-  })
-  if (!checkout.url) throw new Error("Stripe Checkout session has no URL")
-
-  redirect(checkout.url)
+  if (outcome.kind === "redirect") redirect(outcome.destination)
+  redirect(outcome.url)
 }
 
-// Abre el Customer Portal de Stripe, donde vive toda la gestión posterior:
-// cambio de plan, método de pago y cancelación (al fin del período).
 export async function openPortal(): Promise<void> {
-  const session = await auth()
-  if (!session?.user?.id) redirect("/login")
+  const actor = await authenticatedActor()
+  if (!actor) redirect("/login")
 
-  const customerId = await getStripeCustomerId(session.user.id)
-  if (!customerId) redirect("/billing")
-
-  const portal = await getStripe().billingPortal.sessions.create({
-    customer: customerId,
-    return_url: `${await getAppUrl()}/settings`,
+  const input = BillingPortalSessionRpcInputSchema.safeParse({
+    origin: configuredAppOrigin(),
   })
+  if (!input.success) throw new Error("APP_URL must be an exact web origin.")
 
-  redirect(portal.url)
+  const outcome = await performBillingMutation(
+    () => createBillingPortalSession(actor, input.data),
+    "portal"
+  )
+  if (outcome.kind === "redirect") redirect(outcome.destination)
+  redirect(outcome.url)
 }
 
-// Reutiliza el Customer del tenant o lo crea la primera vez que inicia
-// Checkout; `metadata.tenantId` permite resolver el tenant en los webhooks.
-async function ensureStripeCustomer(
-  userId: string,
-  email: string | undefined
-): Promise<string> {
-  const existing = await getStripeCustomerId(userId)
-  if (existing) return existing
+async function authenticatedActor(): Promise<RpcActor | null> {
+  const session = await auth()
+  return session?.user?.id ? { userId: session.user.id } : null
+}
 
-  // La idempotency key estable por usuario hace que dos requests concurrentes
-  // (doble click, dos pestañas) reciban el mismo Customer en vez de crear dos.
-  const customer = await getStripe().customers.create(
-    {
-      email,
-      metadata: { tenantId: userId },
-    },
-    { idempotencyKey: `customer-create-${userId}` }
-  )
-  await setStripeCustomerId(userId, customer.id)
-  return customer.id
+function configuredAppOrigin(): string {
+  const value = process.env.APP_URL
+  if (!value) throw new Error("APP_URL is required.")
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    throw new Error("APP_URL must be an exact web origin.")
+  }
+  if (
+    url.username ||
+    url.password ||
+    url.pathname !== "/" ||
+    url.search ||
+    url.hash ||
+    url.origin !== value.replace(/\/$/u, "")
+  ) {
+    throw new Error("APP_URL must be an exact web origin.")
+  }
+  return url.origin
+}
+
+async function performBillingMutation(
+  operation: () => Promise<{ url: string }>,
+  surface: "checkout" | "portal"
+): Promise<BillingActionOutcome> {
+  try {
+    return { kind: "stripe", url: (await operation()).url }
+  } catch (error) {
+    if (!(error instanceof BackendRpcError)) throw error
+    const { classification } = error
+    if (
+      classification.code === "account_waitlisted" ||
+      (classification.kind === "not_found" && surface === "checkout")
+    ) {
+      return { kind: "redirect", destination: "/waitlist" }
+    }
+    if (
+      classification.code === "subscription_required" ||
+      classification.code === "plan_unavailable" ||
+      classification.kind === "validation" ||
+      classification.kind === "not_found"
+    ) {
+      return { kind: "redirect", destination: "/billing" }
+    }
+    throw error
+  }
 }

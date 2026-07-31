@@ -5,8 +5,7 @@ import { LoaderCircle } from "lucide-react"
 import { auth } from "@/auth"
 import { ActivationPoller } from "@/features/billing/ui/activation-poller"
 import { AccessCard, AccessShell } from "@/features/auth/ui/access-shell"
-import { getStripe } from "@/lib/billing/stripe"
-import { hasActiveSubscription } from "@/lib/billing/subscription"
+import { loadBillingSuccess } from "@/lib/billing/page-data"
 import { privatePageMetadata } from "@/lib/seo"
 
 export const metadata = privatePageMetadata("Activando tu suscripción")
@@ -26,11 +25,11 @@ export default async function BillingSuccessPage({
 }: BillingSuccessPageProps) {
   const [session, params] = await Promise.all([auth(), searchParams])
   if (!session?.user?.id) redirect("/login")
-  if (await hasActiveSubscription(session.user.id)) redirect("/connections")
-
-  if (!(await isOwnCompletedCheckout(params.session_id, session.user.id))) {
-    redirect("/billing")
-  }
+  const result = await loadBillingSuccess(
+    { userId: session.user.id },
+    params.session_id
+  )
+  if (result.kind === "redirect") redirect(result.destination)
 
   return (
     <AccessShell>
@@ -67,20 +66,4 @@ export default async function BillingSuccessPage({
       <ActivationPoller />
     </AccessShell>
   )
-}
-
-async function isOwnCompletedCheckout(
-  sessionId: string | undefined,
-  userId: string
-): Promise<boolean> {
-  if (!sessionId) return false
-  try {
-    const checkout = await getStripe().checkout.sessions.retrieve(sessionId)
-    return (
-      checkout.metadata?.tenantId === userId && checkout.status === "complete"
-    )
-  } catch (error) {
-    console.error("checkout session verification failed", sessionId, error)
-    return false
-  }
 }

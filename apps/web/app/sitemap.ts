@@ -17,7 +17,7 @@ const LOCALIZED_ROUTES = [
 ]
 
 // Rutas que existen en un solo idioma y NO se prefijan. `/docs` ya no está:
-// vive en docs.resender.dev y acá solo queda un 301 (ver next.config.ts).
+// redirige a la referencia API externa (ver next.config.ts).
 const SHARED_ROUTES = ["/privacy", "/terms", "/data-deletion"]
 
 // Fecha de la última vez que cambió el copy de las páginas fijas. Vive en

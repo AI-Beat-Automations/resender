@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import {
-  formatMetaConnectionError,
-  metaPageOwnedReason,
-} from "./meta-connection-error"
+import { formatMetaConnectionError } from "./meta-connection-error"
 
 describe("formatMetaConnectionError", () => {
   it("explains that no page was saved when the webhook subscription failed", () => {
@@ -12,16 +9,13 @@ describe("formatMetaConnectionError", () => {
     )
   })
 
-  it("names the page id taken by another tenant", () => {
+  it("does not expose the Page id owned by another tenant", () => {
     expect(formatMetaConnectionError("page_owned:104233889761204")).toBe(
-      "No se pudo conectar: la página 104233889761204 ya pertenece a otra cuenta de Resender."
+      "No se pudo conectar: una página seleccionada ya pertenece a otra cuenta de Resender."
     )
-  })
-
-  it("builds the page_owned reason from a page id", () => {
     expect(
-      formatMetaConnectionError(metaPageOwnedReason("118456220134987"))
-    ).toContain("la página 118456220134987")
+      formatMetaConnectionError("page_owned:104233889761204")
+    ).not.toContain("104233889761204")
   })
 
   it("reports the server misconfiguration", () => {
@@ -42,9 +36,9 @@ describe("formatMetaConnectionError", () => {
     )
   })
 
-  it("falls back to the raw reason and to the bare message without one", () => {
+  it("does not reflect an unknown reason", () => {
     expect(formatMetaConnectionError("something_odd")).toBe(
-      "No se pudo conectar: something_odd."
+      "No se pudo conectar."
     )
     expect(formatMetaConnectionError()).toBe("No se pudo conectar.")
     expect(formatMetaConnectionError(null)).toBe("No se pudo conectar.")
@@ -58,7 +52,6 @@ describe("formatMetaConnectionError", () => {
       "configuration_failed",
       "meta_session_expired",
       "state_mismatch",
-      "unknown",
     ]
 
     for (const reason of reasons) {

@@ -62,6 +62,7 @@ export function ChangePasswordPanel() {
               autoComplete="new-password"
               required
               minLength={8}
+              maxLength={1024}
               placeholder="Al menos 8 caracteres"
             />
           </div>
@@ -74,6 +75,7 @@ export function ChangePasswordPanel() {
               autoComplete="new-password"
               required
               minLength={8}
+              maxLength={1024}
               placeholder="Repite la contraseña nueva"
             />
           </div>

@@ -1,12 +1,11 @@
-import type { ConversationListItem, ThreadMessage } from "./read-model"
+import type { ConversationListItem, ThreadMessage } from "./view-model"
 
 // Presentación del log de mensajes (ADR 0005). Módulo puro: sin DB ni red, y
 // todo lo que sale de aquí es serializable para cruzar a los componentes.
 //
-// El contacto se muestra SIEMPRE como PSID: `conversations.contact_name` existe
-// en el esquema pero `lib/messages/message-log.ts` nunca lo escribe, así que el
-// nombre no existe para ningún registro. Por eso la pantalla se dibuja como log
-// —el último mensaje en el renglón principal— y no como bandeja de entrada.
+// El contacto se muestra SIEMPRE como PSID para conservar la semántica del log:
+// el último mensaje ocupa el renglón principal y el identificador estable del
+// contacto queda como dato secundario.
 
 export type ConversationRowView = {
   id: string
@@ -32,7 +31,7 @@ export type ThreadMessageView = {
   text: string
   /** `outbound · 14:02:11 · sent`. */
   meta: string
-  /** Error crudo del proveedor, solo en `failed`. */
+  /** Mensaje de fallo sanitizado por el contrato, solo en `failed`. */
   error: string | null
   /** Separador de fecha cuando el mensaje abre un día nuevo. */
   dayLabel: string | null

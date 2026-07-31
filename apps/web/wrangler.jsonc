@@ -1,5 +1,5 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
+  "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "web",
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-07-01",
@@ -15,13 +15,38 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
+  "services": [
+    {
+      "binding": "BACKEND",
+      "service": "api",
+      "entrypoint": "WebAppApi"
+    }
+  ],
   "observability": {
     "enabled": true
   },
   // Único host que sirve el worker. `www` NO va acá: debe resolverse con una
   // Redirect Rule 301 hacia el ápex (ver el checklist de Cloudflare), no
   // sirviendo el mismo contenido en dos dominios.
-  "routes": [{ "pattern": "resender.dev", "custom_domain": true }]
-  // Los secretos (DATABASE_URL, AUTH_SECRET, etc.) NO van aquí: se cargan con
-  // `wrangler secret put <NAME>` en producción y en `.dev.vars` para preview local.
+  "routes": [{ "pattern": "resender.dev", "custom_domain": true }],
+  "env": {
+    "staging": {
+      "name": "web-staging",
+      "routes": [
+        {
+          "pattern": "staging.resender.dev",
+          "custom_domain": true
+        }
+      ],
+      "services": [
+        {
+          "binding": "BACKEND",
+          "service": "api-staging",
+          "entrypoint": "WebAppApi"
+        }
+      ]
+    }
+  }
+  // Sólo AUTH_SECRET pertenece al runtime web. Los secretos de base de datos,
+  // Stripe, Meta y API keys pertenecen al Worker `api`.
 }

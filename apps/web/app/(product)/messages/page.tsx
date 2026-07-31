@@ -1,4 +1,6 @@
 import { auth } from "@/auth"
+import { redirect } from "next/navigation"
+
 import { ConversationLogList } from "@/features/messages/ui/conversation-log-list"
 import {
   EmptyThread,
@@ -9,11 +11,7 @@ import {
   toConversationRowView,
   toThreadMessageViews,
 } from "@/lib/messages/display"
-import {
-  listConversationReadModel,
-  listThreadMessages,
-} from "@/lib/messages/read-model"
-import { listTenantPages } from "@/lib/pages/page-registry"
+import { loadMessagesPageData } from "@/lib/messages/page-data"
 
 export default async function MessagesPage({
   searchParams,
@@ -27,28 +25,15 @@ export default async function MessagesPage({
 
   if (!tenantId) return null
 
-  const pages = await listTenantPages(tenantId)
-  const validPageFilter = pages.some((page) => page.id === pageFilter)
-    ? pageFilter
-    : undefined
-  const conversations = await listConversationReadModel({
-    tenantId,
-    connectedPageId: validPageFilter,
+  const result = await loadMessagesPageData({
+    actor: { userId: tenantId },
+    pageFilter,
+    conversationId: conversationParam,
   })
-  // Al entrar a /messages se abre la conversación más reciente: el read model
-  // ya viene ordenado por `last_message_at desc`.
-  const selectedConversation =
-    conversations.find(
-      (conversation) => conversation.id === conversationParam
-    ) ??
-    conversations[0] ??
-    null
-  const thread = selectedConversation
-    ? await listThreadMessages({
-        tenantId,
-        conversationId: selectedConversation.id,
-      })
-    : []
+  if (result.kind === "redirect") redirect(result.destination)
+
+  const { pages, selectedPageId, conversations, selectedConversation, thread } =
+    result.data
 
   const now = new Date()
   const rows = conversations.map((conversation) =>
@@ -61,7 +46,7 @@ export default async function MessagesPage({
     <div className="flex flex-col">
       <header>
         <p className="font-mono text-[11px] tracking-[0.08em] text-[var(--text-subtle)]">
-          // mensajes
+          {"// mensajes"}
         </p>
         <h1 className="mt-1 font-heading text-[26px] font-bold tracking-[-0.02em]">
           Mensajes
@@ -70,10 +55,7 @@ export default async function MessagesPage({
           Log durable organizado por conversación. Las respuestas salen de la
           API externa; esta pantalla es de solo lectura.
         </p>
-        <MessagesPageFilter
-          pages={pages.map((page) => ({ id: page.id, name: page.name }))}
-          selectedPageId={validPageFilter ?? null}
-        />
+        <MessagesPageFilter pages={pages} selectedPageId={selectedPageId} />
       </header>
 
       {/* Dos columnas con scroll propio (spec B4). La altura sale del viewport
@@ -83,7 +65,7 @@ export default async function MessagesPage({
         <ConversationLogList
           rows={rows}
           selectedConversationId={selectedRow?.id ?? null}
-          selectedPageId={validPageFilter ?? null}
+          selectedPageId={selectedPageId}
         />
         {selectedRow ? (
           <MessageThread
@@ -94,7 +76,7 @@ export default async function MessagesPage({
             messages={toThreadMessageViews(thread)}
           />
         ) : (
-          <EmptyThread filtered={Boolean(validPageFilter)} />
+          <EmptyThread filtered={Boolean(selectedPageId)} />
         )}
       </div>
     </div>

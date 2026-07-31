@@ -41,6 +41,7 @@ export function AuthForm({ action, mode, lang }: AuthFormProps) {
             type="email"
             autoComplete="email"
             required
+            maxLength={320}
             disabled={pending}
             aria-invalid={hasError}
             placeholder={t.emailPlaceholder}
@@ -55,6 +56,7 @@ export function AuthForm({ action, mode, lang }: AuthFormProps) {
             autoComplete={isLogin ? "current-password" : "new-password"}
             required
             minLength={8}
+            maxLength={1024}
             disabled={pending}
             aria-invalid={hasError}
             aria-describedby={isLogin ? undefined : "password-hint"}

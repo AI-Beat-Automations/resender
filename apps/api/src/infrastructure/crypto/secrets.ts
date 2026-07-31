@@ -14,6 +14,7 @@ const PASSWORD_KEY_LENGTH = 64
 const PASSWORD_FORMAT = "scrypt"
 const API_KEY_PREFIX = "pk_live_"
 const WEBHOOK_SECRET_PREFIX = "whsec_"
+const INTEGRATION_IDENTIFIER_ALPHABET = "abcdefghijklmnopqrstuvwxyz"
 
 export async function hashPassword(password: string): Promise<string> {
   validatePassword(password)
@@ -80,6 +81,20 @@ export function isApiKeyFormat(value: string): boolean {
 
 export function generateWebhookSigningSecret(): string {
   return `${WEBHOOK_SECRET_PREFIX}${randomToken(32)}`
+}
+
+export function generateIntegrationIdentifier(): string {
+  let suffix = ""
+  while (suffix.length < 8) {
+    for (const byte of randomBytes(16)) {
+      // 234 is the largest multiple of 26 below 256. Discarding the tail
+      // avoids modulo bias while keeping the suffix cryptographically random.
+      if (byte >= 234) continue
+      suffix += INTEGRATION_IDENTIFIER_ALPHABET[byte % 26]
+      if (suffix.length === 8) break
+    }
+  }
+  return `resender_${suffix}`
 }
 
 export function encryptSecret(keyValue: string, plaintext: string): string {

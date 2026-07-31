@@ -9,7 +9,11 @@ import type {
 } from "../infrastructure/db/repository"
 import type { MetaClient } from "../infrastructure/meta/client"
 import { createApp } from "../http/app"
-import { hashApiKey, hmacHex } from "../infrastructure/crypto/secrets"
+import {
+  decryptSecret,
+  hashApiKey,
+  hmacHex,
+} from "../infrastructure/crypto/secrets"
 import { ApiService } from "./service"
 
 const PEPPER = "test-pepper"
@@ -84,6 +88,59 @@ describe("API key authentication", () => {
 })
 
 describe("product access gates", () => {
+  it("fails a deleted JWT session closed to the waitlist destination", async () => {
+    const getSubscription = vi.fn()
+    const service = serviceWithRepository({
+      getUserById: async () => null,
+      getSubscription,
+    })
+
+    await expect(service.getProductAccess(actor)).resolves.toEqual({
+      userExists: false,
+      waitlisted: false,
+      subscriptionActive: false,
+      destination: "waitlist",
+    })
+    expect(getSubscription).not.toHaveBeenCalled()
+  })
+
+  it("does not query subscription state for a waitlisted account", async () => {
+    const getSubscription = vi.fn()
+    const service = serviceWithRepository({
+      getUserById: async () => user({ waitlisted: true }),
+      getSubscription,
+    })
+
+    await expect(service.getProductAccess(actor)).resolves.toEqual({
+      userExists: true,
+      waitlisted: true,
+      subscriptionActive: false,
+      destination: "waitlist",
+    })
+    expect(getSubscription).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ["inactive", subscription({ status: "past_due" }), false, "billing"],
+    ["missing", null, false, "billing"],
+    ["active", subscription(), true, "product"],
+  ] as const)(
+    "maps an %s subscription to the canonical access destination",
+    async (_state, plan, subscriptionActive, destination) => {
+      const service = serviceWithRepository({
+        getUserById: async () => user(),
+        getSubscription: async () => plan,
+      })
+
+      await expect(service.getProductAccess(actor)).resolves.toEqual({
+        userExists: true,
+        waitlisted: false,
+        subscriptionActive,
+        destination,
+      })
+    }
+  )
+
   it.each([
     {
       name: "waitlisted account",
@@ -149,6 +206,49 @@ describe("product access gates", () => {
       code: "account_waitlisted",
     })
     expect(metaCall).not.toHaveBeenCalled()
+  })
+})
+
+describe("legacy product access parity", () => {
+  it("treats a missing user as waitlisted", async () => {
+    const getSubscription = vi.fn()
+    const service = serviceWithRepository({
+      getUserById: async () => null,
+      getSubscription,
+    })
+
+    await expect(service.legacyAccessState(actor.userId)).resolves.toBe(
+      "waitlisted"
+    )
+    expect(getSubscription).not.toHaveBeenCalled()
+  })
+
+  it("treats only a subscription lookup failure as inactive", async () => {
+    const service = serviceWithRepository({
+      getUserById: async () => user(),
+      getSubscription: async () => {
+        throw new Error("database unavailable")
+      },
+    })
+
+    await expect(service.legacyAccessState(actor.userId)).resolves.toBe(
+      "inactive"
+    )
+  })
+
+  it("does not hide a waitlist lookup failure", async () => {
+    const getSubscription = vi.fn()
+    const service = serviceWithRepository({
+      getUserById: async () => {
+        throw new Error("database unavailable")
+      },
+      getSubscription,
+    })
+
+    await expect(service.legacyAccessState(actor.userId)).rejects.toThrow(
+      "database unavailable"
+    )
+    expect(getSubscription).not.toHaveBeenCalled()
   })
 })
 
@@ -377,15 +477,358 @@ describe("tenant-owned resources", () => {
     })
     expect(updatePageWebhook).not.toHaveBeenCalled()
   })
+
+  it("returns 404 and does not rotate a secret for a foreign Page", async () => {
+    const rotateWebhookSecret = vi.fn()
+    const service = serviceWithRepository({
+      getPage: async () => null,
+      rotateWebhookSecret,
+    })
+
+    await expect(
+      service.rotateWebhookSecret("tenant_1", PAGE_ID)
+    ).rejects.toMatchObject({ code: "not_found", status: 404 })
+    expect(rotateWebhookSecret).not.toHaveBeenCalled()
+  })
+
+  it("returns tenant-scoped 404 without updating a disconnected Page webhook", async () => {
+    const updatePageWebhook = vi.fn()
+    const service = serviceWithRepository({
+      getPage: async () => page({ status: "disconnected" }),
+      updatePageWebhook,
+    })
+
+    await expect(
+      service.updatePageWebhook(
+        "tenant_1",
+        PAGE_ID,
+        "https://93.184.216.34/webhook"
+      )
+    ).rejects.toMatchObject({ code: "not_found", status: 404 })
+    expect(updatePageWebhook).not.toHaveBeenCalled()
+  })
+
+  it("returns tenant-scoped 404 without rotating a disconnected Page secret", async () => {
+    const rotateWebhookSecret = vi.fn()
+    const service = serviceWithRepository({
+      getPage: async () => page({ status: "disconnected" }),
+      rotateWebhookSecret,
+    })
+
+    await expect(
+      service.rotateWebhookSecret("tenant_1", PAGE_ID)
+    ).rejects.toMatchObject({ code: "not_found", status: 404 })
+    expect(rotateWebhookSecret).not.toHaveBeenCalled()
+  })
+
+  it("reveals a rotated signing secret once and persists only ciphertext", async () => {
+    const rotatedAt = new Date("2026-07-29T18:03:00.000Z")
+    const persistedInputs: Array<{
+      tenantId: string
+      pageId: string
+      encryptedSecret: string
+    }> = []
+    const rotateWebhookSecret = vi.fn(
+      async (input: {
+        tenantId: string
+        pageId: string
+        encryptedSecret: string
+      }) => {
+        persistedInputs.push(input)
+        return rotatedAt
+      }
+    )
+    const service = serviceWithRepository({
+      getPage: async () => page(),
+      rotateWebhookSecret,
+    })
+
+    const result = await service.rotateWebhookSecret("tenant_1", PAGE_ID)
+    const persisted = persistedInputs[0]
+    if (!persisted) throw new Error("expected persisted secret")
+
+    expect(result).toMatchObject({
+      secret: expect.stringMatching(/^whsec_/u),
+      createdAt: rotatedAt.toISOString(),
+    })
+    expect(persisted.encryptedSecret).not.toContain(result.secret)
+    expect(
+      decryptSecret(service.env.TOKEN_ENCRYPTION_KEY, persisted.encryptedSecret)
+    ).toBe(result.secret)
+  })
+
+  it("keeps public and RPC Page mappings separate", async () => {
+    const rawTokenError = "access_token=SECRET raw provider response"
+    const updated = page({
+      tokenStatus: "invalid",
+      tokenError: rawTokenError,
+      tokenErrorAt: new Date("2026-07-29T18:01:00.000Z"),
+      disconnectedAt: new Date("2026-07-29T18:02:00.000Z"),
+    })
+    const service = serviceWithRepository({
+      getPage: async () => page(),
+      updatePageWebhook: async () => updated,
+    })
+
+    const publicPage = await service.updatePageWebhook(
+      "tenant_1",
+      PAGE_ID,
+      null
+    )
+    const rpcPage = await service.updatePageWebhookForRpc(
+      "tenant_1",
+      PAGE_ID,
+      null
+    )
+
+    expect(publicPage).not.toHaveProperty("tokenError")
+    expect(rpcPage).toMatchObject({
+      tokenError: "The Page credential is invalid. Reconnect the Page.",
+      tokenErrorAt: "2026-07-29T18:01:00.000Z",
+      disconnectedAt: "2026-07-29T18:02:00.000Z",
+    })
+    expect(rpcPage).not.toHaveProperty("pageAccessTokenEncrypted")
+    expect(JSON.stringify(rpcPage)).not.toMatch(
+      /access_token|SECRET|raw provider response/u
+    )
+  })
+})
+
+describe("web application URL allowlists", () => {
+  it("fails closed when the environment allowlist is absent", async () => {
+    const service = serviceWithRepository({
+      getUserById: async () => user(),
+    })
+    Reflect.deleteProperty(service.env, "WEB_APP_ORIGINS")
+
+    await expect(
+      service.createCheckoutSession(actor, {
+        priceLookupKey: "starter_monthly",
+        origin: "https://resender.dev",
+      })
+    ).rejects.toMatchObject({ code: "internal_error", status: 500 })
+  })
+
+  it("rejects unlisted Stripe origins and paths before provider access", async () => {
+    const getSubscription = vi.fn()
+    const service = serviceWithRepository({
+      getUserById: async () => user(),
+      getSubscription,
+    })
+
+    await expect(
+      service.createCheckoutSession(actor, {
+        priceLookupKey: "starter_monthly",
+        origin: "https://attacker.example",
+      })
+    ).rejects.toMatchObject({
+      code: "validation_error",
+      status: 400,
+      details: [{ path: "origin" }],
+    })
+    await expect(
+      service.createCheckoutSession(actor, {
+        priceLookupKey: "starter_monthly",
+        origin: "https://resender.dev/redirect",
+      })
+    ).rejects.toMatchObject({ code: "validation_error", status: 400 })
+    expect(getSubscription).not.toHaveBeenCalled()
+  })
+
+  it("constructs Checkout paths on the allowed origin", async () => {
+    const createCheckout = vi.fn(async () => ({
+      url: "https://checkout.stripe.com/c/pay/session",
+    }))
+    const service = serviceWithRepository(
+      {
+        getUserById: async () => user(),
+        getSubscription: async () => null,
+        getStripeCustomerId: async () => "cus_1",
+      },
+      {},
+      {
+        prices: { list: async () => ({ data: [{ id: "price_1" }] }) },
+        checkout: { sessions: { create: createCheckout } },
+      }
+    )
+
+    await service.createCheckoutSession(actor, {
+      priceLookupKey: "starter_monthly",
+      origin: "https://resender.dev/",
+    })
+
+    expect(createCheckout).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success_url:
+          "https://resender.dev/billing/success?session_id={CHECKOUT_SESSION_ID}",
+        cancel_url: "https://resender.dev/billing",
+      })
+    )
+  })
+
+  it("requires the exact configured Meta callback URL", async () => {
+    const exchangeAuthorizationCode = vi.fn(async () => "meta-token")
+    const saveMetaUserToken = vi.fn()
+    const service = serviceWithRepository(
+      {
+        getUserById: async () => user(),
+        getSubscription: async () => subscription(),
+        saveMetaUserToken,
+      },
+      { exchangeAuthorizationCode }
+    )
+
+    await expect(
+      service.exchangeMetaAuthorizationCode(actor, {
+        code: "code",
+        redirectUri: "https://resender.dev/connections",
+      })
+    ).rejects.toMatchObject({
+      code: "validation_error",
+      details: [{ path: "redirectUri" }],
+    })
+    await service.exchangeMetaAuthorizationCode(actor, {
+      code: "code",
+      redirectUri: "https://resender.dev/api/meta/callback",
+    })
+
+    expect(exchangeAuthorizationCode).toHaveBeenCalledWith({
+      code: "code",
+      redirectUri: "https://resender.dev/api/meta/callback",
+    })
+    expect(saveMetaUserToken).toHaveBeenCalledOnce()
+  })
+})
+
+describe("conversation thread pagination", () => {
+  it("declares descending message order and preserves pagination", async () => {
+    const service = serviceWithRepository({
+      getConversation: async () => ({
+        id: "9e2327a8-0c42-493e-bd6c-c08ed81010f0",
+        page: {
+          id: PAGE_ID,
+          providerPageId: "provider_page_1",
+          name: "Support",
+        },
+        contact: { id: "psid", name: null },
+        latestMessage: null,
+        lastMessageAt: "2026-07-29T18:00:00.000Z",
+        createdAt: "2026-07-29T18:00:00.000Z",
+        updatedAt: "2026-07-29T18:00:00.000Z",
+      }),
+      listConversationMessages: async () => ({
+        data: [],
+        pagination: { hasMore: true, nextCursor: "next" },
+      }),
+    })
+
+    await expect(
+      service.getConversationThread(
+        "tenant_1",
+        "9e2327a8-0c42-493e-bd6c-c08ed81010f0",
+        { limit: 100 }
+      )
+    ).resolves.toMatchObject({
+      order: "newest_first",
+      pagination: { hasMore: true, nextCursor: "next" },
+    })
+  })
 })
 
 describe("readiness", () => {
+  it("reports ready after running both database checks concurrently", async () => {
+    let resolvePing: ((value: boolean) => void) | undefined
+    const ping = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolvePing = resolve
+        })
+    )
+    const countUnsignedWebhookPages = vi.fn(async () => 0)
+    const service = serviceWithRepository({
+      ping,
+      countUnsignedWebhookPages,
+    })
+
+    const readiness = service.ready()
+    await vi.waitFor(() => {
+      expect(ping).toHaveBeenCalledOnce()
+      expect(countUnsignedWebhookPages).toHaveBeenCalledOnce()
+    })
+    resolvePing?.(true)
+
+    await expect(readiness).resolves.toEqual({
+      ready: true,
+      category: "ready",
+    })
+  })
+
+  it("categorizes a false database ping without exposing details", async () => {
+    const service = serviceWithRepository({
+      ping: async () => false,
+      countUnsignedWebhookPages: async () => 0,
+    })
+
+    await expect(service.ready()).resolves.toEqual({
+      ready: false,
+      category: "database",
+    })
+  })
+
+  it("categorizes invalid configuration before accessing the repository", async () => {
+    const ping = vi.fn(async () => true)
+    const countUnsignedWebhookPages = vi.fn(async () => 0)
+    const service = serviceWithRepository({
+      ping,
+      countUnsignedWebhookPages,
+    })
+    service.env.DATABASE_URL = ""
+
+    await expect(service.ready()).resolves.toEqual({
+      ready: false,
+      category: "configuration",
+    })
+    expect(ping).not.toHaveBeenCalled()
+    expect(countUnsignedWebhookPages).not.toHaveBeenCalled()
+  })
+
+  it("categorizes database exceptions without returning their message", async () => {
+    const service = serviceWithRepository({
+      ping: async () => {
+        throw new Error("postgres://user:secret@internal/tenant-id")
+      },
+      countUnsignedWebhookPages: async () => 0,
+    })
+
+    await expect(service.ready()).resolves.toEqual({
+      ready: false,
+      category: "database",
+    })
+  })
+
+  it("categorizes an invalid unsigned-Page count as a database failure", async () => {
+    const service = serviceWithRepository({
+      ping: async () => true,
+      countUnsignedWebhookPages: async () => {
+        throw new Error("invalid unsigned webhook page count")
+      },
+    })
+
+    await expect(service.ready()).resolves.toEqual({
+      ready: false,
+      category: "database",
+    })
+  })
+
   it("blocks cutover while a configured webhook lacks a signing secret", async () => {
     const service = serviceWithRepository({
       ping: async () => true,
       countUnsignedWebhookPages: async () => 1,
     })
-    await expect(service.ready()).resolves.toBe(false)
+    await expect(service.ready()).resolves.toEqual({
+      ready: false,
+      category: "unsigned_webhook_pages",
+    })
   })
 })
 
@@ -409,7 +852,7 @@ describe("Stripe provider boundaries and duplicate cleanup", () => {
     await expect(
       service.createCheckoutSession(actor, {
         priceLookupKey: "starter_monthly",
-        returnUrl: "https://resender.dev",
+        origin: "https://resender.dev",
       })
     ).rejects.toMatchObject({
       name: "ContractError",
@@ -505,6 +948,7 @@ function serviceWithRepository(
       STRIPE_WEBHOOK_SECRET: "whsec_test",
       ENVIRONMENT: "staging",
       PUBLIC_BASE_URL: "https://api-staging.resender.dev",
+      WEB_APP_ORIGINS: JSON.stringify(["https://resender.dev"]),
       API_RATE_LIMITER: { limit: async () => ({ success: true }) },
       WEBHOOK_DELIVERIES: {
         metrics: async () => ({ backlogCount: 0, backlogBytes: 0 }),
@@ -628,10 +1072,12 @@ function page(overrides: Partial<PageRecord> = {}): PageRecord {
     status: "active",
     tokenStatus: "valid",
     tokenError: null,
+    tokenErrorAt: null,
     webhookUrl: "https://93.184.216.34/webhook",
     pageAccessTokenEncrypted: "encrypted",
     webhookSigningSecretEncrypted: "encrypted-secret",
     connectedAt: PERIOD_START,
+    disconnectedAt: null,
     updatedAt: PERIOD_START,
     ...overrides,
   }

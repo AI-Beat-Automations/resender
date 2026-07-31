@@ -1,0 +1,8 @@
+# Versioned local-development variable names.
+# Copy to .dev.vars and replace every value with development/test-only credentials.
+NEXT_PUBLIC_META_APP_ID=development-only
+NEXT_PUBLIC_META_CONFIG_ID=development-only
+NEXT_PUBLIC_POSTHOG_KEY=development-only
+NEXT_PUBLIC_POSTHOG_HOST=https://us.i.posthog.com
+APP_URL=http://localhost:3000
+AUTH_SECRET=development-only

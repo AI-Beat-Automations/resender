@@ -3,8 +3,7 @@ import Link from "next/link"
 // Barra de aviso de cuota, global en el dashboard (ADR 0003): quien no entra a
 // `/connections` no se enteraría del límite. v2 no la dibuja (spec C.4), pero
 // la ADR 0005 la conserva como franja al ancho del `main`, con los tokens
-// semánticos del DS. Presentacional: la decisión de nivel viene resuelta desde
-// `lib/billing/entitlements.ts`.
+// semánticos del DS. Presentacional: la decisión llega resuelta desde el API.
 
 export type QuotaNoticeView = {
   level: "warning" | "restricted"

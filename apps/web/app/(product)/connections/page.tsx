@@ -1,29 +1,15 @@
 import Link from "next/link"
+import { redirect } from "next/navigation"
 import { Check, Link2, TriangleAlert, X } from "lucide-react"
 
 import { ConnectFacebookButton } from "@/features/connect-meta/ui/connect-facebook-button"
-import {
-  ConnectedPageCard,
-  type ConnectedPageView,
-} from "@/features/connections/ui/connected-page-card"
+import { ConnectedPageCard } from "@/features/connections/ui/connected-page-card"
 import { auth } from "@/auth"
-import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
+import { loadConnectionsPageData } from "@/lib/connections/page-data"
+import type { PageQuotaView } from "@/lib/connections/view-model"
 import { formatMetaConnectionError } from "@/lib/pages/meta-connection-error"
-import { listTenantPages } from "@/lib/pages/page-registry"
 
 type ConnectedPage = { id: string; name: string }
-
-// Cupo de páginas del plan. `null` = no se pudo resolver: fail-closed, se
-// muestra el bloqueo y no un «N de ?» inventado (ADR 0005).
-type PageQuotaView = { activePageCount: number; maxPages: number } | null
-
-const dateTimeFormat = new Intl.DateTimeFormat("es-ES", {
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-})
 
 export default async function ConnectionsPage({
   searchParams,
@@ -33,14 +19,13 @@ export default async function ConnectionsPage({
   const { meta, pages, reason } = await searchParams
   const connected = parseConnectedPages(pages)
   const session = await auth()
-  const tenantId = session?.user?.id ?? null
-  const tenantPages = tenantId ? await listTenantPages(tenantId) : []
-  const quota = tenantId ? await resolvePageQuota(tenantId) : null
+  const tenantId = session?.user?.id
+  if (!tenantId) return null
 
-  const sortedPages = [...tenantPages].sort(
-    (left, right) => cardRank(left) - cardRank(right)
-  )
-  const firstActiveId = sortedPages.find((page) => page.status === "active")?.id
+  const result = await loadConnectionsPageData({ userId: tenantId })
+  if (result.kind === "redirect") redirect(result.destination)
+  const { pages: tenantPages, quota } = result.data
+  const firstActiveId = tenantPages.find((page) => page.status === "active")?.id
 
   return (
     // El padding de página lo aporta el `main` del layout (spec C.7): acá solo
@@ -102,10 +87,10 @@ export default async function ConnectionsPage({
               </h2>
               <PageQuota quota={quota} />
             </div>
-            {sortedPages.map((page) => (
+            {tenantPages.map((page) => (
               <ConnectedPageCard
                 key={page.id}
-                page={toPageView(page)}
+                page={page}
                 showWebhookHint={page.id === firstActiveId}
               />
             ))}
@@ -171,53 +156,6 @@ function PageQuota({ quota }: { quota: PageQuotaView }) {
       {quota.activePageCount} de {quota.maxPages} páginas
     </p>
   )
-}
-
-// Orden de la lista (spec B2): activa → con el token rechazado → desconectada.
-function cardRank(page: Awaited<ReturnType<typeof listTenantPages>>[number]) {
-  if (page.status !== "active") return 2
-  return page.tokenStatus === "invalid" ? 1 : 0
-}
-
-// El cupo no cuesta una consulta nueva de dominio: reusa el entitlement que ya
-// existe. Si el plan no se resuelve (o la lectura falla) devuelve null y la
-// pantalla lo dice, en vez de dibujar un límite inventado (ADR 0005).
-async function resolvePageQuota(tenantId: string): Promise<PageQuotaView> {
-  try {
-    const entitlement = await getTenantEntitlement(tenantId)
-    if (!entitlement.limits) return null
-    return {
-      activePageCount: entitlement.activePageCount,
-      maxPages: entitlement.limits.maxPages,
-    }
-  } catch (error) {
-    console.error("page quota unavailable", error)
-    return null
-  }
-}
-
-function toPageView(
-  page: Awaited<ReturnType<typeof listTenantPages>>[number]
-): ConnectedPageView {
-  return {
-    id: page.id,
-    metaPageId: page.metaPageId,
-    name: page.name,
-    status: page.status,
-    tokenStatus: page.tokenStatus,
-    tokenError: page.tokenError,
-    webhookUrl: page.webhookUrl,
-    connectedAt: page.connectedAt.toISOString(),
-    connectedAtLabel: dateTimeFormat.format(page.connectedAt),
-    tokenErrorAt: page.tokenErrorAt?.toISOString() ?? null,
-    tokenErrorAtLabel: page.tokenErrorAt
-      ? dateTimeFormat.format(page.tokenErrorAt)
-      : null,
-    disconnectedAt: page.disconnectedAt?.toISOString() ?? null,
-    disconnectedAtLabel: page.disconnectedAt
-      ? dateTimeFormat.format(page.disconnectedAt)
-      : null,
-  }
 }
 
 function parseConnectedPages(pages?: string): ConnectedPage[] {

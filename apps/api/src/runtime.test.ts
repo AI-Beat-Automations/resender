@@ -100,8 +100,285 @@ describe("Worker runtime entrypoints", () => {
       userExists: false,
       waitlisted: false,
       subscriptionActive: false,
-      destination: "billing",
+      destination: "waitlist",
     })
+  })
+
+  it("allows only exact provider callback paths and methods through named fetch", async () => {
+    const repository = vi.spyOn(SqlRepository.prototype, "getUserById")
+    const providerFetch = vi.spyOn(globalThis, "fetch")
+
+    const [
+      unknown,
+      trailingSlash,
+      nestedCallback,
+      metaMethod,
+      stripeMethod,
+    ] = await Promise.all([
+      workerExports.WebAppApi.fetch(
+        new Request("https://backend.internal/v1/messages", {
+          method: "POST",
+          body: "{}",
+        })
+      ),
+      workerExports.WebAppApi.fetch(
+        new Request("https://backend.internal/webhooks/meta/")
+      ),
+      workerExports.WebAppApi.fetch(
+        new Request("https://backend.internal/webhooks/meta/extra")
+      ),
+      workerExports.WebAppApi.fetch(
+        new Request("https://backend.internal/webhooks/meta", {
+          method: "PUT",
+          body: "{}",
+        })
+      ),
+      workerExports.WebAppApi.fetch(
+        new Request("https://backend.internal/webhooks/stripe")
+      ),
+    ])
+
+    expect(unknown.status).toBe(404)
+    expect(await unknown.text()).toBe("not found")
+    expect(trailingSlash.status).toBe(404)
+    expect(nestedCallback.status).toBe(404)
+    expect(metaMethod.status).toBe(405)
+    expect(metaMethod.headers.get("allow")).toBe("GET, POST")
+    expect(stripeMethod.status).toBe(405)
+    expect(stripeMethod.headers.get("allow")).toBe("POST")
+    expect(repository).not.toHaveBeenCalled()
+    expect(providerFetch).not.toHaveBeenCalled()
+  })
+
+  it("keeps legacy send private, exact-path allowlisted and method constrained", async () => {
+    const [invalidKey, wrongMethod, trailingSlash, publicRoute] =
+      await Promise.all([
+        workerExports.WebAppApi.fetch(
+          new Request(
+            "https://backend.internal/internal/legacy/meta/send",
+            {
+              method: "POST",
+              headers: { authorization: "Bearer invalid" },
+              body: "{}",
+            }
+          )
+        ),
+        workerExports.WebAppApi.fetch(
+          new Request("https://backend.internal/internal/legacy/meta/send")
+        ),
+        workerExports.WebAppApi.fetch(
+          new Request(
+            "https://backend.internal/internal/legacy/meta/send/",
+            { method: "POST", body: "{}" }
+          )
+        ),
+        workerExports.default.fetch(
+          new Request(
+            "https://api.resender.dev/internal/legacy/meta/send",
+            { method: "POST", body: "{}" }
+          )
+        ),
+      ])
+
+    expect(invalidKey.status).toBe(401)
+    await expect(invalidKey.json()).resolves.toEqual({
+      error: "unauthorized",
+    })
+    expect(wrongMethod.status).toBe(405)
+    expect(wrongMethod.headers.get("allow")).toBe("POST")
+    expect(trailingSlash.status).toBe(404)
+    expect(publicRoute.status).toBe(404)
+  })
+
+  it("delegates the Meta challenge through named fetch to the shared router", async () => {
+    const response = await workerExports.WebAppApi.fetch(
+      new Request(
+        "https://backend.internal/webhooks/meta?hub.mode=subscribe&hub.verify_token=development-only&hub.challenge=named-fetch-challenge"
+      )
+    )
+
+    expect(response.status).toBe(200)
+    expect(await response.text()).toBe("named-fetch-challenge")
+  })
+
+  it.each([
+    ["/webhooks/meta", "x-hub-signature-256"],
+    ["/webhooks/stripe", "stripe-signature"],
+  ])(
+    "delegates essential %s signature headers and raw body through named fetch",
+    async (path, header) => {
+      const response = await workerExports.WebAppApi.fetch(
+        new Request(`https://backend.internal${path}`, {
+          method: "POST",
+          headers: {
+            [header]: "invalid-byte-identical-signature",
+            "content-type": "application/json",
+          },
+          body: '{"raw":"byte-identical"}',
+        })
+      )
+
+      expect(response.status).toBe(400)
+      expect(await response.json()).toMatchObject({
+        error: { code: "invalid_signature" },
+      })
+    }
+  )
+
+  it("returns cloneable health over RPC without application dependencies", async () => {
+    const repository = vi.spyOn(SqlRepository.prototype, "getUserById")
+    const stripe = vi.spyOn(stripeTransport, "create")
+    const providerFetch = vi.spyOn(globalThis, "fetch")
+
+    const health = await workerExports.WebAppApi.health()
+
+    expect(health).toEqual({
+      status: "ok",
+      service: "api",
+      entrypoint: "rpc",
+    })
+    expect(structuredClone(health)).toEqual(health)
+    expect(repository).not.toHaveBeenCalled()
+    expect(stripe).not.toHaveBeenCalled()
+    expect(providerFetch).not.toHaveBeenCalled()
+  })
+
+  it("keeps thread RPC callers compatible while forwarding pagination", async () => {
+    vi.spyOn(ApiService.prototype, "getProductShell").mockResolvedValue({
+      tenantId: ACTOR.userId,
+      email: "person@example.com",
+      entitlement: {
+        priceLookupKey: "starter_monthly",
+        usage: 0,
+        messageLimit: 1_000,
+        activePageCount: 1,
+        pageLimit: 3,
+        blockCode: null,
+        noticeLevel: null,
+      },
+    })
+    const getConversationThread = vi
+      .spyOn(ApiService.prototype, "getConversationThread")
+      .mockResolvedValue({
+        conversation: {
+          id: "9e2327a8-0c42-493e-bd6c-c08ed81010f0",
+          page: {
+            id: "f251bd5a-2772-489a-a725-43e2ea9d44ee",
+            providerPageId: "page_runtime",
+            name: "Runtime Page",
+          },
+          contact: { id: "psid", name: null },
+          latestMessage: null,
+          lastMessageAt: "2026-07-29T18:00:00.000Z",
+          createdAt: "2026-07-29T18:00:00.000Z",
+          updatedAt: "2026-07-29T18:00:00.000Z",
+        },
+        messages: [],
+        pagination: { hasMore: false, nextCursor: null },
+        order: "newest_first",
+      })
+    const conversationId = "9e2327a8-0c42-493e-bd6c-c08ed81010f0"
+
+    await workerExports.WebAppApi.getConversationThread(ACTOR, {
+      conversationId,
+    })
+    await workerExports.WebAppApi.getConversationThread(ACTOR, {
+      conversationId,
+      limit: 25,
+      cursor: "next-page",
+    })
+
+    expect(getConversationThread).toHaveBeenNthCalledWith(
+      1,
+      ACTOR.userId,
+      conversationId,
+      { limit: 100, cursor: undefined }
+    )
+    expect(getConversationThread).toHaveBeenNthCalledWith(
+      2,
+      ACTOR.userId,
+      conversationId,
+      { limit: 25, cursor: "next-page" }
+    )
+  })
+
+  it("exposes explicit one-time webhook secret rotation over RPC", async () => {
+    vi.spyOn(ApiService.prototype, "getProductShell").mockResolvedValue(
+      productShell()
+    )
+    const rotateWebhookSecret = vi
+      .spyOn(ApiService.prototype, "rotateWebhookSecret")
+      .mockResolvedValue({
+        secret: "whsec_runtime",
+        createdAt: "2026-07-29T18:03:00.000Z",
+      })
+
+    await expect(
+      workerExports.WebAppApi.rotateWebhookSecret(ACTOR, {
+        pageId: "f251bd5a-2772-489a-a725-43e2ea9d44ee",
+      })
+    ).resolves.toEqual({
+      secret: "whsec_runtime",
+      createdAt: "2026-07-29T18:03:00.000Z",
+    })
+    expect(rotateWebhookSecret).toHaveBeenCalledWith(
+      ACTOR.userId,
+      "f251bd5a-2772-489a-a725-43e2ea9d44ee"
+    )
+  })
+
+  it.each([
+    ["waitlisted", true, "active", "account_waitlisted"],
+    ["inactive subscription", false, "past_due", "subscription_required"],
+    ["missing subscription", false, null, "subscription_required"],
+  ] as const)(
+    "blocks webhook secret rotation for a %s actor",
+    async (_state, waitlisted, subscriptionStatus, code) => {
+      vi.spyOn(SqlRepository.prototype, "getUserById").mockResolvedValue({
+        ...runtimeUser(),
+        waitlisted,
+      })
+      vi.spyOn(SqlRepository.prototype, "getSubscription").mockResolvedValue(
+        subscriptionStatus
+          ? { ...activeSubscription(), status: subscriptionStatus }
+          : null
+      )
+      const getPage = vi.spyOn(SqlRepository.prototype, "getPage")
+      const rotateWebhookSecret = vi.spyOn(
+        SqlRepository.prototype,
+        "rotateWebhookSecret"
+      )
+
+      const error = await captureError(
+        workerExports.WebAppApi.rotateWebhookSecret(ACTOR, {
+          pageId: "f251bd5a-2772-489a-a725-43e2ea9d44ee",
+        })
+      )
+
+      expect(error).toMatchObject({ code, status: 403 })
+      expect(getPage).not.toHaveBeenCalled()
+      expect(rotateWebhookSecret).not.toHaveBeenCalled()
+    }
+  )
+
+  it("preserves foreign-Page 404 after the rotation access gate", async () => {
+    vi.spyOn(ApiService.prototype, "getProductShell").mockResolvedValue(
+      productShell()
+    )
+    vi.spyOn(SqlRepository.prototype, "getPage").mockResolvedValue(null)
+    const rotateWebhookSecret = vi.spyOn(
+      SqlRepository.prototype,
+      "rotateWebhookSecret"
+    )
+
+    const error = await captureError(
+      workerExports.WebAppApi.rotateWebhookSecret(ACTOR, {
+        pageId: "f251bd5a-2772-489a-a725-43e2ea9d44ee",
+      })
+    )
+
+    expect(error).toMatchObject({ code: "not_found", status: 404 })
+    expect(rotateWebhookSecret).not.toHaveBeenCalled()
   })
 
   it("runs the default primary Queue handler with a real MessageBatch", async () => {
@@ -226,7 +503,7 @@ describe("Worker runtime entrypoints", () => {
       () =>
         workerExports.WebAppApi.createCheckoutSession(ACTOR, {
           priceLookupKey: "starter_monthly",
-          returnUrl: "https://app.resender.dev",
+          origin: "https://app.resender.dev",
         }),
     ],
   ] as const)(
@@ -422,6 +699,22 @@ const ACTOR = {
 const JOB_ID = "d743db7b-d4b8-4911-bf01-c639816856fc"
 const MESSAGE_ID = "ef55c94e-b861-4d19-9f9b-b5689028de80"
 
+function productShell() {
+  return {
+    tenantId: ACTOR.userId,
+    email: "person@example.com",
+    entitlement: {
+      priceLookupKey: "starter_monthly" as const,
+      usage: 0,
+      messageLimit: 1_000,
+      activePageCount: 1,
+      pageLimit: 3,
+      blockCode: null,
+      noticeLevel: null,
+    },
+  }
+}
+
 function mockActiveTenant(): void {
   vi.spyOn(SqlRepository.prototype, "getApiKeyByHash").mockResolvedValue({
     id: "key_1",
@@ -470,10 +763,12 @@ function runtimePage(): PageRecord {
     status: "active",
     tokenStatus: "valid",
     tokenError: null,
+    tokenErrorAt: null,
     webhookUrl: "https://example.com/webhook",
     pageAccessTokenEncrypted: "encrypted",
     webhookSigningSecretEncrypted: "encrypted",
     connectedAt: new Date("2026-07-01T00:00:00.000Z"),
+    disconnectedAt: null,
     updatedAt: new Date("2026-07-29T18:00:00.000Z"),
   }
 }

@@ -20,28 +20,43 @@ jobs:
 
       - run: npm ci
 
-      - name: Lint, typecheck, test, build
+      - name: Generated Cloudflare types
         run: |
           npm --workspace api run cf-typegen:check
-          npx turbo lint typecheck test:run build
+          npm --workspace web run cf-typegen:check
+
+      - name: Lint maintained sources
+        run: npm run lint
         env:
-          # Valores dummy solo para que `next build` no falle en CI.
-          # Los reales viven como secretos del Worker (wrangler secret).
-          DATABASE_URL: postgres://ci:ci@localhost:5432/ci
+          NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: Nonincremental typecheck
+        run: |
+          npm --workspace @workspace/contracts run typecheck -- --incremental false
+          npm --workspace @workspace/ui run typecheck -- --incremental false
+          npm --workspace api run typecheck -- --incremental false
+          npm --workspace web run typecheck -- --incremental false
+
+      - name: Test API and shared packages
+        run: |
+          npm --workspace @workspace/contracts run test:run
+          npm --workspace api run test:run
+
+      - name: Build API Worker
+        run: npm --workspace api run build
+
+      - name: Test and build web
+        run: |
+          npm --workspace web run test:run
+          npm --workspace web run build
+        env:
           AUTH_SECRET: ci-only-dummy-secret
-          API_KEY_PEPPER: ci-only-dummy-pepper
-          TOKEN_ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
-          META_APP_ID: "0"
-          META_APP_SECRET: ci-dummy
-          META_VERIFY_TOKEN: ci-dummy
-          STRIPE_SECRET_KEY: sk_test_dummy
-          STRIPE_WEBHOOK_SECRET: whsec_dummy
           APP_URL: http://localhost:3000
           NEXT_PUBLIC_META_APP_ID: "0"
           NEXT_PUBLIC_META_CONFIG_ID: "0"
 
-  # Sube una versión de preview del Worker por PR (no recibe tráfico de
-  # producción; imprime una preview URL en el log del job).
+  # Empaqueta ambos Workers API-first, sin subir una versión web que quedaría
+  # enlazada al API de producción ni afirmar una URL con preview_urls=false.
   preview:
     needs: ci
     if: github.event.pull_request.head.repo.full_name == github.repository
@@ -56,12 +71,16 @@ jobs:
 
       - run: npm ci
 
-      - name: Upload preview version
-        run: npm run upload -w web
+      - name: Dry-run API Worker first
+        run: npm --workspace api run build
+
+      - name: Package web Worker without upload
+        run: |
+          npm --workspace web exec -- opennextjs-cloudflare build
+          npx wrangler deploy --dry-run --env="" --config apps/web/wrangler.jsonc --outdir .wrangler/preview-dry-run
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           NEXT_PUBLIC_META_APP_ID: ${{ vars.NEXT_PUBLIC_META_APP_ID }}
           NEXT_PUBLIC_META_CONFIG_ID: ${{ vars.NEXT_PUBLIC_META_CONFIG_ID }}
           NEXT_PUBLIC_POSTHOG_KEY: ${{ vars.NEXT_PUBLIC_POSTHOG_KEY }}
           NEXT_PUBLIC_POSTHOG_HOST: ${{ vars.NEXT_PUBLIC_POSTHOG_HOST }}
+          APP_URL: https://resender.dev

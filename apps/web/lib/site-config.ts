@@ -15,9 +15,9 @@ export const SITE_LEGAL_NAME = "AI Beat"
 export const SITE_CONTACT_EMAIL = "info@resender.dev"
 export const SITE_CONTACT_EMAIL_HREF = `mailto:${SITE_CONTACT_EMAIL}`
 
-// Docs: viven en su propio repo y se publican en este subdominio. El sitio de
-// marketing solo enlaza hacia allá (ver el redirect 301 en next.config.ts).
-export const DOCS_URL = "https://docs.resender.dev/"
+// Fuente pública vigente del contrato. `docs.resender.dev` sigue en otro repo,
+// pero no se enlaza mientras publique el endpoint legado (ver next.config.ts).
+export const DOCS_URL = "https://api.resender.dev/docs"
 
 // Fecha (YYYY-MM-DD) de la última vez que cambió el copy de las páginas fijas.
 // Las páginas fijas no tienen fecha de contenido propia: usar `new Date()` hacía

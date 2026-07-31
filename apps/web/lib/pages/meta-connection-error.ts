@@ -7,8 +7,6 @@
 // `page_owned:` y `state_mismatch`, pero el callback también devuelve
 // `configuration_failed` y `meta_session_expired`.
 
-const PAGE_OWNED_PREFIX = "page_owned:"
-
 // Todos los mensajes empiezan con este prefijo (spec C.8).
 const PREFIX = "No se pudo conectar"
 
@@ -19,11 +17,8 @@ export function formatMetaConnectionError(reason?: string | null): string {
     return `${PREFIX}: Meta no confirmó la suscripción al webhook de todas las páginas. Ninguna página quedó guardada.`
   }
 
-  // Prefijo con el id de la página que ya pertenece a otro tenant: el ownership
-  // se evalúa por página (ADR 0004), así que el mensaje la nombra.
-  if (reason.startsWith(PAGE_OWNED_PREFIX)) {
-    const pageId = reason.slice(PAGE_OWNED_PREFIX.length)
-    return `${PREFIX}: la página ${pageId} ya pertenece a otra cuenta de Resender.`
+  if (reason.startsWith("page_owned:")) {
+    return `${PREFIX}: una página seleccionada ya pertenece a otra cuenta de Resender.`
   }
 
   if (reason === "configuration_failed") {
@@ -34,17 +29,27 @@ export function formatMetaConnectionError(reason?: string | null): string {
     return `${PREFIX}: tu autorización de Meta venció. Vuelve a conectar Facebook.`
   }
 
-  if (reason === "state_mismatch") {
+  if (
+    reason === "state_mismatch" ||
+    reason === "state_missing" ||
+    reason === "state_expired"
+  ) {
     return `${PREFIX}: la sesión de autorización venció o no coincide. Inténtalo de nuevo.`
   }
 
-  // Motivo desconocido: se muestra crudo antes que tragárselo, porque es lo
-  // único que el usuario puede citarnos en un correo de soporte.
-  return `${PREFIX}: ${reason}.`
-}
+  if (reason === "provider_cancelled") {
+    return `${PREFIX}: cancelaste la autorización en Meta.`
+  }
+  if (reason === "missing_code" || reason === "meta_session_expired") {
+    return `${PREFIX}: tu autorización de Meta venció. Vuelve a conectar Facebook.`
+  }
+  if (
+    reason === "backend_unavailable" ||
+    reason === "backend_invalid" ||
+    reason === "exchange_failed"
+  ) {
+    return `${PREFIX}: el servicio no está disponible en este momento. Inténtalo de nuevo.`
+  }
 
-// Azúcar para el llamador que ya tiene el id a mano (la server action, cuando
-// `connectAuthorizedPages` lanza `PageOwnershipError`).
-export function metaPageOwnedReason(metaPageId: string): string {
-  return `${PAGE_OWNED_PREFIX}${metaPageId}`
+  return `${PREFIX}.`
 }

@@ -8,6 +8,7 @@ import type {
   PageDto,
   PageListQuery,
   PaginationDto,
+  RpcPageDto,
 } from "@workspace/contracts"
 
 import { API_MAX_LIMIT } from "../../config"
@@ -17,6 +18,8 @@ import {
   shouldApplySubscriptionEvent,
 } from "../../domain/subscriptions"
 import type { Sql } from "./client"
+
+const SAFE_MESSAGE_FAILURE = "Meta could not deliver this message."
 
 export type UserRecord = {
   id: string
@@ -61,12 +64,19 @@ export type PageRecord = {
   status: "active" | "disconnected"
   tokenStatus: "valid" | "invalid"
   tokenError: string | null
+  tokenErrorAt: Date | null
   webhookUrl: string | null
   pageAccessTokenEncrypted: string
   webhookSigningSecretEncrypted: string | null
   connectedAt: Date
+  disconnectedAt: Date | null
   updatedAt: Date
 }
+
+export type ConnectPagesResult =
+  | { kind: "connected"; pages: PageRecord[] }
+  | { kind: "ownership_conflict"; pages: [] }
+  | { kind: "page_limit_exceeded"; pages: [] }
 
 export type MessageRecord = {
   id: string
@@ -131,7 +141,15 @@ export class SqlRepository {
         and webhook_url is not null
         and webhook_signing_secret_encrypted is null
     `
-    return number(rowValue(rows[0], "count"), 0)
+    const count = rowValue(rows[0], "count")
+    if (
+      typeof count !== "number" ||
+      !Number.isSafeInteger(count) ||
+      count < 0
+    ) {
+      throw new Error("invalid unsigned webhook page count")
+    }
+    return count
   }
 
   async getUserById(id: string): Promise<UserRecord | null> {
@@ -256,15 +274,29 @@ export class SqlRepository {
     }
   }
 
-  async revokeApiKey(tenantId: string, apiKeyId: string): Promise<boolean> {
+  async revokeApiKey(
+    tenantId: string,
+    apiKeyId: string
+  ): Promise<ApiKeyDto | null> {
     const rows = await this.sql`
       update api_keys
       set status = 'revoked',
         revoked_at = coalesce(revoked_at, now())
       where tenant_id = ${tenantId} and id = ${apiKeyId}
-      returning id
+      returning id, label, visible_prefix, status, created_at, last_used_at,
+        revoked_at
     `
-    return Boolean(rows[0])
+    const row = rows[0]
+    if (!row) return null
+    return {
+      id: text(row.id),
+      label: text(row.label),
+      visiblePrefix: text(row.visible_prefix),
+      status: "revoked",
+      createdAt: iso(row.created_at),
+      lastUsedAt: nullableIso(row.last_used_at),
+      revokedAt: nullableIso(row.revoked_at),
+    }
   }
 
   async getSubscription(tenantId: string): Promise<SubscriptionRecord | null> {
@@ -319,8 +351,9 @@ export class SqlRepository {
     parameters.push(limit + 1)
     const rows = await this.sql.query(
       `select id, tenant_id, meta_page_id, name, status, token_status,
-         token_error, webhook_url, page_access_token_encrypted,
-         webhook_signing_secret_encrypted, connected_at, updated_at
+         token_error, token_error_at, webhook_url, page_access_token_encrypted,
+         webhook_signing_secret_encrypted, connected_at, disconnected_at,
+         updated_at
        from connected_pages
        where ${clauses.join(" and ")}
        order by updated_at desc, id desc
@@ -345,23 +378,25 @@ export class SqlRepository {
     }
   }
 
-  async listAllPages(tenantId: string): Promise<PageDto[]> {
+  async listAllPages(tenantId: string): Promise<RpcPageDto[]> {
     const rows = await this.sql`
       select id, tenant_id, meta_page_id, name, status, token_status,
-        token_error, webhook_url, page_access_token_encrypted,
-        webhook_signing_secret_encrypted, connected_at, updated_at
+        token_error, token_error_at, webhook_url, page_access_token_encrypted,
+        webhook_signing_secret_encrypted, connected_at, disconnected_at,
+        updated_at
       from connected_pages
       where tenant_id = ${tenantId}
       order by case when status = 'active' then 0 else 1 end, updated_at desc
     `
-    return rows.map((row) => pageDto(mapPage(row)))
+    return rows.map((row) => rpcPageDto(mapPage(row)))
   }
 
   async getPage(tenantId: string, pageId: string): Promise<PageRecord | null> {
     const rows = await this.sql`
       select id, tenant_id, meta_page_id, name, status, token_status,
-        token_error, webhook_url, page_access_token_encrypted,
-        webhook_signing_secret_encrypted, connected_at, updated_at
+        token_error, token_error_at, webhook_url, page_access_token_encrypted,
+        webhook_signing_secret_encrypted, connected_at, disconnected_at,
+        updated_at
       from connected_pages
       where tenant_id = ${tenantId} and id = ${pageId}
       limit 1
@@ -374,10 +409,29 @@ export class SqlRepository {
   ): Promise<PageRecord | null> {
     const rows = await this.sql`
       select id, tenant_id, meta_page_id, name, status, token_status,
-        token_error, webhook_url, page_access_token_encrypted,
-        webhook_signing_secret_encrypted, connected_at, updated_at
+        token_error, token_error_at, webhook_url, page_access_token_encrypted,
+        webhook_signing_secret_encrypted, connected_at, disconnected_at,
+        updated_at
       from connected_pages
       where meta_page_id = ${providerPageId} and status = 'active'
+      limit 1
+    `
+    return rows[0] ? mapPage(rows[0]) : null
+  }
+
+  async getActivePageByProviderIdForTenant(
+    tenantId: string,
+    providerPageId: string
+  ): Promise<PageRecord | null> {
+    const rows = await this.sql`
+      select id, tenant_id, meta_page_id, name, status, token_status,
+        token_error, token_error_at, webhook_url, page_access_token_encrypted,
+        webhook_signing_secret_encrypted, connected_at, disconnected_at,
+        updated_at
+      from connected_pages
+      where tenant_id = ${tenantId}
+        and meta_page_id = ${providerPageId}
+        and status = 'active'
       limit 1
     `
     return rows[0] ? mapPage(rows[0]) : null
@@ -387,16 +441,19 @@ export class SqlRepository {
     tenantId: string,
     pageId: string,
     webhookUrl: string | null
-  ): Promise<PageDto | null> {
+  ): Promise<PageRecord | null> {
     const rows = await this.sql`
       update connected_pages
       set webhook_url = ${webhookUrl}, updated_at = now()
-      where tenant_id = ${tenantId} and id = ${pageId}
+      where tenant_id = ${tenantId}
+        and id = ${pageId}
+        and status = 'active'
       returning id, tenant_id, meta_page_id, name, status, token_status,
-        token_error, webhook_url, page_access_token_encrypted,
-        webhook_signing_secret_encrypted, connected_at, updated_at
+        token_error, token_error_at, webhook_url, page_access_token_encrypted,
+        webhook_signing_secret_encrypted, connected_at, disconnected_at,
+        updated_at
     `
-    return rows[0] ? pageDto(mapPage(rows[0])) : null
+    return rows[0] ? mapPage(rows[0]) : null
   }
 
   async rotateWebhookSecret(input: {
@@ -409,7 +466,9 @@ export class SqlRepository {
       set webhook_signing_secret_encrypted = ${input.encryptedSecret},
         webhook_signing_secret_rotated_at = now(),
         updated_at = now()
-      where tenant_id = ${input.tenantId} and id = ${input.pageId}
+      where tenant_id = ${input.tenantId}
+        and id = ${input.pageId}
+        and status = 'active'
       returning webhook_signing_secret_rotated_at
     `
     return rows[0] ? date(rows[0].webhook_signing_secret_rotated_at) : null
@@ -418,7 +477,7 @@ export class SqlRepository {
   async disconnectPage(
     tenantId: string,
     pageId: string
-  ): Promise<PageDto | null> {
+  ): Promise<PageRecord | null> {
     const rows = await this.sql`
       update connected_pages
       set status = 'disconnected',
@@ -426,10 +485,11 @@ export class SqlRepository {
         updated_at = now()
       where tenant_id = ${tenantId} and id = ${pageId}
       returning id, tenant_id, meta_page_id, name, status, token_status,
-        token_error, webhook_url, page_access_token_encrypted,
-        webhook_signing_secret_encrypted, connected_at, updated_at
+        token_error, token_error_at, webhook_url, page_access_token_encrypted,
+        webhook_signing_secret_encrypted, connected_at, disconnected_at,
+        updated_at
     `
-    return rows[0] ? pageDto(mapPage(rows[0])) : null
+    return rows[0] ? mapPage(rows[0]) : null
   }
 
   async markPageTokenInvalid(input: {
@@ -494,21 +554,75 @@ export class SqlRepository {
       providerPageId: string
       name: string
       encryptedPageToken: string
-    }>
-  ): Promise<PageDto[]> {
-    if (pages.length === 0) return []
-    const results = await this.sql.transaction((transaction) =>
-      pages.map(
-        (page) => transaction`
+    }>,
+    maxPages: number
+  ): Promise<ConnectPagesResult> {
+    if (pages.length === 0) return { kind: "connected", pages: [] }
+    const payload = JSON.stringify(
+      pages.map((page) => ({
+        provider_page_id: page.providerPageId,
+        name: page.name,
+        encrypted_page_token: page.encryptedPageToken,
+      }))
+    )
+    const transactionResults = await this.sql.transaction((transaction) => [
+      transaction`select pg_advisory_xact_lock(8245901273104221)`,
+      transaction`
+        with requested as (
+          select distinct provider_page_id, name, encrypted_page_token
+          from jsonb_to_recordset(${payload}::jsonb) as page(
+            provider_page_id text,
+            name text,
+            encrypted_page_token text
+          )
+        ),
+        checks as (
+          select
+            exists(
+              select 1
+              from connected_pages existing
+              join requested on requested.provider_page_id = existing.meta_page_id
+              where existing.tenant_id <> ${tenantId}
+            ) as ownership_conflict,
+            (
+              select count(*)::integer
+              from connected_pages
+              where tenant_id = ${tenantId} and status = 'active'
+            ) as active_page_count,
+            (
+              select count(*)::integer
+              from requested
+              left join connected_pages existing
+                on existing.meta_page_id = requested.provider_page_id
+              where existing.id is null
+                or (
+                  existing.tenant_id = ${tenantId}
+                  and existing.status = 'disconnected'
+                )
+            ) as requested_slots
+        ),
+        allowed as (
+          select
+            not ownership_conflict
+              and active_page_count + requested_slots <= ${maxPages}
+              as may_connect,
+            ownership_conflict,
+            active_page_count + requested_slots > ${maxPages}
+              as page_limit_exceeded
+          from checks
+        ),
+        connected as (
           insert into connected_pages (
             tenant_id, meta_page_id, name, page_access_token_encrypted
           )
-          values (
+          select
             ${tenantId},
-            ${page.providerPageId},
-            ${page.name},
-            ${page.encryptedPageToken}
-          )
+            requested.provider_page_id,
+            requested.name,
+            requested.encrypted_page_token
+          from requested
+          cross join allowed
+          where allowed.may_connect
           on conflict (meta_page_id) do update set
             name = excluded.name,
             status = 'active',
@@ -521,16 +635,64 @@ export class SqlRepository {
             updated_at = now()
           where connected_pages.tenant_id = excluded.tenant_id
           returning id, tenant_id, meta_page_id, name, status, token_status,
-            token_error, webhook_url, page_access_token_encrypted,
-            webhook_signing_secret_encrypted, connected_at, updated_at
-        `
-      )
-    )
-    const rows = results.flat()
-    if (rows.length !== pages.length) {
-      throw new Error("page ownership changed during connection")
+            token_error, token_error_at, webhook_url,
+            page_access_token_encrypted, webhook_signing_secret_encrypted,
+            connected_at, disconnected_at, updated_at
+        )
+        select 'connected' as result_kind,
+          id, tenant_id, meta_page_id, name, status, token_status,
+          token_error, token_error_at, webhook_url,
+          page_access_token_encrypted, webhook_signing_secret_encrypted,
+          connected_at, disconnected_at, updated_at
+        from connected
+        union all
+        select
+          case
+            when ownership_conflict then 'ownership_conflict'
+            else 'page_limit_exceeded'
+          end as result_kind,
+          null::uuid, null::uuid, null::text, null::text, null::text,
+          null::text, null::text, null::timestamptz, null::text, null::text,
+          null::text, null::timestamptz, null::timestamptz, null::timestamptz
+        from allowed
+        where not may_connect
+        union all
+        -- Force the statement itself to fail if a non-locking rolling writer
+        -- wins an ON CONFLICT race after our snapshot. Because this assertion
+        -- is in the DML statement, PostgreSQL rolls back every row in the
+        -- batch instead of letting the repository notice after commit.
+        select
+          (
+            'atomic_page_connection_' ||
+            (select count(*)::text from connected)
+          )::uuid::text as result_kind,
+          null::uuid, null::uuid, null::text, null::text, null::text,
+          null::text, null::text, null::timestamptz, null::text, null::text,
+          null::text, null::timestamptz, null::timestamptz, null::timestamptz
+        from allowed
+        where may_connect
+          and (select count(*) from connected)
+            <> (select count(*) from requested)
+      `,
+    ])
+    const rows = transactionResults[1] ?? []
+    const resultKind = text(rows[0]?.result_kind)
+    if (resultKind === "ownership_conflict") {
+      return { kind: "ownership_conflict", pages: [] }
     }
-    return rows.map((row) => pageDto(mapPage(row)))
+    if (resultKind === "page_limit_exceeded") {
+      return { kind: "page_limit_exceeded", pages: [] }
+    }
+    if (
+      resultKind !== "connected" ||
+      rows.length !== new Set(pages.map((page) => page.providerPageId)).size
+    ) {
+      throw new Error("atomic Page connection did not persist the full batch")
+    }
+    return {
+      kind: "connected",
+      pages: rows.map(mapPage),
+    }
   }
 
   async listConversations(
@@ -799,6 +961,67 @@ export class SqlRepository {
     const row = rows[0]
     if (!row) throw new Error("outbound message insert failed")
     return mapMessage(row)
+  }
+
+  async insertLegacyOutbound(input: {
+    tenantId: string
+    conversationId: string
+    pageId: string
+    contactId: string
+    text: string
+    status: "sent" | "failed"
+    providerMessageId: string | null
+    idempotencyKey: string | null
+    error: string | null
+    providerResponse: unknown
+    createdAt: Date
+  }): Promise<MessageRecord> {
+    const providerResponse =
+      input.providerResponse == null
+        ? null
+        : JSON.stringify(input.providerResponse)
+    const rows = await this.sql`
+      with inserted as (
+        insert into messages (
+          tenant_id, conversation_id, connected_page_id, contact_id,
+          direction, status, text, meta_message_id, idempotency_key,
+          error, provider_response, created_at
+        )
+        values (
+          ${input.tenantId}, ${input.conversationId}, ${input.pageId},
+          ${input.contactId}, 'outbound', ${input.status}, ${input.text},
+          ${input.providerMessageId}, ${input.idempotencyKey}, ${input.error},
+          ${providerResponse}::jsonb, ${input.createdAt}
+        )
+        returning id, tenant_id, conversation_id, connected_page_id,
+          contact_id, direction, status, text, meta_message_id, error,
+          provider_response, idempotency_key, idempotency_fingerprint,
+          created_at
+      ),
+      touched_conversation as (
+        update conversations
+        set last_message_at = greatest(last_message_at, ${input.createdAt}),
+          updated_at = now()
+        where tenant_id = ${input.tenantId}
+          and id = ${input.conversationId}
+      )
+      select * from inserted
+    `
+    const row = rows[0]
+    if (!row) throw new Error("legacy outbound message insert failed")
+    return mapMessage(row)
+  }
+
+  async incrementUsage(tenantId: string, periodStart: Date): Promise<number> {
+    const rows = await this.sql`
+      insert into usage_counters (tenant_id, period_start, message_count)
+      values (${tenantId}, ${periodStart}, 1)
+      on conflict (tenant_id, period_start) do update set
+        message_count = usage_counters.message_count + 1,
+        updated_at = now()
+      returning message_count
+    `
+    return number(rowValue(rows[0], "message_count"), 0)
   }
 
   async ingestInbound(input: {
@@ -1372,12 +1595,14 @@ function mapPage(row: Record<string, unknown>): PageRecord {
     status: text(row.status) === "disconnected" ? "disconnected" : "active",
     tokenStatus: text(row.token_status) === "invalid" ? "invalid" : "valid",
     tokenError: nullableText(row.token_error),
+    tokenErrorAt: nullableDate(row.token_error_at),
     webhookUrl: nullableText(row.webhook_url),
     pageAccessTokenEncrypted: text(row.page_access_token_encrypted),
     webhookSigningSecretEncrypted: nullableText(
       row.webhook_signing_secret_encrypted
     ),
     connectedAt: date(row.connected_at),
+    disconnectedAt: nullableDate(row.disconnected_at),
     updatedAt: date(row.updated_at),
   }
 }
@@ -1396,6 +1621,18 @@ export function pageDto(page: PageRecord): PageDto {
     },
     connectedAt: page.connectedAt.toISOString(),
     updatedAt: page.updatedAt.toISOString(),
+  }
+}
+
+export function rpcPageDto(page: PageRecord): RpcPageDto {
+  return {
+    ...pageDto(page),
+    tokenError:
+      page.tokenStatus === "invalid"
+        ? "The Page credential is invalid. Reconnect the Page."
+        : null,
+    tokenErrorAt: page.tokenErrorAt?.toISOString() ?? null,
+    disconnectedAt: page.disconnectedAt?.toISOString() ?? null,
   }
 }
 
@@ -1472,7 +1709,8 @@ export function messageDto(message: MessageRecord): MessageDto {
       name: "meta",
       messageId: message.providerMessageId,
     },
-    failure: message.error ? { message: message.error } : null,
+    failure:
+      message.status === "failed" ? { message: SAFE_MESSAGE_FAILURE } : null,
     createdAt: message.createdAt.toISOString(),
   }
 }

@@ -1,5 +1,8 @@
 # Copy to .dev.vars and use development/test-only values.
-# `cf-typegen` also reads this file to generate secret binding names.
+# Secret binding names live in wrangler.jsonc for deterministic `cf-typegen`.
+ENVIRONMENT=development
+PUBLIC_BASE_URL=http://localhost:8787
+WEB_APP_ORIGINS=["http://localhost:3000"]
 DATABASE_URL=postgresql://development-only
 AUTH_SECRET=development-only
 API_KEY_PEPPER=development-only

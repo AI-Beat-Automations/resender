@@ -7,45 +7,24 @@ describe("webhook URL normalization", () => {
     expect(normalizeWebhookUrl("   ")).toEqual({ ok: true, value: null })
   })
 
-  it("allows https URLs in production", () => {
-    expect(
-      normalizeWebhookUrl("https://example.com/hook", { mode: "production" })
-    ).toEqual({
+  it("allows https URLs", () => {
+    expect(normalizeWebhookUrl("https://example.com/hook")).toEqual({
       ok: true,
       value: "https://example.com/hook",
     })
   })
 
-  it("allows local http URLs in development", () => {
-    expect(
-      normalizeWebhookUrl("http://localhost:3000/hook", {
-        mode: "development",
-      }).ok
-    ).toBe(true)
-    expect(
-      normalizeWebhookUrl("http://127.0.0.1:3000/hook", {
-        mode: "development",
-      }).ok
-    ).toBe(true)
-    expect(
-      normalizeWebhookUrl("http://[::1]:3000/hook", {
-        mode: "development",
-      }).ok
-    ).toBe(true)
-  })
-
-  it("rejects remote http URLs", () => {
-    expect(
-      normalizeWebhookUrl("http://example.com/hook", { mode: "development" }).ok
-    ).toBe(false)
-  })
-
-  it("rejects local http URLs in production", () => {
-    expect(
-      normalizeWebhookUrl("http://localhost:3000/hook", {
-        mode: "production",
-      }).ok
-    ).toBe(false)
+  it.each([
+    "http://example.com/hook",
+    "http://localhost:3000/hook",
+    "http://127.0.0.1:3000/hook",
+    "http://[::1]:3000/hook",
+  ])("rejects HTTP URLs, including local destinations", (url) => {
+    expect(normalizeWebhookUrl(url)).toEqual({
+      ok: false,
+      error:
+        "La URL tiene que usar HTTPS. Para desarrollo, usa un túnel HTTPS.",
+    })
   })
 
   it("rejects unsupported or malformed URLs", () => {

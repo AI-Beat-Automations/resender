@@ -1,4 +1,4 @@
-// Espejo cliente de `lib/posthog.ts`. A propósito NO importa `posthog-js`: así
+// Configuración exclusivamente cliente. A propósito NO importa `posthog-js`: así
 // puede importarse desde cualquier sitio (incluido código de servidor) sin
 // arrastrar el SDK de navegador al bundle del Worker.
 //

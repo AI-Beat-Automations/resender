@@ -6,12 +6,27 @@
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   "preview_urls": true,
+  "routes": [{ "pattern": "api.resender.dev", "custom_domain": true }],
   // Neon HTTP remains deliberate in phase 1. Hyperdrive is a separate
   // migration and is explicitly excluded by docs/phase-1-api-migration.md.
   "placement": { "mode": "smart" },
   "vars": {
     "ENVIRONMENT": "production",
     "PUBLIC_BASE_URL": "https://api.resender.dev",
+    "WEB_APP_ORIGINS": "[\"https://resender.dev\"]",
+  },
+  "secrets": {
+    "required": [
+      "DATABASE_URL",
+      "AUTH_SECRET",
+      "API_KEY_PEPPER",
+      "TOKEN_ENCRYPTION_KEY",
+      "META_APP_ID",
+      "META_APP_SECRET",
+      "META_VERIFY_TOKEN",
+      "STRIPE_SECRET_KEY",
+      "STRIPE_WEBHOOK_SECRET",
+    ],
   },
   "triggers": {
     // Recovery only claims pending/processing jobs whose durable deadline is due.
@@ -56,9 +71,29 @@
   "env": {
     "staging": {
       "name": "api-staging",
+      "routes": [
+        {
+          "pattern": "api-staging.resender.dev",
+          "custom_domain": true,
+        },
+      ],
       "vars": {
         "ENVIRONMENT": "staging",
         "PUBLIC_BASE_URL": "https://api-staging.resender.dev",
+        "WEB_APP_ORIGINS": "[\"https://staging.resender.dev\"]",
+      },
+      "secrets": {
+        "required": [
+          "DATABASE_URL",
+          "AUTH_SECRET",
+          "API_KEY_PEPPER",
+          "TOKEN_ENCRYPTION_KEY",
+          "META_APP_ID",
+          "META_APP_SECRET",
+          "META_VERIFY_TOKEN",
+          "STRIPE_SECRET_KEY",
+          "STRIPE_WEBHOOK_SECRET",
+        ],
       },
       "queues": {
         "producers": [

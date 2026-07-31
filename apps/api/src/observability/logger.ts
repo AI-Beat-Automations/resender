@@ -16,6 +16,11 @@ export type LogFields = {
   attempt?: number
   queue?: string
   count?: number
+  readinessCategory?:
+    | "ready"
+    | "configuration"
+    | "database"
+    | "unsigned_webhook_pages"
 }
 
 export function log(level: LogLevel, fields: Omit<LogFields, "worker">) {

@@ -3,61 +3,8 @@ import { codeToHtml } from "@/lib/highlighter"
 import { Section, SectionHeading } from "@/features/marketing/ui/section"
 import { EditorChrome } from "@/features/marketing/ui/editor-chrome"
 import { CodeTabs, type Snippet } from "@/features/marketing/ui/code-tabs"
+import { buildSnippets } from "@/features/marketing/ui/quickstart-snippets"
 import { getDictionary, type Locale } from "@/content/i18n"
-
-// Snippets reales del endpoint de salida (ver app/api/meta/send y /docs).
-// Placeholders obvios, nunca secretos reales. Lo único que varía por idioma es
-// el texto de ejemplo del campo `reply`; el resto son identificadores de la API.
-function buildSnippets(reply: string) {
-  return [
-    {
-      id: "curl",
-      label: "curl",
-      lang: "bash",
-      code: `curl -X POST https://resender.dev/api/meta/send \\
-  -H "Authorization: Bearer pk_live_..." \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "pageId": "1029384756",
-    "recipientId": "6543210987",
-    "reply": "${reply}"
-  }'`,
-    },
-    {
-      id: "node",
-      label: "Node.js",
-      lang: "javascript",
-      code: `await fetch("https://resender.dev/api/meta/send", {
-  method: "POST",
-  headers: {
-    Authorization: \`Bearer \${process.env.RESENDER_KEY}\`,
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({
-    pageId: "1029384756",
-    recipientId: "6543210987",
-    reply: "${reply}",
-  }),
-})`,
-    },
-    {
-      id: "python",
-      label: "Python",
-      lang: "python",
-      code: `import requests
-
-requests.post(
-    "https://resender.dev/api/meta/send",
-    headers={"Authorization": f"Bearer {key}"},
-    json={
-        "pageId": "1029384756",
-        "recipientId": "6543210987",
-        "reply": "${reply}",
-    },
-)`,
-    },
-  ]
-}
 
 // Sección showpiece: panel tipo editor con el snippet de la API resaltado.
 // Server component: resaltamos con shiki (temas duales) en build time.
@@ -65,7 +12,7 @@ export async function Quickstart({ lang }: { lang: Locale }) {
   const dict = getDictionary(lang)
 
   const snippets: Snippet[] = await Promise.all(
-    buildSnippets(dict.quickstart.replySample).map(async (s) => ({
+    buildSnippets(dict.quickstart.textSample).map(async (s) => ({
       id: s.id,
       label: s.label,
       code: s.code,

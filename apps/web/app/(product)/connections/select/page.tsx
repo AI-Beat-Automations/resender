@@ -5,15 +5,8 @@ import { Link2, TriangleAlert } from "lucide-react"
 import { ConnectFacebookButton } from "@/features/connect-meta/ui/connect-facebook-button"
 import { PageSelectionForm } from "@/features/connect-meta/ui/page-selection-form"
 import { auth } from "@/auth"
-import { resolvePlanLimits } from "@/lib/billing/entitlements"
-import { getSubscriptionByTenantId } from "@/lib/billing/subscription"
-import { listAuthorizedPages, type ConnectedPage } from "@/lib/meta"
-import { getMetaUserAccessToken } from "@/lib/pages/meta-user-token"
-import { countActivePages, getPageOwnership } from "@/lib/pages/page-registry"
-import {
-  classifyPagesForSelection,
-  formatPageAllowance,
-} from "@/lib/pages/page-selection"
+import { BackendRpcError, listAuthorizedMetaPages } from "@/lib/backend/backend"
+import { formatPageAllowance } from "@/lib/pages/page-selection"
 
 // v2 no dibuja esta pantalla (ADR 0005): se resuelve con el mismo lenguaje
 // visual de B1/B2 y sus cuatro estados propios — sin autorización de Meta,
@@ -23,81 +16,31 @@ export default async function SelectPagesPage() {
   if (!session?.user?.id) redirect("/login")
   const tenantId = session.user.id
 
-  // Sin user access token guardado no hay nada que listar: el usuario todavía
-  // no pasó por el diálogo de Meta (o su credencial dejó de ser legible).
-  const userToken = await getMetaUserAccessToken(tenantId)
-  if (!userToken) {
-    return (
-      <Shell>
-        <section className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-[22px] shadow-[var(--shadow-sm)] sm:flex-row sm:items-center">
-          <span
-            className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[var(--primary-tint)] text-primary"
-            aria-hidden
-          >
-            <Link2 className="size-5" />
-          </span>
-          <div className="flex-1">
-            <h2 className="font-heading text-base font-semibold">
-              Todavía no autorizaste tus páginas en Meta.
-            </h2>
-            <p className="mt-1 text-[13.5px]/[1.55] text-muted-foreground">
-              Necesitamos tu autorización para listar las páginas que
-              administras. Conecta Facebook y vuelves acá a elegir cuáles
-              conectar.
-            </p>
-          </div>
-          <ConnectFacebookButton />
-        </section>
-      </Shell>
-    )
-  }
-
-  let metaPages: ConnectedPage[]
+  let selection
   try {
-    metaPages = await listAuthorizedPages(userToken)
+    selection = await listAuthorizedMetaPages({ userId: tenantId })
   } catch (error) {
-    console.error("meta pages fetch failed", error)
-    redirect("/connections?meta=error&reason=meta_session_expired")
+    if (error instanceof BackendRpcError) {
+      if (error.classification.destination) {
+        redirect(error.classification.destination)
+      }
+      if (error.classification.kind === "provider") {
+        return <MissingAuthorization />
+      }
+    }
+    return <SelectionUnavailable />
   }
 
-  const [subscription, activePageCount, ownership] = await Promise.all([
-    getSubscriptionByTenantId(tenantId),
-    countActivePages(tenantId),
-    getPageOwnership(metaPages.map((page) => page.pageId)),
-  ])
-
-  // Plan desconocido = fail-closed, igual que el resto de los gates: no
-  // dejamos conectar páginas sin límite resuelto.
-  const limits = resolvePlanLimits(subscription?.priceLookupKey ?? null)
-  if (!limits) {
-    return (
-      <Shell>
-        <section className="flex items-start gap-3 rounded-2xl border border-destructive-soft-border bg-destructive-soft p-[22px] text-destructive-soft-foreground">
-          <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
-          <div>
-            <p className="text-[13.5px] font-medium">
-              No pudimos resolver los límites de tu plan.
-            </p>
-            <p className="mt-1 text-[13px]/[1.55]">
-              Escríbenos a info@resender.dev para revisar tu suscripción antes
-              de conectar páginas.
-            </p>
-          </div>
-        </section>
-      </Shell>
-    )
-  }
-
-  const view = classifyPagesForSelection({
-    metaPages: metaPages.map((page) => ({
-      pageId: page.pageId,
+  const view = {
+    pages: selection.pages.map((page) => ({
+      metaPageId: page.providerPageId,
       name: page.name,
+      state: page.state,
     })),
-    ownership,
-    tenantId,
-    activePageCount,
-    maxPages: limits.maxPages,
-  })
+    maxPages: selection.maxPages,
+    activePageCount: selection.activePageCount,
+    remainingSlots: selection.remainingSlots,
+  }
 
   return (
     <Shell>
@@ -111,6 +54,49 @@ export default async function SelectPagesPage() {
         </p>
       </section>
       <PageSelectionForm view={view} />
+    </Shell>
+  )
+}
+
+function MissingAuthorization() {
+  return (
+    <Shell>
+      <section className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-[22px] shadow-[var(--shadow-sm)] sm:flex-row sm:items-center">
+        <span
+          className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[var(--primary-tint)] text-primary"
+          aria-hidden
+        >
+          <Link2 className="size-5" />
+        </span>
+        <div className="flex-1">
+          <h2 className="font-heading text-base font-semibold">
+            Todavía no autorizaste tus páginas en Meta.
+          </h2>
+          <p className="mt-1 text-[13.5px]/[1.55] text-muted-foreground">
+            Necesitamos tu autorización para listar las páginas que administras.
+            Conecta Facebook y vuelves acá a elegir cuáles conectar.
+          </p>
+        </div>
+        <ConnectFacebookButton />
+      </section>
+    </Shell>
+  )
+}
+
+function SelectionUnavailable() {
+  return (
+    <Shell>
+      <section className="flex items-start gap-3 rounded-2xl border border-destructive-soft-border bg-destructive-soft p-[22px] text-destructive-soft-foreground">
+        <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+        <div>
+          <p className="text-[13.5px] font-medium">
+            No pudimos cargar tus páginas.
+          </p>
+          <p className="mt-1 text-[13px]/[1.55]">
+            Inténtalo de nuevo en unos minutos.
+          </p>
+        </div>
+      </section>
     </Shell>
   )
 }

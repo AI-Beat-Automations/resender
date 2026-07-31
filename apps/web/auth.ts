@@ -1,8 +1,7 @@
 import NextAuth from "next-auth"
 import Credentials from "next-auth/providers/credentials"
 
-import { authenticateUser } from "@/lib/auth/users"
-import { posthog } from "@/lib/posthog"
+import { authorizeCredentials } from "@/lib/auth/credentials"
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   // Fuera de Vercel (Cloudflare Workers) Auth.js no puede auto-detectar el host
@@ -20,21 +19,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        const user = await authenticateUser(
+        const user = await authorizeCredentials(
           credentials?.email,
           credentials?.password
         )
 
         if (!user) return null
-
-        if (posthog) {
-          posthog.identify({
-            distinctId: user.id,
-            properties: { $set: { email: user.email } },
-          })
-          posthog.capture({ distinctId: user.id, event: "user logged in" })
-          await posthog.flush()
-        }
 
         return {
           id: user.id,

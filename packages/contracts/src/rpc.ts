@@ -2,34 +2,48 @@ import type {
   ConversationListDto,
   ConversationListInput,
   ConversationThreadDto,
-  PageDto,
+  WebhookSecretDto,
 } from "./schemas/api"
 import type {
   AccountDeletionResultDto,
+  ApiKeyCreateRpcInput,
   ApiKeyDto,
+  ApiKeyRevokeRpcInput,
+  AuthenticateCredentialsRpcInput,
   AuthenticatedUserDto,
   AuthorizedMetaPageDto,
+  BackendHealthDto,
+  BillingPortalSessionRpcInput,
   BillingStateDto,
+  ChangePasswordRpcInput,
+  CheckoutSessionRpcInput,
   CheckoutVerificationDto,
+  CheckoutVerificationRpcInput,
+  ConversationThreadRpcInput,
   ConnectMetaPagesInput,
   CreatedApiKeyDto,
+  DeleteAccountRpcInput,
+  MetaAuthorizationRpcInput,
   MetaAuthorizationResultDto,
   MetaPageSelectionDto,
+  PageIdRpcInput,
+  PageWebhookUpdateRpcInput,
   ProductAccessDto,
   ProductShellDto,
+  RegisterUserRpcInput,
   RpcActor,
+  RpcPageDto,
+  StripeRedirectDto,
 } from "./schemas/rpc"
 
 export interface WebAppApiContract {
-  authenticateCredentials(input: {
-    email: string
-    password: string
-  }): Promise<AuthenticatedUserDto | null>
+  health(): Promise<BackendHealthDto>
 
-  registerUser(input: {
-    email: string
-    password: string
-  }): Promise<AuthenticatedUserDto>
+  authenticateCredentials(
+    input: AuthenticateCredentialsRpcInput
+  ): Promise<AuthenticatedUserDto | null>
+
+  registerUser(input: RegisterUserRpcInput): Promise<AuthenticatedUserDto>
 
   getProductAccess(actor: RpcActor): Promise<ProductAccessDto>
   getProductShell(actor: RpcActor): Promise<ProductShellDto>
@@ -41,50 +55,54 @@ export interface WebAppApiContract {
 
   getConversationThread(
     actor: RpcActor,
-    input: { conversationId: string }
+    input: ConversationThreadRpcInput
   ): Promise<ConversationThreadDto>
 
-  listPages(actor: RpcActor): Promise<PageDto[]>
+  listPages(actor: RpcActor): Promise<RpcPageDto[]>
   listAuthorizedMetaPages(actor: RpcActor): Promise<MetaPageSelectionDto>
   connectMetaPages(
     actor: RpcActor,
     input: ConnectMetaPagesInput
-  ): Promise<PageDto[]>
-  disconnectPage(actor: RpcActor, input: { pageId: string }): Promise<PageDto>
+  ): Promise<RpcPageDto[]>
+  disconnectPage(actor: RpcActor, input: PageIdRpcInput): Promise<RpcPageDto>
   updatePageWebhook(
     actor: RpcActor,
-    input: { pageId: string; webhookUrl: string | null }
-  ): Promise<PageDto>
+    input: PageWebhookUpdateRpcInput
+  ): Promise<RpcPageDto>
+  rotateWebhookSecret(
+    actor: RpcActor,
+    input: PageIdRpcInput
+  ): Promise<WebhookSecretDto>
   exchangeMetaAuthorizationCode(
     actor: RpcActor,
-    input: { code: string; redirectUri: string }
+    input: MetaAuthorizationRpcInput
   ): Promise<MetaAuthorizationResultDto>
 
   listApiKeys(actor: RpcActor): Promise<ApiKeyDto[]>
   createApiKey(
     actor: RpcActor,
-    input: { label: string }
+    input: ApiKeyCreateRpcInput
   ): Promise<CreatedApiKeyDto>
-  revokeApiKey(actor: RpcActor, input: { apiKeyId: string }): Promise<void>
+  revokeApiKey(actor: RpcActor, input: ApiKeyRevokeRpcInput): Promise<ApiKeyDto>
 
   getBillingState(actor: RpcActor): Promise<BillingStateDto>
   createCheckoutSession(
     actor: RpcActor,
-    input: { priceLookupKey: string; returnUrl: string }
-  ): Promise<{ url: string }>
+    input: CheckoutSessionRpcInput
+  ): Promise<StripeRedirectDto>
   createBillingPortalSession(
     actor: RpcActor,
-    input: { returnUrl: string }
-  ): Promise<{ url: string }>
+    input: BillingPortalSessionRpcInput
+  ): Promise<StripeRedirectDto>
   verifyCheckoutSession(
     actor: RpcActor,
-    input: { sessionId: string }
+    input: CheckoutVerificationRpcInput
   ): Promise<CheckoutVerificationDto>
 
-  changePassword(actor: RpcActor, input: { newPassword: string }): Promise<void>
+  changePassword(actor: RpcActor, input: ChangePasswordRpcInput): Promise<void>
   deleteAccount(
     actor: RpcActor,
-    input: { confirmEmail: string }
+    input: DeleteAccountRpcInput
   ): Promise<AccountDeletionResultDto>
 }
 

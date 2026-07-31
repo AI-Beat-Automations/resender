@@ -1,11 +1,15 @@
 import { cloudflareTest } from "@cloudflare/vitest-pool-workers"
 import { defineConfig } from "vitest/config"
 
+const TEST_WRANGLER_CONFIG = "./test/wrangler.jsonc"
+
 export default defineConfig({
   logLevel: "error",
   plugins: [
     cloudflareTest({
-      wrangler: { configPath: "./wrangler.jsonc" },
+      // This config lives away from the product `.dev.vars`; never point the
+      // test pool at the production Wrangler config in the package root.
+      wrangler: { configPath: TEST_WRANGLER_CONFIG },
       miniflare: {
         bindings: {
           DATABASE_URL: "postgresql://user:password@localhost/resender",

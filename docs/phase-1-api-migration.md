@@ -1,12 +1,28 @@
 # Fase 1 — API migration
 
+> **Documento histórico y superseded.** Conserva el plan y las decisiones de
+> la baseline de Fase 1; no describe el ownership actual del repositorio. La
+> implementación y el PRD vigentes son
+> [`api-cloudflare-manual-runbook.md`](./api-cloudflare-manual-runbook.md),
+> junto con [`CONTEXT.md`](../CONTEXT.md), describen el estado operativo actual.
+> En este documento, expresiones como
+> “arquitectura vigente”, “contexto actual” o “handlers que hoy viven en Next”
+> deben leerse exclusivamente dentro de aquella baseline de Fase 1.
+>
+> La prohibición histórica de rutas HTTP `/internal` se refería a endpoints
+> públicos/de producto protegidos con secretos compartidos. No prohíbe el fetch
+> privado, exact-path allowlisted y accesible sólo por Service Binding
+> `/internal/legacy/meta/send` que Fase 2 usa temporalmente para la
+> compatibilidad Slice 10; esa ruta no existe en el router HTTP público.
+
 ## Estado del documento
 
 - **Objetivo:** construir el backend separado sin cambiar el comportamiento del frontend actual.
 - **Resultado desplegable:** un nuevo Worker `api` basado en Hono, con API pública, RPC interno, consumo de Queues, OpenAPI y observabilidad propios.
 - **Condición de seguridad:** durante esta fase no se cambian las URLs productivas de Meta o Stripe y `apps/web` sigue atendiendo el producto actual.
-- **Siguiente fase:** [Fase 2 — API migration/frontend](./phase-2-api-migration-frontend.md).
-- **Decisión anulada:** no usar como autoridad el ADR de ownership/separación que se eliminó. Este documento contiene la arquitectura vigente.
+- **Estado actual:** [`api-cloudflare-manual-runbook.md`](./api-cloudflare-manual-runbook.md)
+  y [`CONTEXT.md`](../CONTEXT.md).
+- **Decisión anulada:** no usar como autoridad el ADR de ownership/separación que se eliminó. Este documento contiene la arquitectura vigente para la baseline de Fase 1, no para el repositorio actual.
 
 ## Resumen ejecutivo
 
@@ -36,14 +52,18 @@ El Worker `api` será **un solo código y un solo despliegue**, con tres puertas
 2. `WebAppApi`: `WorkerEntrypoint` nombrado para RPC interno desde `web`.
 3. `queue`: consumidor de entregas a los webhooks de los clientes y de su DLQ.
 
-No se crearán rutas HTTP `/internal` protegidas con un header secreto. Los flujos público e interno llaman a los mismos casos de uso; solo cambia cómo se resuelve el actor:
+En la superficie pública de Fase 1 no se crearán rutas HTTP `/internal`
+protegidas con un header secreto. Esta decisión histórica no incluye el fetch
+privado allowlisted de compatibilidad que Fase 2 añadió sólo al named
+entrypoint `WebAppApi`. Los flujos público e interno de este plan llaman a los
+mismos casos de uso; solo cambia cómo se resuelve el actor:
 
 - API pública: el tenant se obtiene de la API key.
 - RPC: el tenant/usuario se recibe de la sesión autenticada de Next y el backend vuelve a validar ownership.
 
 En este plan, “RPC” significa **Cloudflare Workers RPC mediante Service Binding**. No significa el RPC/client `hc` de Hono. Hono se usa para la superficie HTTP; el entrypoint interno es una capacidad de Cloudflare y no tiene URL pública.
 
-## Contexto actual que el agente debe conservar
+## Contexto de la baseline de Fase 1 que el agente debía conservar
 
 El repositorio es un Turborepo con workspaces npm:
 
@@ -53,7 +73,9 @@ El repositorio es un Turborepo con workspaces npm:
 - El Worker `web` actual se configura en `apps/web/wrangler.jsonc`.
 - `apps/web/next.config.ts` ya inicializa `initOpenNextCloudflareForDev()`.
 - NextAuth usa sesiones JWT.
-- Las migraciones vigentes están en `apps/web/db/migrations/0001...0009`.
+- En la línea base de fase 1 las migraciones estaban en
+  `apps/web/db/migrations/0001...0009`; fase 2 movió el historial completo y
+  el runner, sin alterar bytes, a `apps/api/db/migrations`.
 
 Handlers que hoy viven en Next:
 
@@ -703,7 +725,9 @@ Notas obligatorias:
 
 Durante fase 1 las migraciones productivas continúan ejecutándose desde el pipeline actual de `web`. No se deben mantener dos directorios canónicos.
 
-Crear la siguiente migración consecutiva en `apps/web/db/migrations` —esto no cambia el frontend, solo amplía el esquema— y mover el ownership físico a `apps/api` en fase 2:
+Registro histórico de la instrucción de fase 1: crear la siguiente migración
+consecutiva y mover el ownership físico a `apps/api` en fase 2. Ese traslado ya
+está aplicado; nuevas migraciones se crean sólo en `apps/api/db/migrations`:
 
 1. `external_webhook_jobs`
    - `id`, `event_id` único, `tenant_id`, `message_id`.

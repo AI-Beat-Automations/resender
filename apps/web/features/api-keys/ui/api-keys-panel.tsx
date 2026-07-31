@@ -2,6 +2,7 @@ import { KeyRound } from "lucide-react"
 
 import { CreateApiKeyForm } from "@/features/api-keys/ui/create-api-key-form"
 import { RevokeApiKeyDialog } from "@/features/api-keys/ui/revoke-api-key-dialog"
+import type { ApiKeyView } from "@/lib/settings/view-model"
 import {
   SettingsCard,
   SettingsCardTitle,
@@ -15,16 +16,6 @@ import {
   TableHeader,
   TableRow,
 } from "@workspace/ui/components/table"
-
-export type ApiKeyView = {
-  id: string
-  label: string
-  visiblePrefix: string
-  status: "active" | "revoked"
-  createdAt: string
-  lastUsedAt: string | null
-  revokedAt: string | null
-}
 
 // Cabeceras de tabla en mono MAYÚSCULAS (spec C.5).
 const HEAD =

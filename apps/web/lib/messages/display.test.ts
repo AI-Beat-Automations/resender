@@ -7,7 +7,7 @@ import {
   toConversationRowView,
   toThreadMessageViews,
 } from "./display"
-import type { ConversationListItem, ThreadMessage } from "./read-model"
+import type { ConversationListItem, ThreadMessage } from "./view-model"
 
 const NOW = new Date(2026, 6, 27, 15, 30)
 

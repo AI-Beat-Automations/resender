@@ -5,9 +5,9 @@ import { PostHogIdentify } from "@/components/posthog-identify"
 import { SignOutForm } from "@/components/sign-out-form"
 import { AccessEyebrow, AccessShell } from "@/features/auth/ui/access-shell"
 import { startCheckout } from "@/features/billing/actions"
-import { isUserWaitlisted } from "@/lib/auth/waitlist"
+import { billingPageRedirect } from "@/lib/access/product-gates"
+import { getProductAccess } from "@/lib/backend/backend"
 import { PLANS } from "@/lib/billing/plans"
-import { hasActiveSubscription } from "@/lib/billing/subscription"
 import { privatePageMetadata } from "@/lib/seo"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
@@ -26,8 +26,10 @@ const numberFormat = new Intl.NumberFormat("es-ES")
 export default async function BillingPage() {
   const session = await auth()
   if (!session?.user?.id) redirect("/login")
-  if (await isUserWaitlisted(session.user.id)) redirect("/waitlist")
-  if (await hasActiveSubscription(session.user.id)) redirect("/connections")
+  const destination = billingPageRedirect(
+    await getProductAccess({ userId: session.user.id })
+  )
+  if (destination) redirect(destination)
 
   async function signOutAction() {
     "use server"

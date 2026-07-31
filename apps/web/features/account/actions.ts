@@ -1,18 +1,22 @@
 "use server"
 
+import "server-only"
+
+import { redirect } from "next/navigation"
+import {
+  ChangePasswordRpcInputSchema,
+  DeleteAccountRpcInputSchema,
+  type AccountDeletionResultDto,
+  type RpcActor,
+} from "@workspace/contracts"
+
 import { auth, signOut } from "@/auth"
 import {
-  accountDeletionConfirmationMatches,
-  planWebhookUnsubscribes,
-} from "@/lib/account/account-deletion"
-import {
-  deleteTenant,
-  loadTenantDeletionContext,
-} from "@/lib/account/account-repository"
-import { changeUserPassword, InvalidAuthInputError } from "@/lib/auth/users"
+  BackendRpcError,
+  changePassword,
+  deleteAccount,
+} from "@/lib/backend/backend"
 import { validatePasswordChangeInput } from "@/lib/auth/validation"
-import { getStripe } from "@/lib/billing/stripe"
-import { unsubscribeFromWebhook } from "@/lib/meta"
 
 export type DeleteAccountState = {
   error?: string
@@ -22,31 +26,37 @@ export type ChangePasswordState = {
   error?: string
 }
 
+type AccountMutationOutcome<T> =
+  | { kind: "success"; value: T }
+  | { kind: "redirect"; destination: "/waitlist" | "/billing" }
+  | { kind: "form_error"; error: string }
+
 export async function changePasswordAction(
   _state: ChangePasswordState,
   formData: FormData
 ): Promise<ChangePasswordState> {
-  const input = validatePasswordChangeInput(
+  const actor = await authenticatedActor()
+  if (!actor) return { error: "No hay sesión iniciada." }
+
+  const password = validatePasswordChangeInput(
     formData.get("newPassword"),
     formData.get("confirmPassword")
   )
-  if (!input.ok) return { error: input.error }
-
-  const session = await auth()
-  if (!session?.user?.id) return { error: "No hay sesión iniciada." }
-
-  try {
-    const user = await changeUserPassword(session.user.id, input.value.password)
-    if (!user) return { error: "No encontramos la cuenta." }
-  } catch (error) {
-    if (error instanceof InvalidAuthInputError) {
-      return { error: error.message }
-    }
-    throw error
+  if (!password.ok) return { error: password.error }
+  const input = ChangePasswordRpcInputSchema.safeParse({
+    newPassword: password.value.password,
+  })
+  if (!input.success) {
+    return { error: "La contraseña debe tener al menos 8 caracteres." }
   }
 
-  // El password ya cambió; cerramos la sesión actual para que el siguiente
-  // acceso use la credencial nueva.
+  const outcome = await performAccountMutation(
+    () => changePassword(actor, input.data),
+    "No pudimos guardar esa contraseña."
+  )
+  if (outcome.kind === "redirect") redirect(outcome.destination)
+  if (outcome.kind === "form_error") return { error: outcome.error }
+
   await signOut({ redirectTo: "/login?passwordChanged=1" })
   return {}
 }
@@ -55,51 +65,70 @@ export async function deleteAccountAction(
   _state: DeleteAccountState,
   formData: FormData
 ): Promise<DeleteAccountState> {
-  const session = await auth()
-  if (!session?.user?.id) return { error: "No hay sesión iniciada." }
+  const actor = await authenticatedActor()
+  if (!actor) return { error: "No hay sesión iniciada." }
 
-  const context = await loadTenantDeletionContext(session.user.id)
-  if (!context) return { error: "No encontramos la cuenta." }
-
-  if (
-    !accountDeletionConfirmationMatches(
-      formData.get("confirmEmail"),
-      context.email
-    )
-  ) {
+  const input = DeleteAccountRpcInputSchema.safeParse({
+    confirmEmail: formData.get("confirmEmail"),
+  })
+  if (!input.success) {
     return {
       error: "El email no coincide. Escribe tu email exacto para confirmar.",
     }
   }
 
-  // Best-effort: dejar de recibir mensajes de Meta antes de borrar. Un fallo
-  // aquí no debe bloquear el borrado de datos del tenant.
-  const toUnsubscribe = planWebhookUnsubscribes(context.pages)
-  await Promise.allSettled(
-    toUnsubscribe.map((page) =>
-      unsubscribeFromWebhook(page.metaPageId, page.pageAccessToken)
-    )
+  const outcome = await performAccountMutation(
+    () => deleteAccount(actor, input.data),
+    "El email no coincide. Escribe tu email exacto para confirmar."
   )
-
-  // Best-effort: cancelar la suscripción en Stripe antes de borrar; la fila de
-  // `subscriptions` cae por cascade, pero sin esto Stripe seguiría cobrando a
-  // una cuenta que ya no existe. Un fallo aquí tampoco bloquea el borrado.
-  if (context.stripeSubscriptionId) {
-    try {
-      await getStripe().subscriptions.cancel(context.stripeSubscriptionId)
-    } catch (error) {
-      console.error(
-        "stripe subscription cancel failed",
-        context.stripeSubscriptionId,
-        error
-      )
+  if (outcome.kind === "redirect") redirect(outcome.destination)
+  if (outcome.kind === "form_error") return { error: outcome.error }
+  reportCleanupOutcome(outcome.value)
+  if (!outcome.value.deleted) {
+    return {
+      error:
+        "No pudimos eliminar la cuenta. Tu cuenta, tus datos y tu sesión siguen activos. Contacta a soporte antes de volver a intentarlo.",
     }
   }
 
-  await deleteTenant(session.user.id)
-
-  // Cierra la sesión y redirige a la landing pública. signOut lanza el redirect,
-  // por lo que el código posterior no se alcanza.
   await signOut({ redirectTo: "/" })
   return {}
+}
+
+async function authenticatedActor(): Promise<RpcActor | null> {
+  const session = await auth()
+  return session?.user?.id ? { userId: session.user.id } : null
+}
+
+async function performAccountMutation<T>(
+  operation: () => Promise<T>,
+  validationError: string
+): Promise<AccountMutationOutcome<T>> {
+  try {
+    return { kind: "success", value: await operation() }
+  } catch (error) {
+    if (!(error instanceof BackendRpcError)) throw error
+    const { classification } = error
+    if (classification.code === "account_waitlisted") {
+      return { kind: "redirect", destination: "/waitlist" }
+    }
+    if (classification.code === "subscription_required") {
+      return { kind: "redirect", destination: "/billing" }
+    }
+    if (classification.kind === "not_found") {
+      return { kind: "form_error", error: "No encontramos la cuenta." }
+    }
+    if (classification.kind === "validation") {
+      return { kind: "form_error", error: validationError }
+    }
+    throw error
+  }
+}
+
+function reportCleanupOutcome(result: AccountDeletionResultDto) {
+  console.info("Account deletion outcome.", {
+    deleted: result.deleted,
+    metaUnsubscribeFailures: result.metaUnsubscribeFailures,
+    stripeCancellationFailed: result.stripeCancellationFailed,
+  })
 }

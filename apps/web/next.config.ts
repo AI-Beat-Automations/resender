@@ -13,13 +13,13 @@ const nextConfig: NextConfig = {
   // MDX sigue habilitado como extensión de página para futuros contenidos.
   pageExtensions: ["ts", "tsx", "js", "jsx", "md", "mdx"],
 
-  // Los docs se construyen en otro repo y se publican en docs.resender.dev.
-  // El 301 (en vez de borrar la ruta a secas) conserva la autoridad de
-  // /docs, que ya está indexada, y no deja 404 a quien tenga el link viejo.
+  // `docs.resender.dev` aún publica el contrato legado. Mientras se actualiza,
+  // /docs lleva al Swagger generado por la OpenAPI vigente. El redirect es
+  // temporal para no cachear para siempre este destino de transición.
   async redirects() {
     return [
-      { source: "/docs", destination: DOCS_URL, permanent: true },
-      { source: "/docs/:path*", destination: DOCS_URL, permanent: true },
+      { source: "/docs", destination: DOCS_URL, permanent: false },
+      { source: "/docs/:path*", destination: DOCS_URL, permanent: false },
     ]
   },
 }

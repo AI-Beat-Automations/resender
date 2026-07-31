@@ -1,37 +1,39 @@
-import { NextResponse, type NextRequest } from "next/server"
+import { NextResponse } from "next/server"
 
 import { auth } from "@/auth"
-import { isUserWaitlisted } from "@/lib/auth/waitlist"
-import { hasActiveSubscription } from "@/lib/billing/subscription"
-import { STATE_COOKIE, buildDialogUrl } from "@/lib/meta"
+import { getProductAccess } from "@/lib/backend/backend"
+import { productPageRedirect } from "@/lib/access/product-gates"
+import {
+  buildMetaDialogUrl,
+  configuredAppOrigin,
+  META_STATE_COOKIE,
+  metaStateCookieOptions,
+  serializeMetaState,
+} from "@/lib/meta/oauth"
 
 // Arranca el OAuth: genera un `state` (CSRF), lo guarda en cookie httpOnly y
 // redirige al diálogo de Meta. El botón "Conectar Facebook" apunta aquí.
 export const runtime = "nodejs"
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   const session = await auth()
   if (!session?.user?.id) {
-    return NextResponse.redirect(new URL("/login", request.url))
+    return NextResponse.redirect(new URL("/login", configuredAppOrigin()))
   }
 
-  if (await isUserWaitlisted(session.user.id)) {
-    return NextResponse.redirect(new URL("/waitlist", request.url))
-  }
-
-  if (!(await hasActiveSubscription(session.user.id))) {
-    return NextResponse.redirect(new URL("/billing", request.url))
+  const access = await getProductAccess({ userId: session.user.id })
+  const destination = productPageRedirect(access)
+  if (destination) {
+    return NextResponse.redirect(new URL(destination, configuredAppOrigin()))
   }
 
   const state = crypto.randomUUID()
 
-  const res = NextResponse.redirect(buildDialogUrl(state))
-  res.cookies.set(STATE_COOKIE, state, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "lax", // se envía en la navegación top-level de vuelta desde Meta
-    path: "/",
-    maxAge: 600, // 10 min
-  })
+  const res = NextResponse.redirect(buildMetaDialogUrl(state))
+  res.cookies.set(
+    META_STATE_COOKIE,
+    serializeMetaState(state),
+    metaStateCookieOptions()
+  )
   return res
 }
