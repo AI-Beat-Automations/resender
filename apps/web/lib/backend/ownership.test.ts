@@ -99,7 +99,9 @@ describe("phase-2 ownership boundaries", () => {
         `npm --workspace ${workspace} run typecheck -- --incremental false`
       )
     }
-    expect(workflow).not.toContain("DATABASE_URL: ${{ secrets.DATABASE_URL_MIGRATIONS }}\n\n      - name: Deploy web")
+    expect(workflow).not.toContain(
+      "DATABASE_URL: ${{ secrets.DATABASE_URL_MIGRATIONS }}\n\n      - name: Deploy web"
+    )
     expect(workflow).toContain('test "$status" = "400"')
     expect(workflow).toContain("https://api.resender.dev/readyz")
     expect(apiPackage).toContain('wrangler deploy --env=\\"\\"')
@@ -151,10 +153,10 @@ describe("phase-2 ownership boundaries", () => {
     expect(typegenScript).toContain("delete rawConfig.main")
     expect(typegenScript).toContain('"../api/wrangler.jsonc"')
     expect(typegenScript).toContain('"--env-file"')
-    expect(typegenScript).toContain('CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV: "false"')
-    expect(webPackage.scripts["cf-typegen"]).toBe(
-      "node scripts/cf-typegen.mjs"
+    expect(typegenScript).toContain(
+      'CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV: "false"'
     )
+    expect(webPackage.scripts["cf-typegen"]).toBe("node scripts/cf-typegen.mjs")
     expect(webPackage.scripts["cf-typegen:check"]).toBe(
       "node scripts/cf-typegen.mjs --check"
     )
@@ -236,10 +238,20 @@ describe("phase-2 ownership boundaries", () => {
     expect(phaseOne).not.toContain("phase-2-api-migration-frontend.md")
   })
 
-  it("uses one integrated local Wrangler runtime for RPC acceptance", async () => {
-    const [rootPackageSource, devScript, runbook] = await Promise.all([
+  it("runs Next and the named local API Worker under Turbo", async () => {
+    const [
+      rootPackageSource,
+      webPackageSource,
+      apiPackageSource,
+      devScript,
+      nextConfig,
+      runbook,
+    ] = await Promise.all([
       readFile(path.join(REPO_ROOT, "package.json"), "utf8"),
-      readFile(path.join(REPO_ROOT, "scripts/dev.mjs"), "utf8"),
+      readFile(path.join(WEB_ROOT, "package.json"), "utf8"),
+      readFile(path.join(API_ROOT, "package.json"), "utf8"),
+      readFile(path.join(WEB_ROOT, "scripts/dev.mjs"), "utf8"),
+      readFile(path.join(WEB_ROOT, "next.config.ts"), "utf8"),
       readFile(
         path.join(REPO_ROOT, "docs/api-cloudflare-manual-runbook.md"),
         "utf8"
@@ -248,25 +260,33 @@ describe("phase-2 ownership boundaries", () => {
     const rootPackage = JSON.parse(rootPackageSource) as {
       scripts: Record<string, string>
     }
+    const webPackage = JSON.parse(webPackageSource) as {
+      scripts: Record<string, string>
+    }
+    const apiPackage = JSON.parse(apiPackageSource) as {
+      scripts: Record<string, string>
+    }
 
-    expect(rootPackage.scripts.dev).toBe("node scripts/dev.mjs")
-    expect(rootPackage.scripts["dev:next"]).toBe(
-      "npm --workspace web run dev"
-    )
-    expect(devScript).toContain(
-      '"exec", "--", "opennextjs-cloudflare", "build"'
-    )
-    expect(devScript).toContain('"apps/web/wrangler.jsonc"')
-    expect(devScript).toContain('"apps/api/wrangler.jsonc"')
-    expect(devScript).toContain('"--local"')
-    expect(devScript).not.toContain('"--remote"')
-    expect(runbook).toContain("as `[connected]`")
+    expect(rootPackage.scripts.dev).toBe("turbo dev")
+    expect(rootPackage.scripts).not.toHaveProperty("dev:next")
+    expect(webPackage.scripts.dev).toBe("node scripts/dev.mjs")
+    expect(apiPackage.scripts.dev).toBe("wrangler dev --local --port 8787")
+    expect(devScript).toContain('const API_WORKER_NAME = "api"')
+    expect(devScript).toContain("STARTUP_TIMEOUT_MS")
+    expect(devScript).toContain("debugPortAddress")
+    expect(devScript).toContain("userWorkerService")
+    expect(devScript).toContain('"next/dist/bin/next"')
+    expect(devScript).not.toMatch(/https?:\/\//u)
+    expect(nextConfig).toContain("initOpenNextCloudflareForDev()")
+    expect(runbook).toContain("http://localhost:3000/")
+    expect(runbook).toContain("port `8787`")
+    expect(runbook).toContain("local Worker named `api`")
     expect(runbook).toContain('= "401"')
     expect(runbook).toContain('= "400"')
     expect(runbook).toContain("/api/meta/webhook")
     expect(runbook).toContain("/api/stripe/webhook")
-    expect(runbook).toContain("restart `npm run dev`")
-    expect(runbook).toContain("UI-only Next development")
+    expect(runbook).toMatch(/Hot Module\s+Replacement/u)
+    expect(runbook).toContain("no HTTP fallback")
   })
 
   it("marks the phase-1 plan as historical without contradicting private compatibility", async () => {
@@ -275,9 +295,7 @@ describe("phase-2 ownership boundaries", () => {
       "utf8"
     )
     expect(phaseOne).toContain("Documento histórico y superseded")
-    expect(phaseOne).toContain(
-      "/internal/legacy/meta/send"
-    )
+    expect(phaseOne).toContain("/internal/legacy/meta/send")
     expect(phaseOne).toContain("esa ruta no existe en el router HTTP público")
     expect(phaseOne).toContain(
       "Contexto de la baseline de Fase 1 que el agente debía conservar"

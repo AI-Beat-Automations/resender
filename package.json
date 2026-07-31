@@ -4,8 +4,7 @@
   "private": true,
   "scripts": {
     "build": "turbo build",
-    "dev": "node scripts/dev.mjs",
-    "dev:next": "npm --workspace web run dev",
+    "dev": "turbo dev",
     "lint": "turbo lint",
     "format": "turbo format",
     "test": "turbo test",

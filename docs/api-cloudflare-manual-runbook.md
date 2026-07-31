@@ -463,49 +463,55 @@ frontend. None of these commands deploys a Worker.
 
 ### Integrated local acceptance server
 
-`npm run dev` is the full local acceptance server. It first rebuilds OpenNext,
-then starts one Wrangler multi-config runtime with both
-`apps/web/wrangler.jsonc` and `apps/api/wrangler.jsonc` in local mode. Wrangler
-must print `BACKEND` (`api#WebAppApi`) as `[connected]`; a `503` binding result
-means the topology is invalid and blocks acceptance.
+`npm run dev` is the full local acceptance server. Turbo starts the Next
+development server on port `3000` and the Wrangler API Worker on port `8787`.
+The web task waits, with a 20-second deadline and bounded retries, until
+Wrangler has registered a live local Worker named `api`; only then does it
+start `next dev`. OpenNext's `initOpenNextCloudflareForDev()` reads
+`apps/web/wrangler.jsonc`, so `BACKEND` resolves by Worker name to
+`api#WebAppApi`. Application traffic has no HTTP fallback to port `8787` or to
+the public API hostname.
 
 ```bash
 npm run dev
 ```
 
-In another terminal, verify the web Worker and all three binding-backed
-compatibility proxies:
+In another terminal, verify Next and all three binding-backed compatibility
+proxies:
 
 ```bash
-curl --fail --show-error --silent http://localhost:8787/ > /dev/null
+curl --fail --show-error --silent http://localhost:3000/ > /dev/null
 test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
   --request POST --header 'content-type: application/json' --data '{}' \
-  http://localhost:8787/api/meta/send)" = "401"
+  http://localhost:3000/api/meta/send)" = "401"
 test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
   --request POST --header 'content-type: application/json' \
   --header 'x-hub-signature-256: invalid-smoke-signature' --data '{}' \
-  http://localhost:8787/api/meta/webhook)" = "400"
+  http://localhost:3000/api/meta/webhook)" = "400"
 test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
   --request POST --header 'content-type: application/json' \
   --header 'stripe-signature: invalid-smoke-signature' --data '{}' \
-  http://localhost:8787/api/stripe/webhook)" = "400"
+  http://localhost:3000/api/stripe/webhook)" = "400"
 ```
 
-Stop the root process after the smoke. OpenNext does not watch source files in
-this topology: restart `npm run dev` after code or configuration changes so it
-rebuilds the bundle. `npm run dev:next` is UI-only Next development and does
-not provide a connected `BACKEND`; it is not an RPC acceptance server.
+The compatibility proxy results cover Next -> `BACKEND` ->
+`WebAppApi.fetch`. When an RPC consumer changes, also exercise it through its
+real server-rendered page or a temporary server-only caller as described in
+the Slice 1 gate, then remove the temporary caller. Next retains Hot Module
+Replacement in this topology, so normal web source changes do not require
+rebuilding OpenNext or restarting the root command. Restart after changing
+Wrangler configuration or binding names.
 
 ## Custom domains: declared configuration and external activation
 
 The source of truth in Wrangler declares exactly these custom-domain routes:
 
-| Environment | Worker        | Declarative route                  |
-| ----------- | ------------- | ---------------------------------- |
-| production  | `api`         | `api.resender.dev`                 |
-| production  | `web`         | `resender.dev`                     |
-| staging     | `api-staging` | `api-staging.resender.dev`         |
-| staging     | `web-staging` | `staging.resender.dev`             |
+| Environment | Worker        | Declarative route          |
+| ----------- | ------------- | -------------------------- |
+| production  | `api`         | `api.resender.dev`         |
+| production  | `web`         | `resender.dev`             |
+| staging     | `api-staging` | `api-staging.resender.dev` |
+| staging     | `web-staging` | `staging.resender.dev`     |
 
 Every route is an object with `custom_domain: true`. The staging web
 `BACKEND` remains bound to `api-staging#WebAppApi`; production remains bound to

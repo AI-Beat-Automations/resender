@@ -51,8 +51,8 @@ describe("backend request proxy", () => {
       ])
       const upstreamResponse = new Response(null, { status: 204 })
       let upstreamRequest: Request | undefined
-      const fetch = vi.fn(async (request: Request) => {
-        upstreamRequest = request
+      const fetch = vi.fn(async (input: string, init?: RequestInit) => {
+        upstreamRequest = new Request(input, init)
         return upstreamResponse
       })
       openNext.getCloudflareContext.mockResolvedValue({
@@ -86,6 +86,7 @@ describe("backend request proxy", () => {
         search: "?source=provider%2Bcallback",
       })
       expect(upstreamRequest.method).toBe("POST")
+      expect(upstreamRequest.redirect).toBe("manual")
       expect(upstreamRequest.headers.get(signatureHeader)).toBe(signature)
       expect(upstreamRequest.headers.get("content-type")).toBe(
         "application/json; charset=utf-8"
@@ -112,8 +113,8 @@ describe("backend request proxy", () => {
     openNext.getCloudflareContext.mockResolvedValue({
       env: {
         BACKEND: {
-          fetch: vi.fn(async (request: Request) => {
-            upstreamRequest = request
+          fetch: vi.fn(async (input: string, init?: RequestInit) => {
+            upstreamRequest = new Request(input, init)
             return response
           }),
         },
@@ -172,6 +173,45 @@ describe("backend request proxy", () => {
     expect(response.bodyUsed).toBe(false)
   })
 
+  it("adapts a Miniflare-realm response without buffering its stream", async () => {
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("cross-realm"))
+        controller.close()
+      },
+    })
+    const foreignResponse = {
+      body,
+      headers: new Headers({
+        "content-type": "application/octet-stream",
+        "x-api-response": "preserved",
+      }),
+      status: 207,
+      statusText: "Multi-Status",
+    } as Response
+    openNext.getCloudflareContext.mockResolvedValue({
+      env: {
+        BACKEND: {
+          fetch: vi.fn().mockResolvedValue(foreignResponse),
+        },
+      },
+    })
+
+    const response = await postMetaWebhook(
+      new Request("https://resender.dev/api/meta/webhook", {
+        method: "POST",
+        body: "{}",
+      })
+    )
+
+    expect(response).not.toBe(foreignResponse)
+    expect(response.status).toBe(207)
+    expect(response.statusText).toBe("Multi-Status")
+    expect(response.headers.get("x-api-response")).toBe("preserved")
+    expect(response.body).toBe(body)
+    expect(response.bodyUsed).toBe(false)
+  })
+
   it("streams the deprecated send request and API response unchanged", async () => {
     const responseBody = new ReadableStream({
       start(controller) {
@@ -190,8 +230,8 @@ describe("backend request proxy", () => {
     openNext.getCloudflareContext.mockResolvedValue({
       env: {
         BACKEND: {
-          fetch: vi.fn(async (request: Request) => {
-            upstreamRequest = request
+          fetch: vi.fn(async (input: string, init?: RequestInit) => {
+            upstreamRequest = new Request(input, init)
             return upstreamResponse
           }),
         },
@@ -291,11 +331,13 @@ describe("backend request proxy", () => {
     openNext.getCloudflareContext.mockResolvedValue({
       env: {
         BACKEND: {
-          fetch: vi.fn().mockRejectedValue(
-            new Error(
-              "access_token=SECRET authorization=Bearer_SECRET body=sensitive"
-            )
-          ),
+          fetch: vi
+            .fn()
+            .mockRejectedValue(
+              new Error(
+                "access_token=SECRET authorization=Bearer_SECRET body=sensitive"
+              )
+            ),
         },
       },
     })
@@ -320,10 +362,7 @@ describe("backend request proxy", () => {
 
   it("keeps the bridge server-only, streaming and free of callback domain code", async () => {
     const [proxy, metaRoute, stripeRoute, sendRoute] = await Promise.all([
-      readFile(
-        new URL("./backend-request-proxy.ts", import.meta.url),
-        "utf8"
-      ),
+      readFile(new URL("./backend-request-proxy.ts", import.meta.url), "utf8"),
       readFile(
         new URL("../../app/api/meta/webhook/route.ts", import.meta.url),
         "utf8"

@@ -6,7 +6,7 @@
   "scripts": {
     "build": "wrangler deploy --dry-run --env=\"\" --outdir .wrangler/dry-run",
     "db:migrate": "node scripts/migrate.mjs",
-    "dev": "wrangler dev --local",
+    "dev": "wrangler dev --local --port 8787",
     "preview": "wrangler dev --local",
     "deploy": "wrangler deploy --env=\"\"",
     "deploy:staging": "wrangler deploy --env staging",
