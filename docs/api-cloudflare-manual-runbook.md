@@ -7,13 +7,15 @@ web callback proxies are present in the repository. None of the deploy,
 provider-dashboard, DNS, secret, or other Cloudflare-account commands in this
 runbook were executed while implementing the branch.
 
-The existing `web` Worker remains the production frontend and database
-migration owner. In code, its legacy Meta and Stripe callback Route Handlers
-are now streaming proxies to the API through `BACKEND`; they contain no
-signature verification, provider client, database write, analytics, or domain
-side effect. Until the ordered callback cutover below is executed and recorded,
-assume the provider dashboards still point at those legacy web URLs. Do not
-disable either endpoint based only on the repository state.
+The existing `web` Worker remains the production frontend. `apps/api`
+exclusively owns the migration history/runner, database and backend secrets,
+provider clients and domain side effects. The legacy Meta/Stripe callbacks and
+deprecated send Route Handler in web are raw streaming proxies through
+`BACKEND`; they contain no authentication, signature verification, provider
+client, database write, analytics, or domain side effect. Until the ordered
+cutovers below are executed and recorded, assume clients/providers still use
+the legacy web URLs. Do not disable any of the three proxies based only on the
+repository state.
 
 ## Preconditions
 
@@ -22,9 +24,9 @@ disable either endpoint based only on the repository state.
    integers unique within the Cloudflare account. Replace them if either is
    already assigned.
 2. Create a separate Neon branch/database for staging and local testing.
-3. Apply `apps/web/db/migrations/0010_api_worker_outbox.sql` through the
-   existing `web` migration pipeline. There is intentionally no second
-   migration owner.
+3. Apply `apps/api/db/migrations/0010_api_worker_outbox.sql` through
+   `npm --workspace api run db:migrate`. There is intentionally no second
+   migration directory or runner in web.
 4. Confirm the Queue names in the config are unused or intentionally reused.
 5. Confirm the Cloudflare account is on a plan that supports Queues and the
    Rate Limiting binding.
@@ -250,10 +252,11 @@ disconnected Pages:
 ## Validate the Settings RPC cutover
 
 The Settings account/API-key reads and the API-key, password, and account
-mutations use the `BACKEND` Service Binding exclusively. Billing remains Slice
-5, Auth.js authorize/register remains Slice 6, and OAuth remains Slice 7. The
-legacy public-send route still verifies opaque API keys locally; its format,
-hash, constant-time comparison, and pepper helpers remain until Slice 10.
+mutations use the `BACKEND` Service Binding exclusively. Slice 10 also moved
+the deprecated public-send contract behind a raw web proxy to the private API
+allowlist. Opaque API-key verification, hashing/pepper, quota, persistence and
+the Meta side effect now run only in `apps/api`; web retains none of those
+helpers.
 
 In staging:
 
@@ -324,10 +327,71 @@ npx wrangler secret put STRIPE_SECRET_KEY
 npx wrangler secret put STRIPE_WEBHOOK_SECRET
 ```
 
-Repeat with `--env staging`. `API_KEY_PEPPER`, password hashing, and
-`TOKEN_ENCRYPTION_KEY` must be compatible with the values used by `web` or
-existing credentials/tokens cannot be read. Use a direct Neon URL for schema
-migrations and the approved runtime URL for the Worker.
+Repeat with `--env staging`. `AUTH_SECRET` remains shared for credential
+compatibility; all API-key hashing and `TOKEN_ENCRYPTION_KEY` use is API-owned.
+Use a direct Neon URL only for the API-owned schema migration runner and the
+approved pooled runtime URL for the Worker.
+
+## Remove backend secret names from web (manual gate — NOT EXECUTED)
+
+This is an explicit post-cutover operation. Repository examples and generated
+web bindings are already limited to web-owned configuration, but deployed
+Worker secrets and ignored local files are external state. No production,
+staging, or local secret was deleted or edited while implementing this
+checkpoint.
+
+The backend-only names to remove from the `web` Worker in both root production
+and staging are:
+
+```text
+API_KEY_PEPPER
+DATABASE_URL
+TOKEN_ENCRYPTION_KEY
+META_APP_SECRET
+META_VERIFY_TOKEN
+STRIPE_SECRET_KEY
+STRIPE_WEBHOOK_SECRET
+META_APP_ID
+```
+
+`META_APP_ID` in this list means the private API binding; the presentational
+`NEXT_PUBLIC_META_APP_ID` remains web-owned. Keep `AUTH_SECRET`, `APP_URL`, all
+required `NEXT_PUBLIC_*` values, and other explicitly presentational web
+configuration.
+
+First inventory names only. `wrangler secret list` reports secret metadata and
+names; do not print, copy, log, or compare secret values:
+
+```bash
+cd apps/web
+npx wrangler secret list --env=""
+npx wrangler secret list --env staging
+```
+
+Do not run `wrangler secret delete` until all of these gates are recorded:
+
+1. Database migrations have completed from `apps/api`.
+2. The API Worker has deployed and both `/healthz` and `/readyz` pass.
+3. The web Worker with its `BACKEND` binding has deployed after the API.
+4. Legacy send plus Meta/Stripe callback proxy smokes pass through the binding
+   with the expected status/body and exactly one API-owned side effect.
+5. The approved callback/client cutover has remained stable for its observation
+   window and rollback does not require restoring web domain ownership.
+6. An operator has reviewed the root and staging name inventories and obtained
+   explicit approval for the exact deletions.
+
+After those gates, delete only the listed names, one at a time, from root and
+staging with `wrangler secret delete`; never use a bulk wildcard or paste
+values into the command, log, or ticket. Re-run `wrangler secret list` for both
+environments and record only the presence/absence of names.
+
+Local development needs the same ownership cleanup. The ignored
+`apps/web/.env` may still contain legacy backend names even though repository
+examples no longer do. Review it locally without printing or sharing values,
+remove only the backend-only names above, and keep `AUTH_SECRET`, `APP_URL`,
+and required `NEXT_PUBLIC_*`/presentational entries. Move API values to the
+ignored API-local environment file through the approved secret channel; never
+copy their values into documentation, shell output, CI logs, or a commit.
 
 ## Callback proxy cutover (not executed)
 
@@ -414,10 +478,16 @@ Smoke-test staging:
 - Delivery outcomes cover 2xx, 408, 429, permanent 4xx, 5xx, timeout, retry,
   and DLQ.
 
-Only after staging evidence is approved:
+Only after staging evidence is approved, production order is fixed. Root
+production is selected explicitly with `--env=""`; named staging uses
+`--env staging`:
 
 ```bash
+npm --workspace api run db:migrate
 npm --workspace api run deploy
+# smoke https://api.resender.dev/healthz
+npm --workspace web run deploy
+# smoke https://resender.dev and an invalid callback signature through BACKEND
 ```
 
 Creating or deploying the API Worker is not authorization to change DNS, the

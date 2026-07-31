@@ -7,7 +7,6 @@ import { redirect } from "next/navigation"
 import {
   ApiKeyCreateRpcInputSchema,
   ApiKeyRevokeRpcInputSchema,
-  type ApiKeyDto,
   type RpcActor,
 } from "@workspace/contracts"
 
@@ -17,7 +16,6 @@ import {
   createApiKey,
   revokeApiKey,
 } from "@/lib/backend/backend"
-import { posthog } from "@/lib/posthog"
 
 export type CreateApiKeyState = {
   error?: string
@@ -59,7 +57,6 @@ export async function createApiKeyAction(
   if (outcome.kind === "redirect") redirect(outcome.destination)
   if (outcome.kind === "form_error") return { error: outcome.error }
 
-  await captureApiKeyEvent("api key created", actor, outcome.value.record)
   revalidatePath("/settings")
   return {
     apiKey: outcome.value.apiKey,
@@ -87,7 +84,6 @@ export async function revokeApiKeyAction(
   if (outcome.kind === "redirect") redirect(outcome.destination)
   if (outcome.kind === "form_error") return { error: outcome.error }
 
-  await captureApiKeyEvent("api key revoked", actor, outcome.value)
   revalidatePath("/settings")
   return { message: "API key revocada." }
 }
@@ -123,23 +119,5 @@ async function performApiKeyMutation<T>(
       return { kind: "form_error", error: validationError }
     }
     throw error
-  }
-}
-
-async function captureApiKeyEvent(
-  event: "api key created" | "api key revoked",
-  actor: RpcActor,
-  apiKey: ApiKeyDto
-) {
-  if (!posthog) return
-  try {
-    posthog.capture({
-      distinctId: actor.userId,
-      event,
-      properties: { api_key_id: apiKey.id, label: apiKey.label },
-    })
-    await posthog.flush()
-  } catch {
-    // Analytics is non-authoritative and receives metadata only, never the key.
   }
 }

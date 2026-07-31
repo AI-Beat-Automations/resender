@@ -31,6 +31,7 @@ import type { ZodType } from "zod"
 import { ApiService } from "../application/service"
 import { API_MAX_LIMIT } from "../config"
 import { apiRouter } from "../http/router"
+import { handleLegacySend, LEGACY_SEND_PATH } from "../http/legacy-send"
 import { log } from "../observability/logger"
 
 export class WebAppApi
@@ -39,7 +40,7 @@ export class WebAppApi
 {
   async fetch(request: Request): Promise<Response> {
     const pathname = new URL(request.url).pathname
-    const allowedMethods = callbackMethods(pathname)
+    const allowedMethods = privateHttpMethods(pathname)
 
     if (!allowedMethods) {
       return new Response("not found", { status: 404 })
@@ -52,6 +53,9 @@ export class WebAppApi
       })
     }
 
+    if (pathname === LEGACY_SEND_PATH) {
+      return handleLegacySend(request, this.service())
+    }
     return apiRouter.fetch(request, this.env, this.ctx)
   }
 
@@ -354,8 +358,10 @@ export class WebAppApi
   }
 }
 
-function callbackMethods(pathname: string): readonly string[] | undefined {
+function privateHttpMethods(pathname: string): readonly string[] | undefined {
   switch (pathname) {
+    case LEGACY_SEND_PATH:
+      return ["POST"]
     case "/webhooks/meta":
       return ["GET", "POST"]
     case "/webhooks/stripe":

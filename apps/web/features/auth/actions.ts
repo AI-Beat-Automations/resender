@@ -6,7 +6,6 @@ import { signIn } from "@/auth"
 import { getDictionary, type Locale } from "@/content/i18n"
 import { BackendRpcError, registerUser } from "@/lib/backend/backend"
 import { validateAuthInput } from "@/lib/auth/validation"
-import { posthog } from "@/lib/posthog"
 
 export type AuthFormState = {
   error?: string
@@ -64,9 +63,8 @@ export async function registerAction(
     }
   }
 
-  let newUser: Awaited<ReturnType<typeof registerUser>>
   try {
-    newUser = await registerUser(input.value)
+    await registerUser(input.value)
   } catch (error) {
     // En el alta, el email duplicado sí se nombra: aquí el usuario necesita
     // saber que ya tiene cuenta (CONTEXT.md → «Usuario MVP»).
@@ -78,15 +76,6 @@ export async function registerAction(
       return { error: errors.duplicateEmail }
     }
     throw error
-  }
-
-  if (posthog) {
-    posthog.identify({
-      distinctId: newUser.id,
-      properties: { $set: { email: newUser.email } },
-    })
-    posthog.capture({ distinctId: newUser.id, event: "user registered" })
-    await posthog.flush()
   }
 
   try {

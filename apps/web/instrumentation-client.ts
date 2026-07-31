@@ -33,7 +33,7 @@ if (isPostHogEnabled) {
     // sobre el replay es el panel del proyecto en PostHog, no el código.
   })
 } else if (process.env.NODE_ENV !== "production") {
-  // Mismo texto que `lib/posthog.ts` para que ambos runtimes fallen igual.
+  // Diagnóstico local del único runtime PostHog que conserva la app web.
   console.warn(
     "NEXT_PUBLIC_POSTHOG_KEY variable required by PostHog is missing or un-configured, " +
       "this causes events to be silently missed. " +

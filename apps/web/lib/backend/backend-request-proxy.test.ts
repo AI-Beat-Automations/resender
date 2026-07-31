@@ -14,9 +14,10 @@ import {
   GET as getMetaWebhook,
   POST as postMetaWebhook,
 } from "../../app/api/meta/webhook/route"
+import { POST as postLegacyMetaSend } from "../../app/api/meta/send/route"
 import { POST as postStripeWebhook } from "../../app/api/stripe/webhook/route"
 
-describe("provider callback proxy", () => {
+describe("backend request proxy", () => {
   beforeEach(() => {
     openNext.getCloudflareContext.mockReset()
     vi.restoreAllMocks()
@@ -171,6 +172,66 @@ describe("provider callback proxy", () => {
     expect(response.bodyUsed).toBe(false)
   })
 
+  it("streams the deprecated send request and API response unchanged", async () => {
+    const responseBody = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"meta":{"ok":true}}'))
+        controller.close()
+      },
+    })
+    const upstreamResponse = new Response(responseBody, {
+      status: 207,
+      headers: {
+        "content-type": "application/json",
+        "x-legacy-contract": "preserved",
+      },
+    })
+    let upstreamRequest: Request | undefined
+    openNext.getCloudflareContext.mockResolvedValue({
+      env: {
+        BACKEND: {
+          fetch: vi.fn(async (request: Request) => {
+            upstreamRequest = request
+            return upstreamResponse
+          }),
+        },
+      },
+    })
+    const request = new Request("https://resender.dev/api/meta/send", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer pk_live_opaque",
+        "idempotency-key": "order-42",
+        "content-type": "application/json",
+      },
+      body: '{"pageId":"provider","recipientId":"psid","reply":"hello"}',
+    })
+    const text = vi.spyOn(request, "text")
+    const json = vi.spyOn(request, "json")
+    const arrayBuffer = vi.spyOn(request, "arrayBuffer")
+
+    const response = await postLegacyMetaSend(request)
+
+    expect(response).toBe(upstreamResponse)
+    expect(response.status).toBe(207)
+    expect(response.headers.get("x-legacy-contract")).toBe("preserved")
+    expect(response.body).toBe(responseBody)
+    if (!upstreamRequest) throw new Error("Expected an upstream request")
+    expect(new URL(upstreamRequest.url).pathname).toBe(
+      "/internal/legacy/meta/send"
+    )
+    expect(upstreamRequest.headers.get("authorization")).toBe(
+      "Bearer pk_live_opaque"
+    )
+    expect(upstreamRequest.headers.get("idempotency-key")).toBe("order-42")
+    expect(await upstreamRequest.text()).toBe(
+      '{"pageId":"provider","recipientId":"psid","reply":"hello"}'
+    )
+    expect(text).not.toHaveBeenCalled()
+    expect(json).not.toHaveBeenCalled()
+    expect(arrayBuffer).not.toHaveBeenCalled()
+  })
+
   it.each([
     {
       name: "context failure",
@@ -226,10 +287,41 @@ describe("provider callback proxy", () => {
     expect(log).not.toHaveBeenCalled()
   })
 
+  it("maps a rejected legacy send binding to the same fixed 503", async () => {
+    openNext.getCloudflareContext.mockResolvedValue({
+      env: {
+        BACKEND: {
+          fetch: vi.fn().mockRejectedValue(
+            new Error(
+              "access_token=SECRET authorization=Bearer_SECRET body=sensitive"
+            )
+          ),
+        },
+      },
+    })
+    const error = vi.spyOn(console, "error").mockImplementation(() => {})
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const log = vi.spyOn(console, "log").mockImplementation(() => {})
+
+    const response = await postLegacyMetaSend(
+      new Request("https://resender.dev/api/meta/send", {
+        method: "POST",
+        headers: { authorization: "Bearer SECRET" },
+        body: '{"reply":"sensitive"}',
+      })
+    )
+
+    expect(response.status).toBe(503)
+    expect(await response.text()).toBe("service unavailable")
+    expect(error).not.toHaveBeenCalled()
+    expect(warn).not.toHaveBeenCalled()
+    expect(log).not.toHaveBeenCalled()
+  })
+
   it("keeps the bridge server-only, streaming and free of callback domain code", async () => {
-    const [proxy, metaRoute, stripeRoute] = await Promise.all([
+    const [proxy, metaRoute, stripeRoute, sendRoute] = await Promise.all([
       readFile(
-        new URL("./provider-callback-proxy.ts", import.meta.url),
+        new URL("./backend-request-proxy.ts", import.meta.url),
         "utf8"
       ),
       readFile(
@@ -240,14 +332,20 @@ describe("provider callback proxy", () => {
         new URL("../../app/api/stripe/webhook/route.ts", import.meta.url),
         "utf8"
       ),
+      readFile(
+        new URL("../../app/api/meta/send/route.ts", import.meta.url),
+        "utf8"
+      ),
     ])
 
     expect(proxy.startsWith('import "server-only"')).toBe(true)
     expect(proxy).not.toMatch(/\.(?:text|json|arrayBuffer)\s*\(/u)
-    expect(`${metaRoute}\n${stripeRoute}`).not.toMatch(
+    expect(`${metaRoute}\n${stripeRoute}\n${sendRoute}`).not.toMatch(
       /(?:from\s+["'](?:node:)?crypto["']|from\s+["']stripe["']|posthog|process\.env|@\/lib\/(?:db|inbound|billing)|META_APP_SECRET|STRIPE_WEBHOOK_SECRET)/u
     )
     expect(metaRoute).toContain('"/webhooks/meta"')
     expect(stripeRoute).toContain('"/webhooks/stripe"')
+    expect(sendRoute).toContain('"/internal/legacy/meta/send"')
+    expect(sendRoute).toContain("Deprecated compatibility bridge")
   })
 })

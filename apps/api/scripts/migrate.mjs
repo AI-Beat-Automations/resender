@@ -16,7 +16,7 @@ if (!databaseUrl) {
 }
 
 const sql = postgres(databaseUrl, { max: 1 })
-const migrationsDir = path.join(process.cwd(), "db", "migrations")
+const migrationsDir = path.join(appDir, "db", "migrations")
 
 async function loadEnvFile(filePath) {
   let contents

@@ -2,14 +2,17 @@ import "server-only"
 
 import { getCloudflareContext } from "@opennextjs/cloudflare"
 
-export type ProviderCallbackPath = "/webhooks/meta" | "/webhooks/stripe"
+export type BackendProxyPath =
+  | "/webhooks/meta"
+  | "/webhooks/stripe"
+  | "/internal/legacy/meta/send"
 
 const UNAVAILABLE_RESPONSE_BODY = "service unavailable"
 const INTERNAL_BACKEND_ORIGIN = "https://backend.internal"
 
-export async function proxyProviderCallback(
+export async function proxyBackendRequest(
   request: Request,
-  pathname: ProviderCallbackPath
+  pathname: BackendProxyPath
 ): Promise<Response> {
   try {
     const { env } = await getCloudflareContext({ async: true })

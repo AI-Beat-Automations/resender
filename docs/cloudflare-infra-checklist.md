@@ -9,6 +9,10 @@
 > [`api-cloudflare-manual-runbook.md`](api-cloudflare-manual-runbook.md). En
 > particular, los pasos 8–9 de abajo son un registro historico: sus URLs y
 > comandos no describen el target actual ni prueban que un cutover haya ocurrido.
+> En el estado fase 2, migraciones y secretos backend pertenecen a `apps/api`;
+> `apps/web` conserva sólo `AUTH_SECRET`, configuración presentacional y tres
+> proxies de compatibilidad. El workflow vigente ordena
+> `migrations → deploy api → smoke api → deploy web → smoke web`.
 >
 > **Orden recomendado:** los pasos 1–4 se pueden hacer en cualquier momento.
 > El paso 6 (primer deploy) necesita 1, 3 y 5. El custom domain (6.3) necesita

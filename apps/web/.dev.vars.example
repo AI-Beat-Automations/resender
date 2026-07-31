@@ -2,12 +2,7 @@
 # Copy to .dev.vars and replace every value with development/test-only credentials.
 NEXT_PUBLIC_META_APP_ID=development-only
 NEXT_PUBLIC_META_CONFIG_ID=development-only
-API_KEY_PEPPER=development-only
-DATABASE_URL=postgresql://development-only
+NEXT_PUBLIC_POSTHOG_KEY=development-only
+NEXT_PUBLIC_POSTHOG_HOST=https://us.i.posthog.com
 APP_URL=http://localhost:3000
-META_VERIFY_TOKEN=development-only
-META_APP_SECRET=development-only
-TOKEN_ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000000
 AUTH_SECRET=development-only
-STRIPE_SECRET_KEY=rk_test_development-only
-STRIPE_WEBHOOK_SECRET=whsec_development-only

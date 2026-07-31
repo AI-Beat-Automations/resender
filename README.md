@@ -43,20 +43,30 @@ The old `POST https://resender.dev/api/meta/send` endpoint is deprecated.
 There is no approved retirement date; the operational approval placeholders
 and removal gates are maintained in the migration guide.
 
-## MVP environment
+## Environment ownership
 
-`apps/web` expects these variables for the MVP stack:
+`apps/web` owns only frontend/session configuration:
 
 ```bash
 APP_URL="https://your-public-origin.example"
 AUTH_SECRET="generate-a-long-random-secret"
-API_KEY_PEPPER="optional-separate-api-key-pepper"
-DATABASE_URL="postgres://user:password@host:5432/db"
-TOKEN_ENCRYPTION_KEY="generate-with-openssl-rand-hex-32"
-META_APP_SECRET="meta-app-secret"
-META_VERIFY_TOKEN="meta-webhook-verify-token"
 NEXT_PUBLIC_META_APP_ID="meta-app-id"
 NEXT_PUBLIC_META_CONFIG_ID="meta-login-config-id"
+NEXT_PUBLIC_POSTHOG_KEY="optional-browser-key"
+NEXT_PUBLIC_POSTHOG_HOST="https://us.i.posthog.com"
+```
+
+`apps/api` exclusively owns database, API-key hashing, provider and billing
+secrets:
+
+```bash
+DATABASE_URL="postgres://user:password@host:5432/db"
+AUTH_SECRET="shared-credential-compatibility-secret"
+API_KEY_PEPPER="api-key-pepper"
+TOKEN_ENCRYPTION_KEY="generate-with-openssl-rand-hex-32"
+META_APP_ID="meta-app-id"
+META_APP_SECRET="meta-app-secret"
+META_VERIFY_TOKEN="meta-webhook-verify-token"
 STRIPE_SECRET_KEY="rk_test_your-stripe-restricted-key"
 STRIPE_WEBHOOK_SECRET="whsec_your-stripe-webhook-signing-secret"
 ```
@@ -73,7 +83,7 @@ Stripe CLI) or from the webhook endpoint's signing secret in production.
 Run database migrations manually after setting `DATABASE_URL`:
 
 ```bash
-npm --workspace web run db:migrate
+npm --workspace api run db:migrate
 ```
 
 Generate `TOKEN_ENCRYPTION_KEY` with:

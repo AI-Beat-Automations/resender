@@ -411,6 +411,24 @@ export class SqlRepository {
     return rows[0] ? mapPage(rows[0]) : null
   }
 
+  async getActivePageByProviderIdForTenant(
+    tenantId: string,
+    providerPageId: string
+  ): Promise<PageRecord | null> {
+    const rows = await this.sql`
+      select id, tenant_id, meta_page_id, name, status, token_status,
+        token_error, token_error_at, webhook_url, page_access_token_encrypted,
+        webhook_signing_secret_encrypted, connected_at, disconnected_at,
+        updated_at
+      from connected_pages
+      where tenant_id = ${tenantId}
+        and meta_page_id = ${providerPageId}
+        and status = 'active'
+      limit 1
+    `
+    return rows[0] ? mapPage(rows[0]) : null
+  }
+
   async updatePageWebhook(
     tenantId: string,
     pageId: string,
@@ -935,6 +953,67 @@ export class SqlRepository {
     const row = rows[0]
     if (!row) throw new Error("outbound message insert failed")
     return mapMessage(row)
+  }
+
+  async insertLegacyOutbound(input: {
+    tenantId: string
+    conversationId: string
+    pageId: string
+    contactId: string
+    text: string
+    status: "sent" | "failed"
+    providerMessageId: string | null
+    idempotencyKey: string | null
+    error: string | null
+    providerResponse: unknown
+    createdAt: Date
+  }): Promise<MessageRecord> {
+    const providerResponse =
+      input.providerResponse == null
+        ? null
+        : JSON.stringify(input.providerResponse)
+    const rows = await this.sql`
+      with inserted as (
+        insert into messages (
+          tenant_id, conversation_id, connected_page_id, contact_id,
+          direction, status, text, meta_message_id, idempotency_key,
+          error, provider_response, created_at
+        )
+        values (
+          ${input.tenantId}, ${input.conversationId}, ${input.pageId},
+          ${input.contactId}, 'outbound', ${input.status}, ${input.text},
+          ${input.providerMessageId}, ${input.idempotencyKey}, ${input.error},
+          ${providerResponse}::jsonb, ${input.createdAt}
+        )
+        returning id, tenant_id, conversation_id, connected_page_id,
+          contact_id, direction, status, text, meta_message_id, error,
+          provider_response, idempotency_key, idempotency_fingerprint,
+          created_at
+      ),
+      touched_conversation as (
+        update conversations
+        set last_message_at = greatest(last_message_at, ${input.createdAt}),
+          updated_at = now()
+        where tenant_id = ${input.tenantId}
+          and id = ${input.conversationId}
+      )
+      select * from inserted
+    `
+    const row = rows[0]
+    if (!row) throw new Error("legacy outbound message insert failed")
+    return mapMessage(row)
+  }
+
+  async incrementUsage(tenantId: string, periodStart: Date): Promise<number> {
+    const rows = await this.sql`
+      insert into usage_counters (tenant_id, period_start, message_count)
+      values (${tenantId}, ${periodStart}, 1)
+      on conflict (tenant_id, period_start) do update set
+        message_count = usage_counters.message_count + 1,
+        updated_at = now()
+      returning message_count
+    `
+    return number(rowValue(rows[0], "message_count"), 0)
   }
 
   async ingestInbound(input: {

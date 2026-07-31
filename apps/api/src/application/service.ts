@@ -69,7 +69,10 @@ import {
   assertPublicWebhookDestination,
   validateWebhookUrl,
 } from "../infrastructure/http/ssrf"
-import { MetaClient } from "../infrastructure/meta/client"
+import {
+  MetaClient,
+  type LegacyMetaSendResult,
+} from "../infrastructure/meta/client"
 import {
   createStripeClient,
   stripeTimestamp,
@@ -173,6 +176,42 @@ export class ApiService {
     }
     const subscription = await this.requireActiveSubscription(tenantId)
     return { user, subscription }
+  }
+
+  async legacyAccessState(
+    tenantId: string
+  ): Promise<"active" | "waitlisted" | "inactive"> {
+    const user = await this.repository.getUserById(tenantId)
+    if (!user || user.waitlisted) return "waitlisted"
+    let subscription: SubscriptionRecord | null
+    try {
+      subscription = await this.repository.getSubscription(tenantId)
+    } catch {
+      // The deprecated web implementation treated subscription read failures
+      // as inactive. Keep that exact fail-closed behavior during compatibility.
+      return "inactive"
+    }
+    return isActiveSubscription(subscription) ? "active" : "inactive"
+  }
+
+  legacyEntitlement(tenantId: string): Promise<Entitlement> {
+    return this.entitlement(tenantId)
+  }
+
+  sendLegacyMeta(input: {
+    page: PageRecord
+    recipientId: string
+    text: string
+  }): Promise<LegacyMetaSendResult> {
+    return this.meta.sendLegacyText({
+      pageId: input.page.providerPageId,
+      pageAccessToken: decryptSecret(
+        this.env.TOKEN_ENCRYPTION_KEY,
+        input.page.pageAccessTokenEncrypted
+      ),
+      recipientId: input.recipientId,
+      text: input.text,
+    })
   }
 
   async getMe(tenantId: string): Promise<MeDto> {

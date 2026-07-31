@@ -25,11 +25,22 @@ jobs:
       # Las migraciones corren en Node ANTES del deploy del Worker.
       # Usar el connection string directo (no pooled) de Neon para DDL.
       - name: Run database migrations
-        run: npm run db:migrate -w web
+        run: npm run db:migrate -w api
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_MIGRATIONS }}
 
-      - name: Build and deploy to Cloudflare Workers
+      - name: Deploy API Worker
+        run: npm run deploy -w api
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Smoke API
+        run: |
+          curl --fail --show-error --silent --retry 5 --retry-all-errors https://api.resender.dev/healthz
+          curl --fail --show-error --silent --retry 5 --retry-all-errors https://api.resender.dev/readyz
+
+      - name: Deploy web Worker
         run: npm run deploy -w web
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -39,6 +50,10 @@ jobs:
           NEXT_PUBLIC_META_CONFIG_ID: ${{ vars.NEXT_PUBLIC_META_CONFIG_ID }}
           NEXT_PUBLIC_POSTHOG_KEY: ${{ vars.NEXT_PUBLIC_POSTHOG_KEY }}
           NEXT_PUBLIC_POSTHOG_HOST: ${{ vars.NEXT_PUBLIC_POSTHOG_HOST }}
-          # Solo para que `next build` tenga un valor presente; en runtime el
-          # Worker usa el secreto configurado con `wrangler secret put`.
-          DATABASE_URL: ${{ secrets.DATABASE_URL_MIGRATIONS }}
+          APP_URL: https://resender.dev
+
+      - name: Smoke web and BACKEND callback binding
+        run: |
+          curl --fail --show-error --silent --retry 5 --retry-all-errors https://resender.dev/ > /dev/null
+          status="$(curl --show-error --silent --output /dev/null --write-out '%{http_code}' --request POST --header 'content-type: application/json' --header 'x-hub-signature-256: invalid-smoke-signature' --data '{}' https://resender.dev/api/meta/webhook)"
+          test "$status" = "400"

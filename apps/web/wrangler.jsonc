@@ -44,6 +44,6 @@
       ]
     }
   }
-  // Los secretos (DATABASE_URL, AUTH_SECRET, etc.) NO van aquí: se cargan con
-  // `wrangler secret put <NAME>` en producción y en `.dev.vars` para preview local.
+  // Sólo AUTH_SECRET pertenece al runtime web. Los secretos de base de datos,
+  // Stripe, Meta y API keys pertenecen al Worker `api`.
 }

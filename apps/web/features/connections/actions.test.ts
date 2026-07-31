@@ -9,19 +9,11 @@ const mocks = vi.hoisted(() => ({
   redirect: vi.fn(),
   rotateWebhookSecret: vi.fn(),
   updatePageWebhook: vi.fn(),
-  posthogCapture: vi.fn(),
-  posthogFlush: vi.fn(),
 }))
 
 vi.mock("@/auth", () => ({ auth: mocks.auth }))
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }))
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }))
-vi.mock("@/lib/posthog", () => ({
-  posthog: {
-    capture: mocks.posthogCapture,
-    flush: mocks.posthogFlush,
-  },
-}))
 vi.mock("@/lib/backend/backend", async (importOriginal) => {
   const original =
     await importOriginal<typeof import("@/lib/backend/backend")>()
@@ -106,14 +98,6 @@ describe("Connection Server Actions", () => {
       }
     )
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/connections")
-    expect(mocks.posthogCapture).toHaveBeenCalledWith({
-      distinctId: ACTOR_ID,
-      event: "webhook url saved",
-      properties: {
-        connection_id: PAGE_ID,
-        page_id: "provider-page",
-      },
-    })
   })
 
   it("normalizes an empty webhook as null", async () => {
@@ -161,15 +145,6 @@ describe("Connection Server Actions", () => {
       { pageId: PAGE_ID }
     )
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/connections")
-    expect(mocks.posthogCapture).toHaveBeenCalledWith({
-      distinctId: ACTOR_ID,
-      event: "page disconnected",
-      properties: {
-        connection_id: PAGE_ID,
-        page_id: "provider-page",
-        page_name: "Support",
-      },
-    })
   })
 
   it("reveals a rotated secret once, revalidates, and never resubmits old state", async () => {
@@ -200,7 +175,6 @@ describe("Connection Server Actions", () => {
     })
     expect(JSON.stringify(result)).not.toContain("OLD_SECRET")
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/connections")
-    expect(mocks.posthogCapture).not.toHaveBeenCalled()
   })
 
   it.each([

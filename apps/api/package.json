@@ -5,9 +5,10 @@
   "private": true,
   "scripts": {
     "build": "wrangler deploy --dry-run --env=\"\" --outdir .wrangler/dry-run",
+    "db:migrate": "node scripts/migrate.mjs",
     "dev": "wrangler dev --local",
     "preview": "wrangler dev --local",
-    "deploy": "wrangler deploy",
+    "deploy": "wrangler deploy --env=\"\"",
     "deploy:staging": "wrangler deploy --env staging",
     "cf-typegen": "CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false wrangler types worker-configuration.d.ts --env-file .dev.vars.example --env-interface Env",
     "cf-typegen:check": "CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false wrangler types worker-configuration.d.ts --env-file .dev.vars.example --env-interface Env --check",
@@ -22,6 +23,7 @@
     "@neondatabase/serverless": "1.1.0",
     "@workspace/contracts": "*",
     "hono": "4.12.32",
+    "postgres": "3.4.9",
     "stripe": "22.3.2",
     "zod": "4.4.3"
   },

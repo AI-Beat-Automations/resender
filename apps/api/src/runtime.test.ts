@@ -150,6 +150,46 @@ describe("Worker runtime entrypoints", () => {
     expect(providerFetch).not.toHaveBeenCalled()
   })
 
+  it("keeps legacy send private, exact-path allowlisted and method constrained", async () => {
+    const [invalidKey, wrongMethod, trailingSlash, publicRoute] =
+      await Promise.all([
+        workerExports.WebAppApi.fetch(
+          new Request(
+            "https://backend.internal/internal/legacy/meta/send",
+            {
+              method: "POST",
+              headers: { authorization: "Bearer invalid" },
+              body: "{}",
+            }
+          )
+        ),
+        workerExports.WebAppApi.fetch(
+          new Request("https://backend.internal/internal/legacy/meta/send")
+        ),
+        workerExports.WebAppApi.fetch(
+          new Request(
+            "https://backend.internal/internal/legacy/meta/send/",
+            { method: "POST", body: "{}" }
+          )
+        ),
+        workerExports.default.fetch(
+          new Request(
+            "https://api.resender.dev/internal/legacy/meta/send",
+            { method: "POST", body: "{}" }
+          )
+        ),
+      ])
+
+    expect(invalidKey.status).toBe(401)
+    await expect(invalidKey.json()).resolves.toEqual({
+      error: "unauthorized",
+    })
+    expect(wrongMethod.status).toBe(405)
+    expect(wrongMethod.headers.get("allow")).toBe("POST")
+    expect(trailingSlash.status).toBe(404)
+    expect(publicRoute.status).toBe(404)
+  })
+
   it("delegates the Meta challenge through named fetch to the shared router", async () => {
     const response = await workerExports.WebAppApi.fetch(
       new Request(

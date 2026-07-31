@@ -8,7 +8,6 @@ import {
   PageIdRpcInputSchema,
   PageWebhookUpdateRpcInputSchema,
   type RpcActor,
-  type RpcPageDto,
 } from "@workspace/contracts"
 
 import { auth } from "@/auth"
@@ -18,7 +17,6 @@ import {
   rotateWebhookSecret,
   updatePageWebhook,
 } from "@/lib/backend/backend"
-import { posthog } from "@/lib/posthog"
 
 export type ConnectionActionState = {
   error?: string
@@ -57,7 +55,6 @@ export async function saveWebhookUrlAction(
   if (outcome.kind === "redirect") redirect(outcome.destination)
   if (outcome.kind === "form_error") return { error: outcome.error }
 
-  await captureConnectionEvent("webhook url saved", actor, outcome.value)
   revalidatePath("/connections")
   return { message: "Webhook actualizado." }
 }
@@ -76,7 +73,6 @@ export async function disconnectPageAction(
   if (outcome.kind === "redirect") redirect(outcome.destination)
   if (outcome.kind === "form_error") return { error: outcome.error }
 
-  await captureConnectionEvent("page disconnected", actor, outcome.value)
   revalidatePath("/connections")
   return { message: "Página desconectada. El historial se conserva." }
 }
@@ -172,28 +168,5 @@ async function performMutation<T>(
       }
     }
     throw error
-  }
-}
-
-async function captureConnectionEvent(
-  event: "webhook url saved" | "page disconnected",
-  actor: RpcActor,
-  page: RpcPageDto
-) {
-  if (!posthog) return
-  try {
-    posthog.capture({
-      distinctId: actor.userId,
-      event,
-      properties: {
-        connection_id: page.id,
-        page_id: page.providerPageId,
-        ...(event === "page disconnected" ? { page_name: page.name } : {}),
-      },
-    })
-    await posthog.flush()
-  } catch {
-    // Telemetry is non-authoritative and must not turn an applied RPC into a
-    // failed form submission or expose an analytics provider error.
   }
 }

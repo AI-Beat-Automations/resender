@@ -8,16 +8,11 @@ const mocks = vi.hoisted(() => ({
   revokeApiKey: vi.fn(),
   revalidatePath: vi.fn(),
   redirect: vi.fn(),
-  capture: vi.fn(),
-  flush: vi.fn(),
 }))
 
 vi.mock("@/auth", () => ({ auth: mocks.auth }))
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }))
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }))
-vi.mock("@/lib/posthog", () => ({
-  posthog: { capture: mocks.capture, flush: mocks.flush },
-}))
 vi.mock("@/lib/backend/backend", async (importOriginal) => {
   const original =
     await importOriginal<typeof import("@/lib/backend/backend")>()
@@ -109,22 +104,6 @@ describe("API key Server Actions", () => {
       message: "Copia la key ahora: no vamos a volver a mostrarla.",
     })
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/settings")
-    expect(mocks.capture).toHaveBeenCalledWith({
-      distinctId: ACTOR_ID,
-      event: "api key created",
-      properties: { api_key_id: API_KEY_ID, label: "Production" },
-    })
-    expect(JSON.stringify(mocks.capture.mock.calls)).not.toContain(API_KEY)
-  })
-
-  it("keeps a successful creation successful when analytics is unavailable", async () => {
-    mocks.createApiKey.mockResolvedValue({ apiKey: API_KEY, record: apiKey() })
-    mocks.flush.mockRejectedValue(new Error("analytics raw SECRET"))
-
-    await expect(createApiKeyAction({}, createForm())).resolves.toMatchObject({
-      apiKey: API_KEY,
-    })
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/settings")
   })
 
   it("validates revoke ids before RPC", async () => {
@@ -150,11 +129,6 @@ describe("API key Server Actions", () => {
       { apiKeyId: API_KEY_ID }
     )
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/settings")
-    expect(mocks.capture).toHaveBeenCalledWith({
-      distinctId: ACTOR_ID,
-      event: "api key revoked",
-      properties: { api_key_id: API_KEY_ID, label: "Production" },
-    })
   })
 
   it.each([

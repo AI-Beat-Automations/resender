@@ -150,6 +150,60 @@ describe("Meta client security and compatibility", () => {
     )
   })
 
+  it("never exposes a network error URL or access token from legacy send", async () => {
+    const client = new MetaClient(
+      "app",
+      "secret",
+      vi.fn(async () => {
+        throw new Error(
+          "https://graph.facebook.com/v23.0/page/messages?access_token=SECRET"
+        )
+      })
+    )
+
+    const result = await client.sendLegacyText({
+      pageId: "page",
+      pageAccessToken: "SECRET",
+      recipientId: "psid",
+      text: "sensitive body",
+    })
+
+    expect(result).toEqual({
+      ok: false,
+      status: 502,
+      data: null,
+      error: "Meta request failed",
+      reason:
+        "Could not reach Meta's Send API (network error or timeout). Retry shortly.",
+    })
+    expect(JSON.stringify(result)).not.toMatch(
+      /SECRET|access_token|graph\\.facebook|sensitive body/u
+    )
+  })
+
+  it("preserves the legacy null body and HTTP fallback for non-JSON Meta errors", async () => {
+    const client = new MetaClient(
+      "app",
+      "secret",
+      vi.fn(async () => new Response("<html>outage</html>", { status: 502 }))
+    )
+
+    await expect(
+      client.sendLegacyText({
+        pageId: "page",
+        pageAccessToken: "page-token",
+        recipientId: "psid",
+        text: "hello",
+      })
+    ).resolves.toEqual({
+      ok: false,
+      status: 502,
+      data: null,
+      error: "Meta returned HTTP 502",
+      reason: null,
+    })
+  })
+
   it("maps a provider body to an allowlisted rejection message", async () => {
     const client = new MetaClient(
       "app",

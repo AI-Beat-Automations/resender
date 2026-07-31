@@ -7,7 +7,7 @@ import {
   SettingsCardTitle,
   SettingsDataRow,
 } from "@/features/settings/ui/settings-card"
-import { resolveQuotaBar } from "@/lib/billing/entitlements"
+import { resolveQuotaBar } from "@/features/billing/quota-bar"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import { Progress } from "@workspace/ui/components/progress"

@@ -25,6 +25,14 @@ export type MetaSendResult =
       response: unknown
     }
 
+export type LegacyMetaSendResult = {
+  ok: boolean
+  status: number
+  data: unknown
+  error: string | null
+  reason: string | null
+}
+
 export class MetaClient {
   constructor(
     private readonly appId: string,
@@ -193,6 +201,51 @@ export class MetaClient {
     }
   }
 
+  async sendLegacyText(input: {
+    pageId: string
+    pageAccessToken: string
+    recipientId: string
+    text: string
+  }): Promise<LegacyMetaSendResult> {
+    const url = graphUrl(`/${encodeURIComponent(input.pageId)}/messages`, {
+      access_token: input.pageAccessToken,
+    })
+    try {
+      const response = await this.fetcher(url, {
+        method: "POST",
+        redirect: "manual",
+        signal: AbortSignal.timeout(META_TIMEOUT_MS),
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          recipient: { id: input.recipientId },
+          messaging_type: "RESPONSE",
+          message: { text: input.text },
+        }),
+      })
+      const data: unknown = await response.json().catch(() => null)
+      const providerError = extractMetaErrorMessage(data)
+      return {
+        ok: response.ok,
+        status: response.status,
+        data,
+        error: response.ok
+          ? null
+          : (providerError ?? `Meta returned HTTP ${response.status}`),
+        reason: response.ok ? null : explainLegacyMetaError(data),
+      }
+    } catch {
+      return {
+        ok: false,
+        status: 502,
+        data: null,
+        // Fetch errors can embed the complete URL, including access_token.
+        error: "Meta request failed",
+        reason:
+          "Could not reach Meta's Send API (network error or timeout). Retry shortly.",
+      }
+    }
+  }
+
   private async graph<T>(
     path: string,
     parameters: Record<string, string>,
@@ -254,6 +307,71 @@ export class MetaClient {
     }
     return body as T
   }
+}
+
+export function explainLegacyMetaError(data: unknown): string | null {
+  const code = extractMetaErrorCode(data)
+  if (code === null) return null
+  const subcode = extractMetaErrorSubcode(data)
+
+  if (code === 190) {
+    return "The Page access token expired or was revoked. Reconnect the Page in Resender."
+  }
+  if (code === 10 && subcode === 2018278) {
+    return "Messenger's 24-hour window is closed: this contact hasn't messaged the Page in the last 24 hours, so Meta rejects new messages until they write again."
+  }
+  if (code === 10) {
+    return "Meta permission error: the app or Page is missing the pages_messaging permission for this send."
+  }
+  if (code === 551) {
+    return "This person isn't available: they may have blocked the Page, deleted the conversation, or deactivated their account."
+  }
+  if (code === 100 && subcode === 2018001) {
+    return "No matching user found: the recipient ID (PSID) doesn't belong to this Page."
+  }
+  if (code === 4 || code === 17 || code === 32 || code === 613) {
+    return "Meta rate limit reached for this app or Page. Retry later."
+  }
+  if (code === 368) {
+    return "The Page is temporarily blocked from sending messages due to a policy violation on Meta's side."
+  }
+  return null
+}
+
+export function extractMetaErrorCode(data: unknown): number | null {
+  const code = metaErrorProperty(data, "code")
+  if (typeof code === "number") return code
+  if (typeof code === "string" && code.trim().length > 0) {
+    const parsed = Number(code)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
+}
+
+export function extractMetaMessageId(data: unknown): string | null {
+  const messageId = objectProperty(data, "message_id")
+  return typeof messageId === "string" ? messageId : null
+}
+
+function extractMetaErrorMessage(data: unknown): string | null {
+  const message = metaErrorProperty(data, "message")
+  return typeof message === "string" && message.trim().length > 0
+    ? message.trim()
+    : null
+}
+
+function extractMetaErrorSubcode(data: unknown): number | null {
+  const subcode = metaErrorProperty(data, "error_subcode")
+  return typeof subcode === "number" ? subcode : null
+}
+
+function metaErrorProperty(data: unknown, property: string): unknown {
+  return objectProperty(objectProperty(data, "error"), property)
+}
+
+function objectProperty(value: unknown, property: string): unknown {
+  if (!value || typeof value !== "object") return undefined
+  return Reflect.get(value, property)
 }
 
 function graphUrl(path: string, parameters: Record<string, string>): string {

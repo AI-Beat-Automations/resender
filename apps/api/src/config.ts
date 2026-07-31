@@ -1,6 +1,7 @@
 export const API_DEFAULT_LIMIT = 25
 export const API_MAX_LIMIT = 100
 export const API_JSON_BODY_LIMIT_BYTES = 64 * 1024
+export const LEGACY_SEND_BODY_LIMIT_BYTES = 64 * 1024
 export const PROVIDER_BODY_LIMIT_BYTES = 256 * 1024
 export const META_TIMEOUT_MS = 10_000
 export const WEBHOOK_DELIVERY_TIMEOUT_MS = 5_000

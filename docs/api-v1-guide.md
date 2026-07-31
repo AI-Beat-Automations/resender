@@ -155,7 +155,11 @@ an uncertain response into a duplicate Meta send.
 ## Legacy deprecation and retirement gate
 
 `POST https://resender.dev/api/meta/send` is **deprecated** and exists only for
-temporary migration compatibility. New integrations must use v1.
+temporary migration compatibility. The web Route Handler is a raw streaming
+Service Binding proxy; the private, exact-path allowlisted API handler owns
+authentication, tenant/page resolution, quota, persistence and the single Meta
+side effect. It has no public API origin route or HTTP fallback. New
+integrations must use v1.
 
 No retirement date has been approved. Therefore, no calendar date or `Sunset`
 header may be invented. Before announcing the compatibility window, the

@@ -10,11 +10,6 @@ vi.mock("next-auth", () => ({
 const mocks = vi.hoisted(() => ({
   signIn: vi.fn(),
   registerUser: vi.fn(),
-  posthog: {
-    identify: vi.fn(),
-    capture: vi.fn(),
-    flush: vi.fn(),
-  },
 }))
 
 vi.mock("@/auth", () => ({ signIn: mocks.signIn }))
@@ -26,7 +21,6 @@ vi.mock("@/lib/backend/backend", async (importOriginal) => {
     registerUser: mocks.registerUser,
   }
 })
-vi.mock("@/lib/posthog", () => ({ posthog: mocks.posthog }))
 
 import {
   BackendProtocolError,
@@ -48,7 +42,6 @@ describe("Auth Server Actions", () => {
     vi.clearAllMocks()
     mocks.signIn.mockResolvedValue(undefined)
     mocks.registerUser.mockResolvedValue(USER)
-    mocks.posthog.flush.mockResolvedValue(undefined)
   })
 
   it("normalizes valid login credentials and preserves the redirect", async () => {
@@ -118,7 +111,7 @@ describe("Auth Server Actions", () => {
     }
   )
 
-  it("signs in a newly registered waitlisted user without adding waitlist data to analytics", async () => {
+  it("signs in a newly registered waitlisted user", async () => {
     mocks.registerUser.mockResolvedValue({ ...USER, waitlisted: true })
 
     await registerAction({}, authForm("person@example.com", "correct-password"))
@@ -128,17 +121,6 @@ describe("Auth Server Actions", () => {
       password: "correct-password",
       redirectTo: "/connections",
     })
-    expect(mocks.posthog.identify).toHaveBeenCalledWith({
-      distinctId: USER.id,
-      properties: { $set: { email: USER.email } },
-    })
-    expect(mocks.posthog.capture).toHaveBeenCalledWith({
-      distinctId: USER.id,
-      event: "user registered",
-    })
-    expect(JSON.stringify(mocks.posthog.identify.mock.calls)).not.toMatch(
-      /password|waitlisted|createdAt/u
-    )
   })
 
   it.each([

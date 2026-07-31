@@ -209,6 +209,49 @@ describe("product access gates", () => {
   })
 })
 
+describe("legacy product access parity", () => {
+  it("treats a missing user as waitlisted", async () => {
+    const getSubscription = vi.fn()
+    const service = serviceWithRepository({
+      getUserById: async () => null,
+      getSubscription,
+    })
+
+    await expect(service.legacyAccessState(actor.userId)).resolves.toBe(
+      "waitlisted"
+    )
+    expect(getSubscription).not.toHaveBeenCalled()
+  })
+
+  it("treats only a subscription lookup failure as inactive", async () => {
+    const service = serviceWithRepository({
+      getUserById: async () => user(),
+      getSubscription: async () => {
+        throw new Error("database unavailable")
+      },
+    })
+
+    await expect(service.legacyAccessState(actor.userId)).resolves.toBe(
+      "inactive"
+    )
+  })
+
+  it("does not hide a waitlist lookup failure", async () => {
+    const getSubscription = vi.fn()
+    const service = serviceWithRepository({
+      getUserById: async () => {
+        throw new Error("database unavailable")
+      },
+      getSubscription,
+    })
+
+    await expect(service.legacyAccessState(actor.userId)).rejects.toThrow(
+      "database unavailable"
+    )
+    expect(getSubscription).not.toHaveBeenCalled()
+  })
+})
+
 describe("inbound Meta ingestion", () => {
   it.each([
     ["waitlisted", user({ waitlisted: true }), subscription()],
