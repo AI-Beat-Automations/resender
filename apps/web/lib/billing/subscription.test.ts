@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest"
 import {
   findSupersededSubscriptionId,
   hasActiveStatus,
+  resolveCancelAtPeriodEnd,
+  resolveSubscriptionPeriod,
   resolveTenantId,
   shouldApplySubscriptionEvent,
   type SubscriptionRecord,
@@ -36,7 +38,9 @@ const T0 = new Date("2026-07-10T00:00:00Z")
 const T1 = new Date("2026-07-10T00:01:00Z")
 const T2 = new Date("2026-07-10T00:02:00Z")
 
-function record(overrides: Partial<SubscriptionRecord> = {}): SubscriptionRecord {
+function record(
+  overrides: Partial<SubscriptionRecord> = {}
+): SubscriptionRecord {
   return {
     tenantId: "tenant-1",
     stripeSubscriptionId: "sub_1",
@@ -74,7 +78,10 @@ describe("subscription upsert decision", () => {
   it("applies any event over a row without an event mark (pre-migration)", () => {
     const unmarked = record({ lastStripeEventAt: null })
     expect(
-      shouldApplySubscriptionEvent(unmarked, incoming({ lastStripeEventAt: T0 }))
+      shouldApplySubscriptionEvent(
+        unmarked,
+        incoming({ lastStripeEventAt: T0 })
+      )
     ).toBe(true)
   })
 
@@ -113,7 +120,10 @@ describe("subscription upsert decision", () => {
   })
 
   it("skips a stale creation of a previous subscription", () => {
-    const current = record({ stripeSubscriptionId: "sub_2", lastStripeEventAt: T2 })
+    const current = record({
+      stripeSubscriptionId: "sub_2",
+      lastStripeEventAt: T2,
+    })
     const staleCreation = incoming({
       stripeSubscriptionId: "sub_1",
       lastStripeEventAt: T1,
@@ -146,7 +156,10 @@ describe("superseded subscription detection", () => {
   })
 
   it("cancels the incoming subscription when its event lost the race", () => {
-    const current = record({ stripeSubscriptionId: "sub_2", lastStripeEventAt: T2 })
+    const current = record({
+      stripeSubscriptionId: "sub_2",
+      lastStripeEventAt: T2,
+    })
     const lateDuplicate = incoming({
       stripeSubscriptionId: "sub_1",
       lastStripeEventAt: T1,
@@ -201,5 +214,86 @@ describe("tenant resolution", () => {
     expect(
       resolveTenantId({ metadataTenantId: undefined, customerTenantId: null })
     ).toBe(null)
+  })
+})
+
+describe("billing period resolution", () => {
+  const start = 1_784_678_928
+  const end = 1_787_357_328
+
+  it("reads the period from the subscription item", () => {
+    expect(
+      resolveSubscriptionPeriod({
+        items: {
+          data: [{ current_period_start: start, current_period_end: end }],
+        },
+      })
+    ).toEqual({
+      currentPeriodStart: new Date(start * 1000),
+      currentPeriodEnd: new Date(end * 1000),
+    })
+  })
+
+  // Un webhook endpoint pinneado antes de 2025-03-31.basil entrega el período
+  // en la raíz; sin este fallback la cuota se queda sin ventana.
+  it("falls back to the root fields of pre-basil payloads", () => {
+    expect(
+      resolveSubscriptionPeriod({
+        current_period_start: start,
+        current_period_end: end,
+        items: { data: [{}] },
+      })
+    ).toEqual({
+      currentPeriodStart: new Date(start * 1000),
+      currentPeriodEnd: new Date(end * 1000),
+    })
+  })
+
+  it("prefers the item over the root when both are present", () => {
+    expect(
+      resolveSubscriptionPeriod({
+        current_period_start: 1,
+        current_period_end: 2,
+        items: {
+          data: [{ current_period_start: start, current_period_end: end }],
+        },
+      })
+    ).toEqual({
+      currentPeriodStart: new Date(start * 1000),
+      currentPeriodEnd: new Date(end * 1000),
+    })
+  })
+
+  it("returns nulls when neither shape carries the period", () => {
+    expect(resolveSubscriptionPeriod({ items: { data: [] } })).toEqual({
+      currentPeriodStart: null,
+      currentPeriodEnd: null,
+    })
+  })
+})
+
+describe("scheduled cancellation resolution", () => {
+  // Forma vieja de la API: el booleano marcado.
+  it("detects the legacy cancel_at_period_end flag", () => {
+    expect(resolveCancelAtPeriodEnd({ cancel_at_period_end: true })).toBe(true)
+  })
+
+  // Forma de 2026-07-29.dahlia, tal como llegó en el evento real
+  // evt_1TzST5K73vMS5LDKRINvV7kd al cancelar desde el Customer Portal: el
+  // booleano se queda en false y la baja vive en cancel_at.
+  it("detects a cancellation expressed only as cancel_at", () => {
+    expect(
+      resolveCancelAtPeriodEnd({
+        cancel_at: 1_788_228_588,
+        cancel_at_period_end: false,
+      })
+    ).toBe(true)
+  })
+
+  it("reports no cancellation for a subscription that just renews", () => {
+    expect(
+      resolveCancelAtPeriodEnd({ cancel_at: null, cancel_at_period_end: false })
+    ).toBe(false)
+    expect(resolveCancelAtPeriodEnd({})).toBe(false)
   })
 })

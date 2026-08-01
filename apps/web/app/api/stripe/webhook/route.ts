@@ -4,6 +4,8 @@ import type Stripe from "stripe"
 import { getStripe } from "@/lib/billing/stripe"
 import {
   getTenantIdByStripeCustomerId,
+  resolveCancelAtPeriodEnd,
+  resolveSubscriptionPeriod,
   resolveTenantId,
   setStripeCustomerId,
   upsertSubscription,
@@ -111,13 +113,8 @@ async function applySubscriptionSnapshot(event: Stripe.Event) {
     stripeSubscriptionId: subscription.id,
     status: subscription.status,
     priceLookupKey: item?.price.lookup_key ?? item?.price.id ?? "unknown",
-    currentPeriodStart: item?.current_period_start
-      ? new Date(item.current_period_start * 1000)
-      : null,
-    currentPeriodEnd: item?.current_period_end
-      ? new Date(item.current_period_end * 1000)
-      : null,
-    cancelAtPeriodEnd: subscription.cancel_at_period_end,
+    ...resolveSubscriptionPeriod(subscription),
+    cancelAtPeriodEnd: resolveCancelAtPeriodEnd(subscription),
     lastStripeEventAt: new Date(event.created * 1000),
   })
 

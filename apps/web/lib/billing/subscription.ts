@@ -49,7 +49,9 @@ export function hasActiveStatus(row: MaybeStatusRow): boolean {
   return row?.status === "active"
 }
 
-export async function hasActiveSubscription(tenantId: string): Promise<boolean> {
+export async function hasActiveSubscription(
+  tenantId: string
+): Promise<boolean> {
   try {
     const sql = getSql()
     const [row] = await sql<{ status: string }[]>`
@@ -190,6 +192,72 @@ export async function upsertSubscription(
       updated_at = now()
   `
   return { applied: true, supersededSubscriptionId }
+}
+
+// Snapshot mínimo de una suscripción de Stripe visto por el webhook. Los
+// campos de período aparecen en el item (API 2025-03-31.basil en adelante) o en
+// la raíz (versiones anteriores), y ambos son opcionales por eso mismo.
+type SubscriptionPeriodSnapshot = {
+  current_period_start?: number | null
+  current_period_end?: number | null
+  items: {
+    data: Array<{
+      current_period_start?: number | null
+      current_period_end?: number | null
+    }>
+  }
+}
+
+export type SubscriptionPeriod = {
+  currentPeriodStart: Date | null
+  currentPeriodEnd: Date | null
+}
+
+// El período de facturación cambió de lugar en la API 2025-03-31.basil: pasó de
+// la raíz de la suscripción a cada subscription item. Cada webhook endpoint del
+// Dashboard queda pinneado a la versión de API vigente cuando se creó, así que
+// un endpoint viejo entrega snapshots con el período en la raíz. Leer solo el
+// item ahí no falla — deja el período en NULL y la cuota de mensajes (ADR 0003)
+// se queda sin ventana. Se lee el item primero (forma canónica) y se cae a la
+// raíz, para que la ingesta no dependa de cómo se creó el endpoint.
+export function resolveSubscriptionPeriod(
+  subscription: SubscriptionPeriodSnapshot
+): SubscriptionPeriod {
+  const item = subscription.items.data[0]
+  return {
+    currentPeriodStart: epochToDate(
+      item?.current_period_start ?? subscription.current_period_start
+    ),
+    currentPeriodEnd: epochToDate(
+      item?.current_period_end ?? subscription.current_period_end
+    ),
+  }
+}
+
+type SubscriptionCancellationSnapshot = {
+  cancel_at?: number | null
+  cancel_at_period_end?: boolean | null
+}
+
+// La baja programada también cambió de representación. Hasta las versiones
+// viejas de la API, cancelar al fin del período ponía `cancel_at_period_end` en
+// `true`; desde `2026-07-29.dahlia` Stripe deja ese booleano en `false` y
+// expresa la baja poniendo `cancel_at` con el timestamp del corte. Leer solo el
+// booleano no falla: simplemente nunca se entera de la cancelación, y el panel
+// de billing le sigue diciendo al usuario que su suscripción "renueva" cuando
+// en realidad termina. Cualquiera de las dos formas significa lo mismo para el
+// producto, así que basta con que una esté presente.
+export function resolveCancelAtPeriodEnd(
+  subscription: SubscriptionCancellationSnapshot
+): boolean {
+  return (
+    subscription.cancel_at_period_end === true ||
+    typeof subscription.cancel_at === "number"
+  )
+}
+
+function epochToDate(seconds: number | null | undefined): Date | null {
+  return typeof seconds === "number" ? new Date(seconds * 1000) : null
 }
 
 type TenantIdCandidates = {
