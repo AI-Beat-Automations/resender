@@ -26,6 +26,13 @@ import {
 import { RuntimeDatabase } from "./runtime-database.test-helper"
 import wranglerConfig from "../wrangler.jsonc?raw"
 
+// Entitlements are evaluated against the wall clock, so the fixture billing
+// window tracks now. A window pinned to fixed calendar dates expires and turns
+// every entitlement into `plan_unavailable`.
+const DAY_MS = 24 * 60 * 60 * 1000
+const PERIOD_START = new Date(Date.now() - 15 * DAY_MS)
+const PERIOD_END = new Date(Date.now() + 15 * DAY_MS)
+
 describe("Worker runtime entrypoints", () => {
   afterEach(() => {
     vi.restoreAllMocks()
@@ -75,8 +82,8 @@ describe("Worker runtime entrypoints", () => {
         stripeSubscriptionId: "sub_1",
         status: subscriptionStatus,
         priceLookupKey: "starter_monthly",
-        currentPeriodStart: new Date("2026-07-01T00:00:00.000Z"),
-        currentPeriodEnd: new Date("2026-08-01T00:00:00.000Z"),
+        currentPeriodStart: PERIOD_START,
+        currentPeriodEnd: PERIOD_END,
         cancelAtPeriodEnd: false,
         lastStripeEventAt: new Date("2026-07-01T00:00:00.000Z"),
       })
@@ -443,8 +450,8 @@ function mockActiveTenant(): void {
     stripeSubscriptionId: "sub_1",
     status: "active",
     priceLookupKey: "starter_monthly",
-    currentPeriodStart: new Date("2026-07-01T00:00:00.000Z"),
-    currentPeriodEnd: new Date("2026-08-01T00:00:00.000Z"),
+    currentPeriodStart: PERIOD_START,
+    currentPeriodEnd: PERIOD_END,
     cancelAtPeriodEnd: false,
     lastStripeEventAt: new Date("2026-07-01T00:00:00.000Z"),
   })
@@ -498,8 +505,8 @@ function activeSubscription(): SubscriptionRecord {
     stripeSubscriptionId: "sub_current",
     status: "active",
     priceLookupKey: "starter_monthly",
-    currentPeriodStart: new Date("2026-07-01T00:00:00.000Z"),
-    currentPeriodEnd: new Date("2026-08-01T00:00:00.000Z"),
+    currentPeriodStart: PERIOD_START,
+    currentPeriodEnd: PERIOD_END,
     cancelAtPeriodEnd: false,
     lastStripeEventAt: new Date("2026-07-01T00:00:00.000Z"),
   }

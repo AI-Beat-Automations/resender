@@ -589,8 +589,13 @@ const actor = { userId: "tenant_1" }
 const PAGE_ID = "7ac2cc32-38cf-4d41-8c73-c6cf640d5b15"
 const MESSAGE_ID = "ef55c94e-b861-4d19-9f9b-b5689028de80"
 const JOB_ID = "d743db7b-d4b8-4911-bf01-c639816856fc"
-const PERIOD_START = new Date("2026-07-01T00:00:00.000Z")
-const PERIOD_END = new Date("2026-08-01T00:00:00.000Z")
+const CREATED_AT = new Date("2026-07-01T00:00:00.000Z")
+// The service evaluates entitlements against the wall clock, so the billing
+// window has to stay open relative to now. A window pinned to fixed calendar
+// dates expires and turns every entitlement into `plan_unavailable`.
+const DAY_MS = 24 * 60 * 60 * 1000
+const PERIOD_START = new Date(Date.now() - 15 * DAY_MS)
+const PERIOD_END = new Date(Date.now() + 15 * DAY_MS)
 
 function user(overrides: Partial<UserRecord> = {}): UserRecord {
   return {
@@ -598,7 +603,7 @@ function user(overrides: Partial<UserRecord> = {}): UserRecord {
     email: "user@example.com",
     passwordHash: "hash",
     waitlisted: false,
-    createdAt: PERIOD_START,
+    createdAt: CREATED_AT,
     ...overrides,
   }
 }
@@ -614,7 +619,7 @@ function subscription(
     currentPeriodStart: PERIOD_START,
     currentPeriodEnd: PERIOD_END,
     cancelAtPeriodEnd: false,
-    lastStripeEventAt: PERIOD_START,
+    lastStripeEventAt: CREATED_AT,
     ...overrides,
   }
 }
@@ -631,8 +636,8 @@ function page(overrides: Partial<PageRecord> = {}): PageRecord {
     webhookUrl: "https://93.184.216.34/webhook",
     pageAccessTokenEncrypted: "encrypted",
     webhookSigningSecretEncrypted: "encrypted-secret",
-    connectedAt: PERIOD_START,
-    updatedAt: PERIOD_START,
+    connectedAt: CREATED_AT,
+    updatedAt: CREATED_AT,
     ...overrides,
   }
 }
@@ -668,7 +673,7 @@ async function signedInboundRequest() {
         messaging: [
           {
             sender: { id: "psid_1" },
-            timestamp: PERIOD_START.getTime(),
+            timestamp: CREATED_AT.getTime(),
             message: { mid: "mid.1", text: "hello" },
           },
         ],
