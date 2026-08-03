@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "next dev",
     "db:migrate": "node scripts/migrate.mjs",
+    "stripe:preflight": "node scripts/stripe-preflight.mjs",
     "build": "next build",
     "start": "next start",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
