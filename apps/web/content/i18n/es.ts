@@ -212,12 +212,24 @@ export const es: Dict = {
     no: "No",
     headers: { feature: "", resender: "Resender", manychat: "ManyChat" },
     rows: [
-      { feature: "Precio de entrada", resender: "$15/mes", manychat: "$39+/mes" },
+      {
+        feature: "Precio de entrada",
+        resender: "$15/mes",
+        manychat: "$39+/mes",
+      },
       { feature: "API limpia y webhooks", resender: true, manychat: true },
-      { feature: "Sin builders visuales de más", resender: true, manychat: false },
+      {
+        feature: "Sin builders visuales de más",
+        resender: true,
+        manychat: false,
+      },
       { feature: "Enfoque developer-first", resender: true, manychat: false },
       { feature: "Setup en minutos", resender: true, manychat: false },
-      { feature: "Integra con n8n / Make / Zapier", resender: true, manychat: true },
+      {
+        feature: "Integra con n8n / Make / Zapier",
+        resender: true,
+        manychat: true,
+      },
       {
         feature: "Templates visuales y analytics de engagement",
         resender: "No los necesitas",
@@ -402,8 +414,66 @@ export const es: Dict = {
     },
   },
 
+  // Lista de espera pública (ADR 0007). La promesa es siempre "novedades del
+  // producto", nunca un canal concreto: el aviso del día del lanzamiento es uno
+  // solo para toda la lista, así que prometer "te avisamos cuando salga X"
+  // sería una promesa que el sistema no puede cumplir por separado.
+  waitlist: {
+    page: {
+      kicker: "lista de espera",
+      title: "Te avisamos cuando haya novedades",
+      subtitle:
+        "Hoy Resender funciona solo con Facebook Messenger. Deja tu correo y te escribimos cuando el producto cambie.",
+      whatIsTitle: "Qué es Resender",
+      whatIsBody:
+        "Resender es la API relay para mensajes de Facebook: conectas tu página, apuntas tu webhook y respondes con un POST. La lógica corre donde tú quieras — n8n, Make, un agente de IA o tu propio backend. El único canal disponible hoy es Messenger, así que si atiendes a tus clientes por Instagram Direct o por WhatsApp, Resender todavía no te sirve. Esta lista existe para avisarte el día que eso cambie.",
+      registerTitle: "¿Ya atiendes por Messenger?",
+      registerBody:
+        "Entonces no tienes nada que esperar. Crea tu cuenta, conecta tu página y recibe el primer mensaje en tu webhook hoy mismo.",
+      registerCta: "Crear cuenta",
+    },
+    form: {
+      title: "Déjanos tu correo",
+      subtitle:
+        "Te escribimos cuando haya novedades del producto. Nada más: ni newsletter semanal ni seguimiento comercial.",
+      emailLabel: "Email",
+      emailPlaceholder: "tu@empresa.com",
+      heardFromLabel: "¿Cómo conociste Resender?",
+      heardFromPlaceholder: "Elige una opción",
+      heardFromOtherLabel: "¿Dónde nos viste?",
+      heardFromOtherPlaceholder: "Cuéntanos en pocas palabras",
+      consent:
+        "Acepto que Resender guarde mi correo para enviarme novedades del producto. Puedo pedir la baja en cualquier momento escribiendo a info@resender.dev.",
+      submit: "Unirme a la lista",
+      processing: "Enviando…",
+      success:
+        "Listo. Tu correo está en la lista y te escribimos cuando haya novedades.",
+      heardFromOptions: {
+        tiktok: "TikTok",
+        instagram: "Instagram",
+        x: "X",
+        youtube: "YouTube",
+        linkedin: "LinkedIn",
+        event: "Un evento o conferencia",
+        other: "Otro",
+      },
+    },
+    errors: {
+      email: "Revisa el email e inténtalo de nuevo.",
+      heardFrom: "Elige cómo conociste Resender.",
+      heardFromOther: "Cuéntanos dónde nos viste.",
+      heardFromOtherTooLong: "Usa como máximo 120 caracteres.",
+      consent: "Marca la casilla para que podamos escribirte.",
+      rateLimited:
+        "Demasiados intentos. Espera un momento e inténtalo de nuevo.",
+      unexpected:
+        "No pudimos guardar tu correo. Inténtalo de nuevo en unos minutos.",
+    },
+  },
+
   footer: {
-    tagline: "La API relay para mensajes de Facebook. Simple y developer-first.",
+    tagline:
+      "La API relay para mensajes de Facebook. Simple y developer-first.",
     columns: { product: "Producto", legal: "Legal", contact: "Contacto" },
     links: {
       pricing: "Precios",
@@ -432,6 +502,16 @@ export const es: Dict = {
       ogTitle: "Precios y planes desde $15 por mes",
       ogDescription:
         "Planes simples desde $15/mes. La alternativa developer-first a ManyChat.",
+    },
+    // La página es indexable (sale de PRIVATE_PATHS en robots.ts, ADR 0007),
+    // así que la descripción tiene que funcionar como snippet de búsqueda.
+    waitlist: {
+      title: "Lista de espera: novedades del producto",
+      description:
+        "Resender funciona hoy solo con Facebook Messenger. Deja tu correo en la lista de espera y te avisamos cuando haya novedades del producto.",
+      ogTitle: "Lista de espera: novedades del producto",
+      ogDescription:
+        "Hoy Resender solo funciona con Facebook Messenger. Deja tu correo y te avisamos cuando el producto cambie.",
     },
   },
 
@@ -497,7 +577,8 @@ export const es: Dict = {
       },
       otherLocale: {
         label: "English version",
-        detail: "El mismo índice, con las URLs de la versión en inglés del sitio.",
+        detail:
+          "El mismo índice, con las URLs de la versión en inglés del sitio.",
       },
       rss: {
         label: "RSS del blog",

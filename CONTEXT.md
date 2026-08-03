@@ -15,11 +15,36 @@ La ruta `/` sigue siendo una landing pública simple con la propuesta de valor y
 ### Registro MVP
 En el MVP, el registro con email y password deja entrar al usuario inmediatamente. No se exige verificación de email antes de usar la app.
 
-### Waitlist
-El registro esta abierto, pero el acceso al producto esta cerrado por una bandera `users.waitlisted`. Una cuenta nueva nace con `waitlisted = true` y aterriza en la pantalla `/waitlist`, que le indica que le avisaremos por email cuando su acceso este listo. Solo con `waitlisted = false` el usuario entra a `Connections`, `Messages` y `Settings`.
-La bandera se lee de base de datos en cada request (no vive en el JWT), asi que sacar a alguien de la waitlist surte efecto sin pedirle volver a iniciar sesion. El criterio es fail-closed: si no se puede confirmar la bandera, no hay acceso.
-Las cuentas que ya existian cuando se introdujo la waitlist quedan con `waitlisted = false`, para no bloquear la cuenta de revision de Meta. Aprobar a un usuario es hoy una operacion manual por SQL; no hay panel de administracion en esta version.
-La waitlist tambien cierra las puertas fuera de la UI: el OAuth de Meta (`/api/meta/start` y `/api/meta/callback`) redirige a `/waitlist` y la API externa de salida responde `403` si el tenant esta en waitlist.
+### Gate de acceso (apagado)
+Existio un gate de lanzamiento: el registro estaba abierto pero el acceso al producto cerrado por una bandera `users.waitlisted`, con aprobacion manual por SQL. **Ese gate esta apagado** (migracion `0011_disable_access_gate.sql`: `default false` + `update users set waitlisted = false`). Toda cuenta nueva entra directo al producto y el unico filtro que queda es el [Gate de suscripcion].
+La columna `users.waitlisted` y `lib/auth/waitlist.ts` siguen en el codigo a proposito: `isUserWaitlisted` es fail-closed y vive en el hot path de `POST /api/meta/send`, asi que con el default en `false` queda inerte y se remueve en una entrega aparte. La pantalla autenticada `/waitlist` se borro; esa ruta ahora es la [Lista de espera].
+Decision en `docs/adr/0007-public-waitlist-and-access-gate-shutdown.md`.
+
+### Lista de espera
+Lista publica de captacion, sin relacion con el gate anterior. Su unico proposito es guardar el correo de alguien que hoy no puede comprar —porque solo existe Messenger— para avisarle cuando salgan Instagram o WhatsApp. Esta pensada para repartir en conferencias y contactos cara a cara, ademas de la landing.
+**No** es una lista de interes por canal: la persona no elige que espera. Deja el correo y recibe los anuncios de producto; el copy promete "updates", no un canal concreto.
+Vive en la tabla propia `waitlist_signups` (Postgres, no un proveedor externo), con `unique index` sobre `lower(email)`. La salida es el script `npm run waitlist:export` (CSV): no hay panel de administracion. Hoy no existe canal de correo en el repo, asi que la lista se acumula pero todavia no se puede accionar.
+Un correo repetido es un **exito idempotente**: no se inserta nada, la persona ve el mismo mensaje que la primera vez y la atribucion del primer registro queda intacta (first-touch). No se revela si un correo esta en la lista.
+
+### Campos de la lista de espera
+El formulario pide dos cosas, y las dos son obligatorias:
+- `email`.
+- `heard_from`: como conocio Resender. Seleccion **unica** entre `tiktok`, `instagram`, `x`, `youtube`, `linkedin`, `event` y `other`; con `other`, el texto libre `heard_from_other` tambien es obligatorio (~120 caracteres). Se guardan **claves, nunca etiquetas traducidas**: el label rompe el `group by` en un sitio bilingue.
+
+`source` lo escribe el servidor, no el usuario: vale `landing` o `waitlist_page` y registra **la ruta** donde se completo el formulario. No se lee ningun `?ref=`, asi que se distingue landing de pagina pero nunca un evento de otro. `heard_from = 'event'` dice que vino de un evento presencial, jamas de cual.
+
+### Consentimiento de la lista de espera
+El checkbox de consentimiento es **bloqueante**: sin marcarlo no se envia, porque una fila sin consentimiento seria una fila a la que no se le puede escribir. Se persisten `consent_at` y `consent_version` para saber que texto acepto cada persona cuando la redaccion cambie.
+La columna `unsubscribed_at` existe desde el inicio aunque no haya canal de correo: se promete baja, y el aviso que se mande el dia del lanzamiento va a necesitar un enlace real.
+`/privacy` suma un bloque **Waitlist data**. Las dos categorias que declaraba —*Account data* y *Messenger end-user data*— no cubren el correo de alguien que no es cliente guardado para mandarle un anuncio.
+
+### Donde aparece la lista de espera
+- **Landing (`/` y `/en`)**: el formulario no es una seccion propia debajo de los precios. Se fusiona en el cierre existente (`FinalCta`), con `Empieza` como accion primaria y el formulario como camino secundario, para no poner la salida gratis entre el precio y el CTA de conversion.
+- **`/waitlist` y `/en/waitlist`**: pagina publica con explicacion breve de que es Resender, el formulario, y un CTA de registro para quien ya le sirve Messenger hoy. Es el enlace que se reparte en conferencias.
+- Ambas leen su copy del diccionario, incluidas las siete etiquetas de `heard_from` y el texto de consentimiento. `/waitlist` sale de `PRIVATE_PATHS` en `app/robots.ts` y entra al sitemap.
+
+### Proteccion del formulario publico
+Es la primera escritura anonima a base de datos del repo: todo lo demas exige sesion, API key opaca o firma HMAC. Tres capas: validacion de formato de correo, campo trampa (honeypot) oculto, y rate limit por IP con el binding nativo `ratelimits` de Cloudflare en el worker de `web`, mismo patron que ya corre en `apps/api`. Cloudflare Turnstile queda descartado por ahora —suma un paso que puede fallarle a un usuario real justo cuando esta delante en un evento— y se agrega si aparece basura real.
 
 ### API Token
 La integración externa (N8N/IA) no reutiliza la sesión web. Se autentica con una API key opaca separada emitida por Resender para el tenant.
@@ -189,7 +214,7 @@ A partir del **80%** del consumo del período aparece una barra de alerta **glob
 No hay email transaccional en esta entrega (no existe canal de correo en el repo). Pendiente: la FAQ pública promete "Te avisamos cuando te acercás al límite" dos veces en `content/i18n/es.ts`, que un cliente lee como email; hay que reescribirla para que apunte al dashboard.
 
 ### Gate de suscripcion
-Segundo gate en serie despues de la [Waitlist]: la waitlist decide quien puede entrar, la suscripcion decide quien puede usar. Un usuario con `waitlisted = false` pero sin suscripcion activa aterriza en la pagina de pricing. El acceso existe solo con status `active` en la tabla `subscriptions`; cualquier otro estado es **bloqueo total**: dashboard, OAuth de Meta y `POST /api/meta/send` (403) quedan cerrados, y los webhooks entrantes de Meta del tenant se descartan sin persistir (respondiendo `200` a Meta para no degradar la app). Mismo patron que la waitlist: se lee de base de datos en cada request, fail-closed, nunca del JWT ni de la API de Stripe en el hot path.
+Con el [Gate de acceso (apagado)] fuera de juego, este es el **unico** gate: el registro esta abierto para cualquiera y la suscripcion decide quien puede usar. Un usuario sin suscripcion activa aterriza en la pagina de pricing. El acceso existe solo con status `active` en la tabla `subscriptions`; cualquier otro estado es **bloqueo total**: dashboard, OAuth de Meta y `POST /api/meta/send` (403) quedan cerrados, y los webhooks entrantes de Meta del tenant se descartan sin persistir (respondiendo `200` a Meta para no degradar la app). Mismo patron que usaba el gate de acceso: se lee de base de datos en cada request, fail-closed, nunca del JWT ni de la API de Stripe en el hot path.
 
 ### Sin trial
 No hay periodo de prueba: para usar el producto hay que pagar. El primer cobro ocurre dentro del propio Stripe Checkout y no existe logica de trial en ninguna capa (ni `trial_period_days` en Checkout ni flags propios en base de datos).

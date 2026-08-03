@@ -9,9 +9,10 @@ import { isPostHogEnabled } from "@/lib/posthog-client"
 // al logout en localStorage y el siguiente usuario que entre en el mismo
 // dispositivo se fusiona con el anterior en PostHog.
 //
-// Vive en `components/` y no en `features/auth/ui` porque lo consumen el sidebar
-// (slice `shell`), /waitlist y /billing: desde `features/auth` sería un import
-// entre slices hermanos.
+// Vive en `components/` y no en `features/auth/ui` porque lo consumen el
+// sidebar (slice `shell`) y /billing: desde `features/auth` sería un import
+// entre slices hermanos. Antes también lo usaba la pantalla autenticada de
+// /waitlist, que la ADR 0007 reemplazó por la lista de espera pública.
 //
 // El reset va antes de la acción, no después: las tres actions que recibe
 // terminan en `signOut({ redirectTo })`, que lanza NEXT_REDIRECT, así que no

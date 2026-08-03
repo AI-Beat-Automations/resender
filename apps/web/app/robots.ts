@@ -5,6 +5,10 @@ import { SITE_URL } from "@/lib/site-config"
 // Rutas sin valor de búsqueda: auth, checkout y la app logueada. Van con
 // `noindex` en su metadata además de acá — el Disallow ahorra crawl budget,
 // pero solo el meta robots saca del índice una URL ya indexada.
+//
+// `/waitlist` ya no está en la lista: dejó de ser la pantalla autenticada del
+// gate de acceso y pasó a ser la lista de espera pública, indexable y en el
+// sitemap (ADR 0007).
 const PRIVATE_PATHS = [
   "/api/",
   "/login",
@@ -12,7 +16,6 @@ const PRIVATE_PATHS = [
   "/en/login",
   "/en/register",
   "/billing",
-  "/waitlist",
   "/connections",
   "/messages",
   "/settings",

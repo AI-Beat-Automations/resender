@@ -5,13 +5,16 @@ import { SiteLogo } from "@/components/site-logo"
 import { getDictionary, localePath, type Locale } from "@/content/i18n"
 import { cn } from "@workspace/ui/lib/utils"
 
-// Chrome compartido de las cinco pantallas de acceso (login, registro,
-// waitlist, activación de la suscripción y elección de plan). Ninguna lleva
-// sidebar: viven fuera del grupo `(product)` y se dibujan como una tarjeta
-// centrada sobre la crema, con topbar de wordmark y pie legal compacto.
+// Chrome compartido de las cuatro pantallas de acceso (login, registro,
+// elección de plan y activación de la suscripción). Ninguna lleva sidebar:
+// viven fuera del grupo `(product)` y se dibujan como una tarjeta centrada
+// sobre la crema, con topbar de wordmark y pie legal compacto. Eran cinco: la
+// quinta era la pantalla autenticada del gate de acceso en `/waitlist`, que la
+// ADR 0007 reemplazó por la lista de espera pública, que es una página de
+// marketing y usa el chrome del sitio.
 
 // `lang` solo lo pasan login y registro, que sí tienen gemela en /en (ADR
-// 0006). Las otras tres pantallas son español-only y usan el valor por
+// 0006). Las otras dos pantallas son español-only y usan el valor por
 // defecto. Las páginas legales no tienen gemela en inglés, así que sus enlaces
 // apuntan siempre a la raíz: traducir la etiqueta es todo lo que se puede.
 type AccessShellProps = {
@@ -65,7 +68,8 @@ export function AccessDocsLink({ lang = "es" }: { lang?: Locale }) {
 }
 
 // Tarjeta de acceso. El ancho y el padding los fija cada pantalla porque la
-// spec usa 400 px (login), 380 px (registro) y 520 px (waitlist/activación).
+// spec usa 400 px (login), 380 px (registro) y 520 px (activación de la
+// suscripción).
 export function AccessCard({
   className,
   children,

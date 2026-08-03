@@ -11,7 +11,7 @@ export const metadata: Metadata = {
     "How Resender, operated by AI Beat, handles account and Messenger data.",
 }
 
-const LAST_UPDATED = "June 18, 2026"
+const LAST_UPDATED = "August 3, 2026"
 const CONTACT_EMAIL = "info@resender.dev"
 
 export default function PrivacyPage() {
@@ -85,15 +85,45 @@ export default function PrivacyPage() {
                 messages we forward to your external system.
               </li>
             </ul>
+            {/* Categoría nueva (ADR 0007): el correo de la lista de espera es
+                de alguien que no es cliente y se guarda para escribirle, así
+                que no entra ni en Account data ni en Messenger end-user data.
+                El texto dice lo mismo que el checkbox de consentimiento del
+                diccionario, que es lo que se versiona en `consent_version`. */}
+            <p className="mt-4 font-medium text-foreground">Waitlist data</p>
+            <ul className="ml-5 mt-1 list-disc space-y-1">
+              <li>
+                The email address you leave on our waitlist, and how you heard
+                about Resender (the option you pick, plus the short free-text
+                detail if you choose &ldquo;Other&rdquo;).
+              </li>
+              <li>
+                When you accepted the waitlist notice and which version of that
+                notice you accepted, plus which page of our site you signed up
+                from.
+              </li>
+              <li>
+                We use it for one thing only: to send you product updates. It is
+                not linked to any account, it is not used for sales follow-up,
+                and it is never sold or shared.
+              </li>
+              <li>
+                To be removed, email {CONTACT_EMAIL} and we will delete your
+                waitlist entry.
+              </li>
+            </ul>
           </Section>
 
           <Section title="How we use data">
             <p>
-              We use this data only to operate the service: to receive and store
-              incoming messages, forward them to the customer&rsquo;s configured
-              external system, send outgoing replies through Meta, authenticate
-              API access, and keep the message log available to the customer. We
-              do not sell data and we do not use it for advertising.
+              We use account data and Messenger data only to operate the service:
+              to receive and store incoming messages, forward them to the
+              customer&rsquo;s configured external system, send outgoing replies
+              through Meta, authenticate API access, and keep the message log
+              available to the customer. Waitlist data is the one exception: it
+              belongs to people who are not customers, and we use it solely to
+              send them product updates, as described above. We do not sell data
+              and we do not use it for advertising.
             </p>
           </Section>
 

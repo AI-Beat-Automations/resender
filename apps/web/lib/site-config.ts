@@ -25,12 +25,11 @@ export const DOCS_URL = "https://docs.resender.dev/"
 // enseña a Google a desconfiar de la señal. Se sube A MANO cuando el copy cambia
 // de verdad. La consumen el sitemap y el encabezado de /llms-full.txt, así que
 // las dos declaran lo mismo.
-export const STATIC_CONTENT_UPDATED_AT = "2026-07-27"
+export const STATIC_CONTENT_UPDATED_AT = "2026-08-03"
 
 // Invitación de Discord. Si alguna vez vuelve a ser null, el footer oculta la
 // entrada en lugar de dejar un link muerto en todas las páginas del sitio.
-export const DISCORD_INVITE_URL: string | null =
-  "https://discord.gg/kKWUejyjVj"
+export const DISCORD_INVITE_URL: string | null = "https://discord.gg/kKWUejyjVj"
 
 // URL absoluta de una ruta interna. La home queda SIN barra final, que es como
 // Next resuelve `alternates.canonical: "/"` contra `metadataBase`. Canonical,

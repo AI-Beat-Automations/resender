@@ -14,6 +14,10 @@ const LOCALIZED_ROUTES = [
   { path: "/pricing", priority: 0.9, changeFrequency: "monthly" as const },
   { path: "/vs-manychat", priority: 0.9, changeFrequency: "monthly" as const },
   { path: "/blog", priority: 0.7, changeFrequency: "weekly" as const },
+  // Captación secundaria: no vende el producto ni lo explica entero, así que va
+  // por debajo de /pricing y /vs-manychat. Su copy es fijo y solo cambia el día
+  // que cambie el catálogo de canales, de ahí `yearly` (ADR 0007).
+  { path: "/waitlist", priority: 0.5, changeFrequency: "yearly" as const },
 ]
 
 // Rutas que existen en un solo idioma y NO se prefijan. `/docs` ya no está:
@@ -31,7 +35,9 @@ function absolute(path: string, lang: Locale) {
 // hreflang dentro del propio sitemap (`xhtml:link`). Next NO autorreferencia:
 // el idioma de la <loc> tiene que estar explícito en `languages`.
 function languagesFor(path: string, available: readonly Locale[]) {
-  return Object.fromEntries(available.map((lang) => [lang, absolute(path, lang)]))
+  return Object.fromEntries(
+    available.map((lang) => [lang, absolute(path, lang)])
+  )
 }
 
 export default function sitemap(): MetadataRoute.Sitemap {
@@ -58,9 +64,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
       const path = `/blog/${post.slug}`
       return {
         url: absolute(path, lang),
-        lastModified: Number.isNaN(date.getTime())
-          ? staticUpdatedAt
-          : date,
+        lastModified: Number.isNaN(date.getTime()) ? staticUpdatedAt : date,
         changeFrequency: "yearly" as const,
         priority: 0.8,
         // Solo los idiomas en los que ese post existe: un alternate a 404
