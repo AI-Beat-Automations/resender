@@ -13,15 +13,33 @@
   "preview_urls": false,
   "assets": {
     "directory": ".open-next/assets",
-    "binding": "ASSETS"
+    "binding": "ASSETS",
   },
   "observability": {
-    "enabled": true
+    "enabled": true,
   },
   // Único host que sirve el worker. `www` NO va acá: debe resolverse con una
   // Redirect Rule 301 hacia el ápex (ver el checklist de Cloudflare), no
   // sirviendo el mismo contenido en dos dominios.
-  "routes": [{ "pattern": "resender.dev", "custom_domain": true }]
+  "routes": [{ "pattern": "resender.dev", "custom_domain": true }],
+  // Rate limit del formulario público de la lista de espera (ADR 0007), la
+  // primera escritura anónima del repo. La clave es la IP del visitante, así
+  // que el límite es por IP y no global: un evento entero detrás de un NAT
+  // comparte cuota, y por eso no puede ser 1.
+  // 5 envíos por minuto es holgado para una persona real —que manda uno, y como
+  // mucho reintenta tras un error de validación— y corta un bot que barre la
+  // ruta.
+  "ratelimits": [
+    {
+      "name": "WAITLIST_RATE_LIMITER",
+      // Entero positivo que tiene que ser único en la cuenta de Cloudflare:
+      // 1001 y 1002 ya los usa `apps/api` (`apps/api/wrangler.jsonc:43`), así
+      // que acá va 1003. Repetir un id haría que dos limiters compartieran
+      // contador.
+      "namespace_id": "1003",
+      "simple": { "limit": 5, "period": 60 },
+    },
+  ],
   // Los secretos (DATABASE_URL, AUTH_SECRET, etc.) NO van aquí: se cargan con
   // `wrangler secret put <NAME>` en producción y en `.dev.vars` para preview local.
 }

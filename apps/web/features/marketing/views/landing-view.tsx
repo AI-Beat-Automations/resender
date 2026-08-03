@@ -9,6 +9,8 @@ import { Quickstart } from "@/features/marketing/ui/quickstart"
 import { PricingPreview } from "@/features/marketing/ui/pricing-preview"
 import { FaqSection } from "@/features/marketing/ui/faq-section"
 import { FinalCta } from "@/features/marketing/ui/final-cta"
+import { joinWaitlistAction } from "@/features/waitlist/actions"
+import { WaitlistForm } from "@/features/waitlist/ui/waitlist-form"
 import { JsonLd } from "@/components/json-ld"
 import { landingGraph } from "@/lib/schema"
 import { getDictionary, type Locale } from "@/content/i18n"
@@ -41,6 +43,19 @@ export function LandingView({ lang }: { lang: Locale }) {
           title={dict.finalCta.title}
           subtitle={dict.finalCta.subtitle}
           cta={dict.finalCta.cta}
+          // La lista de espera se fusiona en el cierre existente en vez de
+          // ocupar una sección propia debajo de los precios (ADR 0007): un
+          // solo momento de decisión, con «Empieza» arriba como acción
+          // primaria y esto como salida para quien todavía no puede comprar.
+          // La action se importa acá, en el componente servidor, y baja como
+          // prop, igual que `login-view.tsx` con `loginAction`.
+          secondary={
+            <WaitlistForm
+              lang={lang}
+              source="landing"
+              action={joinWaitlistAction}
+            />
+          }
         />
       </main>
       <SiteFooter lang={lang} />

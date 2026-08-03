@@ -19,7 +19,10 @@ export type PasswordChangeInputResult =
   | { ok: true; value: PasswordChangeInput }
   | { ok: false; error: string }
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+// Exportado para que la lista de espera pública (ADR 0007) valide el correo con
+// el mismo criterio que el registro: dos regex distintas terminarían aceptando
+// en un formulario lo que el otro rechaza.
+export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const PASSWORD_MIN_LENGTH = 8
 
 export function normalizeEmail(email: unknown) {

@@ -79,8 +79,12 @@ export function openGraphFor({
 }
 
 /**
- * Metadata de páginas sin valor de búsqueda (auth, checkout, waitlist, app
- * logueada). El `title` evita que se sirvan sin `<title>` y el `noindex` las
+ * Metadata de páginas sin valor de búsqueda (auth, checkout, app logueada).
+ * `/waitlist` salió de esta lista: dejó de ser la pantalla autenticada del gate
+ * de acceso y pasó a ser la lista de espera pública, indexable y con canonical
+ * + hreflang propios (ADR 0007).
+ *
+ * El `title` evita que se sirvan sin `<title>` y el `noindex` las
  * saca del índice — el Disallow de robots.txt por sí solo no lo hace: impide
  * rastrear, no desindexar.
  */

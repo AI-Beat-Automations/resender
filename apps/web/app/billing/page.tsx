@@ -19,10 +19,14 @@ const RECOMMENDED_PLAN = "pro_monthly"
 
 const numberFormat = new Intl.NumberFormat("es-ES")
 
-// Pricing para cuentas aprobadas en waitlist sin suscripción activa. Vive
-// fuera del grupo `(product)` a propósito (análogo a `/waitlist`): ese layout
-// rebota aquí a los tenants sin suscripción, así que esta página no puede
-// estar envuelta por él.
+// Pricing para cuentas sin suscripción activa. Vive fuera del grupo
+// `(product)` a propósito: ese layout rebota aquí a los tenants sin
+// suscripción, así que esta página no puede estar envuelta por él.
+//
+// El `redirect("/waitlist")` de abajo es el resto del gate de acceso, que la
+// ADR 0007 dejó vivo pero inerte (`users.waitlisted` ya nace en `false`). Con
+// la ruta reasignada a la lista de espera pública, ese rebote —si alguna vez
+// se disparara— llevaría a una página de marketing, no a la pantalla del gate.
 export default async function BillingPage() {
   const session = await auth()
   if (!session?.user?.id) redirect("/login")

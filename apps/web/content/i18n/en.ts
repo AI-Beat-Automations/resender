@@ -27,7 +27,10 @@ export const en: Dict = {
 
   flowMock: {
     live: "message-flow · live",
-    in: { meta: "Facebook · 2:02 PM", text: "Hi, do you have a slot for today?" },
+    in: {
+      meta: "Facebook · 2:02 PM",
+      text: "Hi, do you have a slot for today?",
+    },
     hook: {
       meta: "your server",
       text: "Your automation receives the message and generates the reply",
@@ -396,6 +399,62 @@ export const en: Dict = {
     },
   },
 
+  // Public waitlist (ADR 0007). The promise is always "product updates", never
+  // a specific channel: the announcement goes out once to the whole list, so
+  // "we'll tell you when X ships" would be a promise the system can't keep
+  // per person. The consent line says exactly what `es.ts` says — it is the
+  // text versioned as `consent_version = "2026-08"`.
+  waitlist: {
+    page: {
+      kicker: "waitlist",
+      title: "We'll tell you when there's news",
+      subtitle:
+        "Today Resender works with Facebook Messenger only. Leave your email and we'll write to you when the product changes.",
+      whatIsTitle: "What Resender is",
+      whatIsBody:
+        "Resender is the relay API for Facebook messages: connect your Page, point your webhook and reply with a POST. The logic runs wherever you want it — n8n, Make, an AI agent or your own backend. Messenger is the only channel available today, so if you handle your customers through Instagram Direct or WhatsApp, Resender is not useful to you yet. This list exists to tell you the day that changes.",
+      registerTitle: "Already on Messenger?",
+      registerBody:
+        "Then there's nothing to wait for. Create your account, connect your Page and get your first message at your webhook today.",
+      registerCta: "Create account",
+    },
+    form: {
+      title: "Leave us your email",
+      subtitle:
+        "We write to you when there are product updates. Nothing else: no weekly newsletter, no sales follow-up.",
+      emailLabel: "Email",
+      emailPlaceholder: "you@company.com",
+      heardFromLabel: "How did you hear about Resender?",
+      heardFromPlaceholder: "Pick one",
+      heardFromOtherLabel: "Where did you see us?",
+      heardFromOtherPlaceholder: "Tell us in a few words",
+      consent:
+        "I agree that Resender stores my email address to send me product updates. I can ask to be removed at any time by writing to info@resender.dev.",
+      submit: "Join the list",
+      processing: "Sending…",
+      success:
+        "Done. Your email is on the list and we'll write to you when there's news.",
+      heardFromOptions: {
+        tiktok: "TikTok",
+        instagram: "Instagram",
+        x: "X",
+        youtube: "YouTube",
+        linkedin: "LinkedIn",
+        event: "An event or conference",
+        other: "Other",
+      },
+    },
+    errors: {
+      email: "Check your email address and try again.",
+      heardFrom: "Pick how you heard about Resender.",
+      heardFromOther: "Tell us where you saw us.",
+      heardFromOtherTooLong: "Use 120 characters at most.",
+      consent: "Tick the box so we can write to you.",
+      rateLimited: "Too many attempts. Wait a moment and try again.",
+      unexpected: "We couldn't save your email. Try again in a few minutes.",
+    },
+  },
+
   footer: {
     tagline: "The relay API for Facebook messages. Simple and developer-first.",
     columns: { product: "Product", legal: "Legal", contact: "Contact" },
@@ -426,6 +485,16 @@ export const en: Dict = {
       ogTitle: "Pricing and plans from $15 per month",
       ogDescription:
         "Simple plans from $15/mo. The developer-first alternative to ManyChat.",
+    },
+    // The page is indexable (it left PRIVATE_PATHS in robots.ts, ADR 0007), so
+    // the description has to work as a search snippet.
+    waitlist: {
+      title: "Waitlist: get the product updates",
+      description:
+        "Resender works with Facebook Messenger only for now. Leave your email on the waitlist and we'll tell you when there are product updates.",
+      ogTitle: "Waitlist: get the product updates",
+      ogDescription:
+        "Today Resender works with Facebook Messenger only. Leave your email and we'll tell you when the product changes.",
     },
   },
 
@@ -478,8 +547,7 @@ export const en: Dict = {
       },
       terms: {
         label: "Terms of service",
-        detail:
-          "Terms for using Resender, operated by AI Beat. Spanish only.",
+        detail: "Terms for using Resender, operated by AI Beat. Spanish only.",
       },
       dataDeletion: {
         label: "Data deletion",
@@ -492,7 +560,8 @@ export const en: Dict = {
       },
       otherLocale: {
         label: "Versión en español",
-        detail: "The same index, with the URLs of the Spanish version of the site.",
+        detail:
+          "The same index, with the URLs of the Spanish version of the site.",
       },
       rss: {
         label: "Blog RSS",

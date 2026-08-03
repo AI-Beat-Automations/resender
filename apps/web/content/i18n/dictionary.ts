@@ -6,6 +6,12 @@
 // Ruteo: el español vive en la raíz (`/`, `/pricing`, …) y el inglés bajo `/en`.
 // Los helpers de abajo son la única fuente de verdad de esa convención.
 
+// Solo el tipo: las siete claves de `heard_from` las define el validador
+// (`lib/waitlist/validation.ts`), y `Record<HeardFrom, string>` obliga a que el
+// diccionario tenga las siete etiquetas. Importarlo como `type` evita cualquier
+// acoplamiento en runtime entre el copy y la lógica de validación.
+import type { HeardFrom } from "@/lib/waitlist/validation"
+
 export type Locale = "es" | "en"
 
 export const locales: Locale[] = ["es", "en"]
@@ -84,7 +90,12 @@ export type Dict = {
     copy: string
     copied: string
   }
-  pricingPreview: { kicker: string; title: string; subtitle: string; cta: string }
+  pricingPreview: {
+    kicker: string
+    title: string
+    subtitle: string
+    cta: string
+  }
   faq: { kicker: string; title: string; items: FaqItem[] }
   finalCta: { title: string; subtitle: string; cta: string }
   pricing: {
@@ -165,6 +176,52 @@ export type Dict = {
       createdNoSignin: string
     }
   }
+  // Lista de espera pública de captación (ADR 0007). Va después de `auth`
+  // porque es la otra superficie del sitio que pide datos a una persona; la
+  // diferencia es que esta no exige sesión. `page` es solo de /waitlist;
+  // `form` y `errors` los comparten la página y el cierre de la landing.
+  waitlist: {
+    page: {
+      kicker: string
+      title: string
+      subtitle: string
+      whatIsTitle: string
+      whatIsBody: string
+      registerTitle: string
+      registerBody: string
+      registerCta: string
+    }
+    form: {
+      title: string
+      subtitle: string
+      emailLabel: string
+      emailPlaceholder: string
+      heardFromLabel: string
+      heardFromPlaceholder: string
+      heardFromOtherLabel: string
+      heardFromOtherPlaceholder: string
+      // Texto del checkbox bloqueante. Es el que se versiona en
+      // `consent_version`, así que ES y EN dicen exactamente lo mismo.
+      consent: string
+      submit: string
+      processing: string
+      // El mismo mensaje para alta nueva y correo repetido: el éxito es
+      // idempotente y no puede delatar si el correo ya estaba en la lista.
+      success: string
+      // Las siete etiquetas de `heard_from`. En la base se guardan las claves,
+      // nunca estas etiquetas: el label rompería el `group by` bilingüe.
+      heardFromOptions: Record<HeardFrom, string>
+    }
+    errors: {
+      email: string
+      heardFrom: string
+      heardFromOther: string
+      heardFromOtherTooLong: string
+      consent: string
+      rateLimited: string
+      unexpected: string
+    }
+  }
   footer: {
     tagline: string
     columns: { product: string; legal: string; contact: string }
@@ -186,6 +243,12 @@ export type Dict = {
       ogDescription: string
     }
     pricing: {
+      title: string
+      description: string
+      ogTitle: string
+      ogDescription: string
+    }
+    waitlist: {
       title: string
       description: string
       ogTitle: string
@@ -255,13 +318,19 @@ export function localeFromPathname(pathname: string): Locale {
 }
 
 // Rutas que existen en los dos idiomas. Todo lo demás (docs, páginas legales,
-// waitlist, billing y la app logueada) vive solo en la raíz.
+// billing y la app logueada) vive solo en la raíz.
+//
+// `/waitlist` estaba en ese resto: era la pantalla autenticada del gate de
+// acceso, en español y sin gemela. La ADR 0007 borró esa pantalla y le dio la
+// ruta a la lista de espera pública, que se sirve en los dos idiomas como
+// cualquier otra página de marketing (/waitlist y /en/waitlist).
 const LOCALIZED_ROUTES = [
   "/pricing",
   "/vs-manychat",
   "/blog",
   "/login",
   "/register",
+  "/waitlist",
 ]
 
 // Quita el prefijo /en de un pathname y devuelve la ruta "base" (sin idioma).

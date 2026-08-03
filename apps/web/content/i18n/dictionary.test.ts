@@ -45,6 +45,8 @@ describe("hasLocaleTwin", () => {
       "/blog/mi-post",
       "/login",
       "/register",
+      "/waitlist",
+      "/en/waitlist",
       "/en",
       "/en/blog/mi-post",
     ]) {
@@ -57,7 +59,6 @@ describe("hasLocaleTwin", () => {
       "/privacy",
       "/terms",
       "/data-deletion",
-      "/waitlist",
       "/billing",
       "/connections",
     ]) {
@@ -77,6 +78,13 @@ describe("switchLocalePath", () => {
     expect(switchLocalePath("/en", "es")).toBe("/")
     expect(switchLocalePath("/en/pricing", "es")).toBe("/pricing")
     expect(switchLocalePath("/en/blog/mi-post", "es")).toBe("/blog/mi-post")
+  })
+
+  it("cruza la lista de espera en los dos sentidos", () => {
+    // La /waitlist vieja era la pantalla autenticada del gate de acceso y no
+    // tenía gemela; desde la ADR 0007 es una página pública bilingüe.
+    expect(switchLocalePath("/waitlist", "en")).toBe("/en/waitlist")
+    expect(switchLocalePath("/en/waitlist", "es")).toBe("/waitlist")
   })
 
   it("es idempotente si ya estás en el idioma destino", () => {
