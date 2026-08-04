@@ -184,9 +184,14 @@ export type Dict = {
     page: {
       kicker: string
       title: string
+      // Segunda línea del h1, la que se tipea en color. Mismo par
+      // `title`/`titleAccent` que el hero: esta página comparte su composición.
+      titleAccent: string
       subtitle: string
-      whatIsTitle: string
-      whatIsBody: string
+      // Nombre de la página en el breadcrumb de datos estructurados. El resto
+      // de las vistas reusa ahí su h1, pero el de esta es un eslogan: como
+      // migaja tiene que decir en qué página está la persona, no venderle nada.
+      breadcrumb: string
       registerTitle: string
       registerBody: string
       registerCta: string

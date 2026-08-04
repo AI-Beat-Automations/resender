@@ -421,12 +421,11 @@ export const es: Dict = {
   waitlist: {
     page: {
       kicker: "lista de espera",
-      title: "Te avisamos cuando haya novedades",
+      title: "Un solo webhook para todos tus canales.",
+      titleAccent: "Developer-first.",
       subtitle:
-        "Hoy Resender funciona solo con Facebook Messenger. Deja tu correo y te escribimos cuando el producto cambie.",
-      whatIsTitle: "Qué es Resender",
-      whatIsBody:
-        "Resender es la API relay para mensajes de Facebook: conectas tu página, apuntas tu webhook y respondes con un POST. La lógica corre donde tú quieras — n8n, Make, un agente de IA o tu propio backend. El único canal disponible hoy es Messenger, así que si atiendes a tus clientes por Instagram Direct o por WhatsApp, Resender todavía no te sirve. Esta lista existe para avisarte el día que eso cambie.",
+        "Hoy Resender funciona solo con Facebook Messenger, pero ya estamos trabajando en las integraciones de Instagram y WhatsApp. Deja tu correo y te avisamos cuando estén disponibles.",
+      breadcrumb: "Lista de espera",
       registerTitle: "¿Ya atiendes por Messenger?",
       registerBody:
         "Entonces no tienes nada que esperar. Crea tu cuenta, conecta tu página y recibe el primer mensaje en tu webhook hoy mismo.",
