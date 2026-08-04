@@ -8,7 +8,7 @@ import { cn } from "@workspace/ui/lib/utils"
 // El reveal usa `max-width` con un margen del 20% sobre el ancho estimado en
 // `ch`: si el glifo "0" de la fuente es más angosto que el promedio real, el
 // tope queda por encima del ancho natural y el texto nunca se corta.
-// `prefers-reduced-motion` lo muestra estático (ver globals.css).
+// La animación corre siempre: `prefers-reduced-motion` no la desactiva.
 export function Typewriter({
   text,
   className,

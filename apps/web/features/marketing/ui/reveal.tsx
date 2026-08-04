@@ -5,7 +5,8 @@ import * as React from "react"
 import { cn } from "@workspace/ui/lib/utils"
 
 // Envuelve contenido para que aparezca (fade + slide-up) cuando entra al
-// viewport al scrollear. Respeta prefers-reduced-motion (aparece de una).
+// viewport al scrollear. La animación corre siempre: `prefers-reduced-motion`
+// del sistema no la desactiva (decisión de producto, ver globals.css).
 //
 // El estado arranca en "static" a propósito: el HTML servido sale VISIBLE. Antes
 // arrancaba oculto y ~40% del contenido único de la landing (pain points y pasos
@@ -32,7 +33,6 @@ export function Reveal({
   React.useEffect(() => {
     const el = ref.current
     if (!el) return
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return
     if (el.getBoundingClientRect().top < window.innerHeight) return
 
     setState("hidden")
@@ -55,7 +55,7 @@ export function Reveal({
       ref={ref}
       style={{ transitionDelay: `${delay}ms` }}
       className={cn(
-        "transition-all duration-700 ease-out motion-reduce:transition-none",
+        "transition-all duration-700 ease-out",
         state === "hidden"
           ? "translate-y-8 opacity-0"
           : "translate-y-0 opacity-100",

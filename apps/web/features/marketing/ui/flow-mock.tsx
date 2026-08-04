@@ -122,9 +122,6 @@ export function FlowMock({ lang }: { lang: Locale }) {
   const steps = React.useMemo(() => buildSteps(lang), [lang])
 
   React.useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      return
-    }
     // Activa animaciones solo en cliente (evita mismatch SSR). Intencional.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setAnimate(true)

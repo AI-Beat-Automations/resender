@@ -8,10 +8,15 @@ function ThemeProvider({
   ...props
 }: React.ComponentProps<typeof NextThemesProvider>) {
   return (
+    // `enableSystem={false}`: el `prefers-color-scheme` del sistema operativo NO
+    // decide el tema. Quien tenga el equipo en oscuro ve el sitio con nuestra
+    // paleta clara igual. El oscuro de la consola sigue disponible, pero solo
+    // por elección explícita (ThemeToggle o la tecla "d"), que next-themes
+    // persiste en localStorage.
     <NextThemesProvider
       attribute="class"
-      defaultTheme="system"
-      enableSystem
+      defaultTheme="light"
+      enableSystem={false}
       disableTransitionOnChange
       {...props}
     >

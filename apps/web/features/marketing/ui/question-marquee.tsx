@@ -26,7 +26,7 @@ function Row({
     >
       <div
         className={cn(
-          "flex w-max shrink-0 items-center gap-3 pr-3 motion-reduce:animate-none",
+          "flex w-max shrink-0 items-center gap-3 pr-3",
           reverse ? "animate-marquee-reverse" : "animate-marquee"
         )}
       >
