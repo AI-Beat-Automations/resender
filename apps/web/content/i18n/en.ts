@@ -407,12 +407,11 @@ export const en: Dict = {
   waitlist: {
     page: {
       kicker: "waitlist",
-      title: "We'll tell you when there's news",
+      title: "One webhook for every channel.",
+      titleAccent: "Developer-first.",
       subtitle:
-        "Today Resender works with Facebook Messenger only. Leave your email and we'll write to you when the product changes.",
-      whatIsTitle: "What Resender is",
-      whatIsBody:
-        "Resender is the relay API for Facebook messages: connect your Page, point your webhook and reply with a POST. The logic runs wherever you want it — n8n, Make, an AI agent or your own backend. Messenger is the only channel available today, so if you handle your customers through Instagram Direct or WhatsApp, Resender is not useful to you yet. This list exists to tell you the day that changes.",
+        "Today Resender works with Facebook Messenger only, but we're already working on the Instagram and WhatsApp integrations. Leave your email and we'll tell you when they're available.",
+      breadcrumb: "Waitlist",
       registerTitle: "Already on Messenger?",
       registerBody:
         "Then there's nothing to wait for. Create your account, connect your Page and get your first message at your webhook today.",
