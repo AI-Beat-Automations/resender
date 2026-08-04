@@ -437,9 +437,15 @@
   --sidebar-accent-foreground: #242029;
   --sidebar-border: #d4cfc7;
   --sidebar-ring: #7773a5;
+
+  /* Los widgets nativos (inputs, scrollbars, autofill) también se pintan claros
+     aunque el equipo esté en oscuro: sin esto el navegador seguiría el
+     `prefers-color-scheme` del sistema por su cuenta. */
+  color-scheme: light;
 }
 
 .dark {
+  color-scheme: dark;
   --background: #242029;
   --foreground: #f3ede1;
   --card: #2e2a35;
@@ -673,11 +679,6 @@ pre[data-theme] span {
   vertical-align: bottom;
   animation: typewriter-reveal var(--typewriter-duration, 1s)
     steps(var(--typewriter-chars, 20)) both;
-}
-@media (prefers-reduced-motion: reduce) {
-  .typewriter {
-    animation: none;
-  }
 }
 
 /* FlowMock: animaciones de la secuencia (burbujas, nodo, conectores).
