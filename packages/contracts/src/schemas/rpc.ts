@@ -107,6 +107,17 @@ export type MetaAuthorizationResultDto = {
   authorized: true
 }
 
+// Instagram Login autoriza **una** cuenta, no N páginas a elegir, así que no
+// hay un paso de selección entre el intercambio y la conexión: el mismo método
+// intercambia el código, lee el perfil, suscribe el webhook y persiste. La ADR
+// 0004 mandó la selección a una pantalla aparte porque Facebook devuelve varias
+// páginas y persistir los tokens de las no elegidas era el problema; acá no hay
+// nada que elegir.
+export type ConnectInstagramAccountInput = {
+  code: string
+  redirectUri: string
+}
+
 export type CheckoutVerificationDto = {
   complete: boolean
 }

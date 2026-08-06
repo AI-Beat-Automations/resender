@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 
 import { auth } from "@/auth"
-import { isUserWaitlisted } from "@/lib/auth/waitlist"
+import { resolveProductAccess } from "@/lib/auth/waitlist"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
 import {
   assertSecretEncryptionConfigured,
@@ -24,7 +24,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", APP_URL))
   }
 
-  if (await isUserWaitlisted(session.user.id)) {
+  // Ver el comentario en `/api/meta/start`.
+  const access = await resolveProductAccess(session.user.id)
+  if (access === "unknown_user") {
+    return NextResponse.redirect(new URL("/login", APP_URL))
+  }
+  if (access === "waitlisted") {
     return NextResponse.redirect(new URL("/waitlist", APP_URL))
   }
 

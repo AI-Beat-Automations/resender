@@ -12,8 +12,10 @@ describe("public contracts", () => {
     const result = PageSchema.safeParse({
       id: "7ac2cc32-38cf-4d41-8c73-c6cf640d5b15",
       provider: "meta",
+      channel: "messenger",
       providerPageId: "10987654321",
       name: "Acme",
+      username: null,
       status: "active",
       tokenStatus: "valid",
       webhook: { url: null, signingEnabled: false },
@@ -22,6 +24,28 @@ describe("public contracts", () => {
     })
 
     expect(result.success).toBe(true)
+  })
+
+  // Instagram **es** Meta: comparten la app, el sobre de error de Graph y la
+  // firma del webhook. Lo que cambia es la superficie, y por eso el canal es un
+  // campo aparte de `provider` en vez de un valor suyo.
+  it("discriminates the channel without touching the provider", () => {
+    const instagram = PageSchema.safeParse({
+      id: "7ac2cc32-38cf-4d41-8c73-c6cf640d5b15",
+      provider: "meta",
+      channel: "instagram",
+      providerPageId: "17841400000000000",
+      name: "Acme",
+      username: "acme",
+      status: "active",
+      tokenStatus: "valid",
+      webhook: { url: null, signingEnabled: false },
+      connectedAt: "2026-07-29T18:00:00.000Z",
+      updatedAt: "2026-07-29T18:00:00.000Z",
+    })
+
+    expect(instagram.success).toBe(true)
+    expect(instagram.success && instagram.data.provider).toBe("meta")
   })
 
   it("requires the approved text message shape", () => {

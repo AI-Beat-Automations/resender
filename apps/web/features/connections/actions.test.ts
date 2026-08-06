@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   disconnectPage: vi.fn(),
   getActivePageWithTokenByConnectionId: vi.fn(),
   revalidatePath: vi.fn(),
-  unsubscribeFromWebhook: vi.fn(),
+  unsubscribeChannelWebhook: vi.fn(),
   updatePageWebhookUrl: vi.fn(),
 }))
 
@@ -17,8 +17,10 @@ vi.mock("@/auth", () => ({
   auth: mocks.auth,
 }))
 
-vi.mock("@/lib/meta", () => ({
-  unsubscribeFromWebhook: mocks.unsubscribeFromWebhook,
+// Se mockea el despachador por canal y no `@/lib/meta`: la acción ya no elige
+// el endpoint, lo elige `channel-webhook` a partir del canal de la fila.
+vi.mock("@/lib/pages/channel-webhook", () => ({
+  unsubscribeChannelWebhook: mocks.unsubscribeChannelWebhook,
 }))
 
 vi.mock("@/lib/pages/page-registry", () => {
@@ -49,12 +51,12 @@ describe("disconnectPageAction", () => {
       id: "connection-1",
       metaPageId: "meta-page-1",
     })
-    mocks.unsubscribeFromWebhook.mockResolvedValue(true)
+    mocks.unsubscribeChannelWebhook.mockResolvedValue(true)
   })
 
   it("disconnects locally and unsubscribes the active page from Meta", async () => {
     mocks.getActivePageWithTokenByConnectionId.mockResolvedValue({
-      page: { metaPageId: "meta-page-1" },
+      page: { channel: "messenger", metaPageId: "meta-page-1" },
       pageAccessToken: "page-token",
     })
 
@@ -73,20 +75,42 @@ describe("disconnectPageAction", () => {
       "tenant-1",
       "connection-1"
     )
-    expect(mocks.unsubscribeFromWebhook).toHaveBeenCalledWith(
-      "meta-page-1",
-      "page-token"
-    )
+    expect(mocks.unsubscribeChannelWebhook).toHaveBeenCalledWith({
+      channel: "messenger",
+      metaPageId: "meta-page-1",
+      accessToken: "page-token",
+    })
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/connections")
+  })
+
+  // El canal viaja desde la fila hasta el despachador: si la acción lo perdiera
+  // por el camino, una cuenta de Instagram se desuscribiría contra el Graph de
+  // Facebook y seguiría recibiendo eventos.
+  it("passes the Instagram channel through to the unsubscribe dispatcher", async () => {
+    mocks.getActivePageWithTokenByConnectionId.mockResolvedValue({
+      page: { channel: "instagram", metaPageId: "17841400000000000" },
+      pageAccessToken: "ig-token",
+    })
+
+    const formData = new FormData()
+    formData.set("connectionId", "connection-1")
+
+    await disconnectPageAction({}, formData)
+
+    expect(mocks.unsubscribeChannelWebhook).toHaveBeenCalledWith({
+      channel: "instagram",
+      metaPageId: "17841400000000000",
+      accessToken: "ig-token",
+    })
   })
 
   it("does not block local disconnect when Meta unsubscribe fails", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
     mocks.getActivePageWithTokenByConnectionId.mockResolvedValue({
-      page: { metaPageId: "meta-page-1" },
+      page: { channel: "messenger", metaPageId: "meta-page-1" },
       pageAccessToken: "page-token",
     })
-    mocks.unsubscribeFromWebhook.mockRejectedValue(new Error("Meta is down"))
+    mocks.unsubscribeChannelWebhook.mockRejectedValue(new Error("Meta is down"))
 
     const formData = new FormData()
     formData.set("connectionId", "connection-1")
@@ -121,7 +145,7 @@ describe("disconnectPageAction", () => {
       "tenant-1",
       "connection-1"
     )
-    expect(mocks.unsubscribeFromWebhook).not.toHaveBeenCalled()
+    expect(mocks.unsubscribeChannelWebhook).not.toHaveBeenCalled()
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/connections")
 
     consoleError.mockRestore()
@@ -137,7 +161,7 @@ describe("disconnectPageAction", () => {
       message: "Página desconectada. El historial se conserva.",
     })
 
-    expect(mocks.unsubscribeFromWebhook).not.toHaveBeenCalled()
+    expect(mocks.unsubscribeChannelWebhook).not.toHaveBeenCalled()
   })
 
   // Estados de la acción en español (ADR 0005): son el texto que se pinta

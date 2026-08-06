@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 
 import { auth } from "@/auth"
-import { isUserWaitlisted } from "@/lib/auth/waitlist"
+import { resolveProductAccess } from "@/lib/auth/waitlist"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
 import { STATE_COOKIE, buildDialogUrl } from "@/lib/meta"
 
@@ -15,7 +15,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.url))
   }
 
-  if (await isUserWaitlisted(session.user.id)) {
+  // Una sesión huérfana vuelve a `/login` y no a `/waitlist`: esa ruta dejó de
+  // ser la pantalla del gate (ADR 0007) y no permite reautenticarse.
+  const access = await resolveProductAccess(session.user.id)
+  if (access === "unknown_user") {
+    return NextResponse.redirect(new URL("/login", request.url))
+  }
+  if (access === "waitlisted") {
     return NextResponse.redirect(new URL("/waitlist", request.url))
   }
 

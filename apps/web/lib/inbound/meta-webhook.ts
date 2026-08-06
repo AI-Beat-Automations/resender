@@ -1,15 +1,8 @@
-export type InboundMetaEventType = "message" | "postback"
+import type { InboundEvent } from "./inbound-event"
 
-export type InboundMetaEvent = {
-  eventType: InboundMetaEventType
-  metaPageId: string
-  senderId: string
-  text: string
-  metaMessageId: string | null
-  postbackPayload: string | null
-  timestamp: Date
-}
-
+// Parser del webhook de **Messenger**. El de Instagram vive en
+// `instagram-webhook.ts`: los dos payloads se llaman `entry[].messaging[]` pero
+// no traen los mismos campos ni las mismas trampas.
 type MetaWebhookBody = {
   entry?: Array<{
     id?: unknown
@@ -29,11 +22,11 @@ type MetaWebhookBody = {
   }>
 }
 
-export function extractInboundEvents(body: unknown): InboundMetaEvent[] {
+export function extractInboundEvents(body: unknown): InboundEvent[] {
   if (!body || typeof body !== "object") return []
 
   const entries = (body as MetaWebhookBody).entry ?? []
-  const events: InboundMetaEvent[] = []
+  const events: InboundEvent[] = []
 
   for (const entry of entries) {
     if (typeof entry.id !== "string") continue
@@ -64,7 +57,8 @@ export function extractInboundEvents(body: unknown): InboundMetaEvent[] {
       if (typeof payload !== "string" || payload.trim().length === 0) continue
 
       const postbackPayload = payload.trim()
-      const title = typeof postback.title === "string" ? postback.title.trim() : ""
+      const title =
+        typeof postback.title === "string" ? postback.title.trim() : ""
 
       events.push({
         eventType: "postback",

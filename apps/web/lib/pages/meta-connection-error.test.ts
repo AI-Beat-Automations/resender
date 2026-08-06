@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   formatMetaConnectionError,
+  instagramAccountOwnedReason,
   metaPageOwnedReason,
 } from "./meta-connection-error"
 
@@ -42,6 +43,40 @@ describe("formatMetaConnectionError", () => {
     )
   })
 
+  it("names the failing step of the Instagram connection", () => {
+    expect(formatMetaConnectionError("instagram_exchange_failed")).toBe(
+      "No se pudo conectar: Instagram no completó el intercambio de credenciales. Vuelve a intentarlo."
+    )
+    expect(formatMetaConnectionError("instagram_profile_failed")).toContain(
+      "no devolvió su perfil"
+    )
+    expect(
+      formatMetaConnectionError("instagram_subscription_failed")
+    ).toContain("La cuenta no quedó conectada.")
+  })
+
+  it("names the Instagram account taken by another tenant", () => {
+    expect(
+      formatMetaConnectionError(
+        instagramAccountOwnedReason("17841400000000000")
+      )
+    ).toBe(
+      "No se pudo conectar: la cuenta de Instagram 17841400000000000 ya pertenece a otra cuenta de Resender."
+    )
+  })
+
+  // Los dos prefijos de propiedad conviven: el de Instagram no puede caer en la
+  // rama de `page_owned:` ni al revés, o el mensaje nombraría el canal
+  // equivocado.
+  it("keeps the two ownership prefixes apart", () => {
+    expect(formatMetaConnectionError(metaPageOwnedReason("999"))).toContain(
+      "la página 999"
+    )
+    expect(
+      formatMetaConnectionError(instagramAccountOwnedReason("999"))
+    ).toContain("la cuenta de Instagram 999")
+  })
+
   it("falls back to the raw reason and to the bare message without one", () => {
     expect(formatMetaConnectionError("something_odd")).toBe(
       "No se pudo conectar: something_odd."
@@ -58,6 +93,10 @@ describe("formatMetaConnectionError", () => {
       "configuration_failed",
       "meta_session_expired",
       "state_mismatch",
+      "instagram_exchange_failed",
+      "instagram_profile_failed",
+      "instagram_subscription_failed",
+      "instagram_account_owned:1",
       "unknown",
     ]
 

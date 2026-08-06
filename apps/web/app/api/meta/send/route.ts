@@ -43,9 +43,15 @@ export async function POST(request: NextRequest) {
 
   const idempotencyHeader = request.headers.get("idempotency-key")
   const idempotencyKey = idempotencyHeader?.trim() ?? null
-  if (idempotencyHeader !== null && (!idempotencyKey || idempotencyKey.length > 200)) {
+  if (
+    idempotencyHeader !== null &&
+    (!idempotencyKey || idempotencyKey.length > 200)
+  ) {
     return Response.json(
-      { error: "Idempotency-Key must be a non-empty string of at most 200 characters" },
+      {
+        error:
+          "Idempotency-Key must be a non-empty string of at most 200 characters",
+      },
       { status: 400 }
     )
   }
@@ -109,9 +115,13 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: input.error }, { status: 400 })
   }
 
+  // Canal explícito: este endpoint es el de Messenger. Instagram tiene el suyo
+  // en `/api/meta/instagram/send`, y desde la migración 0013 el mismo
+  // `meta_page_id` puede existir en los dos canales.
   const connectedPage = await getActivePageWithTokenForTenant(
     apiKey.tenantId,
-    input.value.pageId
+    input.value.pageId,
+    "messenger"
   )
   if (!connectedPage) {
     return Response.json(
@@ -236,7 +246,9 @@ export async function POST(request: NextRequest) {
 
   return Response.json(
     {
-      ...(metaResult.ok ? {} : { error: metaResult.reason ?? metaResult.error }),
+      ...(metaResult.ok
+        ? {}
+        : { error: metaResult.reason ?? metaResult.error }),
       meta: metaResult.data,
       resender: {
         conversationId: conversation.id,

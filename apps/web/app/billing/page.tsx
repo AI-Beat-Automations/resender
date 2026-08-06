@@ -5,7 +5,7 @@ import { PostHogIdentify } from "@/components/posthog-identify"
 import { SignOutForm } from "@/components/sign-out-form"
 import { AccessEyebrow, AccessShell } from "@/features/auth/ui/access-shell"
 import { startCheckout } from "@/features/billing/actions"
-import { isUserWaitlisted } from "@/lib/auth/waitlist"
+import { resolveProductAccess } from "@/lib/auth/waitlist"
 import { PLANS } from "@/lib/billing/plans"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
 import { privatePageMetadata } from "@/lib/seo"
@@ -23,14 +23,17 @@ const numberFormat = new Intl.NumberFormat("es-ES")
 // `(product)` a propósito: ese layout rebota aquí a los tenants sin
 // suscripción, así que esta página no puede estar envuelta por él.
 //
-// El `redirect("/waitlist")` de abajo es el resto del gate de acceso, que la
-// ADR 0007 dejó vivo pero inerte (`users.waitlisted` ya nace en `false`). Con
-// la ruta reasignada a la lista de espera pública, ese rebote —si alguna vez
-// se disparara— llevaría a una página de marketing, no a la pantalla del gate.
+// Los dos rebotes de abajo son el resto del gate de acceso, que la ADR 0007
+// dejó vivo pero inerte (`users.waitlisted` ya nace en `false`). Se separan
+// porque se arreglan distinto: una sesión huérfana necesita volver a
+// autenticarse, y una cuenta en lista de espera necesita que alguien le levante
+// la bandera.
 export default async function BillingPage() {
   const session = await auth()
   if (!session?.user?.id) redirect("/login")
-  if (await isUserWaitlisted(session.user.id)) redirect("/waitlist")
+  const access = await resolveProductAccess(session.user.id)
+  if (access === "unknown_user") redirect("/login")
+  if (access === "waitlisted") redirect("/waitlist")
   if (await hasActiveSubscription(session.user.id)) redirect("/connections")
 
   async function signOutAction() {

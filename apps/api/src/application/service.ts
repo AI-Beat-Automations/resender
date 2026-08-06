@@ -3,6 +3,10 @@ import type {
   ApiKeyDto,
   BillingStateDto,
   CheckoutVerificationDto,
+  CommentDto,
+  CommentListInput,
+  CommentReplyInput,
+  ConnectInstagramAccountInput,
   ConnectMetaPagesInput,
   ConversationListDto,
   ConversationListInput,
@@ -16,6 +20,8 @@ import type {
   MetaPageSelectionDto,
   PageDto,
   PageListQuery,
+  PaginationDto,
+  PrivateReplyInput,
   ProductAccessDto,
   ProductShellDto,
   RpcActor,
@@ -36,6 +42,8 @@ import {
   PLAN_LIMITS,
   type Entitlement,
 } from "../domain/entitlements"
+import { extractInstagramComments } from "../domain/instagram-comments"
+import { extractInstagramDirectMessages } from "../domain/instagram-events"
 import { extractInboundMetaEvents } from "../domain/meta-events"
 import {
   decryptSecret,
@@ -52,9 +60,11 @@ import {
 } from "../infrastructure/crypto/secrets"
 import { createSql } from "../infrastructure/db/client"
 import {
+  commentDto,
   messageDto,
   pageDto,
   SqlRepository,
+  type CommentRecord,
   type MessageRecord,
   type PageRecord,
   type SubscriptionRecord,
@@ -66,6 +76,13 @@ import {
 } from "../infrastructure/http/ssrf"
 import { MetaClient } from "../infrastructure/meta/client"
 import {
+  INSTAGRAM_COMMENT_MAX_CHARS,
+  INSTAGRAM_TEXT_MAX_BYTES,
+  instagramCommentLength,
+  instagramTextByteLength,
+  InstagramClient,
+} from "../infrastructure/meta/instagram-client"
+import {
   createStripeClient,
   stripeTimestamp,
 } from "../infrastructure/stripe/client"
@@ -73,7 +90,10 @@ import { log } from "../observability/logger"
 
 export type QueuePayload = {
   jobId: string
-  messageId: string
+  // Contexto de log, no identidad: el job ya sabe de qué cuelga. Exactamente uno
+  // de los dos viene informado.
+  messageId?: string
+  commentId?: string
 }
 
 export type AuthenticatedApiKey = {
@@ -83,6 +103,7 @@ export type AuthenticatedApiKey = {
 
 export class ApiService {
   readonly meta: MetaClient
+  readonly instagram: InstagramClient
   private repositoryClient: SqlRepository | null = null
   private stripeClient: Stripe | null = null
   private readonly now: () => Date
@@ -92,6 +113,7 @@ export class ApiService {
     dependencies: {
       repository?: SqlRepository
       meta?: MetaClient
+      instagram?: InstagramClient
       stripe?: Stripe
       now?: () => Date
     } = {}
@@ -99,6 +121,12 @@ export class ApiService {
     this.repositoryClient = dependencies.repository ?? null
     this.meta =
       dependencies.meta ?? new MetaClient(env.META_APP_ID, env.META_APP_SECRET)
+    // Credenciales propias: el App Secret de Instagram es **distinto** del de
+    // Facebook aunque vivan en la misma app de Meta. Firma el webhook de
+    // Instagram y es el `client_secret` del OAuth.
+    this.instagram =
+      dependencies.instagram ??
+      new InstagramClient(env.INSTAGRAM_APP_ID, env.INSTAGRAM_APP_SECRET)
     this.stripeClient = dependencies.stripe ?? null
     this.now = dependencies.now ?? (() => new Date())
   }
@@ -316,6 +344,11 @@ export class ApiService {
       })
     }
     const page = await this.requirePage(input.tenantId, input.message.pageId)
+    // El esquema tope en 2000 caracteres, que es el techo de Messenger.
+    // Instagram corta antes y en otra unidad, y recién acá se sabe a qué canal
+    // apunta el `pageId`.
+    if (page.channel === "instagram")
+      assertInstagramTextFits(input.message.text)
     const conversation = input.message.conversationId
       ? await this.repository.getConversationRecord(
           input.tenantId,
@@ -387,14 +420,26 @@ export class ApiService {
       throw idempotencyConflict(reservation.reason)
     }
 
-    const result = await this.meta.sendText({
-      pageAccessToken: decryptSecret(
-        this.env.TOKEN_ENCRYPTION_KEY,
-        page.pageAccessTokenEncrypted
-      ),
-      recipientId: input.message.recipientId,
-      text: input.message.text,
-    })
+    const accessToken = decryptSecret(
+      this.env.TOKEN_ENCRYPTION_KEY,
+      page.pageAccessTokenEncrypted
+    )
+    // Un DM por Instagram y uno por Messenger son la misma operación del
+    // producto y dos requests distintas: otro host, el token en el header en vez
+    // de en la query, y sin `messaging_type`. El canal de la cuenta es lo único
+    // que decide, y se resolvió una sola vez con la fila.
+    const result =
+      page.channel === "instagram"
+        ? await this.instagram.sendText({
+            accessToken,
+            recipientId: input.message.recipientId,
+            text: input.message.text,
+          })
+        : await this.meta.sendText({
+            pageAccessToken: accessToken,
+            recipientId: input.message.recipientId,
+            text: input.message.text,
+          })
     const persisted = await this.repository.completeOutbound({
       tenantId: input.tenantId,
       conversationId: conversation.id,
@@ -434,6 +479,342 @@ export class ApiService {
         },
       ],
     })
+  }
+
+  listComments(
+    tenantId: string,
+    input: CommentListInput
+  ): Promise<{ data: CommentDto[]; pagination: PaginationDto }> {
+    return this.repository.listComments(tenantId, input)
+  }
+
+  async getComment(tenantId: string, commentId: string): Promise<CommentDto> {
+    return commentDto(await this.requireComment(tenantId, commentId))
+  }
+
+  async listCommentDeliveries(
+    tenantId: string,
+    commentId: string,
+    input: { limit: number; cursor?: string }
+  ): Promise<{ data: DeliveryDto[]; pagination: PaginationDto }> {
+    await this.requireComment(tenantId, commentId)
+    return this.repository.listCommentDeliveries(tenantId, commentId, input)
+  }
+
+  // Respuesta **pública**: se publica debajo del comentario, visible para
+  // cualquiera que mire la publicación.
+  //
+  // La idempotencia importa más acá que en un DM: Instagram no pone ningún
+  // límite de una respuesta por comentario en este endpoint —ese límite es de la
+  // respuesta privada—, así que un reintento sin clave publica un segundo
+  // comentario visible que hay que ir a borrar a mano.
+  async replyToComment(input: {
+    tenantId: string
+    commentId: string
+    idempotencyKey: string | null
+    reply: CommentReplyInput
+  }): Promise<{ comment: CommentDto; replayed: boolean; created: boolean }> {
+    const key = requireIdempotencyKey(input.idempotencyKey)
+    if (
+      instagramCommentLength(input.reply.text) > INSTAGRAM_COMMENT_MAX_CHARS
+    ) {
+      throw tooLong(
+        `An Instagram comment allows ${INSTAGRAM_COMMENT_MAX_CHARS} characters and this reply has ${instagramCommentLength(
+          input.reply.text
+        )}.`
+      )
+    }
+
+    const replay = await this.repository.getOutboundCommentByIdempotency(
+      input.tenantId,
+      key
+    )
+    if (replay) {
+      return { comment: commentDto(replay), replayed: true, created: false }
+    }
+
+    const { page, source } = await this.requireCommentTarget(
+      input.tenantId,
+      input.commentId
+    )
+    const providerCommentId = requirePublishedComment(source)
+    const result = await this.instagram.replyToComment({
+      accessToken: decryptSecret(
+        this.env.TOKEN_ENCRYPTION_KEY,
+        page.pageAccessTokenEncrypted
+      ),
+      providerCommentId,
+      text: input.reply.text,
+    })
+    if (!result.ok && result.kind === "invalid_token") {
+      await this.repository.markPageTokenInvalid({
+        tenantId: input.tenantId,
+        pageId: page.id,
+        error: result.message,
+      })
+    }
+
+    // Se persiste igual que un saliente rechazado en Messenger: el fallo es lo
+    // que el usuario necesita poder ver en el log.
+    const persisted = await this.repository.insertOutboundComment({
+      tenantId: input.tenantId,
+      pageId: page.id,
+      providerCommentId: result.ok ? result.commentId : null,
+      parentCommentId: providerCommentId,
+      mediaId: source.mediaId,
+      mediaProductType: source.mediaProductType,
+      // Quien comenta es la propia cuenta: la respuesta sale de ella. Guardar su
+      // IG ID y no el del comentador hace que la fila se lea igual que el
+      // comentario que va a volver por el webhook, que es lo que la tercera
+      // señal anti-bucle compara.
+      fromProviderUserId: page.providerPageId,
+      fromUsername: page.username,
+      status: result.ok ? "sent" : "failed",
+      text: input.reply.text,
+      idempotencyKey: key,
+      error: result.ok ? null : result.message,
+      providerResponse: result.response,
+      createdAt: this.now(),
+    })
+    if (result.ok) {
+      return { comment: commentDto(persisted), replayed: false, created: true }
+    }
+    throw providerFailure(result.kind, result.message, persisted.id)
+  }
+
+  // Respuesta **privada**: un DM a quien comentó, amparado en el comentario.
+  // Es la única forma de escribirle primero a alguien que nunca mandó un DM: la
+  // ventana de 24 horas no aplica y en su lugar rigen dos reglas de Meta —7 días
+  // desde el comentario y **una sola** respuesta por comentario.
+  //
+  // Se persiste en `messages` y no en `instagram_comments`, porque es un DM: lo
+  // único que lo distingue de uno normal es `instagram_source_comment_id`.
+  async sendPrivateReply(input: {
+    tenantId: string
+    commentId: string
+    idempotencyKey: string | null
+    reply: PrivateReplyInput
+  }): Promise<{ message: MessageDto; replayed: boolean; created: boolean }> {
+    const key = requireIdempotencyKey(input.idempotencyKey)
+    assertInstagramTextFits(input.reply.text)
+
+    const replay = await this.repository.getOutboundByIdempotency(
+      input.tenantId,
+      key
+    )
+    if (replay) {
+      return { message: messageDto(replay), replayed: true, created: false }
+    }
+
+    const { page, source } = await this.requireCommentTarget(
+      input.tenantId,
+      input.commentId
+    )
+    const providerCommentId = requirePublishedComment(source)
+
+    // El límite de una sola respuesta privada, chequeado antes de llamar. Meta
+    // también lo aplica, pero con un 100/2534025 que junta cuatro causas —vencida,
+    // ya contestada, borrada, o el usuario no acepta mensajes— y el usuario no
+    // puede saber cuál fue. Acá lo sabemos con certeza.
+    const alreadyReplied = await this.repository.getPrivateReplyForComment({
+      tenantId: input.tenantId,
+      providerCommentId,
+    })
+    if (alreadyReplied) {
+      throw new ContractError({
+        code: "idempotency_conflict",
+        message:
+          "This comment already received a private reply. Instagram allows exactly one per comment.",
+        status: 409,
+        details: [
+          {
+            message: "The existing private reply was not replaced.",
+            messageId: alreadyReplied.id,
+          },
+        ],
+      })
+    }
+
+    // El destinatario sale del comentario guardado y no del body: es lo que
+    // impide usar el comentario de una persona como excusa para escribirle a
+    // otra.
+    const contactId = source.fromProviderUserId
+    const conversation = await this.repository.upsertConversation({
+      tenantId: input.tenantId,
+      pageId: page.id,
+      contactId,
+      at: this.now(),
+    })
+
+    const fingerprint = await sha256Hex(
+      JSON.stringify({
+        kind: "private_reply",
+        commentId: providerCommentId,
+        pageId: page.id,
+        text: input.reply.text,
+      })
+    )
+    const reservation = await this.repository.reserveOutbound({
+      tenantId: input.tenantId,
+      idempotencyKey: key,
+      fingerprint,
+    })
+    if (reservation.kind === "replay") {
+      return {
+        message: messageDto(reservation.message),
+        replayed: true,
+        created: false,
+      }
+    }
+    if (reservation.kind === "conflict") {
+      throw idempotencyConflict(reservation.reason)
+    }
+
+    const result = await this.instagram.sendPrivateReply({
+      accessToken: decryptSecret(
+        this.env.TOKEN_ENCRYPTION_KEY,
+        page.pageAccessTokenEncrypted
+      ),
+      providerCommentId,
+      text: input.reply.text,
+    })
+    const persisted = await this.repository.completeOutbound({
+      tenantId: input.tenantId,
+      conversationId: conversation.id,
+      pageId: page.id,
+      contactId,
+      text: input.reply.text,
+      status: result.ok ? "sent" : "failed",
+      providerMessageId: result.ok ? result.messageId : null,
+      idempotencyKey: key,
+      fingerprint,
+      error: result.ok ? null : result.message,
+      providerResponse: result.response,
+      createdAt: this.now(),
+      // Instagram no consume cuota: sin período no hay contador que incrementar.
+      periodStart: null,
+      // Lo que convierte este DM en una respuesta privada auditable. Se guarda
+      // también cuando Meta rechazó: el intento fallido no consumió la única
+      // respuesta disponible —por eso el chequeo de arriba solo mira los
+      // `sent`— pero sí queda en el log.
+      sourceCommentId: providerCommentId,
+    })
+    if (result.ok) {
+      return { message: messageDto(persisted), replayed: false, created: true }
+    }
+    if (result.kind === "invalid_token") {
+      await this.repository.markPageTokenInvalid({
+        tenantId: input.tenantId,
+        pageId: page.id,
+        error: result.message,
+      })
+    }
+    throw providerFailure(result.kind, result.message, persisted.id)
+  }
+
+  // Despachador por canal, y no una llamada directa a `unsubscribePage`. Mandar
+  // el token de una cuenta de Instagram al Graph de Facebook **no da un error
+  // claro, da un 400**: se registra como «Meta no confirmó» y la cuenta queda
+  // recibiendo eventos. Son dos los llamadores —desconectar y borrar la
+  // cuenta— y los dos tienen que elegir igual.
+  private unsubscribeByChannel(
+    channel: PageRecord["channel"],
+    providerPageId: string,
+    accessToken: string
+  ): Promise<void> {
+    return channel === "instagram"
+      ? this.instagram.unsubscribeAccount(accessToken)
+      : this.meta.unsubscribePage(providerPageId, accessToken)
+  }
+
+  private async requireComment(
+    tenantId: string,
+    commentId: string
+  ): Promise<CommentRecord> {
+    const comment = await this.repository.getComment(tenantId, commentId)
+    if (!comment) throw notFound("Comment")
+    return comment
+  }
+
+  // Resuelve el comentario a contestar y la cuenta que responde. Se exige que el
+  // comentario esté en la base porque de ahí salen la publicación a la que
+  // pertenece y el IGSID de quien comentó, que Meta no devuelve; en la práctica
+  // siempre está, porque el tenant conoce el id justamente porque Resender se lo
+  // entregó.
+  private async requireCommentTarget(
+    tenantId: string,
+    commentId: string
+  ): Promise<{ page: PageRecord; source: CommentRecord }> {
+    const source = await this.requireComment(tenantId, commentId)
+    if (source.direction !== "inbound") {
+      throw new ContractError({
+        code: "validation_error",
+        message: "Only inbound comments can be replied to.",
+        status: 400,
+      })
+    }
+    const page = await this.requirePage(tenantId, source.pageId)
+    if (page.status !== "active") throw notFound("Page")
+    if (page.tokenStatus !== "valid") {
+      throw new ContractError({
+        code: "provider_rejected",
+        message:
+          "The Instagram access token is invalid. Reconnect the account.",
+        status: 422,
+      })
+    }
+    return { page, source }
+  }
+
+  // Conecta la cuenta de Instagram, en el orden que importa: intercambio →
+  // perfil → **suscripción al webhook** → persistencia.
+  //
+  // Una cuenta guardada que no recibe eventos se ve conectada y está muda; una
+  // suscripción sin fila en la base no le hace nada a nadie y se limpia sola al
+  // reintentar. Por eso la suscripción va antes que el insert.
+  async connectInstagramAccount(
+    actor: RpcActor,
+    input: ConnectInstagramAccountInput
+  ): Promise<PageDto> {
+    const { user } = await this.requireProductAccess(actor.userId)
+    validateReturnUrl(input.redirectUri)
+
+    const token = await this.providerOperation("Instagram", () =>
+      this.instagram.exchangeAuthorizationCode({
+        code: input.code,
+        redirectUri: input.redirectUri,
+      })
+    )
+    const profile = await this.providerOperation("Instagram", () =>
+      this.instagram.getProfile(token.accessToken)
+    )
+    await this.providerOperation("Instagram", () =>
+      this.instagram.subscribeAccount(token.accessToken)
+    )
+
+    const page = await this.repository.connectInstagramAccount({
+      tenantId: user.id,
+      providerAccountId: profile.providerAccountId,
+      name: profile.name,
+      username: profile.username,
+      encryptedAccessToken: encryptSecret(
+        this.env.TOKEN_ENCRYPTION_KEY,
+        token.accessToken
+      ),
+      tokenExpiresAt: token.expiresAt,
+    })
+    // El upsert no devuelve fila cuando el `where` del `do update` no aplica, y
+    // eso solo pasa si la cuenta ya es de otro tenant. Una cuenta pertenece a
+    // uno solo, sin transferencia automática (ADR 0004).
+    if (!page) {
+      throw new ContractError({
+        code: "provider_rejected",
+        message:
+          "This Instagram account is already connected to another Resender account.",
+        status: 422,
+      })
+    }
+    return pageDto(page)
   }
 
   async authenticateCredentials(input: {
@@ -646,7 +1027,8 @@ export class ApiService {
     const { user } = await this.requireProductAccess(actor.userId)
     const page = await this.requirePage(user.id, pageId)
     try {
-      await this.meta.unsubscribePage(
+      await this.unsubscribeByChannel(
+        page.channel,
         page.providerPageId,
         decryptSecret(
           this.env.TOKEN_ENCRYPTION_KEY,
@@ -839,7 +1221,8 @@ export class ApiService {
       context.pages
         .filter((page) => page.status === "active")
         .map((page) =>
-          this.meta.unsubscribePage(
+          this.unsubscribeByChannel(
+            page.channel,
             page.providerPageId,
             decryptSecret(
               this.env.TOKEN_ENCRYPTION_KEY,
@@ -898,32 +1281,23 @@ export class ApiService {
     const entitlementByTenant = new Map<string, Entitlement>()
     for (const event of events) {
       const page = await this.repository.getActivePageByProviderId(
-        event.providerPageId
+        event.providerPageId,
+        "messenger"
       )
       if (!page) continue
-      let productAccess = accessByTenant.get(page.tenantId)
-      if (productAccess === undefined) {
-        const user = await this.repository.getUserById(page.tenantId)
-        const subscription = await this.repository.getSubscription(
-          page.tenantId
-        )
-        productAccess =
-          Boolean(user) &&
-          user?.waitlisted === false &&
-          isActiveSubscription(subscription)
-        accessByTenant.set(page.tenantId, productAccess)
-      }
       // Meta must receive 200 for tenants that cannot use the product, but
       // their events are deliberately discarded before any persistence.
-      if (!productAccess) continue
+      if (!(await this.hasProductAccess(page.tenantId, accessByTenant))) {
+        continue
+      }
       let entitlement = entitlementByTenant.get(page.tenantId)
       if (!entitlement) {
         entitlement = await this.entitlement(page.tenantId)
         entitlementByTenant.set(page.tenantId, entitlement)
       }
-      const eventId = `evt_${(
-        await sha256Hex(`${event.providerPageId}:${event.providerMessageId}`)
-      ).slice(0, 32)}`
+      const eventId = await this.eventId(
+        `${event.providerPageId}:${event.providerMessageId}`
+      )
       const result = await this.repository.ingestInbound({
         page,
         contactId: event.senderId,
@@ -937,9 +1311,7 @@ export class ApiService {
         deliveryBlockedReason: entitlement.blockCode
           ? `account is restricted: ${entitlement.blockCode}`
           : null,
-        recoverAfter: new Date(
-          this.now().getTime() + RECOVERY_HANDOFF_GRACE_SECONDS * 1000
-        ),
+        recoverAfter: this.recoverAfter(),
       })
       log("info", {
         entrypoint: "fetch",
@@ -951,18 +1323,174 @@ export class ApiService {
         jobId: result.jobId,
         messageId: result.messageId,
       })
-      if (
-        result.jobStatus === "pending" &&
-        (result.inserted || result.jobAttemptCount === 0)
-      ) {
-        await this.env.WEBHOOK_DELIVERIES.send({
-          jobId: result.jobId,
-          messageId: result.messageId,
-        } satisfies QueuePayload)
-      }
+      await this.enqueueIfPending(result, { messageId: result.messageId })
       accepted += result.inserted ? 1 : 0
     }
     return { accepted }
+  }
+
+  async verifyInstagramSignature(
+    raw: string,
+    signature: string | null
+  ): Promise<void> {
+    if (!signature?.startsWith("sha256=")) throw invalidSignature("Instagram")
+    // `INSTAGRAM_APP_SECRET` y no `META_APP_SECRET`: firmar un webhook de
+    // Instagram con el secreto de Facebook es el error de configuración más
+    // común de esta integración, y es la razón por la que Instagram entra por
+    // una ruta propia en vez de compartir `/webhooks/meta`. Con rutas separadas
+    // la pregunta «¿con cuál verifico?» no existe.
+    const expected = await hmacHex(this.env.INSTAGRAM_APP_SECRET, raw)
+    if (!(await safeEqualText(signature.slice(7), expected))) {
+      throw invalidSignature("Instagram")
+    }
+  }
+
+  // Webhook de Instagram: mensajes directos **y** comentarios. Un mismo POST de
+  // Meta puede traer las dos cosas —viajan en ramas distintas del mismo
+  // `entry`—, así que se procesan las dos y se suman los aceptados.
+  //
+  // Los DMs comparten toda la ingesta con Messenger a propósito: cambia el
+  // payload —y por eso cambia el parser— pero no cambian el dedupe por índice,
+  // la resolución cuenta→tenant, los gates, la cola de entrega ni la política de
+  // reintentos.
+  async ingestInstagramWebhook(
+    raw: string,
+    signature: string | null
+  ): Promise<{ accepted: number }> {
+    await this.verifyInstagramSignature(raw, signature)
+    const parsed = parseWebhookJson(raw)
+    const accessByTenant = new Map<string, boolean>()
+
+    const messages = await this.ingestInstagramMessages(parsed, accessByTenant)
+    const comments = await this.ingestInstagramComments(parsed, accessByTenant)
+    return { accepted: messages + comments }
+  }
+
+  private async ingestInstagramMessages(
+    parsed: unknown,
+    accessByTenant: Map<string, boolean>
+  ): Promise<number> {
+    let accepted = 0
+    for (const event of extractInstagramDirectMessages(parsed)) {
+      const page = await this.repository.getActivePageByProviderId(
+        event.providerAccountId,
+        "instagram"
+      )
+      if (!page) continue
+      if (!(await this.hasProductAccess(page.tenantId, accessByTenant))) {
+        continue
+      }
+
+      const eventId = await this.eventId(
+        `${event.providerAccountId}:${event.providerMessageId}`
+      )
+      const result = await this.repository.ingestInbound({
+        page,
+        contactId: event.senderId,
+        text: event.text,
+        providerMessageId: event.providerMessageId,
+        eventId,
+        createdAt: event.createdAt,
+        payloadVersion: WEBHOOK_PAYLOAD_VERSION,
+        // Instagram está **fuera de cuota** por ahora: sin período no hay
+        // contador que incrementar, y por eso tampoco se resuelve el
+        // entitlement — sería una ida a la base por evento sin nada que decidir.
+        periodStart: null,
+        // La contracara: la restricción por consumo tampoco lo frena. Un tenant
+        // que agotó su cuota de Messenger sigue recibiendo sus DMs de Instagram.
+        deliveryEnabled: true,
+        deliveryBlockedReason: null,
+        recoverAfter: this.recoverAfter(),
+      })
+      log("info", {
+        entrypoint: "fetch",
+        event: result.inserted
+          ? "instagram_inbound_persisted"
+          : "instagram_inbound_duplicate",
+        tenantId: page.tenantId,
+        eventId,
+        jobId: result.jobId,
+        messageId: result.messageId,
+      })
+      await this.enqueueIfPending(result, { messageId: result.messageId })
+      accepted += result.inserted ? 1 : 0
+    }
+    return accepted
+  }
+
+  private async ingestInstagramComments(
+    parsed: unknown,
+    accessByTenant: Map<string, boolean>
+  ): Promise<number> {
+    let accepted = 0
+    for (const event of extractInstagramComments(parsed)) {
+      const page = await this.repository.getActivePageByProviderId(
+        event.providerAccountId,
+        "instagram"
+      )
+      if (!page) continue
+
+      // **Segunda señal anti-bucle.** El parser ya descartó los comentarios
+      // cuyo `from.id` es la propia cuenta; acá se repite por @handle, que es el
+      // otro dato que identifica a la cuenta y que el parser no puede consultar
+      // porque vive en la base.
+      if (
+        page.username &&
+        event.fromUsername &&
+        event.fromUsername.toLowerCase() === page.username.toLowerCase()
+      ) {
+        continue
+      }
+
+      // **Tercera señal anti-bucle**, y la única que no depende del `from` que
+      // manda Meta: preguntar si ese id es de un comentario que publicamos
+      // nosotros. Va última porque es la única que consulta la base.
+      if (
+        await this.repository.isOwnPublishedComment({
+          pageId: page.id,
+          providerCommentId: event.providerCommentId,
+        })
+      ) {
+        continue
+      }
+
+      if (!(await this.hasProductAccess(page.tenantId, accessByTenant))) {
+        continue
+      }
+
+      const eventId = await this.eventId(
+        `${event.providerAccountId}:comment:${event.providerCommentId}`
+      )
+      const result = await this.repository.ingestInboundComment({
+        page,
+        providerCommentId: event.providerCommentId,
+        parentCommentId: event.parentCommentId,
+        mediaId: event.mediaId,
+        mediaProductType: event.mediaProductType,
+        fromProviderUserId: event.fromProviderUserId,
+        fromUsername: event.fromUsername,
+        text: event.text,
+        eventId,
+        createdAt: event.createdAt,
+        payloadVersion: WEBHOOK_PAYLOAD_VERSION,
+        deliveryEnabled: true,
+        deliveryBlockedReason: null,
+        recoverAfter: this.recoverAfter(),
+      })
+      log("info", {
+        entrypoint: "fetch",
+        event: result.inserted
+          ? "instagram_comment_persisted"
+          : "instagram_comment_duplicate",
+        tenantId: page.tenantId,
+        eventId,
+        jobId: result.jobId,
+        commentId: result.commentId,
+      })
+      await this.enqueueIfPending(result, { commentId: result.commentId })
+      accepted += result.inserted ? 1 : 0
+    }
+    return accepted
   }
 
   async handleStripeWebhook(
@@ -1054,6 +1582,54 @@ export class ApiService {
     }
   }
 
+  // Bloqueo total sin acceso al producto (ADR 0002), común a los dos webhooks.
+  // La caché es por payload: un mismo POST de Meta puede traer varios eventos
+  // del mismo tenant.
+  private async hasProductAccess(
+    tenantId: string,
+    cache: Map<string, boolean>
+  ): Promise<boolean> {
+    const cached = cache.get(tenantId)
+    if (cached !== undefined) return cached
+    const [user, subscription] = await Promise.all([
+      this.repository.getUserById(tenantId),
+      this.repository.getSubscription(tenantId),
+    ])
+    const allowed =
+      Boolean(user) &&
+      user?.waitlisted === false &&
+      isActiveSubscription(subscription)
+    cache.set(tenantId, allowed)
+    return allowed
+  }
+
+  private async eventId(source: string): Promise<string> {
+    return `evt_${(await sha256Hex(source)).slice(0, 32)}`
+  }
+
+  private recoverAfter(): Date {
+    return new Date(
+      this.now().getTime() + RECOVERY_HANDOFF_GRACE_SECONDS * 1000
+    )
+  }
+
+  private async enqueueIfPending(
+    result: {
+      inserted: boolean
+      jobId: string
+      jobStatus: string
+      jobAttemptCount: number
+    },
+    subject: { messageId?: string; commentId?: string }
+  ): Promise<void> {
+    if (result.jobStatus !== "pending") return
+    if (!result.inserted && result.jobAttemptCount !== 0) return
+    await this.env.WEBHOOK_DELIVERIES.send({
+      jobId: result.jobId,
+      ...subject,
+    } satisfies QueuePayload)
+  }
+
   private async entitlement(tenantId: string): Promise<Entitlement> {
     const [subscription, activePageCount] = await Promise.all([
       this.repository.getSubscription(tenantId),
@@ -1112,7 +1688,7 @@ export class ApiService {
   }
 
   private async providerOperation<T>(
-    provider: "Meta" | "Stripe",
+    provider: "Meta" | "Instagram" | "Stripe",
     operation: () => Promise<T>
   ): Promise<T> {
     try {
@@ -1211,6 +1787,76 @@ function providerAuthorizationRequired(): ContractError {
     message: "Authorize Meta before selecting Pages.",
     status: 422,
   })
+}
+
+function requireIdempotencyKey(value: string | null): string {
+  const key = value?.trim()
+  if (!key || key.length > IDEMPOTENCY_KEY_MAX_LENGTH) {
+    throw new ContractError({
+      code: "validation_error",
+      message:
+        "Idempotency-Key is required and must be at most 200 characters.",
+      status: 400,
+      details: [{ path: "Idempotency-Key", message: "Invalid header value" }],
+    })
+  }
+  return key
+}
+
+// El límite del DM se cuenta en **bytes UTF-8** y no en caracteres: cada acento
+// son 2 bytes y cada emoji 4, así que un texto que cabe en caracteres puede no
+// caber. Se valida antes de llamar porque el rechazo de Instagram no dice cuánto
+// sobró.
+function assertInstagramTextFits(text: string): void {
+  const bytes = instagramTextByteLength(text)
+  if (bytes > INSTAGRAM_TEXT_MAX_BYTES) {
+    throw tooLong(
+      `Instagram allows ${INSTAGRAM_TEXT_MAX_BYTES} UTF-8 bytes and this message has ${bytes}.`
+    )
+  }
+}
+
+function tooLong(message: string): ContractError {
+  return new ContractError({
+    code: "validation_error",
+    message,
+    status: 400,
+    details: [{ path: "text", message }],
+  })
+}
+
+// Un comentario saliente que Meta rechazó no tiene `ig_comment_id`, así que no
+// se le puede contestar: no existe del lado de Instagram.
+function requirePublishedComment(comment: CommentRecord): string {
+  if (!comment.providerCommentId) throw notFound("Comment")
+  return comment.providerCommentId
+}
+
+function providerFailure(
+  kind: "invalid_token" | "rejected" | "unavailable",
+  message: string,
+  persistedId: string
+): ContractError {
+  return new ContractError({
+    code: kind === "unavailable" ? "provider_unavailable" : "provider_rejected",
+    message,
+    status: kind === "unavailable" ? 502 : 422,
+    details: [
+      { message: "The failed attempt was persisted.", messageId: persistedId },
+    ],
+  })
+}
+
+function parseWebhookJson(raw: string): unknown {
+  try {
+    return JSON.parse(raw) as unknown
+  } catch {
+    throw new ContractError({
+      code: "invalid_json",
+      message: "The request body is not valid JSON.",
+      status: 400,
+    })
+  }
 }
 
 function invalidSignature(provider: string): ContractError {

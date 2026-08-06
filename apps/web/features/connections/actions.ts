@@ -9,7 +9,7 @@ import {
   InvalidWebhookUrlError,
   updatePageWebhookUrl,
 } from "@/lib/pages/page-registry"
-import { unsubscribeFromWebhook } from "@/lib/meta"
+import { unsubscribeChannelWebhook } from "@/lib/pages/channel-webhook"
 import { posthog } from "@/lib/posthog"
 
 export type ConnectionActionState = {
@@ -109,10 +109,11 @@ export async function disconnectPageAction(
 
   if (pageToUnsubscribe) {
     try {
-      await unsubscribeFromWebhook(
-        pageToUnsubscribe.page.metaPageId,
-        pageToUnsubscribe.pageAccessToken
-      )
+      await unsubscribeChannelWebhook({
+        channel: pageToUnsubscribe.page.channel,
+        metaPageId: pageToUnsubscribe.page.metaPageId,
+        accessToken: pageToUnsubscribe.pageAccessToken,
+      })
     } catch (error) {
       console.error(
         "meta webhook unsubscribe failed",

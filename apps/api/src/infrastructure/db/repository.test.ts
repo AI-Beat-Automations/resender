@@ -194,7 +194,9 @@ describe("inbound atomicity and recovery", () => {
     clock.set("2026-07-29T18:02:00.000Z")
     await expect(
       repository.findRecoverableJobs({ limit: 100, leaseSeconds: 120 })
-    ).resolves.toEqual([{ jobId: "job_1", messageId: "message_1" }])
+    ).resolves.toEqual([
+      { jobId: "job_1", messageId: "message_1", commentId: null },
+    ])
 
     await expect(
       repository.findRecoverableJobs({ limit: 100, leaseSeconds: 120 })
@@ -246,7 +248,9 @@ describe("inbound atomicity and recovery", () => {
       )
       await expect(
         repository.findRecoverableJobs({ limit: 100, leaseSeconds: 120 })
-      ).resolves.toEqual([{ jobId: "job_1", messageId: "message_1" }])
+      ).resolves.toEqual([
+        { jobId: "job_1", messageId: "message_1", commentId: null },
+      ])
     }
   )
 
@@ -269,7 +273,9 @@ describe("inbound atomicity and recovery", () => {
     clock.set("2026-07-29T18:02:00.000Z")
     await expect(
       repository.findRecoverableJobs({ limit: 100, leaseSeconds: 120 })
-    ).resolves.toEqual([{ jobId: "job_1", messageId: "message_1" }])
+    ).resolves.toEqual([
+      { jobId: "job_1", messageId: "message_1", commentId: null },
+    ])
     expect(harness.jobs[0]).toMatchObject({
       status: "pending",
       lastError: "recovered stale processing job",
@@ -490,11 +496,14 @@ function pageRecord(): PageRecord {
   return {
     id: "7ac2cc32-38cf-4d41-8c73-c6cf640d5b15",
     tenantId: "6b402566-9e1d-4739-bb61-81ac615a5469",
+    channel: "messenger",
     providerPageId: "provider_page_1",
     name: "Support",
+    username: null,
     status: "active",
     tokenStatus: "valid",
     tokenError: null,
+    tokenExpiresAt: null,
     webhookUrl: "https://example.com/webhook",
     pageAccessTokenEncrypted: "encrypted",
     webhookSigningSecretEncrypted: "encrypted-secret",

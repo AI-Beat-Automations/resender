@@ -7,7 +7,7 @@ import {
   type QuotaNoticeView,
 } from "@/features/billing/ui/quota-notice-bar"
 import { AppSidebar } from "@/features/shell/ui/app-sidebar"
-import { isUserWaitlisted } from "@/lib/auth/waitlist"
+import { resolveProductAccess } from "@/lib/auth/waitlist"
 import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
 import type { TenantEntitlement } from "@/lib/billing/entitlements"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
@@ -22,7 +22,12 @@ export default async function ProductLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   const session = await auth()
   if (!session?.user?.id) redirect("/login")
-  if (await isUserWaitlisted(session.user.id)) redirect("/waitlist")
+  // Sesión firmada que apunta a un usuario inexistente: la credencial es
+  // basura y solo se arregla autenticándose de nuevo. `/login` no rebota de
+  // vuelta porque comprueba lo mismo antes de mandar al producto.
+  const access = await resolveProductAccess(session.user.id)
+  if (access === "unknown_user") redirect("/login")
+  if (access === "waitlisted") redirect("/waitlist")
   if (!(await hasActiveSubscription(session.user.id))) redirect("/billing")
 
   // El aviso no debe poder tirar el dashboard: si el entitlement no se puede

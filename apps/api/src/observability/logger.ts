@@ -12,6 +12,10 @@ export type LogFields = {
   errorCode?: string
   jobId?: string
   messageId?: string
+  // El otro sujeto posible de un job de entrega desde la migración 0013. Va
+  // aparte y no bajo `messageId` para que las métricas de entregas fallidas no
+  // mezclen dos cosas distintas.
+  commentId?: string
   eventId?: string
   attempt?: number
   queue?: string

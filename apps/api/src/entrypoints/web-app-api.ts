@@ -1,5 +1,6 @@
 import { WorkerEntrypoint } from "cloudflare:workers"
 import type {
+  ConnectInstagramAccountInput,
   ConnectMetaPagesInput,
   ConversationListInput,
   RpcActor,
@@ -103,6 +104,17 @@ export class WebAppApi
   ) {
     return this.run("exchange_meta_authorization_code", actor, () =>
       this.service().exchangeMetaAuthorizationCode(actor, input)
+    )
+  }
+
+  // Un solo método y no dos como en Facebook: Instagram Login autoriza una
+  // cuenta, así que entre el intercambio y la conexión no hay nada que elegir.
+  connectInstagramAccount(
+    actor: RpcActor,
+    input: ConnectInstagramAccountInput
+  ) {
+    return this.run("connect_instagram_account", actor, () =>
+      this.service().connectInstagramAccount(actor, input)
     )
   }
 

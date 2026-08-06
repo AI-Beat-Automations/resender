@@ -12,6 +12,7 @@ import {
   AccessShell,
 } from "@/features/auth/ui/access-shell"
 import { AuthForm } from "@/features/auth/ui/auth-form"
+import { resolveProductAccess } from "@/lib/auth/waitlist"
 
 // Vista de login compartida por `/login` (ES) y `/en/login` (EN). El diseño es
 // el de la consola v2 (ADR 0005); el idioma sale del diccionario (ADR 0006).
@@ -22,8 +23,19 @@ export async function LoginView({
   lang: Locale
   passwordChanged?: boolean
 }) {
+  // Solo rebota al producto quien de verdad puede entrar. Con `session != null`
+  // alcanzaba mientras toda sesión firmada correspondiera a un usuario real;
+  // una sesión huérfana (cookie de otra base, cuenta borrada) entraba acá, se
+  // iba a `/connections`, el gate la devolvía y el navegador quedaba recargando
+  // entre las dos rutas para siempre. Mostrar el formulario rompe el ciclo y
+  // además lo arregla: autenticarse otra vez reemplaza el JWT inservible.
   const session = await auth()
-  if (session?.user?.id) redirect("/connections")
+  if (
+    session?.user?.id &&
+    (await resolveProductAccess(session.user.id)) === "allowed"
+  ) {
+    redirect("/connections")
+  }
 
   const t = getDictionary(lang).auth
 

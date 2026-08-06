@@ -1,6 +1,28 @@
 # Resender
 
-Resender is a Messenger gateway and durable log for external automations.
+Resender is a Meta messaging gateway and durable log for external automations.
+
+## Channels
+
+Two channels, discriminated by `connected_pages.channel`:
+
+| | `messenger` | `instagram` |
+|---|---|---|
+| What connects | a Facebook Page | an Instagram professional account |
+| Login | Facebook Login for Business (permissions live in a `config_id`) | Instagram Login (`graph.instagram.com`, explicit `scope`, no Facebook Page needed) |
+| Surfaces | DMs | DMs **and** comments on posts |
+| Token | does not expire | ~60 days, needs refreshing |
+| Webhook signature | `META_APP_SECRET` | `INSTAGRAM_APP_SECRET` |
+| Counts against plan quota / page limit | yes | not for now |
+
+Instagram routes are the Facebook ones with `/instagram` inserted:
+`/api/meta/instagram/{start,callback,webhook,send}` plus
+`/api/meta/instagram/comments/{reply,private-reply}` in `web`, and
+`/webhooks/meta/instagram` plus the `/v1/comments` resource in `api`.
+
+Background reading: `docs/adr/0008-instagram-como-segundo-canal.md` for the
+decision and its trade-offs, `prd_instagram.md` for the built behaviour and the
+Meta dashboard setup, `CONTEXT.md` for the canonical product vocabulary.
 
 ## MVP environment
 
@@ -16,9 +38,23 @@ META_APP_SECRET="meta-app-secret"
 META_VERIFY_TOKEN="meta-webhook-verify-token"
 NEXT_PUBLIC_META_APP_ID="meta-app-id"
 NEXT_PUBLIC_META_CONFIG_ID="meta-login-config-id"
+INSTAGRAM_APP_ID="instagram-app-id"
+INSTAGRAM_APP_SECRET="instagram-app-secret"
+INSTAGRAM_VERIFY_TOKEN="instagram-webhook-verify-token"
 STRIPE_SECRET_KEY="rk_test_your-stripe-restricted-key"
 STRIPE_WEBHOOK_SECRET="whsec_your-stripe-webhook-signing-secret"
 ```
+
+The three `INSTAGRAM_*` variables come from the Meta app's Instagram product
+(**Instagram → API setup with Instagram login**), not from Facebook Login.
+`INSTAGRAM_APP_SECRET` is a **different value** than `META_APP_SECRET`: it signs
+the Instagram webhook and doubles as the OAuth `client_secret`. Signing an
+Instagram webhook with the Facebook secret is the most common misconfiguration
+here, which is why Instagram has its own webhook route in both workers —
+`/api/meta/instagram/webhook` in `web` and `/webhooks/meta/instagram` in `api` —
+instead of sharing the Facebook one. Register both routes separately in the Meta
+app, each with its own verify token, subscribed to the `messages` and `comments`
+fields.
 
 `STRIPE_SECRET_KEY` should be a restricted API key (`rk_…`, Dashboard →
 Developers → API keys → Create restricted key) with only: Customers (write),
@@ -34,6 +70,12 @@ Run database migrations manually after setting `DATABASE_URL`:
 ```bash
 npm --workspace web run db:migrate
 ```
+
+Migrations are shared: `apps/api` reads the same database. `0013_instagram_channel.sql`
+replaces the global unique on `connected_pages.meta_page_id` with `(channel, meta_page_id)`
+and makes the delivery tables accept a message **or** a comment, so both workers must be
+deployed together with it — an `on conflict` or `join` pinned to the old constraints fails
+at runtime.
 
 Generate `TOKEN_ENCRYPTION_KEY` with:
 

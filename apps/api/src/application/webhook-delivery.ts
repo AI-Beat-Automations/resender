@@ -132,7 +132,8 @@ export async function deliverJob(input: {
     event: `webhook_delivery_${outcome.kind}`,
     tenantId: claimed.tenantId,
     jobId: claimed.id,
-    messageId: claimed.messageId,
+    messageId: claimed.messageId ?? undefined,
+    commentId: claimed.commentId ?? undefined,
     eventId: claimed.eventId,
     attempt: claimed.attemptCount,
     status: outcome.statusCode ?? undefined,
@@ -231,20 +232,34 @@ export async function recoverWebhookJobs(
     jobs.map((job) =>
       env.WEBHOOK_DELIVERIES.send({
         jobId: job.jobId,
-        messageId: job.messageId,
+        ...(job.messageId ? { messageId: job.messageId } : {}),
+        ...(job.commentId ? { commentId: job.commentId } : {}),
       } satisfies QueuePayload)
     )
   )
   return jobs.length
 }
 
+// El sujeto pasó a ser opcional en el payload de la cola. Lo único que la
+// entrega necesita es el `jobId` —el job sabe de qué cuelga—, y `messageId` /
+// `commentId` viajan solo como contexto de log.
+//
+// Exigir `messageId` como antes habría descartado en silencio todos los jobs de
+// comentario; aflojarlo, en cambio, deja que los mensajes que ya estaban en
+// vuelo al desplegar sigan parseando igual.
 function parseQueuePayload(value: unknown): QueuePayload | null {
   if (!value || typeof value !== "object") return null
   const record = value as Record<string, unknown>
-  return typeof record.jobId === "string" &&
-    typeof record.messageId === "string"
-    ? { jobId: record.jobId, messageId: record.messageId }
-    : null
+  if (typeof record.jobId !== "string") return null
+  return {
+    jobId: record.jobId,
+    ...(typeof record.messageId === "string"
+      ? { messageId: record.messageId }
+      : {}),
+    ...(typeof record.commentId === "string"
+      ? { commentId: record.commentId }
+      : {}),
+  }
 }
 
 function retryDelay(attempt: number): number {

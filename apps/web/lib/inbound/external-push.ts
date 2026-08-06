@@ -1,21 +1,48 @@
 import { getSql } from "@/lib/db"
+import type { InstagramCommentRecord } from "@/lib/comments/comment-log"
 import type {
   ConversationRecord,
   MessageRecord,
 } from "@/lib/messages/message-log"
-import type { ConnectedPageRecord } from "@/lib/pages/page-registry"
+import type {
+  ConnectedPageRecord,
+  PageChannel,
+} from "@/lib/pages/page-registry"
 import { normalizeWebhookUrl } from "@/lib/pages/webhook-url"
 import { posthog } from "@/lib/posthog"
-import type { InboundMetaEventType } from "./meta-webhook"
+import type { InboundEventType } from "./inbound-event"
+
+// Sujeto de la entrega. `external_webhook_deliveries` acepta desde la migración
+// 0013 un mensaje **o** un comentario, con un check de que sea exactamente uno;
+// este tipo es esa restricción expresada en TypeScript, para que no se pueda
+// construir una entrega sin sujeto ni con los dos.
+export type DeliverySubject =
+  | { kind: "message"; id: string }
+  | { kind: "comment"; id: string }
 
 export type InboundPushPayload = {
+  // Discrimina el tipo de evento sin que el consumidor tenga que adivinar por
+  // qué claves trae el objeto. Un tenant recibe mensajes y comentarios en el
+  // mismo endpoint, y `switch (payload.type)` es todo lo que necesita.
+  type: "message"
   tenant: { id: string }
-  page: { id: string; metaPageId: string; name: string }
+  // `channel` y `username` son campos nuevos y siempre presentes, también en
+  // Messenger (`username` va null ahí). Un tenant con los dos canales apuntando
+  // al mismo webhook necesita distinguir de cuál vino el mensaje, y una forma
+  // uniforme es más fácil de consumir que una que cambia según el canal.
+  // Agregar campos es compatible: los consumidores existentes los ignoran.
+  page: {
+    id: string
+    channel: PageChannel
+    metaPageId: string
+    name: string
+    username: string | null
+  }
   conversation: { id: string; contactId: string }
   message: {
     id: string
     metaMessageId: string | null
-    eventType: InboundMetaEventType
+    eventType: InboundEventType
     postbackPayload: string | null
     direction: "inbound"
     status: "received"
@@ -28,15 +55,18 @@ export function buildInboundPushPayload(input: {
   page: ConnectedPageRecord
   conversation: ConversationRecord
   message: MessageRecord
-  eventType: InboundMetaEventType
+  eventType: InboundEventType
   postbackPayload: string | null
 }): InboundPushPayload {
   return {
+    type: "message",
     tenant: { id: input.message.tenantId },
     page: {
       id: input.page.id,
+      channel: input.page.channel,
       metaPageId: input.page.metaPageId,
       name: input.page.name,
+      username: input.page.username,
     },
     conversation: {
       id: input.conversation.id,
@@ -55,15 +85,75 @@ export function buildInboundPushPayload(input: {
   }
 }
 
+export type InboundCommentPushPayload = {
+  type: "comment"
+  tenant: { id: string }
+  page: {
+    id: string
+    channel: PageChannel
+    metaPageId: string
+    name: string
+    username: string | null
+  }
+  comment: {
+    id: string
+    igCommentId: string | null
+    // Informado si el comentario responde a otro. Es lo que le permite al
+    // consumidor reconstruir el hilo sin volver a consultar a Meta.
+    parentIgCommentId: string | null
+    mediaId: string
+    mediaProductType: string | null
+    from: { igId: string; username: string | null }
+    direction: "inbound"
+    status: "received"
+    text: string
+    createdAt: string
+  }
+}
+
+export function buildInboundCommentPayload(input: {
+  page: ConnectedPageRecord
+  comment: InstagramCommentRecord
+}): InboundCommentPushPayload {
+  return {
+    type: "comment",
+    tenant: { id: input.comment.tenantId },
+    page: {
+      id: input.page.id,
+      channel: input.page.channel,
+      metaPageId: input.page.metaPageId,
+      name: input.page.name,
+      username: input.page.username,
+    },
+    comment: {
+      id: input.comment.id,
+      igCommentId: input.comment.igCommentId,
+      parentIgCommentId: input.comment.parentIgCommentId,
+      mediaId: input.comment.mediaId,
+      mediaProductType: input.comment.mediaProductType,
+      from: {
+        igId: input.comment.fromIgId,
+        username: input.comment.fromUsername,
+      },
+      direction: "inbound",
+      status: "received",
+      text: input.comment.text,
+      createdAt: input.comment.createdAt.toISOString(),
+    },
+  }
+}
+
+export type PushPayload = InboundPushPayload | InboundCommentPushPayload
+
 // El motivo es parametrizable porque hay más de una razón para no entregar: la
 // página sin `webhookUrl` y la cuenta restringida (ADR 0003), que persiste el
 // entrante pero deja de reenviarlo.
 export async function recordSkippedDelivery(
-  messageId: string,
+  subject: DeliverySubject,
   reason = "webhookUrl not configured"
 ) {
   await recordDelivery({
-    messageId,
+    subject,
     webhookUrl: null,
     status: "skipped",
     statusCode: null,
@@ -77,10 +167,13 @@ export async function recordSkippedDelivery(
 const MAX_ATTEMPTS = 3
 const RETRY_DELAYS_MS = [1000, 3000]
 
-export async function pushInboundMessage(input: {
-  messageId: string
+// Sirve a los dos sujetos: el consumidor del tenant y la política de reintentos
+// son los mismos para un mensaje y para un comentario, y por eso la migración
+// 0013 relajó `external_webhook_deliveries` en vez de crear una segunda tabla.
+export async function pushInboundEvent(input: {
+  subject: DeliverySubject
   webhookUrl: string
-  payload: InboundPushPayload
+  payload: PushPayload
 }) {
   const normalized = normalizeWebhookUrl(input.webhookUrl)
   if (!normalized.ok || !normalized.value) {
@@ -88,7 +181,7 @@ export async function pushInboundMessage(input: {
       ? "webhookUrl not configured"
       : normalized.error
     await recordDelivery({
-      messageId: input.messageId,
+      subject: input.subject,
       webhookUrl: input.webhookUrl,
       status: "failed",
       statusCode: null,
@@ -96,7 +189,7 @@ export async function pushInboundMessage(input: {
       attempt: 1,
     })
     await captureDeliveryFailed(input.payload.tenant.id, {
-      message_id: input.messageId,
+      ...subjectProperties(input.subject),
       reason: deliveryError,
     })
     return
@@ -108,7 +201,7 @@ export async function pushInboundMessage(input: {
     const result = await attemptPush(webhookUrl, input.payload)
 
     await recordDelivery({
-      messageId: input.messageId,
+      subject: input.subject,
       webhookUrl,
       status: result.ok ? "success" : "failed",
       statusCode: result.statusCode,
@@ -121,7 +214,7 @@ export async function pushInboundMessage(input: {
     // Se reporta a PostHog solo el fallo definitivo, no cada intento.
     if (!result.retryable || attempt === MAX_ATTEMPTS) {
       await captureDeliveryFailed(input.payload.tenant.id, {
-        message_id: input.messageId,
+        ...subjectProperties(input.subject),
         status_code: result.statusCode,
         reason: result.error,
         attempt,
@@ -136,7 +229,7 @@ export async function pushInboundMessage(input: {
   }
 }
 
-async function attemptPush(webhookUrl: string, payload: InboundPushPayload) {
+async function attemptPush(webhookUrl: string, payload: PushPayload) {
   try {
     const response = await fetch(webhookUrl, {
       method: "POST",
@@ -177,8 +270,17 @@ async function captureDeliveryFailed(
   await posthog.flush()
 }
 
+// Las propiedades del evento de PostHog nombran el sujeto real. Mandar el id de
+// un comentario bajo la clave `message_id` haría que las métricas de entregas
+// fallidas mezclaran dos cosas distintas.
+function subjectProperties(subject: DeliverySubject) {
+  return subject.kind === "comment"
+    ? { instagram_comment_id: subject.id }
+    : { message_id: subject.id }
+}
+
 async function recordDelivery(input: {
-  messageId: string
+  subject: DeliverySubject
   webhookUrl: string | null
   status: "skipped" | "success" | "failed"
   statusCode: number | null
@@ -186,9 +288,16 @@ async function recordDelivery(input: {
   attempt: number
 }) {
   const sql = getSql()
+  // Exactamente una de las dos columnas va informada; la otra es null. El check
+  // `num_nonnulls(...) = 1` de la migración 0013 rechaza cualquier otra cosa, y
+  // el tipo `DeliverySubject` hace que no se pueda llegar hasta acá con las dos.
+  const messageId = input.subject.kind === "message" ? input.subject.id : null
+  const commentId = input.subject.kind === "comment" ? input.subject.id : null
+
   await sql`
     insert into external_webhook_deliveries (
       message_id,
+      instagram_comment_id,
       webhook_url,
       status,
       status_code,
@@ -196,7 +305,8 @@ async function recordDelivery(input: {
       attempt
     )
     values (
-      ${input.messageId},
+      ${messageId},
+      ${commentId},
       ${input.webhookUrl},
       ${input.status},
       ${input.statusCode},
