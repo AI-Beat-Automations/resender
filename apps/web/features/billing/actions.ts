@@ -66,6 +66,8 @@ export async function startCheckout(lookupKey: string): Promise<void> {
     mode: "subscription",
     customer: customerId,
     line_items: [{ price: price.id, quantity: 1 }],
+    // Promo codes / coupons from the Stripe Dashboard (Live or Test).
+    allow_promotion_codes: true,
     metadata: { tenantId: session.user.id },
     subscription_data: { metadata: { tenantId: session.user.id } },
     success_url: `${appUrl}/billing/success?session_id={CHECKOUT_SESSION_ID}`,

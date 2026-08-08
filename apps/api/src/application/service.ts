@@ -765,6 +765,8 @@ export class ApiService {
         mode: "subscription",
         customer: customerId,
         line_items: [{ price: price.id, quantity: 1 }],
+        // Promo codes / coupons from the Stripe Dashboard (Live or Test).
+        allow_promotion_codes: true,
         metadata: { tenantId: user.id },
         subscription_data: { metadata: { tenantId: user.id } },
         success_url: appendPath(
