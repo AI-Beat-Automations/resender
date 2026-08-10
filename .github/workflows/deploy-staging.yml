@@ -1,0 +1,57 @@
+name: Deploy staging
+
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      # `opennextjs-cloudflare deploy --env staging` NO propaga el flag a
+      # wrangler (cloudflare/workers-sdk#11741): el deploy saldría contra el
+      # Worker de producción. La variable sí la lee wrangler, así que este es
+      # el único mecanismo confiable para seleccionar el ambiente.
+      # Va a nivel de job porque tanto `build` como `deploy` resuelven la
+      # config de wrangler.
+      CLOUDFLARE_ENV: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Mismo orden que producción: el DDL corre en Node antes del deploy, y
+      # contra el string directo de Neon (no el pooled) porque PgBouncer no
+      # soporta las sentencias de migración.
+      # Apunta a la branch de Neon de staging, no a la base productiva.
+      - name: Run database migrations
+        run: npm run db:migrate -w web
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_MIGRATIONS_STAGING }}
+
+      - name: Build and deploy to Cloudflare Workers (staging)
+        run: npm run deploy -w web
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Build-time: las NEXT_PUBLIC_* se inlinean en el bundle, así que no
+          # basta con tener secretos de staging en el Worker — si acá se filtran
+          # los valores de producción, el bundle de staging manda eventos a
+          # PostHog de prod y abre el login de la app de Meta productiva.
+          NEXT_PUBLIC_META_APP_ID: ${{ vars.NEXT_PUBLIC_META_APP_ID_STAGING }}
+          NEXT_PUBLIC_META_CONFIG_ID: ${{ vars.NEXT_PUBLIC_META_CONFIG_ID_STAGING }}
+          NEXT_PUBLIC_POSTHOG_KEY: ${{ vars.NEXT_PUBLIC_POSTHOG_KEY_STAGING }}
+          NEXT_PUBLIC_POSTHOG_HOST: ${{ vars.NEXT_PUBLIC_POSTHOG_HOST_STAGING }}
+          # Solo para que `next build` tenga un valor presente; en runtime el
+          # Worker usa el secreto cargado con `wrangler secret put --env staging`.
+          DATABASE_URL: ${{ secrets.DATABASE_URL_MIGRATIONS_STAGING }}

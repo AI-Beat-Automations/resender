@@ -40,12 +40,24 @@ jobs:
           NEXT_PUBLIC_META_APP_ID: "0"
           NEXT_PUBLIC_META_CONFIG_ID: "0"
 
-  # Sube una versión de preview del Worker por PR (no recibe tráfico de
-  # producción; imprime una preview URL en el log del job).
+  # Sube una versión del Worker por PR sin promoverla a deployment: valida que
+  # el bundle de OpenNext no solo compile sino que Cloudflare lo acepte, que es
+  # el modo típico de fallar (tamaño del bundle, APIs fuera de nodejs_compat).
+  #
+  # Sube contra `web-staging`, no contra `web`: el historial de versiones de
+  # producción no debe llenarse de builds de PRs sin revisar.
+  #
+  # No imprime una preview URL: `preview_urls` está en false (ver
+  # apps/web/wrangler.jsonc) para no publicar un host indexable por deploy.
+  # Para ver el cambio corriendo están `wrangler dev` y la rama `staging`.
   preview:
     needs: ci
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    env:
+      # Igual que en deploy-staging.yml: el flag --env no llega a wrangler a
+      # través de opennextjs-cloudflare (workers-sdk#11741).
+      CLOUDFLARE_ENV: staging
     steps:
       - uses: actions/checkout@v4
 
@@ -61,7 +73,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          NEXT_PUBLIC_META_APP_ID: ${{ vars.NEXT_PUBLIC_META_APP_ID }}
-          NEXT_PUBLIC_META_CONFIG_ID: ${{ vars.NEXT_PUBLIC_META_CONFIG_ID }}
-          NEXT_PUBLIC_POSTHOG_KEY: ${{ vars.NEXT_PUBLIC_POSTHOG_KEY }}
-          NEXT_PUBLIC_POSTHOG_HOST: ${{ vars.NEXT_PUBLIC_POSTHOG_HOST }}
+          NEXT_PUBLIC_META_APP_ID: ${{ vars.NEXT_PUBLIC_META_APP_ID_STAGING }}
+          NEXT_PUBLIC_META_CONFIG_ID: ${{ vars.NEXT_PUBLIC_META_CONFIG_ID_STAGING }}
+          NEXT_PUBLIC_POSTHOG_KEY: ${{ vars.NEXT_PUBLIC_POSTHOG_KEY_STAGING }}
+          NEXT_PUBLIC_POSTHOG_HOST: ${{ vars.NEXT_PUBLIC_POSTHOG_HOST_STAGING }}
