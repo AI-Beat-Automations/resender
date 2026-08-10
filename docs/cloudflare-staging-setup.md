@@ -66,27 +66,46 @@ Va a fallar en runtime por falta de secretos — está bien, el objetivo es que
 Los secretos **no se heredan** entre ambientes: hay que cargar los ocho de
 nuevo con `--env staging`. Cada comando pide el valor por stdin.
 
+Usa `versions secret put` y no `secret put`. En `web-staging` el job `preview`
+de CI sube una versión por cada push a cualquier PR, y esas versiones no se
+promueven a deployment. Cuando la última versión no es la desplegada, wrangler
+rechaza `secret put` con _"the latest version of your Worker isn't currently
+deployed"_ — no es un error de configuración, es la protección contra promover
+código sin querer al editar un secreto. `versions secret put` no toca el
+tráfico: crea una versión nueva con el secreto y la deja sin desplegar.
+
 ```sh
 cd apps/web
 
-npx wrangler secret put DATABASE_URL --env staging          # string POOLED de la branch staging (paso 1)
-npx wrangler secret put AUTH_SECRET --env staging           # openssl rand -base64 32 (uno NUEVO, no el de prod)
-npx wrangler secret put TOKEN_ENCRYPTION_KEY --env staging  # openssl rand -hex 32 (uno NUEVO)
-npx wrangler secret put META_APP_SECRET --env staging       # app de Meta de desarrollo
-npx wrangler secret put META_VERIFY_TOKEN --env staging     # el que registres en el paso 7
-npx wrangler secret put STRIPE_SECRET_KEY --env staging     # sk_test_...
-npx wrangler secret put STRIPE_WEBHOOK_SECRET --env staging # whsec_... del paso 8
-npx wrangler secret put APP_URL --env staging               # https://staging.resender.dev
+npx wrangler versions secret put DATABASE_URL --env staging          # string POOLED de la branch staging (paso 1)
+npx wrangler versions secret put AUTH_SECRET --env staging           # openssl rand -base64 32 (uno NUEVO, no el de prod)
+npx wrangler versions secret put TOKEN_ENCRYPTION_KEY --env staging  # openssl rand -hex 32 (uno NUEVO)
+npx wrangler versions secret put APP_URL --env staging               # https://staging.resender.dev
+npx wrangler versions secret put META_APP_SECRET --env staging       # app de Meta de desarrollo
+npx wrangler versions secret put META_VERIFY_TOKEN --env staging     # el que registres en el paso 7
+npx wrangler versions secret put STRIPE_SECRET_KEY --env staging     # sk_test_...
+npx wrangler versions secret put STRIPE_WEBHOOK_SECRET --env staging # whsec_... del paso 8
+
+# Promueve la versión que ya tiene los ocho secretos.
+npx wrangler versions deploy --env staging
 ```
 
-Verifica con `npx wrangler secret list --env staging` (deben salir los 8).
+Verifica con `npx wrangler versions secret list --env staging` (deben salir los 8).
 
-> **No reuses las llaves de producción.** `AUTH_SECRET` compartido significa
-> que una sesión emitida en staging es válida en producción. `TOKEN_ENCRYPTION_KEY`
-> nuevo es correcto acá: la branch de Neon copió page tokens cifrados con la
-> llave vieja, así que las conexiones de Meta en staging quedan ilegibles y hay
-> que reconectarlas — que es justo lo que quieres, tokens productivos no deben
-> ser descifrables desde staging.
+En producción sigue valiendo `wrangler secret put` a secas: nada sube versiones
+sin desplegar contra `web`.
+
+> **No reuses las llaves de producción.** Tres consecuencias, las tres
+> deseadas:
+>
+> - `AUTH_SECRET` compartido haría que una sesión emitida en staging fuera
+>   válida en producción.
+> - `TOKEN_ENCRYPTION_KEY` nuevo deja ilegibles los page tokens que la branch de
+>   Neon copió cifrados con la llave vieja. Hay que reconectar las páginas desde
+>   la UI; un token productivo no debe ser descifrable desde staging.
+> - Las API keys copiadas tampoco validan: `lib/api-keys/tokens.ts` usa
+>   `API_KEY_PEPPER ?? AUTH_SECRET` y no hay pepper configurado, así que el hash
+>   depende del `AUTH_SECRET`. Hay que generar keys nuevas en staging.
 
 ---
 

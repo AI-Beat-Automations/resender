@@ -66,6 +66,12 @@ jobs:
   # No imprime una preview URL: `preview_urls` está en false (ver
   # apps/web/wrangler.jsonc) para no publicar un host indexable por deploy.
   # Para ver el cambio corriendo están `wrangler dev` y la rama `staging`.
+  #
+  # Efecto secundario: deja a `web-staging` con una versión más nueva que la
+  # desplegada, y en ese estado wrangler rechaza `secret put` ("the latest
+  # version of your Worker isn't currently deployed"). Por eso los secretos de
+  # staging se cargan con `wrangler versions secret put`, que no toca el
+  # tráfico — ver docs/cloudflare-staging-setup.md, paso 3.
   preview:
     needs: ci
     if: github.event.pull_request.head.repo.full_name == github.repository
