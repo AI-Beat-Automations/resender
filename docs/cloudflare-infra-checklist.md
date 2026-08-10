@@ -3,6 +3,10 @@
 > Contraparte del trabajo de código en la rama `feat/cloudflare-opennext`.
 > Todo lo de esta guía se hace en dashboards/CLI, no toca el repo.
 >
+> **Esta guía cubre el entorno de producción.** Para montar staging
+> (`web-staging` / `staging.resender.dev`) ver
+> [cloudflare-staging-setup.md](./cloudflare-staging-setup.md).
+>
 > **Orden recomendado:** los pasos 1–4 se pueden hacer en cualquier momento.
 > El paso 6 (primer deploy) necesita 1, 3 y 5. El custom domain (6.3) necesita
 > que la zona DNS esté activa (paso 2, puede tardar horas). Meta y Stripe
