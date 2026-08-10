@@ -194,32 +194,73 @@ deploy, y luego los smoke tests sobre `https://staging.resender.dev`:
 - [ ] Mensaje real a la página de la app de desarrollo → aparece en `/messages`.
 - [ ] `npx wrangler tail --env staging` no muestra errores.
 
-### Recomendado: proteger `main` y `staging`
+---
 
-Repo → **Settings** → **Branches** → _Add rule_, sobre `main`:
+## Paso 10 — Cerrar el flujo en GitHub
+
+El flujo es: **feature → `staging` → `main`**. Los workflows ya lo soportan,
+pero sin esta configuración nada lo obliga y el entorno queda de decoración.
+
+### 10.1 Base por defecto de los PRs
+
+Repo → **Settings** → **General** → **Default branch** → cambia a `staging`.
+
+Esto no cambia qué se despliega a producción (eso lo decide el trigger de
+`deploy.yml`, que sigue apuntando a `main`). Lo que hace es que GitHub proponga
+`staging` como base al abrir un PR, en vez de `main`. Sin esto, cada PR nuevo
+apunta a `main` por defecto y hay que acordarse de corregirlo a mano.
+
+El job `branch-flow` de `ci.yml` es la red de seguridad: falla cualquier PR a
+`main` cuyo head no sea `staging`.
+
+### 10.2 Reglas de rama
+
+Repo → **Settings** → **Branches** → _Add rule_. Una regla para `main` y otra
+para `staging`, ambas con:
 
 - _Require a pull request before merging_
-- _Require status checks to pass_ → selecciona los jobs `ci` y `preview`
+- _Require status checks to pass_ → marca `ci` y `preview`
 
-Sin esto nada obliga a que un cambio pase por staging antes de producción, y el
-entorno queda como decoración.
+En la de `main`, marca además `branch-flow`. Un check solo es obligatorio si
+está en esta lista: si no, GitHub lo muestra rojo y deja mergear igual.
+
+### 10.3 Método de merge para `staging` → `main`
+
+Usa **"Create a merge commit"** en ese PR, no _Squash_ ni _Rebase_.
+
+Squash crea un commit nuevo en `main` con hash distinto de los de `staging`.
+Las ramas quedan divergidas para siempre y el próximo PR de `staging` a `main`
+muestra como "nuevos" todos los cambios que ya están en producción. Con merge
+commit los hashes se comparten y cada PR muestra solo lo que falta promover.
+
+Puedes dejar squash habilitado para los PRs de feature → `staging`, donde sí
+conviene (colapsa el ruido de "wip", "fix lint" en un commit legible).
 
 ---
 
 ## Flujo resultante
 
 ```text
-PR  ──────► ci.yml: lint, typecheck, test, build
-            + sube una versión (sin promover) contra web-staging
-
-merge a `staging` ──► deploy-staging.yml
-                      migraciones (Neon staging) → deploy a web-staging
-                      https://staging.resender.dev
-
-merge de `staging` a `main` ──► deploy.yml
-                                migraciones (Neon prod) → deploy a web
-                                https://resender.dev
+feature branch
+   │
+   │ PR ──► ci.yml: lint, typecheck, test, build
+   │        + sube una versión (sin promover) contra web-staging
+   ▼
+`staging` ──► deploy-staging.yml
+              migraciones (Neon staging) → deploy a web-staging
+              https://staging.resender.dev
+   │
+   │ PR (merge commit) ──► ci.yml + branch-flow
+   ▼
+`main` ──► deploy.yml
+           migraciones (Neon prod) → deploy a web
+           https://resender.dev
 ```
+
+Cada migración corre dos veces: primero contra la branch de Neon de staging al
+mergear a `staging`, y después contra la productiva al mergear a `main`. Por eso
+importa que las migraciones sean idempotentes y que la branch de staging no
+apunte por error a la base real.
 
 ## Pendiente para la fase 2
 

@@ -8,6 +8,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # `main` solo se toca desde `staging`. Sin esta barrera el flujo se salta
+  # solo: GitHub propone `main` como base por defecto en cada PR nuevo, así que
+  # un feature branch acabaría en producción sin haber pasado por
+  # staging.resender.dev — que es justo el paso que el entorno existe para dar.
+  branch-flow:
+    if: github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Solo `staging` puede mergear a `main`
+        if: github.event.pull_request.head.ref != 'staging'
+        run: |
+          echo "::error::Este PR va de '${{ github.event.pull_request.head.ref }}' a 'main'."
+          echo "::error::El flujo es: feature -> staging (se despliega a staging.resender.dev) -> main."
+          echo "::error::Cambia la base del PR a 'staging'."
+          exit 1
+
   ci:
     runs-on: ubuntu-latest
     steps:
