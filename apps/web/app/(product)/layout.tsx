@@ -14,7 +14,7 @@ import { hasActiveSubscription } from "@/lib/billing/subscription"
 import { privatePageMetadata } from "@/lib/seo"
 
 // La app logueada no tiene nada que hacer en el índice. Lo heredan
-// /connections, /messages y /settings.
+// /connections, /inbox y /settings.
 export const metadata = privatePageMetadata("Resender")
 
 export default async function ProductLayout({

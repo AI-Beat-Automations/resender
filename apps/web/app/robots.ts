@@ -17,7 +17,7 @@ const PRIVATE_PATHS = [
   "/en/register",
   "/billing",
   "/connections",
-  "/messages",
+  "/inbox",
   "/settings",
 ]
 

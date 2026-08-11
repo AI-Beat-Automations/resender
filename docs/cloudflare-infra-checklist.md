@@ -199,7 +199,7 @@ cada merge a `main` corre migraciones contra Neon y deploya a producción.
 4. Confirma que las suscripciones de página incluyen los campos **messages** y
    **messaging_postbacks**.
 5. Prueba: mándale un mensaje a la página conectada → debe aparecer en
-   `/messages` del dashboard y generar una fila en `external_webhook_deliveries`.
+   `/inbox` del dashboard y generar una fila en `external_webhook_deliveries`.
 
 ---
 

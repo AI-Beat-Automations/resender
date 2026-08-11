@@ -29,6 +29,12 @@ const nextConfig: NextConfig = {
     return [
       { source: "/docs", destination: DOCS_URL, permanent: true },
       { source: "/docs/:path*", destination: DOCS_URL, permanent: true },
+      // `/messages` pasó a ser `/inbox` cuando la pantalla dejó de ser solo
+      // DMs. El 308 (Next no usa 301: preserva el método) mantiene vivos los
+      // enlaces guardados y el histórico de PostHog. Los query values viajan
+      // solos, así que un `/messages?conversation=…` compartido sigue abriendo
+      // la misma conversación.
+      { source: "/messages", destination: "/inbox", permanent: true },
     ]
   },
 }

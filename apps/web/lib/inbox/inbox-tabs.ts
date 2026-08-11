@@ -27,7 +27,9 @@ export function isInboxTab(value: unknown): value is InboxTab {
 // `searchParams` de Next puede entregar `string`, `string[]` (`?tab=a&tab=b`)
 // o `undefined`. El parámetro es entrada del usuario, no un contrato: cualquier
 // valor que no sea un modo conocido cae en el de por defecto.
-export function resolveInboxTab(param: string | string[] | undefined): InboxTab {
+export function resolveInboxTab(
+  param: string | string[] | undefined
+): InboxTab {
   const value = firstParam(param)
   return isInboxTab(value) ? value : DEFAULT_INBOX_TAB
 }

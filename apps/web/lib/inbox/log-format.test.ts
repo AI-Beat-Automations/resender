@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest"
 
-import { formatDayLabel, formatLogTimestamp, formatMessageMeta } from "./log-format"
+import {
+  formatDayLabel,
+  formatLogTimestamp,
+  formatMessageMeta,
+} from "./log-format"
 
 const NOW = new Date(2026, 6, 27, 15, 30)
 

@@ -68,9 +68,9 @@ describe("inboxHref", () => {
   })
 
   it("emite la selección de su propio modo", () => {
-    expect(
-      inboxHref({ pageId: "page-1", conversationId: "conv-1" })
-    ).toBe("/inbox?page=page-1&conversation=conv-1")
+    expect(inboxHref({ pageId: "page-1", conversationId: "conv-1" })).toBe(
+      "/inbox?page=page-1&conversation=conv-1"
+    )
     expect(
       inboxHref({
         tab: "comentarios",
