@@ -155,15 +155,21 @@ Los mensajes salientes se persisten tanto en exito como en fallo, usando `status
 Instagram no agrega un campo `channel` al endpoint de Messenger: usa **rutas propias**, que son las de Facebook con `/instagram` insertado. En `apps/web`: `POST /api/meta/instagram/send` (DM, mismo body que Messenger, donde `pageId` es el IG id de la cuenta), `POST /api/meta/instagram/comments/reply` (respuesta pública) y `POST /api/meta/instagram/comments/private-reply` (DM al que comentó). En `apps/api`: `POST /v1/comments/{commentId}/replies` y `POST /v1/comments/{commentId}/private-replies`, donde `{commentId}` sí es el uuid de Resender porque el resto de la API v1 se direcciona por uuid propio.
 Las tres rutas de salida de Instagram comparten la API key del tenant, el header `Idempotency-Key` y la persistencia en éxito y en fallo. En `apps/api`, las respuestas a comentarios **comparten cubeta de rate limit** con el envío de mensajes: son la misma clase de operación —salir hacia Graph por cada evento entrante— y con cubetas separadas un tenant podría duplicar su presión sobre Meta sin tocar su límite.
 
-### Semantica visual de Messages
-En la bitacora, el color principal representa direccion: entrante verde y saliente amarillo. Si un saliente falla, conserva el amarillo pero muestra un indicador de error por estado.
+### Semantica visual de Inbox
+En la bitacora, el color principal representa direccion: entrante verde y saliente amarillo. Si un saliente falla, conserva el amarillo pero muestra un indicador de error por estado. Vale igual para un DM y para una respuesta publica a un comentario: los dos son un ida y vuelta con la misma persona y se leen con las mismas burbujas.
 
-### Estructura de Messages
-La seccion `Messages` se organiza como lista de conversaciones mas vista de hilo. Cada conversacion corresponde a una pagina y un contacto.
-Las conversaciones se ordenan por `lastMessageAt desc` y, al entrar a `Messages`, se abre automaticamente la conversacion mas reciente.
-Cuando un tenant tiene multiples paginas conectadas, `Messages` muestra por defecto conversaciones de todas las paginas con un filtro visible por pagina.
+### Estructura de Inbox
+La seccion se llama `Inbox` y vive en `/inbox`. `/messages` sigue respondiendo con un 308 hacia ella, arrastrando el query string. Tiene **dos modos** en `?tab=`: `mensajes` (el de por defecto, que se omite de la URL) y `comentarios`. El modo es un enlace, no estado de React, y por eso la pantalla entera sigue siendo server component.
+
+En **mensajes**, `Inbox` se organiza como lista de conversaciones mas vista de hilo. Cada conversacion corresponde a una cuenta conectada y un contacto.
+Las conversaciones se ordenan por `lastMessageAt desc` y, al entrar, se abre automaticamente la conversacion mas reciente.
+Cuando un tenant tiene multiples cuentas conectadas, `Inbox` muestra por defecto conversaciones de todas, con un filtro visible por cuenta.
 Mientras no exista resolucion de nombre real del contacto, la UI identifica al contacto por su `contactId` o PSID en formato amigable (IGSID en Instagram).
-Los DMs de Instagram entran a esta misma bitacora, pero `Messages` **todavia no muestra badge de canal ni los comentarios**: la cuenta se distingue por su nombre en el filtro por pagina. Los comentarios no tienen pantalla: hoy solo se ven por el push al `webhookUrl`, y por `GET /v1/comments` cuando `apps/api` atienda produccion.
+Cada fila y la cabecera del hilo llevan **badge de canal**: con Messenger e Instagram en el mismo log, dos filas de cuentas distintas solo se distinguian por el id. La cuenta de Instagram se identifica por `@handle · ig_id`, igual que en `Connections`. La respuesta privada a un comentario es un DM como cualquier otro y aparece en su conversacion; lo unico que la distingue es el sufijo `· respuesta a comentario` en el metadato de la burbuja, que sale de `messages.instagram_source_comment_id`.
+
+En **comentarios**, la unidad de la lista es la **publicacion**, no el comentario suelto ni el contacto: un comentario cuelga de un post y fuera de ese hilo no significa nada. Cada fila muestra el ultimo comentario, la clase de publicacion con su `media_id` y el total; el panel derecho lista los comentarios de esa publicacion en orden cronologico ascendente, entrantes y respuestas publicas, incluidas las que Meta rechazo. La seleccion vive en `?media=<connectedPageId>:<mediaId>`, el par y no el `media_id` solo porque un id de Meta solo es unico dentro de la cuenta que lo publico. Meta no manda titulo ni miniatura en el webhook de comentarios —solo `media.id` y `media_product_type`—, asi que la publicacion se nombra por su clase y su id, que es lo que el usuario cita en soporte. El filtro de cuentas lista **solo Instagram** en este modo: Messenger no tiene comentarios y una pildora que siempre devuelve cero es un control muerto.
+
+Los dos modos son de **solo lectura**: no hay compositor en ninguno, las respuestas salen por la API externa. Decision en `docs/adr/0009-inbox-mensajes-y-comentarios.md`.
 
 ### Pantallas de configuracion
 La gestion de paginas conectadas no vive dentro de `Settings` en el MVP; se realiza en una pantalla separada.
