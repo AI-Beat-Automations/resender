@@ -1,3 +1,9 @@
+import {
+  formatDayLabel,
+  formatLogTimestamp,
+  formatMessageMeta,
+} from "@/lib/inbox/log-format"
+
 import type { ConversationListItem, ThreadMessage } from "./read-model"
 
 // Presentación del log de mensajes (ADR 0005). Módulo puro: sin DB ni red, y
@@ -41,28 +47,6 @@ export type ThreadMessageView = {
 /** Texto del renglón principal cuando la conversación no tiene mensajes. */
 export const NO_MESSAGES_CONTENT = "Todavía no hay mensajes."
 
-const TIME_FORMAT = new Intl.DateTimeFormat("es-ES", {
-  hour: "2-digit",
-  minute: "2-digit",
-})
-
-const SECONDS_FORMAT = new Intl.DateTimeFormat("es-ES", {
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-})
-
-const DAY_FORMAT = new Intl.DateTimeFormat("es-ES", {
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-})
-
-const SHORT_DAY_FORMAT = new Intl.DateTimeFormat("es-ES", {
-  day: "numeric",
-  month: "short",
-})
-
 /**
  * Etiqueta histórica del contacto. Se conserva para no romper llamadas
  * existentes, pero el log no la usa: ahí manda `formatPsidLabel` (ADR 0005).
@@ -83,31 +67,6 @@ export function formatPsidLabel(contactId: string) {
 /** `Café Rioja · 104233889761204`. */
 export function formatPageLabel(page: { name: string; metaPageId: string }) {
   return `${page.name} · ${page.metaPageId}`
-}
-
-/** `hoy 14:02` · `ayer 19:12` · `24 jul` · `24 jul 2025`. */
-export function formatLogTimestamp(value: Date, now: Date) {
-  const days = daysBetween(value, now)
-  if (days === 0) return `hoy ${TIME_FORMAT.format(value)}`
-  if (days === 1) return `ayer ${TIME_FORMAT.format(value)}`
-  if (value.getFullYear() === now.getFullYear()) {
-    return SHORT_DAY_FORMAT.format(value)
-  }
-  return DAY_FORMAT.format(value)
-}
-
-/** `27 jul 2026`, para el separador de fecha del hilo. */
-export function formatDayLabel(value: Date) {
-  return DAY_FORMAT.format(value)
-}
-
-/** `outbound · 14:02:11 · sent`, el patrón del metadato de burbuja. */
-export function formatMessageMeta(message: {
-  direction: string
-  status: string
-  createdAt: Date
-}) {
-  return `${message.direction} · ${SECONDS_FORMAT.format(message.createdAt)} · ${message.status}`
 }
 
 /** Renglón principal del log: el último mensaje, con `Tú: ` si es saliente. */
@@ -163,14 +122,4 @@ export function toThreadMessageViews(
       dayLabel: isNewDay ? dayLabel : null,
     }
   })
-}
-
-function daysBetween(value: Date, now: Date) {
-  const start = startOfDay(value).getTime()
-  const reference = startOfDay(now).getTime()
-  return Math.round((reference - start) / 86_400_000)
-}
-
-function startOfDay(value: Date) {
-  return new Date(value.getFullYear(), value.getMonth(), value.getDate())
 }

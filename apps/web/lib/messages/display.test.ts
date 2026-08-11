@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest"
 import {
   NO_MESSAGES_CONTENT,
   formatContactLabel,
-  formatLogTimestamp,
   toConversationRowView,
   toThreadMessageViews,
 } from "./display"
@@ -105,15 +104,6 @@ describe("toConversationRowView", () => {
     expect(row.content).toBe(NO_MESSAGES_CONTENT)
     expect(row.hasMessages).toBe(false)
     expect(row.failed).toBe(false)
-  })
-})
-
-describe("formatLogTimestamp", () => {
-  it("usa fecha corta fuera de hoy y ayer, con año solo si no es el actual", () => {
-    expect(formatLogTimestamp(new Date(2026, 6, 24, 9, 5), NOW)).toBe("24 jul")
-    expect(formatLogTimestamp(new Date(2025, 6, 24, 9, 5), NOW)).toBe(
-      "24 jul 2025"
-    )
   })
 })
 
