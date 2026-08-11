@@ -1,4 +1,4 @@
-import { Eye, TriangleAlert } from "lucide-react"
+import { ExternalLink, Eye, TriangleAlert } from "lucide-react"
 
 import type { CommentBubbleView } from "@/lib/comments/display"
 import { Badge } from "@workspace/ui/components/badge"
@@ -16,6 +16,7 @@ import { cn } from "@workspace/ui/lib/utils"
 
 export type CommentThreadHeaderView = {
   mediaLabel: string
+  mediaPermalink: string | null
   accountLabel: string
 }
 
@@ -30,8 +31,24 @@ export function CommentThread({
     <section className="flex min-w-0 flex-1 flex-col bg-surface-app">
       <header className="flex items-center gap-3 border-b border-border bg-card px-6 py-4">
         <div className="min-w-0 flex-1">
-          <h2 className="truncate font-mono text-[14px] font-semibold">
-            {header.mediaLabel}
+          {/* El enlace abre el post en Instagram: es lo que el usuario necesita
+              para contestar de verdad, porque acá no hay compositor. Solo
+              aparece si Graph resolvió el permalink. */}
+          <h2 className="truncate text-[14px] font-semibold">
+            {header.mediaPermalink ? (
+              <a
+                href={header.mediaPermalink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex min-w-0 items-center gap-1.5 hover:underline"
+              >
+                <span className="truncate">{header.mediaLabel}</span>
+                <ExternalLink className="size-3 shrink-0" aria-hidden />
+                <span className="sr-only">Abrir en Instagram</span>
+              </a>
+            ) : (
+              header.mediaLabel
+            )}
           </h2>
           <p className="mt-0.5 truncate font-mono text-[11px] text-[var(--text-subtle)]">
             {header.accountLabel}

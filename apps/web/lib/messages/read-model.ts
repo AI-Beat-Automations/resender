@@ -6,7 +6,11 @@ import type { MessageDirection, MessageStatus } from "./message-log"
 export type ConversationListItem = {
   id: string
   contactId: string
+  // Resueltos contra Graph y cacheados (migración 0014); null mientras nadie
+  // haya mirado la conversación, o si Graph no supo resolver el contacto.
   contactName: string | null
+  contactUsername: string | null
+  contactSyncedAt: Date | null
   lastMessageAt: Date
   // `messages` no tiene columna `channel` a propósito: el canal vive en
   // `connected_pages` y se resuelve en este join, una vez por conversación.
@@ -41,6 +45,8 @@ type ConversationListRow = {
   id: string
   contact_id: string
   contact_name: string | null
+  contact_username: string | null
+  contact_synced_at: Date | null
   last_message_at: Date
   page_id: string
   page_channel: PageChannel
@@ -73,6 +79,8 @@ export async function listConversationReadModel(input: {
       c.id,
       c.contact_id,
       c.contact_name,
+      c.contact_username,
+      c.contact_synced_at,
       c.last_message_at,
       p.id as page_id,
       p.channel as page_channel,
@@ -133,6 +141,8 @@ function mapConversationListItem(
     id: row.id,
     contactId: row.contact_id,
     contactName: row.contact_name,
+    contactUsername: row.contact_username,
+    contactSyncedAt: row.contact_synced_at,
     lastMessageAt: row.last_message_at,
     page: {
       id: row.page_id,

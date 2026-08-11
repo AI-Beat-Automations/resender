@@ -279,6 +279,107 @@ export async function fetchInstagramProfile(
   }
 }
 
+export type InstagramContactProfile = {
+  username: string | null
+  name: string | null
+}
+
+export type InstagramMediaInfo = {
+  permalink: string | null
+  caption: string | null
+  mediaProductType: string | null
+}
+
+// Perfil de un **contacto**, no de la cuenta autorizada: el `{igsid}` de quien
+// escribió o comentó. Lo habilita `instagram_business_manage_messages` y solo
+// funciona para quien ya interactuó con la cuenta, que es exactamente el caso.
+//
+// A diferencia del resto del cliente, devuelve null en vez de lanzar. El
+// llamador es la pantalla: sin @handle se cae al IGSID, que es lo que se
+// mostraba antes, y eso no justifica romper un render.
+export async function fetchInstagramContactProfile(
+  accessToken: string,
+  igId: string
+): Promise<InstagramContactProfile | null> {
+  const data = await fetchInstagramNode(accessToken, igId, "name,username")
+  if (!data) return null
+
+  return {
+    username: typeof data.username === "string" ? data.username : null,
+    name: typeof data.name === "string" && data.name ? data.name : null,
+  }
+}
+
+// Publicación comentada. El webhook de comentarios manda `media.id` y nada más,
+// así que el permalink —lo único que permite abrir el post— y el caption —lo
+// único que lo hace reconocible— salen de acá. Mismo contrato que el perfil:
+// null en vez de excepción.
+//
+// `thumbnail_url` existe pero no se pide: la URL del CDN viene firmada y con
+// vencimiento, así que guardarla es guardar algo que caduca solo.
+export async function fetchInstagramMedia(
+  accessToken: string,
+  mediaId: string
+): Promise<InstagramMediaInfo | null> {
+  const data = await fetchInstagramNode(
+    accessToken,
+    mediaId,
+    "permalink,caption,media_product_type"
+  )
+  if (!data) return null
+
+  return {
+    permalink: typeof data.permalink === "string" ? data.permalink : null,
+    caption: typeof data.caption === "string" ? data.caption : null,
+    mediaProductType:
+      typeof data.media_product_type === "string"
+        ? data.media_product_type
+        : null,
+  }
+}
+
+// Lectura de un nodo de Graph por id. Los dos usos son de adorno —etiquetas de
+// pantalla—, así que un fallo se registra y se devuelve null: la pantalla ya
+// sabe dibujarse sin el dato.
+async function fetchInstagramNode(
+  accessToken: string,
+  nodeId: string,
+  fields: string
+): Promise<Record<string, unknown> | null> {
+  const url = new URL(`${GRAPH}/${encodeURIComponent(nodeId)}`)
+  url.searchParams.set("fields", fields)
+  url.searchParams.set("access_token", accessToken)
+
+  try {
+    const res = await fetch(url)
+    const data = unwrapInstagramPayload(await res.json())
+    if (!res.ok) {
+      log({
+        entrypoint: "route",
+        action: "label_resolve",
+        outcome: "failed",
+        reason: "meta_rejected",
+        channel: "instagram",
+        errorCode: extractMetaErrorCode(data) ?? undefined,
+        errorMessage: extractMetaErrorMessage(data) ?? undefined,
+        status: res.status,
+      })
+      return null
+    }
+    return data
+  } catch (error) {
+    log({
+      entrypoint: "route",
+      action: "label_resolve",
+      outcome: "failed",
+      reason: "network_error",
+      channel: "instagram",
+      errorMessage: error instanceof Error ? error.message : String(error),
+    })
+    return null
+  }
+}
+
 // Suscribe la cuenta al webhook del app. A diferencia de Messenger, el endpoint
 // es `/me/subscribed_apps` y no `/{pageId}/subscribed_apps`: el token ya
 // identifica a la cuenta, así que no hay id que pasar.

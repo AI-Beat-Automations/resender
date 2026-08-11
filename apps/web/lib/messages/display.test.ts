@@ -17,6 +17,8 @@ function conversation(
     id: "conv-1",
     contactId: "8837120041",
     contactName: null,
+    contactUsername: null,
+    contactSyncedAt: null,
     lastMessageAt: new Date(2026, 6, 27, 14, 2),
     page: {
       id: "page-1",
@@ -57,14 +59,44 @@ describe("message display helpers", () => {
 })
 
 describe("toConversationRowView", () => {
-  it("identifica al contacto siempre por PSID, aunque hubiera nombre", () => {
-    // Invariante de la ADR 0005: `contact_name` nunca se escribe, así que la
-    // fila del log no puede depender de él ni siquiera cuando viene informado.
+  it("identifica al contacto por @handle cuando Graph lo resolvió", () => {
+    const row = toConversationRowView(
+      conversation({
+        contactUsername: "lori_surianno",
+        contactName: "Lori",
+        contactSyncedAt: new Date(2026, 6, 27, 12, 0),
+      }),
+      NOW
+    )
+
+    expect(row.contactLabel).toBe("@lori_surianno")
+    expect(row.contactName).toBe("Lori")
+  })
+
+  it("no repite el nombre cuando es el mismo @handle", () => {
+    // Instagram devuelve un montón de cuentas donde `name` y `username` son la
+    // misma cadena; pintarla dos veces en el mismo renglón es ruido.
+    const row = toConversationRowView(
+      conversation({
+        contactUsername: "cafe.rioja",
+        contactName: "Cafe.Rioja",
+        contactSyncedAt: new Date(2026, 6, 27, 12, 0),
+      }),
+      NOW
+    )
+
+    expect(row.contactLabel).toBe("@cafe.rioja")
+    expect(row.contactName).toBeNull()
+  })
+
+  it("cae al PSID mientras no haya @handle", () => {
+    // Es el caso de Messenger, donde no hay perfil que pedir, y el de una
+    // conversación que todavía nadie miró.
     expect(toConversationRowView(conversation(), NOW).contactLabel).toBe(
       "psid 8837120041"
     )
     expect(
-      toConversationRowView(conversation({ contactName: "Martina G." }), NOW)
+      toConversationRowView(conversation({ contactUsername: "  " }), NOW)
         .contactLabel
     ).toBe("psid 8837120041")
   })

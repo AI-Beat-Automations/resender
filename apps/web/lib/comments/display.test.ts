@@ -76,6 +76,50 @@ describe("formatCommentAuthorLabel", () => {
 })
 
 describe("formatMediaLabel", () => {
+  it("prefiere el caption, que es lo único que identifica la publicación", () => {
+    expect(
+      formatMediaLabel({
+        mediaId: "17841400000000000",
+        mediaProductType: "REELS",
+        caption: "New website made with Claude Code",
+      })
+    ).toBe("New website made with Claude Code")
+  })
+
+  it("recorta el caption a la primera línea y a 60 caracteres", () => {
+    // Un caption real termina en párrafos de hashtags que no identifican nada.
+    expect(
+      formatMediaLabel({
+        mediaId: "17841400000000000",
+        mediaProductType: "REELS",
+        caption:
+          "Pido disculpas de antemano a los contadores\n#contadores #app",
+      })
+    ).toBe("Pido disculpas de antemano a los contadores")
+
+    expect(
+      formatMediaLabel({
+        mediaId: "17841400000000000",
+        mediaProductType: "REELS",
+        caption: "a".repeat(80),
+      })
+    ).toBe(`${"a".repeat(60)}…`)
+  })
+
+  it("cae al id cuando el caption está vacío o todavía no se resolvió", () => {
+    const mediaId = "17841400000000000"
+
+    expect(formatMediaLabel({ mediaId, mediaProductType: "REELS" })).toBe(
+      `reel ${mediaId}`
+    )
+    expect(
+      formatMediaLabel({ mediaId, mediaProductType: "REELS", caption: null })
+    ).toBe(`reel ${mediaId}`)
+    expect(
+      formatMediaLabel({ mediaId, mediaProductType: "REELS", caption: "\n  " })
+    ).toBe(`reel ${mediaId}`)
+  })
+
   it("nombra la clase de publicación que dio Meta", () => {
     const mediaId = "17841400000000000"
 
@@ -151,10 +195,35 @@ describe("toPublicationRowView", () => {
     )
     expect(row.content).toBe("¿cuánto sale?")
     expect(row.mediaLabel).toBe("reel 17841400000000000")
+    expect(row.mediaPermalink).toBeNull()
     expect(row.accountLabel).toBe("@cafe.rioja · ig_id 17841499999999999")
     expect(row.countLabel).toBe("12 comentarios")
     expect(row.timestamp).toBe("hoy 14:02")
     expect(row.failed).toBe(false)
+  })
+
+  it("usa el caption y el permalink cuando Graph los resolvió", () => {
+    const row = toPublicationRowView(publication(), NOW, {
+      permalink: "https://www.instagram.com/reel/DaYn7QRSZXn/",
+      caption: "New website made with Claude Code\n#claudecode",
+    })
+
+    expect(row.mediaLabel).toBe("New website made with Claude Code")
+    expect(row.mediaPermalink).toBe(
+      "https://www.instagram.com/reel/DaYn7QRSZXn/"
+    )
+  })
+
+  it("cae al id si Graph resolvió el permalink pero la publicación no tiene caption", () => {
+    const row = toPublicationRowView(publication(), NOW, {
+      permalink: "https://www.instagram.com/reel/DaYn7QRSZXn/",
+      caption: null,
+    })
+
+    expect(row.mediaLabel).toBe("reel 17841400000000000")
+    expect(row.mediaPermalink).toBe(
+      "https://www.instagram.com/reel/DaYn7QRSZXn/"
+    )
   })
 
   it("prefija las respuestas propias con «Tú: » y marca las rechazadas", () => {

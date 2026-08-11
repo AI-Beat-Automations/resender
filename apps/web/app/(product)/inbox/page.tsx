@@ -24,6 +24,11 @@ import {
 } from "@/lib/comments/read-model"
 import { firstParam, resolveInboxTab } from "@/lib/inbox/inbox-tabs"
 import {
+  mediaKey,
+  resolveContactProfiles,
+  resolveMedia,
+} from "@/lib/inbox/label-resolver"
+import {
   toConversationRowView,
   toThreadMessageViews,
 } from "@/lib/messages/display"
@@ -134,10 +139,35 @@ async function MensajesMode({
       })
     : []
 
-  const now = new Date()
-  const rows = conversations.map((conversation) =>
-    toConversationRowView(conversation, now)
+  // El @handle del contacto no viene en el webhook de DMs: hay que pedirlo a
+  // Graph. Se resuelve acá y no al ingerir para que las conversaciones que ya
+  // existían se completen la primera vez que alguien las mira.
+  const profiles = await resolveContactProfiles(
+    tenantId,
+    conversations.map((conversation) => ({
+      conversationId: conversation.id,
+      connectedPageId: conversation.page.id,
+      channel: conversation.page.channel,
+      contactId: conversation.contactId,
+      contactUsername: conversation.contactUsername,
+      contactSyncedAt: conversation.contactSyncedAt,
+    }))
   )
+
+  const now = new Date()
+  const rows = conversations.map((conversation) => {
+    const profile = profiles.get(conversation.id)
+    return toConversationRowView(
+      profile
+        ? {
+            ...conversation,
+            contactUsername: profile.username,
+            contactName: profile.name,
+          }
+        : conversation,
+      now
+    )
+  })
   const selectedRow =
     rows.find((row) => row.id === selectedConversation?.id) ?? null
 
@@ -216,9 +246,17 @@ async function ComentariosMode({
       })
     : []
 
+  // Ni el permalink ni el caption vienen en el webhook de comentarios; mismo
+  // trato que el @handle del contacto en mensajes.
+  const media = await resolveMedia(tenantId, publications)
+
   const now = new Date()
   const rows = publications.map((publication) =>
-    toPublicationRowView(publication, now)
+    toPublicationRowView(
+      publication,
+      now,
+      media.get(mediaKey(publication.connectedPageId, publication.mediaId))
+    )
   )
   const selectedRow =
     rows.find(
@@ -236,6 +274,7 @@ async function ComentariosMode({
         <CommentThread
           header={{
             mediaLabel: selectedRow.mediaLabel,
+            mediaPermalink: selectedRow.mediaPermalink,
             accountLabel: selectedRow.accountLabel,
           }}
           comments={toCommentBubbleViews(thread)}

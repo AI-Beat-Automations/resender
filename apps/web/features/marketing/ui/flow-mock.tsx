@@ -64,7 +64,9 @@ const CYCLE = 5200
 
 function Sequence({ steps, animate }: { steps: FlowStep[]; animate: boolean }) {
   const fade = (delay: number): React.CSSProperties | undefined =>
-    animate ? { animation: `node-pop 350ms ease-out ${delay}ms both` } : undefined
+    animate
+      ? { animation: `node-pop 350ms ease-out ${delay}ms both` }
+      : undefined
 
   const draw = (delay: number): React.CSSProperties =>
     animate
@@ -92,7 +94,10 @@ function Sequence({ steps, animate }: { steps: FlowStep[]; animate: boolean }) {
             ) : null}
           </div>
           {/* Contenido del paso. */}
-          <div className={cn(step.lineDelay !== null && "pb-6")} style={fade(step.delay)}>
+          <div
+            className={cn(step.lineDelay !== null && "pb-6")}
+            style={fade(step.delay)}
+          >
             <div className="flex items-baseline gap-2">
               <span
                 className={cn(
@@ -134,7 +139,7 @@ export function FlowMock({ lang }: { lang: Locale }) {
 
   return (
     <div className="rounded-3xl border border-border bg-card p-7 shadow-sm">
-      <div className="mb-6 font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
+      <div className="mb-6 font-mono text-[11px] tracking-[0.08em] text-muted-foreground uppercase">
         {dict.flowMock.live}
       </div>
       {/* key={cycle}: remonta la secuencia para reproducir la animación en loop. */}

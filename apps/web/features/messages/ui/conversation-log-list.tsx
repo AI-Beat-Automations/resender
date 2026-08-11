@@ -7,8 +7,9 @@ import type { ConversationRowView } from "@/lib/messages/display"
 import { cn } from "@workspace/ui/lib/utils"
 
 // Lista de conversaciones como LOG, no como bandeja (ADR 0005): sin avatar de
-// iniciales, el último mensaje en el renglón principal y el PSID en mono como
-// identificador secundario, porque es lo único que identifica al contacto.
+// iniciales y el último mensaje en el renglón principal. El identificador
+// secundario es el @handle desde la migración 0014; antes era el PSID crudo
+// porque era lo único que había.
 
 export function ConversationLogList({
   rows,
@@ -105,6 +106,12 @@ function ConversationRow({
         )}
       >
         {row.contactLabel}
+        {row.contactName ? (
+          <span className="text-[var(--text-subtle)]">
+            {" "}
+            · {row.contactName}
+          </span>
+        ) : null}
       </p>
       <p className="mt-1 flex items-center gap-1.5 font-mono text-[10.5px] text-[var(--text-subtle)]">
         <ChannelBadge channel={row.channel} />

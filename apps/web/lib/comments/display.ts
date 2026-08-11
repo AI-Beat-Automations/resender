@@ -17,8 +17,10 @@ import type { PublicationComment, PublicationListItem } from "./read-model"
 export type PublicationRowView = {
   /** `<connectedPageId>:<mediaId>`, la clave de `?media=`. */
   key: string
-  /** `reel 17841400000000000`. */
+  /** El caption recortado, o `reel 17841400000000000` si no hay. */
   mediaLabel: string
+  /** URL pública del post en Instagram, null hasta que Graph la resuelva. */
+  mediaPermalink: string | null
   /** `@cafe.rioja · ig_id 17841400000000000`. */
   accountLabel: string
   /** `12 comentarios`. */
@@ -46,16 +48,20 @@ export type CommentBubbleView = {
   dayLabel: string | null
 }
 
-// Meta no manda ni título ni miniatura en el webhook de comentarios: de la
-// publicación solo llegan `media.id` y `media_product_type`. Ese sustantivo es
-// todo lo que se puede decir de qué se comentó, y el id va entero porque es lo
-// que el usuario cita en un correo de soporte.
+// El webhook de comentarios solo trae `media.id` y `media_product_type`. El
+// caption y el permalink salen de Graph y se cachean (migración 0014); este
+// sustantivo más el id es la caída para cuando todavía no se resolvieron o
+// Meta no los devuelve.
 const MEDIA_NOUNS: Record<string, string> = {
   FEED: "publicación",
   REELS: "reel",
   STORY: "historia",
   AD: "anuncio",
 }
+
+// Un caption de Instagram puede tener 2200 caracteres y varios párrafos de
+// hashtags. En un renglón de log entra la primera línea y poco más.
+const CAPTION_MAX_LENGTH = 60
 
 /** `@juanpi`, con caída a `igsid 178414…` si Meta no mandó el handle. */
 export function formatCommentAuthorLabel(comment: {
@@ -66,14 +72,29 @@ export function formatCommentAuthorLabel(comment: {
   return handle ? `@${handle}` : `igsid ${comment.fromIgId}`
 }
 
-/** `reel 17841400000000000`. */
+/**
+ * Cómo se nombra la publicación en el log: el caption si Graph lo dio, y si no
+ * `reel 17841400000000000`. Se recorta a la primera línea porque un caption
+ * suele terminar en tres renglones de hashtags que no identifican nada.
+ */
 export function formatMediaLabel(publication: {
   mediaId: string
   mediaProductType: string | null
+  caption?: string | null
 }) {
+  const caption = truncateCaption(publication.caption)
+  if (caption) return caption
+
   const key = publication.mediaProductType?.trim().toUpperCase() ?? ""
   const noun = MEDIA_NOUNS[key] ?? "publicación"
   return `${noun} ${publication.mediaId}`
+}
+
+function truncateCaption(caption: string | null | undefined) {
+  const firstLine = caption?.split("\n")[0]?.trim()
+  if (!firstLine) return null
+  if (firstLine.length <= CAPTION_MAX_LENGTH) return firstLine
+  return `${firstLine.slice(0, CAPTION_MAX_LENGTH).trimEnd()}…`
 }
 
 /** `1 comentario` · `12 comentarios`. */
@@ -115,11 +136,13 @@ export function formatPublicationContent(
 
 export function toPublicationRowView(
   publication: PublicationListItem,
-  now: Date
+  now: Date,
+  media?: { permalink: string | null; caption: string | null }
 ): PublicationRowView {
   return {
     key: formatPublicationKey(publication),
-    mediaLabel: formatMediaLabel(publication),
+    mediaLabel: formatMediaLabel({ ...publication, caption: media?.caption }),
+    mediaPermalink: media?.permalink ?? null,
     accountLabel: formatAccountLabel(publication.account),
     countLabel: formatCommentCount(publication.commentCount),
     timestamp: formatLogTimestamp(publication.lastCommentAt, now),

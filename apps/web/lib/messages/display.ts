@@ -10,15 +10,18 @@ import type { ConversationListItem, ThreadMessage } from "./read-model"
 // Presentación del log de mensajes (ADR 0005). Módulo puro: sin DB ni red, y
 // todo lo que sale de aquí es serializable para cruzar a los componentes.
 //
-// El contacto se muestra SIEMPRE como PSID: `conversations.contact_name` existe
-// en el esquema pero `lib/messages/message-log.ts` nunca lo escribe, así que el
-// nombre no existe para ningún registro. Por eso la pantalla se dibuja como log
-// —el último mensaje en el renglón principal— y no como bandeja de entrada.
+// El contacto se identifica por su @handle desde la migración 0014, que llenó
+// `contact_username` con lo que devuelve Graph. Antes se mostraba siempre el
+// PSID crudo —dieciocho dígitos que no le dicen nada a quien los lee— porque
+// era lo único que había. El PSID sigue siendo la caída: en Messenger no hay
+// perfil que pedir, y en Instagram puede que Graph no resuelva el contacto.
 
 export type ConversationRowView = {
   id: string
-  /** Identificador del contacto, siempre `psid <id>` (ADR 0005). */
+  /** `@lori_surianno`, con caída a `psid <id>` si Graph no lo resolvió. */
   contactLabel: string
+  /** Nombre de perfil, cuando Graph lo dio y no es igual al @handle. */
+  contactName: string | null
   /** `Café Rioja · 104233889761204`, o `@cafe.rioja · ig_id 178414…`. */
   pageLabel: string
   /** Canal de la cuenta conectada, para el badge de la fila. */
@@ -64,9 +67,21 @@ export function formatContactLabel(
   return name ? name : `PSID ${contactId}`
 }
 
-/** Identificador del contacto tal y como lo pinta el log, en mono. */
+/** Identificador crudo del contacto, la caída cuando no hay @handle. */
 export function formatPsidLabel(contactId: string) {
   return `psid ${contactId}`
+}
+
+/**
+ * Etiqueta del contacto en el log: `@lori_surianno`, y `psid 1004146…` cuando
+ * Graph no lo resolvió o el canal no tiene perfil que pedir.
+ */
+export function formatContactHandle(conversation: {
+  contactUsername: string | null
+  contactId: string
+}) {
+  const handle = conversation.contactUsername?.trim()
+  return handle ? `@${handle}` : formatPsidLabel(conversation.contactId)
 }
 
 /**
@@ -95,16 +110,22 @@ export function formatConversationContent(
   return `${prefix}${latestMessage.text}`
 }
 
-/** Fila del log. `contactName` se ignora a propósito (ADR 0005). */
 export function toConversationRowView(
   conversation: ConversationListItem,
   now: Date
 ): ConversationRowView {
   const { latestMessage } = conversation
+  const name = conversation.contactName?.trim()
 
   return {
     id: conversation.id,
-    contactLabel: formatPsidLabel(conversation.contactId),
+    contactLabel: formatContactHandle(conversation),
+    // El nombre solo entra si aporta algo: Instagram devuelve muchas cuentas
+    // donde `name` y `username` son lo mismo, y repetirlo es ruido.
+    contactName:
+      name && name.toLowerCase() !== conversation.contactUsername?.toLowerCase()
+        ? name
+        : null,
     pageLabel: formatPageLabel(conversation.page),
     channel: conversation.page.channel,
     timestamp: formatLogTimestamp(conversation.lastMessageAt, now),

@@ -94,7 +94,11 @@ export function buildLlmsTxt(lang: Locale): string {
   const blogUrl = url("/blog", lang)
 
   const posts = getPublishedPosts(lang).map((post) =>
-    item(post.title, `${blogUrl}/${post.slug}`, truncate(post.abstract, POST_DETAIL_MAX))
+    item(
+      post.title,
+      `${blogUrl}/${post.slug}`,
+      truncate(post.abstract, POST_DETAIL_MAX)
+    )
   )
 
   return `${join([
@@ -103,7 +107,11 @@ export function buildLlmsTxt(lang: Locale): string {
 
     section(sections.product, [
       item(entries.home.label, url("/", lang), entries.home.detail),
-      item(entries.pricing.label, url("/pricing", lang), entries.pricing.detail),
+      item(
+        entries.pricing.label,
+        url("/pricing", lang),
+        entries.pricing.detail
+      ),
       item(
         entries.vsManychat.label,
         url("/vs-manychat", lang),
@@ -125,7 +133,11 @@ export function buildLlmsTxt(lang: Locale): string {
     // Las legales existen solo en español y NO se prefijan: en el índice EN
     // apuntan igual a la raíz, que es donde viven.
     section(sections.legal, [
-      item(entries.privacy.label, absoluteUrl("/privacy"), entries.privacy.detail),
+      item(
+        entries.privacy.label,
+        absoluteUrl("/privacy"),
+        entries.privacy.detail
+      ),
       item(entries.terms.label, absoluteUrl("/terms"), entries.terms.detail),
       item(
         entries.dataDeletion.label,
@@ -136,7 +148,11 @@ export function buildLlmsTxt(lang: Locale): string {
 
     // "Optional" va última por definición: es lo primero que se descarta.
     section(sections.optional, [
-      item(entries.full.label, url("/llms-full.txt", lang), entries.full.detail),
+      item(
+        entries.full.label,
+        url("/llms-full.txt", lang),
+        entries.full.detail
+      ),
       item(
         entries.otherLocale.label,
         url("/llms.txt", other),
@@ -175,7 +191,12 @@ function yesNo(value: string | boolean, dict: Dict): string {
   return value
 }
 
-function page(title: string, path: string, lang: Locale, body: string[]): string {
+function page(
+  title: string,
+  path: string,
+  lang: Locale,
+  body: string[]
+): string {
   const dict = getDictionary(lang)
   return join([
     `## ${title}`,

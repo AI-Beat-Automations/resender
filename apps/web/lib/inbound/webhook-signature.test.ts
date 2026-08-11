@@ -55,7 +55,11 @@ describe("verifyMetaSignature", () => {
     // `timingSafeEqual` lanza si los largos difieren; el chequeo previo es lo
     // que evita que un header basura tumbe la ruta con un 500.
     expect(
-      verifyMetaSignature({ raw, header: "sha256=corta", appSecret: APP_SECRET })
+      verifyMetaSignature({
+        raw,
+        header: "sha256=corta",
+        appSecret: APP_SECRET,
+      })
     ).toEqual({ ok: false, reason: "signature_mismatch" })
   })
 

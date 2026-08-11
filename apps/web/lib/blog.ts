@@ -112,7 +112,9 @@ export function parsePostDate(value: string): string | null {
   if (dmy) return toIso(Number(dmy[3]), Number(dmy[2]), Number(dmy[1]))
 
   // "July 23, 2026" / "Jul 23 2026"
-  const mdy = raw.match(/^([a-z]+)\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})$/i)
+  const mdy = raw.match(
+    /^([a-z]+)\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})$/i
+  )
   if (mdy) {
     const month = MONTHS[(mdy[1] ?? "").toLowerCase()]
     if (month) return toIso(Number(mdy[3]), month, Number(mdy[2]))
@@ -316,7 +318,10 @@ export function getPostSlugs(lang: Locale = "es"): string[] {
   return getPublishedPosts(lang).map((p) => p.slug)
 }
 
-export function getPostBySlug(slug: string, lang: Locale = "es"): BlogPost | null {
+export function getPostBySlug(
+  slug: string,
+  lang: Locale = "es"
+): BlogPost | null {
   const post = readAllPosts(lang).find((p) => p.slug === slug)
   return post && post.isPublished ? post : null
 }

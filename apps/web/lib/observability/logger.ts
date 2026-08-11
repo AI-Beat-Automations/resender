@@ -43,6 +43,7 @@ export type LogAction =
   | "webhook_unsubscribe"
   | "webhook_url_save"
   // efectos de borde que hoy solo dejan un `console.error` suelto
+  | "label_resolve" // @handle del contacto y permalink de la publicación
   | "token_exchange"
   | "token_invalidate"
   | "token_decrypt"

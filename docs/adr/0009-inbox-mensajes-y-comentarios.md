@@ -62,9 +62,23 @@ comentarios, en vez de abrir una pantalla nueva.
 - **El filtro de cuentas lista solo Instagram en modo comentarios.** Messenger no tiene
   comentarios. Filtrarlo ahí además invalida solo el `?page=` de una cuenta de Messenger al
   cambiar de modo, sin tener que limpiarlo aparte.
-- **La publicación se nombra por su clase y su id**, `reel 17841…`. Meta no manda título ni
-  miniatura en el webhook de comentarios: de la publicación solo llegan `media.id` y
-  `media_product_type`. El id va entero porque es lo que el usuario cita en soporte.
+- **Las etiquetas legibles se piden a Graph y se cachean** (migración 0014). Ningún webhook de
+  Meta las trae: el de DMs manda `sender.id` a secas y el de comentarios manda `media.id` sin
+  permalink ni caption. El contacto pasa a ser `@handle` —cacheado en
+  `conversations.contact_username`— y la publicación pasa a nombrarse por su caption, con
+  enlace al post —cacheados en `instagram_media`—. Esto **supersede** la nota de la ADR 0005 de
+  que el contacto se muestra siempre como PSID: era cierta porque `contact_name` nunca se
+  escribía, no porque el dato no existiera. El PSID y `reel <id>` quedan como caída.
+- **La resolución corre al leer la pantalla, no al ingerir el webhook.** Rechazado resolver en
+  la ingesta: habría dejado mudas para siempre a las filas que ya existían salvo que alguien
+  corriera un backfill, y habría metido una llamada a Graph en el camino crítico de un webhook
+  que hoy no puede fallar por eso. El precio es una llamada en el render, acotada por un techo
+  de 20 por pantalla y por un caché que solo se pide una vez.
+- **El intento se sella aunque falle.** `contact_synced_at` y `instagram_media.synced_at`
+  marcan el intento, no el éxito, y un fallo se recuerda 24 h. Sin eso, una publicación borrada
+  se volvería a pedir a Graph en cada render, para siempre y siempre con el mismo resultado.
+- **No se cachea `thumbnail_url`.** La URL del CDN de Meta viene firmada y con vencimiento:
+  guardarla es guardar algo que caduca solo.
 - **Un comentario y un DM se leen con las mismas burbujas.** Los dos son un ida y vuelta con la
   misma persona; lo que cambia es la cabecera, que nombra la publicación en vez del contacto.
   Instagram anida un solo nivel, así que en vez de dibujar el árbol se nombra al padre en el

@@ -572,8 +572,14 @@ describe("ningún evento se descarta en silencio", () => {
   // caso: cada evento que entra tiene que producir exactamente una línea
   // terminal, sea `ok`, `duplicate` o `dropped`.
   const scenarios: Array<[string, () => void]> = [
-    ["la cuenta no resuelve", () => mocks.getActivePageByMetaPageId.mockResolvedValue(null)],
-    ["no hay suscripción activa", () => mocks.hasActiveSubscription.mockResolvedValue(false)],
+    [
+      "la cuenta no resuelve",
+      () => mocks.getActivePageByMetaPageId.mockResolvedValue(null),
+    ],
+    [
+      "no hay suscripción activa",
+      () => mocks.hasActiveSubscription.mockResolvedValue(false),
+    ],
     [
       "es un duplicado",
       () => {

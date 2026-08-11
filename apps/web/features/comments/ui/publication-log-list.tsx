@@ -98,16 +98,19 @@ function PublicationRow({
           {row.timestamp}
         </time>
       </div>
+      {/* El caption de la publicación no va en mono: es prosa, no un id. El
+          enlace al post vive en la cabecera del hilo y no acá, porque la fila
+          entera ya es un enlace y no se pueden anidar. */}
       <p
         className={cn(
-          "mt-1.5 truncate font-mono text-[10.5px]",
+          "mt-1.5 truncate text-[11.5px]",
           active ? "text-primary-soft-foreground" : "text-[var(--text-subtle)]"
         )}
       >
-        {row.mediaLabel} · {row.countLabel}
+        {row.mediaLabel}
       </p>
       <p className="mt-0.5 truncate font-mono text-[10.5px] text-[var(--text-subtle)]">
-        {row.accountLabel}
+        {row.countLabel} · {row.accountLabel}
       </p>
     </Link>
   )
