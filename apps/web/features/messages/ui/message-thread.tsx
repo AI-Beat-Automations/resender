@@ -1,6 +1,8 @@
 import { Eye, Inbox, TriangleAlert } from "lucide-react"
 
+import { ChannelBadge } from "@/features/inbox/ui/channel-badge"
 import type { ThreadMessageView } from "@/lib/messages/display"
+import type { PageChannel } from "@/lib/pages/page-registry"
 import { Badge } from "@workspace/ui/components/badge"
 import { cn } from "@workspace/ui/lib/utils"
 
@@ -11,6 +13,7 @@ import { cn } from "@workspace/ui/lib/utils"
 export type ThreadHeaderView = {
   contactLabel: string
   pageLabel: string
+  channel: PageChannel
 }
 
 export function MessageThread({
@@ -27,8 +30,9 @@ export function MessageThread({
           <h2 className="truncate font-mono text-[14px] font-semibold">
             {header.contactLabel}
           </h2>
-          <p className="mt-0.5 truncate font-mono text-[11px] text-[var(--text-subtle)]">
-            {header.pageLabel}
+          <p className="mt-1 flex items-center gap-1.5 font-mono text-[11px] text-[var(--text-subtle)]">
+            <ChannelBadge channel={header.channel} />
+            <span className="truncate">{header.pageLabel}</span>
           </p>
         </div>
         {/* El badge declara lo que la pantalla no tiene: no hay compositor,
@@ -113,6 +117,14 @@ function MessageBubble({ message }: { message: ThreadMessageView }) {
             "mt-[5px] flex items-center gap-1.5 font-mono text-[10.5px]",
             failed ? "text-[var(--danger-text)]" : "text-[var(--text-subtle)]"
           )}
+          // El sufijo `· respuesta a comentario` es lo único que distingue a
+          // una respuesta privada de un DM cualquiera; el title explica de
+          // dónde salió sin gastar otro renglón.
+          title={
+            message.fromComment
+              ? "Salió como respuesta privada a un comentario de Instagram"
+              : undefined
+          }
         >
           {failed ? (
             <TriangleAlert className="size-3 shrink-0" aria-hidden />

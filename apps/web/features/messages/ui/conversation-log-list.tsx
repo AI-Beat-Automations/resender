@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { TriangleAlert } from "lucide-react"
 
+import { ChannelBadge } from "@/features/inbox/ui/channel-badge"
 import { inboxHref } from "@/lib/inbox/inbox-tabs"
 import type { ConversationRowView } from "@/lib/messages/display"
 import { cn } from "@workspace/ui/lib/utils"
@@ -105,8 +106,9 @@ function ConversationRow({
       >
         {row.contactLabel}
       </p>
-      <p className="mt-0.5 truncate font-mono text-[10.5px] text-[var(--text-subtle)]">
-        {row.pageLabel}
+      <p className="mt-1 flex items-center gap-1.5 font-mono text-[10.5px] text-[var(--text-subtle)]">
+        <ChannelBadge channel={row.channel} />
+        <span className="truncate">{row.pageLabel}</span>
       </p>
     </Link>
   )

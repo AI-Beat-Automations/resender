@@ -3,6 +3,7 @@ import {
   formatLogTimestamp,
   formatMessageMeta,
 } from "@/lib/inbox/log-format"
+import type { PageChannel } from "@/lib/pages/page-registry"
 
 import type { ConversationListItem, ThreadMessage } from "./read-model"
 
@@ -18,8 +19,10 @@ export type ConversationRowView = {
   id: string
   /** Identificador del contacto, siempre `psid <id>` (ADR 0005). */
   contactLabel: string
-  /** `Café Rioja · 104233889761204`. */
+  /** `Café Rioja · 104233889761204`, o `@cafe.rioja · ig_id 178414…`. */
   pageLabel: string
+  /** Canal de la cuenta conectada, para el badge de la fila. */
+  channel: PageChannel
   /** `hoy 14:02`, `ayer 19:12`, `24 jul`, `24 jul 2025`. */
   timestamp: string
   /** El mismo instante en ISO, para el `datetime` del `<time>`. */
@@ -36,8 +39,10 @@ export type ThreadMessageView = {
   outbound: boolean
   failed: boolean
   text: string
-  /** `outbound · 14:02:11 · sent`. */
+  /** `outbound · 14:02:11 · sent`, con `· respuesta a comentario` si lo es. */
   meta: string
+  /** El saliente es la respuesta privada a un comentario de Instagram. */
+  fromComment: boolean
   /** Error crudo del proveedor, solo en `failed`. */
   error: string | null
   /** Separador de fecha cuando el mensaje abre un día nuevo. */
@@ -64,8 +69,20 @@ export function formatPsidLabel(contactId: string) {
   return `psid ${contactId}`
 }
 
-/** `Café Rioja · 104233889761204`. */
-export function formatPageLabel(page: { name: string; metaPageId: string }) {
+/**
+ * `Café Rioja · 104233889761204` en Messenger, `@cafe.rioja · ig_id 178414…`
+ * en Instagram. Mismo criterio que la tarjeta de Conexiones: en Instagram el
+ * @handle es lo que el usuario reconoce, y el IG ID es lo que cita en soporte.
+ */
+export function formatPageLabel(page: {
+  channel: PageChannel
+  name: string
+  username: string | null
+  metaPageId: string
+}) {
+  if (page.channel === "instagram" && page.username) {
+    return `@${page.username} · ig_id ${page.metaPageId}`
+  }
   return `${page.name} · ${page.metaPageId}`
 }
 
@@ -89,6 +106,7 @@ export function toConversationRowView(
     id: conversation.id,
     contactLabel: formatPsidLabel(conversation.contactId),
     pageLabel: formatPageLabel(conversation.page),
+    channel: conversation.page.channel,
     timestamp: formatLogTimestamp(conversation.lastMessageAt, now),
     timestampIso: conversation.lastMessageAt.toISOString(),
     content: formatConversationContent(latestMessage),
@@ -111,13 +129,20 @@ export function toThreadMessageViews(
     const isNewDay = dayLabel !== previousDay
     previousDay = dayLabel
     const failed = message.status === "failed"
+    // El sufijo se compone acá y no en `formatMessageMeta`, que ahora lo
+    // comparten los dos modos de Inbox: un comentario nunca es respuesta
+    // privada de nada.
+    const fromComment = message.instagramSourceCommentId !== null
 
     return {
       id: message.id,
       outbound: message.direction === "outbound",
       failed,
       text: message.text,
-      meta: formatMessageMeta(message),
+      meta: fromComment
+        ? `${formatMessageMeta(message)} · respuesta a comentario`
+        : formatMessageMeta(message),
+      fromComment,
       error: failed ? message.error : null,
       dayLabel: isNewDay ? dayLabel : null,
     }

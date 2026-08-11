@@ -1,4 +1,6 @@
 import { getSql } from "@/lib/db"
+import type { PageChannel } from "@/lib/pages/page-registry"
+
 import type { MessageDirection, MessageStatus } from "./message-log"
 
 export type ConversationListItem = {
@@ -6,10 +8,14 @@ export type ConversationListItem = {
   contactId: string
   contactName: string | null
   lastMessageAt: Date
+  // `messages` no tiene columna `channel` a propósito: el canal vive en
+  // `connected_pages` y se resuelve en este join, una vez por conversación.
   page: {
     id: string
+    channel: PageChannel
     metaPageId: string
     name: string
+    username: string | null
   }
   latestMessage: {
     text: string
@@ -25,6 +31,9 @@ export type ThreadMessage = {
   status: MessageStatus
   text: string
   error: string | null
+  // Informado solo en la respuesta privada a un comentario de Instagram: es un
+  // DM como cualquier otro y esta columna es lo único que lo distingue.
+  instagramSourceCommentId: string | null
   createdAt: Date
 }
 
@@ -34,8 +43,10 @@ type ConversationListRow = {
   contact_name: string | null
   last_message_at: Date
   page_id: string
+  page_channel: PageChannel
   meta_page_id: string
   page_name: string
+  page_username: string | null
   latest_text: string | null
   latest_direction: MessageDirection | null
   latest_status: MessageStatus | null
@@ -48,6 +59,7 @@ type ThreadMessageRow = {
   status: MessageStatus
   text: string
   error: string | null
+  instagram_source_comment_id: string | null
   created_at: Date
 }
 
@@ -63,8 +75,10 @@ export async function listConversationReadModel(input: {
       c.contact_name,
       c.last_message_at,
       p.id as page_id,
+      p.channel as page_channel,
       p.meta_page_id,
       p.name as page_name,
+      p.username as page_username,
       latest.text as latest_text,
       latest.direction as latest_direction,
       latest.status as latest_status,
@@ -93,7 +107,8 @@ export async function listThreadMessages(input: {
 }) {
   const sql = getSql()
   const rows = await sql<ThreadMessageRow[]>`
-    select id, direction, status, text, error, created_at
+    select id, direction, status, text, error,
+           instagram_source_comment_id, created_at
     from messages
     where tenant_id = ${input.tenantId}
       and conversation_id = ${input.conversationId}
@@ -106,11 +121,14 @@ export async function listThreadMessages(input: {
     status: row.status,
     text: row.text,
     error: row.error,
+    instagramSourceCommentId: row.instagram_source_comment_id,
     createdAt: row.created_at,
   }))
 }
 
-function mapConversationListItem(row: ConversationListRow): ConversationListItem {
+function mapConversationListItem(
+  row: ConversationListRow
+): ConversationListItem {
   return {
     id: row.id,
     contactId: row.contact_id,
@@ -118,11 +136,16 @@ function mapConversationListItem(row: ConversationListRow): ConversationListItem
     lastMessageAt: row.last_message_at,
     page: {
       id: row.page_id,
+      channel: row.page_channel,
       metaPageId: row.meta_page_id,
       name: row.page_name,
+      username: row.page_username,
     },
     latestMessage:
-      row.latest_text && row.latest_direction && row.latest_status && row.latest_created_at
+      row.latest_text &&
+      row.latest_direction &&
+      row.latest_status &&
+      row.latest_created_at
         ? {
             text: row.latest_text,
             direction: row.latest_direction,

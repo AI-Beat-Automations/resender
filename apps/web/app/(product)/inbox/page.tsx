@@ -120,6 +120,7 @@ async function MensajesMode({
           header={{
             contactLabel: selectedRow.contactLabel,
             pageLabel: selectedRow.pageLabel,
+            channel: selectedRow.channel,
           }}
           messages={toThreadMessageViews(thread)}
         />

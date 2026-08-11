@@ -20,8 +20,10 @@ function conversation(
     lastMessageAt: new Date(2026, 6, 27, 14, 2),
     page: {
       id: "page-1",
+      channel: "messenger",
       metaPageId: "104233889761204",
       name: "Café Rioja",
+      username: null,
     },
     latestMessage: {
       text: "¿Hacen envíos a Palermo?",
@@ -40,6 +42,7 @@ function message(overrides: Partial<ThreadMessage> = {}): ThreadMessage {
     status: "received",
     text: "Hola, ¿tienen turno para hoy?",
     error: null,
+    instagramSourceCommentId: null,
     createdAt: new Date(2026, 6, 27, 14, 1, 29),
     ...overrides,
   }
@@ -73,7 +76,43 @@ describe("toConversationRowView", () => {
     expect(row.hasMessages).toBe(true)
     expect(row.failed).toBe(false)
     expect(row.pageLabel).toBe("Café Rioja · 104233889761204")
+    expect(row.channel).toBe("messenger")
     expect(row.timestamp).toBe("hoy 14:02")
+  })
+
+  it("identifica la cuenta por @handle cuando la conversación es de Instagram", () => {
+    const row = toConversationRowView(
+      conversation({
+        page: {
+          id: "page-2",
+          channel: "instagram",
+          metaPageId: "17841400000000000",
+          name: "Café Rioja",
+          username: "cafe.rioja",
+        },
+      }),
+      NOW
+    )
+
+    expect(row.pageLabel).toBe("@cafe.rioja · ig_id 17841400000000000")
+    expect(row.channel).toBe("instagram")
+  })
+
+  it("cae al nombre de la cuenta si Instagram no dio el @handle", () => {
+    const row = toConversationRowView(
+      conversation({
+        page: {
+          id: "page-2",
+          channel: "instagram",
+          metaPageId: "17841400000000000",
+          name: "Café Rioja",
+          username: null,
+        },
+      }),
+      NOW
+    )
+
+    expect(row.pageLabel).toBe("Café Rioja · 17841400000000000")
   })
 
   it("prefija los salientes con «Tú: » y marca los fallidos", () => {
@@ -156,5 +195,30 @@ describe("toThreadMessageViews", () => {
     expect(failed?.meta).toBe("outbound · 14:05:02 · failed")
     expect(sent?.failed).toBe(false)
     expect(sent?.error).toBeNull()
+  })
+
+  it("marca la respuesta privada a un comentario, que es un DM como cualquier otro", () => {
+    const [privateReply, plain] = toThreadMessageViews([
+      message({
+        id: "a",
+        direction: "outbound",
+        status: "sent",
+        instagramSourceCommentId: "17851400000000000",
+        createdAt: new Date(2026, 6, 27, 14, 2, 11),
+      }),
+      message({
+        id: "b",
+        direction: "outbound",
+        status: "sent",
+        createdAt: new Date(2026, 6, 27, 14, 3, 0),
+      }),
+    ])
+
+    expect(privateReply?.fromComment).toBe(true)
+    expect(privateReply?.meta).toBe(
+      "outbound · 14:02:11 · sent · respuesta a comentario"
+    )
+    expect(plain?.fromComment).toBe(false)
+    expect(plain?.meta).toBe("outbound · 14:03:00 · sent")
   })
 })
