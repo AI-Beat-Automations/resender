@@ -412,13 +412,24 @@ export function createApp(
     await next()
     context.header("x-request-id", requestId)
     context.header("x-content-type-options", "nosniff")
-    log("info", {
+    const status = context.res.status
+    log({
       entrypoint: "fetch",
-      event: "request_complete",
+      action: "request",
+      // El resultado sale del status y no es `ok` fijo: una ruta que devuelve
+      // un 400 sin lanzar no pasa por `onError`, así que con un `ok` fijo la
+      // consulta de guardia (`$.outcome != "ok"`) no la encontraría nunca.
+      ...(status < 400
+        ? { outcome: "ok" as const }
+        : {
+            outcome: status >= 500 ? ("failed" as const) : ("dropped" as const),
+            reason: "internal_error" as const,
+            level: status >= 500 ? ("error" as const) : ("warn" as const),
+          }),
       requestId,
       tenantId: context.get("tenantId") || undefined,
       route: `${context.req.method} ${context.req.routePath || context.req.path}`,
-      status: context.res.status,
+      status,
       durationMs: Date.now() - context.get("startedAt"),
     })
   })
@@ -651,8 +662,27 @@ export function createApp(
       verifyToken !== context.env.META_VERIFY_TOKEN ||
       !challenge
     ) {
+      // Un handshake rechazado significa que el verify token del panel de Meta
+      // y el del entorno no coinciden, y el webhook no va a quedar registrado.
+      log({
+        entrypoint: "fetch",
+        action: "webhook_verify",
+        outcome: "dropped",
+        reason: "verify_token_mismatch",
+        level: "warn",
+        channel: "messenger",
+        route: "/webhooks/meta",
+        status: 403,
+      })
       return context.text("forbidden", 403)
     }
+    log({
+      entrypoint: "fetch",
+      action: "webhook_verify",
+      outcome: "ok",
+      channel: "messenger",
+      route: "/webhooks/meta",
+    })
     return context.text(challenge, 200)
   })
   app.post("/webhooks/meta", async (context) => {
@@ -677,8 +707,27 @@ export function createApp(
       verifyToken !== context.env.INSTAGRAM_VERIFY_TOKEN ||
       !challenge
     ) {
+      // Un handshake rechazado significa que el verify token del panel de Meta
+      // y el del entorno no coinciden, y el webhook no va a quedar registrado.
+      log({
+        entrypoint: "fetch",
+        action: "webhook_verify",
+        outcome: "dropped",
+        reason: "verify_token_mismatch",
+        level: "warn",
+        channel: "instagram",
+        route: "/webhooks/meta/instagram",
+        status: 403,
+      })
       return context.text("forbidden", 403)
     }
+    log({
+      entrypoint: "fetch",
+      action: "webhook_verify",
+      outcome: "ok",
+      channel: "instagram",
+      route: "/webhooks/meta/instagram",
+    })
     return context.text(challenge, 200)
   })
   app.post("/webhooks/meta/instagram", async (context) => {
@@ -724,9 +773,14 @@ export function createApp(
             message: "An unexpected error occurred.",
             status: 500,
           })
-    log(contract.status >= 500 ? "error" : "warn", {
+    log({
       entrypoint: "fetch",
-      event: "request_error",
+      action: "request",
+      outcome: "failed",
+      reason: "internal_error",
+      // Un 4xx es culpa del llamador y no una alarma nuestra; solo los 5xx
+      // suben a `error`.
+      level: contract.status >= 500 ? "error" : "warn",
       requestId,
       tenantId: context.get("tenantId") || undefined,
       route: `${context.req.method} ${context.req.path}`,

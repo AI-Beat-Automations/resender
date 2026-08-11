@@ -24,9 +24,10 @@ export default {
   async scheduled(controller, env) {
     const service = new ApiService(env)
     const recovered = await recoverWebhookJobs(env, service.repository)
-    log("info", {
+    log({
       entrypoint: "scheduled",
-      event: "webhook_jobs_recovered",
+      action: "job_recovery",
+      outcome: "ok",
       count: recovered,
     })
     void controller

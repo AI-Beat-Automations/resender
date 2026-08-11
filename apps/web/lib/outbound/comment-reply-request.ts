@@ -12,6 +12,8 @@ import {
   type ConnectedPageRecord,
 } from "@/lib/pages/page-registry"
 
+import type { LogReason } from "@/lib/observability/logger"
+
 import type { CommentReplyInput } from "./send-request"
 import { getBearerToken } from "./send-request"
 
@@ -26,9 +28,12 @@ export type CommentReplyAuth = {
   idempotencyKey: string | null
 }
 
+// El fallo lleva su motivo del catálogo, pero el módulo **no loguea**: no sabe
+// si está sirviendo a `comment_reply` o a `comment_private_reply`, y adivinar
+// produciría una `action` equivocada. La ruta, que sí lo sabe, escribe la línea.
 export type AuthResult =
   | { ok: true; value: CommentReplyAuth }
-  | { ok: false; response: Response }
+  | { ok: false; response: Response; reason: LogReason }
 
 // Autenticación y gates, en el mismo orden que `/api/meta/instagram/send`.
 //
@@ -45,6 +50,7 @@ export async function authenticateCommentReplyRequest(
     return {
       ok: false,
       response: Response.json({ error: "unauthorized" }, { status: 401 }),
+      reason: "unauthorized",
     }
   }
 
@@ -63,6 +69,7 @@ export async function authenticateCommentReplyRequest(
         },
         { status: 400 }
       ),
+      reason: "invalid_request",
     }
   }
 
@@ -73,6 +80,7 @@ export async function authenticateCommentReplyRequest(
         { error: "account is on the waitlist" },
         { status: 403 }
       ),
+      reason: "waitlisted",
     }
   }
 
@@ -83,6 +91,7 @@ export async function authenticateCommentReplyRequest(
         { error: "no active subscription" },
         { status: 403 }
       ),
+      reason: "no_active_subscription",
     }
   }
 
@@ -97,7 +106,7 @@ export type CommentReplyTarget = {
 
 export type TargetResult =
   | { ok: true; value: CommentReplyTarget }
-  | { ok: false; response: Response }
+  | { ok: false; response: Response; reason: LogReason }
 
 // Resuelve la cuenta que responde y el comentario que se está contestando.
 //
@@ -124,6 +133,7 @@ export async function resolveCommentReplyTarget(input: {
         { error: "Instagram account is not connected for this tenant" },
         { status: 404 }
       ),
+      reason: "page_not_connected",
     }
   }
 
@@ -142,6 +152,7 @@ export async function resolveCommentReplyTarget(input: {
         },
         { status: 404 }
       ),
+      reason: "comment_not_found",
     }
   }
 

@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   isOwnPublishedComment: vi.fn(),
   pushInboundEvent: vi.fn(),
   recordSkippedDelivery: vi.fn(),
+  log: vi.fn(),
 }))
 
 vi.mock("@/lib/pages/page-registry", () => ({
@@ -46,12 +47,28 @@ vi.mock("@/lib/comments/comment-log", () => ({
   isOwnPublishedComment: mocks.isOwnPublishedComment,
 }))
 
+// El logger se mockea pero `accountFields` queda real: es el proyector que
+// garantiza que «cuenta» esté completa, y mockearlo haría que los tests pasaran
+// con líneas a las que les falta el `channel`.
+vi.mock("@/lib/observability/logger", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/observability/logger")>()),
+  log: mocks.log,
+}))
+
 vi.mock("@/lib/posthog", () => ({ posthog: null }))
 
 import {
-  ingestInstagramWebhookPayload,
-  ingestMetaWebhookPayload,
+  ingestInstagramWebhookPayload as ingestInstagramRaw,
+  ingestMetaWebhookPayload as ingestMetaRaw,
 } from "./inbound-ingestion"
+
+// El `requestId` lo genera la ruta y se pasa explícito hasta el closure del
+// `pushJob`. Los tests lo fijan para que las aserciones no dependan de un uuid.
+const REQUEST_ID = "req-test"
+const ingestInstagramWebhookPayload = (body: unknown) =>
+  ingestInstagramRaw(body, REQUEST_ID)
+const ingestMetaWebhookPayload = (body: unknown) =>
+  ingestMetaRaw(body, REQUEST_ID)
 
 const IG_ACCOUNT = "17841400000000000"
 const FB_PAGE = "104233889761204"
@@ -225,10 +242,10 @@ describe("Instagram fuera de cuota", () => {
     )
     await ingested!.pushJob()
 
-    expect(mocks.recordSkippedDelivery).toHaveBeenCalledWith({
-      kind: "message",
-      id: "message-1",
-    })
+    expect(mocks.recordSkippedDelivery).toHaveBeenCalledWith(
+      { kind: "message", id: "message-1" },
+      expect.objectContaining({ context: expect.anything() })
+    )
     expect(mocks.pushInboundEvent).not.toHaveBeenCalled()
   })
 
@@ -278,7 +295,11 @@ describe("Messenger sigue medido", () => {
     expect(mocks.insertInboundMessage).toHaveBeenCalledTimes(1)
     expect(mocks.recordSkippedDelivery).toHaveBeenCalledWith(
       { kind: "message", id: "message-1" },
-      "account is restricted: quota exhausted or too many connected Pages"
+      expect.objectContaining({
+        reason:
+          "account is restricted: quota exhausted or too many connected Pages",
+        logReason: "account_restricted",
+      })
     )
     expect(mocks.pushInboundEvent).not.toHaveBeenCalled()
   })
@@ -461,10 +482,10 @@ describe("ingesta de comentarios de Instagram", () => {
     )
     await ingested!.pushJob()
 
-    expect(mocks.recordSkippedDelivery).toHaveBeenCalledWith({
-      kind: "comment",
-      id: "comment-row",
-    })
+    expect(mocks.recordSkippedDelivery).toHaveBeenCalledWith(
+      { kind: "comment", id: "comment-row" },
+      expect.objectContaining({ context: expect.anything() })
+    )
   })
 
   // Un mismo POST de Meta puede traer las dos cosas.
@@ -502,5 +523,161 @@ describe("ingesta de comentarios de Instagram", () => {
     expect(ingested).toHaveLength(2)
     expect(mocks.insertInboundMessage).toHaveBeenCalledTimes(1)
     expect(mocks.insertInboundComment).toHaveBeenCalledTimes(1)
+  })
+})
+
+// El bloque que hace cumplir la regla del módulo: **ningún camino puede
+// terminar en silencio**. No son tests de logging — son el test de que no se
+// agregó un `continue` sin motivo.
+//
+// Las aserciones son de tres campos (`action`, `outcome`, `reason`) y nunca del
+// registro completo: agregar un `durationMs` más adelante no tiene que romper
+// veinte tests.
+describe("ningún evento se descarta en silencio", () => {
+  const terminalLines = () =>
+    mocks.log.mock.calls
+      .map(([fields]) => fields)
+      .filter((fields) => fields.action === "inbound_ingest")
+
+  const expectDrop = (reason: string) =>
+    expect(mocks.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "inbound_ingest",
+        outcome: "dropped",
+        reason,
+      })
+    )
+
+  beforeEach(() => {
+    for (const mock of Object.values(mocks)) mock.mockReset()
+    mocks.hasActiveSubscription.mockResolvedValue(true)
+    mocks.isOwnPublishedComment.mockResolvedValue(false)
+    mocks.getActivePageByMetaPageId.mockResolvedValue(instagramPage())
+    mocks.upsertConversation.mockResolvedValue({
+      id: "conversation-1",
+      contactId: "igsid-1",
+    })
+    mocks.insertInboundMessage.mockResolvedValue({
+      message: { id: "message-1", tenantId: "tenant-1" },
+      inserted: true,
+    })
+    mocks.insertInboundComment.mockResolvedValue({
+      comment: comment(),
+      inserted: true,
+    })
+  })
+
+  // **La póliza de seguro.** Si alguien agrega un descarte nuevo y se olvida de
+  // la línea, este test falla sin que nadie tenga que acordarse de sumarle un
+  // caso: cada evento que entra tiene que producir exactamente una línea
+  // terminal, sea `ok`, `duplicate` o `dropped`.
+  const scenarios: Array<[string, () => void]> = [
+    ["la cuenta no resuelve", () => mocks.getActivePageByMetaPageId.mockResolvedValue(null)],
+    ["no hay suscripción activa", () => mocks.hasActiveSubscription.mockResolvedValue(false)],
+    [
+      "es un duplicado",
+      () => {
+        mocks.insertInboundMessage.mockResolvedValue({
+          message: { id: "message-1", tenantId: "tenant-1" },
+          inserted: false,
+        })
+        mocks.insertInboundComment.mockResolvedValue({
+          comment: comment(),
+          inserted: false,
+        })
+      },
+    ],
+    ["entra normalmente", () => {}],
+  ]
+
+  it.each(scenarios)(
+    "un DM produce exactamente una línea terminal cuando %s",
+    async (_label, arrange) => {
+      arrange()
+      await ingestInstagramWebhookPayload(
+        instagramPayload({ mid: "mid-1", text: "hola" })
+      )
+      expect(terminalLines()).toHaveLength(1)
+    }
+  )
+
+  it.each(scenarios)(
+    "un comentario produce exactamente una línea terminal cuando %s",
+    async (_label, arrange) => {
+      arrange()
+      await ingestInstagramWebhookPayload(
+        commentPayload({
+          id: "ig-comment-1",
+          from: { id: "9876543210", username: "un_seguidor" },
+          text: "hola",
+          media: { id: "media-1" },
+        })
+      )
+      expect(terminalLines()).toHaveLength(1)
+    }
+  )
+
+  it("nombra el canal cuando la cuenta no resuelve", async () => {
+    // Sin el canal, «cuenta no encontrada» no se puede investigar: desde la
+    // 0013 el mismo id existe en los dos y hay que saber en cuál se buscó.
+    mocks.getActivePageByMetaPageId.mockResolvedValue(null)
+    await ingestInstagramWebhookPayload(
+      instagramPayload({ mid: "mid-1", text: "hola" })
+    )
+
+    expectDrop("account_not_connected")
+    expect(mocks.log).toHaveBeenCalledWith(
+      expect.objectContaining({ channel: "instagram", accountId: IG_ACCOUNT })
+    )
+  })
+
+  it("distingue las dos señales anti-bucle de la ingesta", async () => {
+    // Motivos separados a propósito: son señales independientes y si una deja
+    // de disparar hay que ver cuál quedó sosteniendo el filtro sola.
+    await ingestInstagramWebhookPayload(
+      commentPayload({
+        id: "ig-comment-1",
+        from: { id: "otro-id", username: IG_ACCOUNT_USERNAME.toUpperCase() },
+        text: "mi propia respuesta",
+        media: { id: "media-1" },
+      })
+    )
+    expectDrop("self_authored_comment")
+
+    mocks.log.mockClear()
+    mocks.isOwnPublishedComment.mockResolvedValue(true)
+    await ingestInstagramWebhookPayload(
+      commentPayload({
+        id: "ig-comment-1",
+        from: { id: "9876543210", username: "un_seguidor" },
+        text: "mi propia respuesta",
+        media: { id: "media-1" },
+      })
+    )
+    expectDrop("own_published_comment")
+  })
+
+  it("cuenta el texto pero no lo escribe", async () => {
+    // El tipo ya no tiene campo para el texto; este test atrapa a quien lo
+    // ensanche más adelante.
+    await ingestInstagramWebhookPayload(
+      instagramPayload({ mid: "mid-1", text: "mi tarjeta es 4111 1111 1111" })
+    )
+
+    const logged = JSON.stringify(mocks.log.mock.calls)
+    expect(logged).not.toContain("4111")
+    expect(mocks.log).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "inbound_ingest", textLength: 28 })
+    )
+  })
+
+  it("ata el sobre con sus eventos por requestId", async () => {
+    await ingestInstagramWebhookPayload(
+      instagramPayload({ mid: "mid-1", text: "hola" })
+    )
+
+    expect(mocks.log).toHaveBeenCalledWith(
+      expect.objectContaining({ requestId: REQUEST_ID })
+    )
   })
 })

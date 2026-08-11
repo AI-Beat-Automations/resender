@@ -86,7 +86,7 @@ import {
   createStripeClient,
   stripeTimestamp,
 } from "../infrastructure/stripe/client"
-import { log } from "../observability/logger"
+import { accountFields, log } from "../observability/logger"
 
 export type QueuePayload = {
   jobId: string
@@ -1284,10 +1284,29 @@ export class ApiService {
         event.providerPageId,
         "messenger"
       )
-      if (!page) continue
+      if (!page) {
+        log({
+          entrypoint: "fetch",
+          action: "inbound_ingest",
+          outcome: "dropped",
+          reason: "account_not_connected",
+          channel: "messenger",
+          accountId: event.providerPageId,
+          subject: "message",
+        })
+        continue
+      }
       // Meta must receive 200 for tenants that cannot use the product, but
       // their events are deliberately discarded before any persistence.
       if (!(await this.hasProductAccess(page.tenantId, accessByTenant))) {
+        log({
+          entrypoint: "fetch",
+          action: "inbound_ingest",
+          outcome: "dropped",
+          reason: "no_active_subscription",
+          ...accountFields(page),
+          subject: "message",
+        })
         continue
       }
       let entitlement = entitlementByTenant.get(page.tenantId)
@@ -1313,15 +1332,18 @@ export class ApiService {
           : null,
         recoverAfter: this.recoverAfter(),
       })
-      log("info", {
+      log({
         entrypoint: "fetch",
-        event: result.inserted
-          ? "meta_inbound_persisted"
-          : "meta_inbound_duplicate",
-        tenantId: page.tenantId,
+        action: "inbound_ingest",
+        ...(result.inserted
+          ? { outcome: "ok" as const }
+          : { outcome: "duplicate" as const, reason: "already_ingested" as const }),
+        ...accountFields(page),
+        subject: "message",
+        subjectId: result.messageId,
+        providerId: event.providerMessageId ?? undefined,
         eventId,
         jobId: result.jobId,
-        messageId: result.messageId,
       })
       await this.enqueueIfPending(result, { messageId: result.messageId })
       accepted += result.inserted ? 1 : 0
@@ -1376,8 +1398,27 @@ export class ApiService {
         event.providerAccountId,
         "instagram"
       )
-      if (!page) continue
+      if (!page) {
+        log({
+          entrypoint: "fetch",
+          action: "inbound_ingest",
+          outcome: "dropped",
+          reason: "account_not_connected",
+          channel: "instagram",
+          accountId: event.providerAccountId,
+          subject: "message",
+        })
+        continue
+      }
       if (!(await this.hasProductAccess(page.tenantId, accessByTenant))) {
+        log({
+          entrypoint: "fetch",
+          action: "inbound_ingest",
+          outcome: "dropped",
+          reason: "no_active_subscription",
+          ...accountFields(page),
+          subject: "message",
+        })
         continue
       }
 
@@ -1402,15 +1443,18 @@ export class ApiService {
         deliveryBlockedReason: null,
         recoverAfter: this.recoverAfter(),
       })
-      log("info", {
+      log({
         entrypoint: "fetch",
-        event: result.inserted
-          ? "instagram_inbound_persisted"
-          : "instagram_inbound_duplicate",
-        tenantId: page.tenantId,
+        action: "inbound_ingest",
+        ...(result.inserted
+          ? { outcome: "ok" as const }
+          : { outcome: "duplicate" as const, reason: "already_ingested" as const }),
+        ...accountFields(page),
+        subject: "message",
+        subjectId: result.messageId,
+        providerId: event.providerMessageId ?? undefined,
         eventId,
         jobId: result.jobId,
-        messageId: result.messageId,
       })
       await this.enqueueIfPending(result, { messageId: result.messageId })
       accepted += result.inserted ? 1 : 0
@@ -1428,7 +1472,19 @@ export class ApiService {
         event.providerAccountId,
         "instagram"
       )
-      if (!page) continue
+      if (!page) {
+        log({
+          entrypoint: "fetch",
+          action: "inbound_ingest",
+          outcome: "dropped",
+          reason: "account_not_connected",
+          channel: "instagram",
+          accountId: event.providerAccountId,
+          subject: "comment",
+          providerId: event.providerCommentId,
+        })
+        continue
+      }
 
       // **Segunda señal anti-bucle.** El parser ya descartó los comentarios
       // cuyo `from.id` es la propia cuenta; acá se repite por @handle, que es el
@@ -1439,6 +1495,15 @@ export class ApiService {
         event.fromUsername &&
         event.fromUsername.toLowerCase() === page.username.toLowerCase()
       ) {
+        log({
+          entrypoint: "fetch",
+          action: "inbound_ingest",
+          outcome: "dropped",
+          reason: "self_authored_comment",
+          ...accountFields(page),
+          subject: "comment",
+          providerId: event.providerCommentId,
+        })
         continue
       }
 
@@ -1451,10 +1516,28 @@ export class ApiService {
           providerCommentId: event.providerCommentId,
         })
       ) {
+        log({
+          entrypoint: "fetch",
+          action: "inbound_ingest",
+          outcome: "dropped",
+          reason: "own_published_comment",
+          ...accountFields(page),
+          subject: "comment",
+          providerId: event.providerCommentId,
+        })
         continue
       }
 
       if (!(await this.hasProductAccess(page.tenantId, accessByTenant))) {
+        log({
+          entrypoint: "fetch",
+          action: "inbound_ingest",
+          outcome: "dropped",
+          reason: "no_active_subscription",
+          ...accountFields(page),
+          subject: "comment",
+          providerId: event.providerCommentId,
+        })
         continue
       }
 
@@ -1477,15 +1560,18 @@ export class ApiService {
         deliveryBlockedReason: null,
         recoverAfter: this.recoverAfter(),
       })
-      log("info", {
+      log({
         entrypoint: "fetch",
-        event: result.inserted
-          ? "instagram_comment_persisted"
-          : "instagram_comment_duplicate",
-        tenantId: page.tenantId,
+        action: "inbound_ingest",
+        ...(result.inserted
+          ? { outcome: "ok" as const }
+          : { outcome: "duplicate" as const, reason: "already_ingested" as const }),
+        ...accountFields(page),
+        subject: "comment",
+        subjectId: result.commentId,
+        providerId: event.providerCommentId,
         eventId,
         jobId: result.jobId,
-        commentId: result.commentId,
       })
       await this.enqueueIfPending(result, { commentId: result.commentId })
       accepted += result.inserted ? 1 : 0

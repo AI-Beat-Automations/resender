@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { auth } from "@/auth"
 import { resolveProductAccess } from "@/lib/auth/waitlist"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
+import { log, type LogReason } from "@/lib/observability/logger"
 import {
   buildInstagramDialogUrl,
   INSTAGRAM_STATE_COOKIE,
@@ -18,24 +19,47 @@ import {
 export const runtime = "nodejs"
 
 export async function GET(request: NextRequest) {
+  // Los tres gates redirigen. Sin línea, «el botón no hace nada» y «el botón
+  // me manda a facturación» se investigan a ciegas.
+  const gate = (reason: LogReason, to: string) => {
+    log({
+      entrypoint: "route",
+      action: "oauth_start",
+      outcome: "dropped",
+      reason,
+      channel: "instagram",
+      route: "/api/meta/instagram/start",
+    })
+    return NextResponse.redirect(new URL(to, request.url))
+  }
+
   const session = await auth()
   if (!session?.user?.id) {
-    return NextResponse.redirect(new URL("/login", request.url))
+    return gate("not_authenticated", "/login")
   }
 
   // Una sesión huérfana vuelve a `/login` y no a `/waitlist`: esa ruta dejó de
   // ser la pantalla del gate (ADR 0007) y no permite reautenticarse.
   const access = await resolveProductAccess(session.user.id)
   if (access === "unknown_user") {
-    return NextResponse.redirect(new URL("/login", request.url))
+    return gate("not_authenticated", "/login")
   }
   if (access === "waitlisted") {
-    return NextResponse.redirect(new URL("/waitlist", request.url))
+    return gate("waitlisted", "/waitlist")
   }
 
   if (!(await hasActiveSubscription(session.user.id))) {
-    return NextResponse.redirect(new URL("/billing", request.url))
+    return gate("no_active_subscription", "/billing")
   }
+
+  log({
+    entrypoint: "route",
+    action: "oauth_start",
+    outcome: "ok",
+    channel: "instagram",
+    route: "/api/meta/instagram/start",
+    tenantId: session.user.id,
+  })
 
   const state = crypto.randomUUID()
 

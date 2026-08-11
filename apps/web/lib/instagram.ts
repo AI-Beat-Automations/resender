@@ -1,3 +1,9 @@
+import { log } from "@/lib/observability/logger"
+import {
+  extractMetaErrorCode,
+  extractMetaErrorMessage,
+} from "@/lib/outbound/meta-send"
+
 // Cliente de **Instagram API con Instagram Login** (`graph.instagram.com`), el
 // login que no pide Página de Facebook: el usuario autoriza su cuenta
 // profesional de Instagram directamente.
@@ -161,7 +167,16 @@ export async function exchangeCodeForInstagramToken(
   const shortData = unwrapInstagramPayload(await shortRes.json())
   const shortToken = shortData.access_token
   if (!shortRes.ok || typeof shortToken !== "string") {
-    console.error("instagram token exchange failed", shortData)
+    log({
+      entrypoint: "route",
+      action: "token_exchange",
+      outcome: "failed",
+      reason: "token_exchange_failed",
+      channel: "instagram",
+      errorCode: extractMetaErrorCode(shortData) ?? undefined,
+      errorMessage: extractMetaErrorMessage(shortData) ?? undefined,
+      status: shortRes.status,
+    })
     throw new InstagramApiError("token exchange failed", "short_lived_token")
   }
 
@@ -174,7 +189,16 @@ export async function exchangeCodeForInstagramToken(
   const longData = unwrapInstagramPayload(await longRes.json())
   const longToken = longData.access_token
   if (!longRes.ok || typeof longToken !== "string") {
-    console.error("instagram long-lived token exchange failed", longData)
+    log({
+      entrypoint: "route",
+      action: "token_exchange",
+      outcome: "failed",
+      reason: "token_exchange_failed",
+      channel: "instagram",
+      errorCode: extractMetaErrorCode(longData) ?? undefined,
+      errorMessage: extractMetaErrorMessage(longData) ?? undefined,
+      status: longRes.status,
+    })
     throw new InstagramApiError(
       "long-lived token exchange failed",
       "long_lived_token"
@@ -201,7 +225,16 @@ export async function refreshInstagramToken(
   const data = unwrapInstagramPayload(await res.json())
   const refreshed = data.access_token
   if (!res.ok || typeof refreshed !== "string") {
-    console.error("instagram token refresh failed", data)
+    log({
+      entrypoint: "route",
+      action: "token_exchange",
+      outcome: "failed",
+      reason: "token_exchange_failed",
+      channel: "instagram",
+      errorCode: extractMetaErrorCode(data) ?? undefined,
+      errorMessage: extractMetaErrorMessage(data) ?? undefined,
+      status: res.status,
+    })
     throw new InstagramApiError("token refresh failed", "refresh_token")
   }
 
@@ -226,7 +259,16 @@ export async function fetchInstagramProfile(
   const username = data.username
 
   if (!res.ok || !igUserId || !username) {
-    console.error("instagram profile fetch failed", data)
+    log({
+      entrypoint: "route",
+      action: "oauth_callback",
+      outcome: "failed",
+      reason: "profile_fetch_failed",
+      channel: "instagram",
+      errorCode: extractMetaErrorCode(data) ?? undefined,
+      errorMessage: extractMetaErrorMessage(data) ?? undefined,
+      status: res.status,
+    })
     throw new InstagramApiError("profile fetch failed", "profile")
   }
 
@@ -252,7 +294,18 @@ export async function subscribeInstagramWebhook(
   })
   const data = unwrapInstagramPayload(await res.json())
   if (!res.ok || data.success !== true) {
-    console.error("instagram subscribed_apps failed", data)
+    log({
+      entrypoint: "route",
+      action: "webhook_subscribe",
+      outcome: "failed",
+      reason: "subscription_failed",
+      channel: "instagram",
+      // Sin `accountId`: el endpoint es `/me/subscribed_apps` y la cuenta sale
+      // del token, así que esta función no la conoce. El llamador la nombra.
+      errorCode: extractMetaErrorCode(data) ?? undefined,
+      errorMessage: extractMetaErrorMessage(data) ?? undefined,
+      status: res.status,
+    })
     throw new InstagramApiError("webhook subscription failed", "subscribe")
   }
 }
@@ -271,7 +324,18 @@ export async function unsubscribeInstagramWebhook(
   const res = await fetch(url, { method: "DELETE" })
   const data = unwrapInstagramPayload(await res.json())
   if (!res.ok || data.success !== true) {
-    console.error("instagram subscribed_apps unsubscribe failed", data)
+    log({
+      entrypoint: "route",
+      action: "webhook_unsubscribe",
+      outcome: "failed",
+      reason: "unsubscribe_failed",
+      channel: "instagram",
+      // Sin `accountId`: el endpoint es `/me/subscribed_apps` y la cuenta sale
+      // del token, así que esta función no la conoce. El llamador la nombra.
+      errorCode: extractMetaErrorCode(data) ?? undefined,
+      errorMessage: extractMetaErrorMessage(data) ?? undefined,
+      status: res.status,
+    })
     return false
   }
   return true

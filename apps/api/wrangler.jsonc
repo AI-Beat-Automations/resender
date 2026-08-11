@@ -50,7 +50,13 @@
   ],
   "observability": {
     "enabled": true,
-    "logs": { "enabled": true, "head_sampling_rate": 0.25 },
+    // Sin muestreo, y a propósito. El muestreo de Cloudflare es **por
+    // invocación**: con 0.25, tres de cada cuatro webhooks no conservan
+    // **ninguna** línea. Cada log de descarte tendría 75 % de probabilidad de no
+    // existir justo cuando se lo va a buscar, que es el problema que estos logs
+    // vienen a resolver. Si alguna vez hay que bajar volumen, se muestrean los
+    // `traces`, nunca los `logs`.
+    "logs": { "enabled": true, "head_sampling_rate": 1 },
     "traces": { "enabled": true, "head_sampling_rate": 0.05 },
   },
   "env": {

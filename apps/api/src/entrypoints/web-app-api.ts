@@ -187,9 +187,11 @@ export class WebAppApi
     const startedAt = Date.now()
     try {
       const result = await operation()
-      log("info", {
+      log({
         entrypoint: "rpc",
-        event,
+        action: "rpc",
+        outcome: "ok",
+        operation: event,
         tenantId: actor?.userId,
         status: 200,
         durationMs: Date.now() - startedAt,
@@ -204,9 +206,12 @@ export class WebAppApi
               message: "An unexpected error occurred.",
               status: 500,
             })
-      log("error", {
+      log({
         entrypoint: "rpc",
-        event,
+        action: "rpc",
+        outcome: "failed",
+        reason: "internal_error",
+        operation: event,
         tenantId: actor?.userId,
         status: contract.status,
         durationMs: Date.now() - startedAt,

@@ -15,6 +15,12 @@ import {
   subscribeInstagramWebhook,
 } from "@/lib/instagram"
 import { APP_URL } from "@/lib/meta"
+import {
+  accountFields,
+  describeError,
+  log,
+  type LogReason,
+} from "@/lib/observability/logger"
 import { instagramAccountOwnedReason } from "@/lib/pages/meta-connection-error"
 import {
   connectInstagramAccount,
@@ -37,22 +43,36 @@ import { posthog } from "@/lib/posthog"
 export const runtime = "nodejs"
 
 export async function GET(request: NextRequest) {
+  // Los gates de abajo redirigen y hasta ahora no dejaban rastro: desde afuera,
+  // «me rebotó a /login» y «no llegué nunca» se ven igual.
+  const gate = (reason: LogReason, to: string) => {
+    log({
+      entrypoint: "route",
+      action: "oauth_callback",
+      outcome: "dropped",
+      reason,
+      channel: "instagram",
+      route: "/api/meta/instagram/callback",
+    })
+    return NextResponse.redirect(new URL(to, APP_URL))
+  }
+
   const session = await auth()
   if (!session?.user?.id) {
-    return NextResponse.redirect(new URL("/login", APP_URL))
+    return gate("not_authenticated", "/login")
   }
 
   // Ver el comentario en `/api/meta/instagram/start`.
   const access = await resolveProductAccess(session.user.id)
   if (access === "unknown_user") {
-    return NextResponse.redirect(new URL("/login", APP_URL))
+    return gate("not_authenticated", "/login")
   }
   if (access === "waitlisted") {
-    return NextResponse.redirect(new URL("/waitlist", APP_URL))
+    return gate("waitlisted", "/waitlist")
   }
 
   if (!(await hasActiveSubscription(session.user.id))) {
-    return NextResponse.redirect(new URL("/billing", APP_URL))
+    return gate("no_active_subscription", "/billing")
   }
 
   const params = request.nextUrl.searchParams
@@ -70,16 +90,39 @@ export async function GET(request: NextRequest) {
     return res
   }
 
-  const fail = (reason: string) => finish({ instagram: "error", reason })
+  // El motivo del querystring es para la pantalla; el del log es del catálogo
+  // cerrado y es el que se filtra. Van juntos para que no se separen.
+  const fail = (
+    reason: string,
+    logReason: LogReason,
+    extra: { errorMessage?: string; level?: "warn" } = {}
+  ) => {
+    log({
+      entrypoint: "route",
+      action: "oauth_callback",
+      outcome: logReason === "user_cancelled" ? "dropped" : "failed",
+      reason: logReason,
+      channel: "instagram",
+      route: "/api/meta/instagram/callback",
+      tenantId: session.user.id,
+      ...extra,
+    })
+    return finish({ instagram: "error", reason })
+  }
 
   // El usuario canceló, o Instagram devolvió error. `error_description` trae el
   // detalle pero es texto de Meta en inglés: nos quedamos con el código, que es
   // lo que el catálogo de mensajes sabe traducir.
-  if (error || !code) return fail(error ?? "missing_code")
+  if (error) return fail(error, "user_cancelled")
+  if (!code) return fail("missing_code", "missing_code")
 
   // CSRF: el state del query debe coincidir con la cookie que sembró /start.
   const expected = request.cookies.get(INSTAGRAM_STATE_COOKIE)?.value
-  if (!state || !expected || state !== expected) return fail("state_mismatch")
+  if (!state || !expected || state !== expected) {
+    // A `warn`: un state que no coincide es o un intento de CSRF o dos
+    // diálogos abiertos a la vez, y las dos cosas ameritan mirarlas.
+    return fail("state_mismatch", "state_mismatch", { level: "warn" })
+  }
 
   let step: "exchange" | "profile" | "subscribe" | "persist" = "exchange"
   try {
@@ -115,28 +158,51 @@ export async function GET(request: NextRequest) {
       await posthog.flush()
     }
 
+    log({
+      entrypoint: "route",
+      action: "oauth_callback",
+      outcome: "ok",
+      route: "/api/meta/instagram/callback",
+      ...accountFields(account),
+    })
+
     // Solo el @handle viaja en la URL. El token quedó cifrado en Postgres y el
     // IG ID no le dice nada al usuario.
     return finish({ instagram: "connected", username: profile.username })
   } catch (error) {
     if (posthog) posthog.captureException(error, session.user.id)
-    console.error("instagram connection failed", step, error)
+    const errorMessage = describeError(error)
 
     if (error instanceof SecretEncryptionConfigError) {
-      return fail("configuration_failed")
+      return fail("configuration_failed", "configuration_failed", {
+        errorMessage,
+      })
     }
     if (error instanceof PageOwnershipError) {
-      return fail(instagramAccountOwnedReason(error.metaPageId))
-    }
-    if (error instanceof InstagramApiError) {
       return fail(
-        error.step === "subscribe"
-          ? "instagram_subscription_failed"
-          : error.step === "profile"
-            ? "instagram_profile_failed"
-            : "instagram_exchange_failed"
+        instagramAccountOwnedReason(error.metaPageId),
+        "account_owned_by_other_tenant",
+        { errorMessage: `accountId=${error.metaPageId}` }
       )
     }
-    return fail("instagram_exchange_failed")
+    // `step` ya distingue en qué paso del orden intercambio → perfil →
+    // suscripción se cayó, y es exactamente la distinción que el catálogo de
+    // motivos necesita. Hasta ahora solo se veía como querystring.
+    if (error instanceof InstagramApiError) {
+      return error.step === "subscribe"
+        ? fail("instagram_subscription_failed", "subscription_failed", {
+            errorMessage,
+          })
+        : error.step === "profile"
+          ? fail("instagram_profile_failed", "profile_fetch_failed", {
+              errorMessage,
+            })
+          : fail("instagram_exchange_failed", "token_exchange_failed", {
+              errorMessage,
+            })
+    }
+    return fail("instagram_exchange_failed", "internal_error", {
+      errorMessage: `${step}: ${errorMessage}`,
+    })
   }
 }

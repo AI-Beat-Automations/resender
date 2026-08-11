@@ -20,6 +20,11 @@ import {
 import { isMetaExpiredTokenError } from "@/lib/outbound/instagram-send"
 import { parseCommentReplyInput } from "@/lib/outbound/send-request"
 import { markPageTokenInvalid } from "@/lib/pages/page-registry"
+import { describeError, log } from "@/lib/observability/logger"
+import {
+  outboundLogger,
+  resolveRequestId,
+} from "@/lib/observability/outbound-log"
 import { posthog } from "@/lib/posthog"
 
 // Publica una **respuesta pública** debajo del comentario, visible para
@@ -38,9 +43,20 @@ import { posthog } from "@/lib/posthog"
 export const runtime = "nodejs"
 
 export async function POST(request: NextRequest) {
+  const requestId = resolveRequestId(request.headers.get("x-request-id"))
+  const trace = outboundLogger({
+    action: "comment_reply",
+    channel: "instagram",
+    subject: "comment",
+    requestId,
+  })
+
   const auth = await authenticateCommentReplyRequest(request)
-  if (!auth.ok) return auth.response
+  // El motivo lo trae el gate compartido; la `action` la pone la ruta, que es
+  // la única que sabe si esto es una respuesta pública o un DM privado.
+  if (!auth.ok) return trace.drop(auth.reason, auth.response)
   const { tenantId, idempotencyKey } = auth.value
+  trace.setTenant(tenantId)
 
   // El replay se resuelve antes que nada: no llama a Meta ni inserta, así que
   // devolver el resultado ya almacenado es lo único correcto.
@@ -49,31 +65,47 @@ export async function POST(request: NextRequest) {
       tenantId,
       idempotencyKey
     )
-    if (replay) return idempotentReplayResponse(replay)
+    if (replay) {
+      return trace.duplicate(idempotentReplayResponse(replay), {
+        subjectId: replay.id,
+      })
+    }
   }
 
   let body: unknown
   try {
     body = await request.json()
   } catch {
-    return Response.json({ error: "invalid json" }, { status: 400 })
+    return trace.drop(
+      "invalid_request",
+      Response.json({ error: "invalid json" }, { status: 400 })
+    )
   }
 
   const input = parseCommentReplyInput(body)
   if (!input.ok) {
-    return Response.json({ error: input.error }, { status: 400 })
+    return trace.drop(
+      "invalid_request",
+      Response.json({ error: input.error }, { status: 400 })
+    )
   }
 
   // Un comentario se mide en caracteres, no en bytes como el DM: son dos
   // superficies de Instagram con dos límites distintos.
   if (exceedsInstagramCommentLimit(input.value.reply)) {
-    return Response.json(
-      {
-        error: `reply is too long: an Instagram comment allows ${INSTAGRAM_COMMENT_MAX_CHARS} characters and this reply is ${instagramCommentLength(
-          input.value.reply
-        )}`,
-      },
-      { status: 400 }
+    return trace.drop(
+      "reply_too_long",
+      Response.json(
+        {
+          error: `reply is too long: an Instagram comment allows ${INSTAGRAM_COMMENT_MAX_CHARS} characters and this reply is ${instagramCommentLength(
+            input.value.reply
+          )}`,
+        },
+        { status: 400 }
+      ),
+      // En caracteres (code points), que es como lo mide un comentario. El DM
+      // de la ruta hermana se mide en bytes: son dos superficies y dos unidades.
+      { textLength: instagramCommentLength(input.value.reply) }
     )
   }
 
@@ -81,8 +113,9 @@ export async function POST(request: NextRequest) {
     tenantId,
     value: input.value,
   })
-  if (!target.ok) return target.response
+  if (!target.ok) return trace.drop(target.reason, target.response)
   const { page, pageAccessToken, sourceComment } = target.value
+  trace.setAccount(page)
 
   const sentAt = new Date()
   const metaResult = await replyToInstagramComment({
@@ -101,11 +134,18 @@ export async function POST(request: NextRequest) {
           "Meta rejected the Instagram token. Reconnect the account in Resender.",
       })
     } catch (error) {
-      console.error(
-        "failed to mark instagram token invalid",
-        page.metaPageId,
-        error
-      )
+      log({
+        entrypoint: "route",
+        action: "token_invalidate",
+        outcome: "failed",
+        reason: "internal_error",
+        requestId,
+        tenantId,
+        connectionId: page.id,
+        channel: "instagram",
+        accountId: page.metaPageId,
+        errorMessage: describeError(error),
+      })
     }
   }
 
@@ -142,8 +182,13 @@ export async function POST(request: NextRequest) {
         tenantId,
         idempotencyKey
       )
-      if (existing) return idempotentReplayResponse(existing)
+      if (existing) {
+        return trace.duplicate(idempotentReplayResponse(existing), {
+          subjectId: existing.id,
+        })
+      }
     }
+    trace.failed("internal_error", { errorMessage: describeError(error) })
     throw error
   }
 
@@ -163,6 +208,25 @@ export async function POST(request: NextRequest) {
       },
     })
     await posthog.flush()
+  }
+
+  // Una línea terminal por request. El catálogo de errores de la respuesta
+  // pública es el tercero: un `10` acá no es la ventana de 24 h —una respuesta
+  // pública no tiene ventana— sino el permiso `..._manage_comments`.
+  const traceFields = {
+    subjectId: comment.id,
+    providerId: comment.igCommentId ?? undefined,
+    textLength: instagramCommentLength(input.value.reply),
+    status: metaResult.status,
+    durationMs: Date.now() - sentAt.getTime(),
+  }
+  if (metaResult.ok) {
+    trace.ok(traceFields)
+  } else {
+    trace.failed("meta_rejected", {
+      ...traceFields,
+      errorMessage: metaResult.reason ?? metaResult.error ?? undefined,
+    })
   }
 
   return Response.json(

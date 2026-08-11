@@ -3,9 +3,14 @@ import crypto from "crypto"
 import { after, type NextRequest } from "next/server"
 
 import { ingestMetaWebhookPayload } from "@/lib/inbound/inbound-ingestion"
+import { describeWebhookEnvelope } from "@/lib/inbound/webhook-envelope"
+import { verifyMetaSignature } from "@/lib/inbound/webhook-signature"
+import { describeError, log } from "@/lib/observability/logger"
 
 const VERIFY_TOKEN = process.env.META_VERIFY_TOKEN!
 const APP_SECRET = process.env.META_APP_SECRET!
+
+const ROUTE = "/api/meta/webhook"
 
 // GET = verificación del challenge (al registrar el webhook en Meta)
 export async function GET(request: NextRequest) {
@@ -14,8 +19,25 @@ export async function GET(request: NextRequest) {
     q.get("hub.mode") === "subscribe" &&
     q.get("hub.verify_token") === VERIFY_TOKEN
   ) {
+    log({
+      entrypoint: "route",
+      action: "webhook_verify",
+      outcome: "ok",
+      channel: "messenger",
+      route: ROUTE,
+    })
     return new Response(q.get("hub.challenge"), { status: 200 })
   }
+  log({
+    entrypoint: "route",
+    action: "webhook_verify",
+    outcome: "dropped",
+    reason: "verify_token_mismatch",
+    level: "warn",
+    channel: "messenger",
+    route: ROUTE,
+    status: 403,
+  })
   return new Response("forbidden", { status: 403 })
 }
 
@@ -25,35 +47,101 @@ export const runtime = "nodejs"
 
 export async function POST(request: NextRequest) {
   const raw = await request.text()
+  // Antes del chequeo de firma, para que hasta un payload rechazado tenga id.
+  const requestId = crypto.randomUUID()
 
   // valida que el evento viene de Meta: HMAC-SHA256 del body con el App Secret
-  const sig = request.headers.get("x-hub-signature-256") ?? ""
-  const expected =
-    "sha256=" +
-    crypto.createHmac("sha256", APP_SECRET).update(raw).digest("hex")
-  if (!safeEqual(sig, expected)) {
+  const signature = verifyMetaSignature({
+    raw,
+    header: request.headers.get("x-hub-signature-256"),
+    appSecret: APP_SECRET,
+  })
+  if (!signature.ok) {
+    log({
+      entrypoint: "route",
+      action: "webhook_receive",
+      outcome: "dropped",
+      reason: signature.reason,
+      level: "warn",
+      requestId,
+      channel: "messenger",
+      route: ROUTE,
+      status: 401,
+    })
     return new Response("bad signature", { status: 401 })
   }
 
+  let body: unknown
   try {
-    const body = JSON.parse(raw)
-    const ingested = await ingestMetaWebhookPayload(body)
+    body = JSON.parse(raw)
+  } catch (error) {
+    log({
+      entrypoint: "route",
+      action: "webhook_receive",
+      outcome: "failed",
+      reason: "invalid_json",
+      requestId,
+      channel: "messenger",
+      route: ROUTE,
+      errorMessage: describeError(error),
+    })
+    return Response.json({ ok: true })
+  }
+
+  const envelope = describeWebhookEnvelope(body)
+
+  try {
+    const ingested = await ingestMetaWebhookPayload(body, requestId)
+
+    const nonEmpty = envelope.messagingCount + envelope.changeCount > 0
+    log({
+      entrypoint: "route",
+      action: "webhook_receive",
+      ...(ingested.length === 0 && nonEmpty
+        ? {
+            outcome: "dropped" as const,
+            reason: "no_events_in_payload" as const,
+            level: "warn" as const,
+          }
+        : { outcome: "ok" as const }),
+      requestId,
+      channel: "messenger",
+      route: ROUTE,
+      count: ingested.length,
+      ...envelope,
+    })
 
     for (const item of ingested) {
       after(async () => {
-        await item.pushJob()
+        try {
+          await item.pushJob()
+        } catch (error) {
+          // Un throw acá no iba a ningún lado: la request ya respondió.
+          log({
+            entrypoint: "after",
+            action: "webhook_delivery",
+            outcome: "failed",
+            reason: "internal_error",
+            requestId,
+            channel: "messenger",
+            errorMessage: describeError(error),
+          })
+        }
       })
     }
-  } catch (e) {
-    console.error("webhook parse error", e)
+  } catch (error) {
+    log({
+      entrypoint: "route",
+      action: "webhook_receive",
+      outcome: "failed",
+      reason: "internal_error",
+      requestId,
+      channel: "messenger",
+      route: ROUTE,
+      ...envelope,
+      errorMessage: describeError(error),
+    })
   }
 
   return Response.json({ ok: true })
-}
-
-function safeEqual(a: string, b: string) {
-  const ab = Buffer.from(a)
-  const bb = Buffer.from(b)
-  if (ab.length !== bb.length) return false
-  return crypto.timingSafeEqual(ab, bb)
 }

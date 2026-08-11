@@ -410,6 +410,13 @@ function recoveryRow(job: RecoveryJob): Row {
     event_id: job.eventId,
     tenant_id: job.tenantId,
     message_id: job.messageId,
+    // La cuenta de la que cuelga el job: sale del join a `connected_pages` que
+    // `getJob` ya hacía, y es lo que permite que el log de la entrega diga de
+    // qué cuenta se trata y no solo de qué tenant.
+    connected_page_id: "f251bd5a-2772-489a-a725-43e2ea9d44ee",
+    channel: "messenger",
+    meta_page_id: "104233889761204",
+    username: null,
     webhook_url: "https://example.com/webhook",
     payload: { type: "message.received" },
     status: job.status,

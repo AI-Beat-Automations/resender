@@ -9,7 +9,7 @@ import {
 import { decryptSecret, hmacHex } from "../infrastructure/crypto/secrets"
 import type { JobRecord, SqlRepository } from "../infrastructure/db/repository"
 import { assertPublicWebhookDestination } from "../infrastructure/http/ssrf"
-import { log } from "../observability/logger"
+import { accountFields, describeError, log } from "../observability/logger"
 import type { QueuePayload } from "./service"
 
 export type DeliveryOutcome =
@@ -88,6 +88,19 @@ export async function deliverJob(input: {
       existing.status === "failed_permanent" ||
       existing.status === "dead"
     ) {
+      // Camino mudo hasta ahora, y el que más confunde: el job ya está cerrado
+      // —o no existe— y la entrega no ocurre. Sin esta línea, un job de
+      // comentario que `getJob` no devolvía por el join interno se veía igual
+      // que uno entregado.
+      log({
+        entrypoint: "queue",
+        action: "webhook_delivery",
+        outcome: "dropped",
+        reason: "job_already_terminal",
+        jobId: input.jobId,
+        tenantId: existing?.tenantId,
+        status: existing ? undefined : 404,
+      })
       return { disposition: "ack" }
     }
     return {
@@ -127,13 +140,32 @@ export async function deliverJob(input: {
     retryDelaySeconds: delaySeconds,
     retryGraceSeconds: RECOVERY_RETRY_GRACE_SECONDS,
   })
-  log(outcome.kind === "success" ? "info" : "warn", {
+  log({
     entrypoint: "queue",
-    event: `webhook_delivery_${outcome.kind}`,
-    tenantId: claimed.tenantId,
+    action: "webhook_delivery",
+    // Un `permanent` es un 4xx del endpoint del tenant: no se reintenta y es un
+    // fallo. Un `retry` todavía tiene intentos por delante, así que va en
+    // `warn` por el mapa de niveles y no como error.
+    ...(outcome.kind === "success"
+      ? { outcome: "ok" as const }
+      : {
+          outcome: outcome.kind === "permanent" ? ("failed" as const) : ("retry" as const),
+          reason:
+            outcome.statusCode === null
+              ? ("network_error" as const)
+              : ("http_error" as const),
+        }),
+    // `claimed.id` es el id del **job**, no el de la conexión: hay que nombrar
+    // los campos, no pasar el registro entero.
+    ...accountFields({ ...claimed, id: claimed.connectionId }),
     jobId: claimed.id,
-    messageId: claimed.messageId ?? undefined,
-    commentId: claimed.commentId ?? undefined,
+    // El sujeto es un mensaje **o** un comentario desde la 0013; el job sabe de
+    // cuál cuelga y acá se nombra el que corresponda.
+    ...(claimed.commentId
+      ? { subject: "comment" as const, subjectId: claimed.commentId }
+      : claimed.messageId
+        ? { subject: "message" as const, subjectId: claimed.messageId }
+        : {}),
     eventId: claimed.eventId,
     attempt: claimed.attemptCount,
     status: outcome.statusCode ?? undefined,
@@ -156,11 +188,15 @@ export async function consumeWebhookQueue(
     batch.messages.map(async (message) => {
       const payload = parseQueuePayload(message.body)
       if (!payload) {
-        log("error", {
+        log({
           entrypoint: "queue",
-          event: "invalid_queue_payload",
+          action: "queue_consume",
+          outcome: "failed",
+          reason: "invalid_queue_payload",
           queue: batch.queue,
-          messageId: message.id,
+          // El id del mensaje **de la cola**, que no es el id de un mensaje de
+          // Resender. Antes los dos viajaban bajo `messageId`.
+          queueMessageId: message.id,
         })
         message.ack()
         return
@@ -173,21 +209,30 @@ export async function consumeWebhookQueue(
             payload.jobId,
             "Cloudflare Queue retries exhausted"
           )
-          log("error", {
+          log({
             entrypoint: "queue",
-            event: "webhook_delivery_dead",
+            action: "webhook_delivery",
+            outcome: "dead",
+            reason: "queue_retries_exhausted",
             queue: batch.queue,
             jobId: payload.jobId,
-            messageId: payload.messageId,
+            queueMessageId: message.id,
+            ...(payload.commentId
+              ? { subject: "comment" as const, subjectId: payload.commentId }
+              : payload.messageId
+                ? { subject: "message" as const, subjectId: payload.messageId }
+                : {}),
           })
           message.ack()
         } catch {
-          log("error", {
+          log({
             entrypoint: "queue",
-            event: "webhook_delivery_dlq_persist_failed",
+            action: "queue_consume",
+            outcome: "failed",
+            reason: "dlq_persist_failed",
             queue: batch.queue,
             jobId: payload.jobId,
-            messageId: payload.messageId,
+            queueMessageId: message.id,
             errorCode: "internal_error",
           })
           message.retry({ delaySeconds: retryDelay(message.attempts) })
@@ -205,13 +250,19 @@ export async function consumeWebhookQueue(
         } else {
           message.ack()
         }
-      } catch {
-        log("error", {
+      } catch (error) {
+        log({
           entrypoint: "queue",
-          event: "webhook_delivery_unexpected_error",
+          action: "queue_consume",
+          outcome: "failed",
+          reason: "internal_error",
           queue: batch.queue,
           jobId: payload.jobId,
-          messageId: payload.messageId,
+          queueMessageId: message.id,
+          // Antes este `catch` descartaba el error entero y solo dejaba
+          // `internal_error`: la causa quedaba afuera del log justo en el
+          // camino donde no hay nadie mirando.
+          errorMessage: describeError(error),
           errorCode: "internal_error",
         })
         message.retry({ delaySeconds: retryDelay(message.attempts) })

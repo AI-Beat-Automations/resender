@@ -8,6 +8,11 @@ import {
   SecretEncryptionConfigError,
 } from "@/lib/crypto/encryption"
 import { APP_URL, STATE_COOKIE, exchangeCodeForUserToken } from "@/lib/meta"
+import {
+  describeError,
+  log,
+  type LogReason,
+} from "@/lib/observability/logger"
 import { saveMetaUserAccessToken } from "@/lib/pages/meta-user-token"
 import { posthog } from "@/lib/posthog"
 
@@ -19,22 +24,36 @@ import { posthog } from "@/lib/posthog"
 export const runtime = "nodejs"
 
 export async function GET(request: NextRequest) {
+  // Los gates redirigen y hasta ahora no dejaban rastro: «me rebotó a /login» y
+  // «no llegué nunca» se ven igual desde afuera.
+  const gate = (reason: LogReason, to: string) => {
+    log({
+      entrypoint: "route",
+      action: "oauth_callback",
+      outcome: "dropped",
+      reason,
+      channel: "messenger",
+      route: "/api/meta/callback",
+    })
+    return NextResponse.redirect(new URL(to, APP_URL))
+  }
+
   const session = await auth()
   if (!session?.user?.id) {
-    return NextResponse.redirect(new URL("/login", APP_URL))
+    return gate("not_authenticated", "/login")
   }
 
   // Ver el comentario en `/api/meta/start`.
   const access = await resolveProductAccess(session.user.id)
   if (access === "unknown_user") {
-    return NextResponse.redirect(new URL("/login", APP_URL))
+    return gate("not_authenticated", "/login")
   }
   if (access === "waitlisted") {
-    return NextResponse.redirect(new URL("/waitlist", APP_URL))
+    return gate("waitlisted", "/waitlist")
   }
 
   if (!(await hasActiveSubscription(session.user.id))) {
-    return NextResponse.redirect(new URL("/billing", APP_URL))
+    return gate("no_active_subscription", "/billing")
   }
 
   const params = request.nextUrl.searchParams
@@ -43,7 +62,21 @@ export async function GET(request: NextRequest) {
   const error = params.get("error")
 
   const connections = new URL("/connections", APP_URL)
-  const fail = (reason: string) => {
+  const fail = (
+    reason: string,
+    logReason: LogReason,
+    extra: { errorMessage?: string; level?: "warn" } = {}
+  ) => {
+    log({
+      entrypoint: "route",
+      action: "oauth_callback",
+      outcome: logReason === "user_cancelled" ? "dropped" : "failed",
+      reason: logReason,
+      channel: "messenger",
+      route: "/api/meta/callback",
+      tenantId: session.user.id,
+      ...extra,
+    })
     connections.searchParams.set("meta", "error")
     connections.searchParams.set("reason", reason)
     const res = NextResponse.redirect(connections)
@@ -52,26 +85,40 @@ export async function GET(request: NextRequest) {
   }
 
   // el usuario canceló o Meta devolvió error
-  if (error || !code) return fail(error ?? "missing_code")
+  if (error) return fail(error, "user_cancelled")
+  if (!code) return fail("missing_code", "missing_code")
 
   // CSRF: el state del query debe coincidir con la cookie que sembró /start
   const expected = request.cookies.get(STATE_COOKIE)?.value
-  if (!state || !expected || state !== expected) return fail("state_mismatch")
+  if (!state || !expected || state !== expected) {
+    return fail("state_mismatch", "state_mismatch", { level: "warn" })
+  }
 
   try {
     assertSecretEncryptionConfigured()
     const userToken = await exchangeCodeForUserToken(code)
     await saveMetaUserAccessToken(session.user.id, userToken)
 
+    log({
+      entrypoint: "route",
+      action: "oauth_callback",
+      outcome: "ok",
+      channel: "messenger",
+      route: "/api/meta/callback",
+      tenantId: session.user.id,
+    })
+
     const res = NextResponse.redirect(new URL("/connections/select", APP_URL))
     res.cookies.delete(STATE_COOKIE)
     return res
   } catch (error) {
     if (posthog) posthog.captureException(error, session.user.id)
-    console.error("meta connection failed", error)
+    const errorMessage = describeError(error)
     if (error instanceof SecretEncryptionConfigError) {
-      return fail("configuration_failed")
+      return fail("configuration_failed", "configuration_failed", {
+        errorMessage,
+      })
     }
-    return fail("exchange_failed")
+    return fail("exchange_failed", "token_exchange_failed", { errorMessage })
   }
 }

@@ -15,8 +15,14 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS",
   },
+  "vars": { "ENVIRONMENT": "production" },
   "observability": {
     "enabled": true,
+    // Explícito aunque 1 ya sea el valor por defecto: el muestreo por cabecera
+    // descarta la invocación entera, no líneas sueltas, y este worker es el que
+    // atiende los webhooks de Meta. Dejarlo escrito evita que alguien lo baje
+    // "para ahorrar" sin ver la consecuencia.
+    "logs": { "enabled": true, "head_sampling_rate": 1 },
   },
   // Único host que sirve el worker. `www` NO va acá: debe resolverse con una
   // Redirect Rule 301 hacia el ápex (ver el checklist de Cloudflare), no

@@ -9,6 +9,7 @@ import type {
   PageChannel,
 } from "@/lib/pages/page-registry"
 import { normalizeWebhookUrl } from "@/lib/pages/webhook-url"
+import { log, type LogReason } from "@/lib/observability/logger"
 import { posthog } from "@/lib/posthog"
 import type { InboundEventType } from "./inbound-event"
 
@@ -145,13 +146,45 @@ export function buildInboundCommentPayload(input: {
 
 export type PushPayload = InboundPushPayload | InboundCommentPushPayload
 
+// Contexto de log de una entrega. Viaja desde la ingesta adentro del closure
+// del `pushJob`, porque cuando este código corre —en el `after()` de Next— la
+// request ya terminó y no hay de dónde volver a resolver la cuenta.
+//
+// **No incluye el `webhookUrl` a propósito.** Es una URL que controla el
+// cliente y puede llevar un token en el path; las de n8n rutinariamente lo
+// hacen. `connectionId` alcanza para saber cuál era.
+export type DeliveryLogContext = {
+  requestId?: string
+  tenantId?: string
+  connectionId?: string
+  channel?: PageChannel
+  accountId?: string
+  accountHandle?: string
+  subject?: "message" | "comment"
+  subjectId?: string
+  providerId?: string
+  contactId?: string
+}
+
 // El motivo es parametrizable porque hay más de una razón para no entregar: la
 // página sin `webhookUrl` y la cuenta restringida (ADR 0003), que persiste el
 // entrante pero deja de reenviarlo.
 export async function recordSkippedDelivery(
   subject: DeliverySubject,
-  reason = "webhookUrl not configured"
+  options: {
+    // El texto que va a la columna `error` de la bitácora, que ya existía y es
+    // legible por humanos.
+    reason?: string
+    // El motivo del catálogo cerrado, que es el que se filtra en el panel. Van
+    // separados porque uno es prosa histórica y el otro es una faceta.
+    logReason?: Extract<
+      LogReason,
+      "webhook_url_not_configured" | "account_restricted"
+    >
+    context?: DeliveryLogContext
+  } = {}
 ) {
+  const reason = options.reason ?? "webhookUrl not configured"
   await recordDelivery({
     subject,
     webhookUrl: null,
@@ -159,6 +192,13 @@ export async function recordSkippedDelivery(
     statusCode: null,
     error: reason,
     attempt: 1,
+  })
+  log({
+    entrypoint: "after",
+    action: "webhook_delivery",
+    outcome: "skipped",
+    reason: options.logReason ?? "webhook_url_not_configured",
+    ...options.context,
   })
 }
 
@@ -174,7 +214,9 @@ export async function pushInboundEvent(input: {
   subject: DeliverySubject
   webhookUrl: string
   payload: PushPayload
+  context?: DeliveryLogContext
 }) {
+  const context = input.context ?? {}
   const normalized = normalizeWebhookUrl(input.webhookUrl)
   if (!normalized.ok || !normalized.value) {
     const deliveryError = normalized.ok
@@ -188,6 +230,15 @@ export async function pushInboundEvent(input: {
       error: deliveryError,
       attempt: 1,
     })
+    log({
+      entrypoint: "after",
+      action: "webhook_delivery",
+      outcome: "failed",
+      reason: "webhook_url_invalid",
+      ...context,
+      attempt: 1,
+      errorMessage: deliveryError,
+    })
     await captureDeliveryFailed(input.payload.tenant.id, {
       ...subjectProperties(input.subject),
       reason: deliveryError,
@@ -198,7 +249,9 @@ export async function pushInboundEvent(input: {
   const webhookUrl = normalized.value
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const startedAt = Date.now()
     const result = await attemptPush(webhookUrl, input.payload)
+    const durationMs = Date.now() - startedAt
 
     await recordDelivery({
       subject: input.subject,
@@ -209,10 +262,37 @@ export async function pushInboundEvent(input: {
       attempt,
     })
 
-    if (result.ok) return
+    if (result.ok) {
+      log({
+        entrypoint: "after",
+        action: "webhook_delivery",
+        outcome: "ok",
+        ...context,
+        attempt,
+        status: result.statusCode ?? undefined,
+        durationMs,
+      })
+      return
+    }
 
     // Se reporta a PostHog solo el fallo definitivo, no cada intento.
     if (!result.retryable || attempt === MAX_ATTEMPTS) {
+      log({
+        entrypoint: "after",
+        action: "webhook_delivery",
+        outcome: "failed",
+        reason:
+          attempt === MAX_ATTEMPTS && result.retryable
+            ? "max_attempts_exhausted"
+            : result.statusCode === null
+              ? "network_error"
+              : "http_error",
+        ...context,
+        attempt,
+        status: result.statusCode ?? undefined,
+        durationMs,
+        errorMessage: result.error ?? undefined,
+      })
       await captureDeliveryFailed(input.payload.tenant.id, {
         ...subjectProperties(input.subject),
         status_code: result.statusCode,
@@ -221,6 +301,21 @@ export async function pushInboundEvent(input: {
       })
       return
     }
+
+    // Cada intento fallido deja su línea. Hasta ahora solo el fallo definitivo
+    // llegaba a PostHog, así que un evento que anduvo al tercer intento no
+    // dejaba rastro de los dos anteriores en ningún lado salvo la tabla.
+    log({
+      entrypoint: "after",
+      action: "webhook_delivery",
+      outcome: "retry",
+      reason: result.statusCode === null ? "network_error" : "http_error",
+      ...context,
+      attempt,
+      status: result.statusCode ?? undefined,
+      durationMs,
+      errorMessage: result.error ?? undefined,
+    })
 
     const delay = RETRY_DELAYS_MS[attempt - 1]
     if (delay) {

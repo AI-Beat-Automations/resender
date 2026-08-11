@@ -118,6 +118,10 @@ describe("Worker runtime entrypoints", () => {
       eventId: "evt_1",
       tenantId: "6b402566-9e1d-4739-bb61-81ac615a5469",
       messageId: "ef55c94e-b861-4d19-9f9b-b5689028de80",
+      connectionId: "3f4c2d1e-0000-4000-8000-000000000001",
+      channel: "messenger",
+      providerPageId: "104233889761204",
+      username: null,
       commentId: null,
       webhookUrl: "https://example.com/webhook",
       payload: {},
@@ -134,6 +138,10 @@ describe("Worker runtime entrypoints", () => {
         body: {
           jobId: "d743db7b-d4b8-4911-bf01-c639816856fc",
           messageId: "ef55c94e-b861-4d19-9f9b-b5689028de80",
+      connectionId: "3f4c2d1e-0000-4000-8000-000000000001",
+      channel: "messenger",
+      providerPageId: "104233889761204",
+      username: null,
         },
       },
     ])
@@ -156,6 +164,10 @@ describe("Worker runtime entrypoints", () => {
         body: {
           jobId: "d743db7b-d4b8-4911-bf01-c639816856fc",
           messageId: "ef55c94e-b861-4d19-9f9b-b5689028de80",
+      connectionId: "3f4c2d1e-0000-4000-8000-000000000001",
+      channel: "messenger",
+      providerPageId: "104233889761204",
+      username: null,
         },
       },
     ])
@@ -174,6 +186,10 @@ describe("Worker runtime entrypoints", () => {
       tenantId: ACTOR.userId,
       messageId: MESSAGE_ID,
       commentId: null,
+      connectionId: "3f4c2d1e-0000-4000-8000-000000000001",
+      channel: "messenger",
+      providerPageId: "104233889761204",
+      username: null,
       webhookUrl: "https://example.com/webhook",
       payload: { type: "message.received" },
       status: "pending",

@@ -32,6 +32,7 @@ import type { InboundEvent } from "./inbound-event"
 import { extractInstagramComments } from "./instagram-comments"
 import { extractInstagramDirectMessages } from "./instagram-webhook"
 import { extractInboundEvents } from "./meta-webhook"
+import { accountFields, describeError, log } from "@/lib/observability/logger"
 import { posthog } from "@/lib/posthog"
 
 export type InboundPushJob = () => Promise<void>
@@ -65,8 +66,11 @@ const CHANNEL_IS_METERED: Record<PageChannel, boolean> = {
 }
 
 // Entrada del webhook de Messenger.
-export async function ingestMetaWebhookPayload(body: unknown) {
-  return ingestInboundEvents(extractInboundEvents(body), "messenger")
+export async function ingestMetaWebhookPayload(
+  body: unknown,
+  requestId: string
+) {
+  return ingestInboundEvents(extractInboundEvents(body), "messenger", requestId)
 }
 
 // Entrada del webhook de Instagram: mensajes directos **y** comentarios.
@@ -80,19 +84,29 @@ export async function ingestMetaWebhookPayload(body: unknown) {
 // resolución cuenta→tenant, el gate de suscripción, la bitácora de entregas ni
 // la política de reintentos.
 export async function ingestInstagramWebhookPayload(
-  body: unknown
+  body: unknown,
+  requestId: string
 ): Promise<IngestedInbound[]> {
   const [messages, comments] = await Promise.all([
-    ingestInboundEvents(extractInstagramDirectMessages(body), "instagram"),
-    ingestInstagramComments(body),
+    ingestInboundEvents(
+      extractInstagramDirectMessages(body),
+      "instagram",
+      requestId
+    ),
+    ingestInstagramComments(body, requestId),
   ])
 
   return [...messages, ...comments]
 }
 
+// El `requestId` se genera en la ruta y viaja como parámetro hasta el closure
+// del `pushJob`, que es lo que lo cruza al `after()` —donde la entrega corre
+// **después** de que ya se respondió—. Es lo que permite reconstruir un POST
+// entero: el sobre, sus N eventos y sus N entregas, con un solo filtro.
 async function ingestInboundEvents(
   incoming: InboundEvent[],
-  channel: PageChannel
+  channel: PageChannel,
+  requestId: string
 ) {
   const ingested: IngestedInboundMessage[] = []
   // Un payload de Meta puede traer varios eventos del mismo tenant; el
@@ -104,12 +118,38 @@ async function ingestInboundEvents(
     // El canal viene del webhook que recibió el evento, no del payload: sin él,
     // un IG ID que coincida con un page id resolvería al tenant equivocado.
     const page = await getActivePageByMetaPageId(event.metaPageId, channel)
-    if (!page) continue
+    if (!page) {
+      // El descarte más probable de todos, y hasta ahora mudo. El `channel` va
+      // en la línea porque desde la 0013 el mismo id existe en los dos canales:
+      // «cuenta no encontrada» sin decir dónde se buscó no se puede investigar.
+      log({
+        entrypoint: "route",
+        action: "inbound_ingest",
+        outcome: "dropped",
+        reason: "account_not_connected",
+        requestId,
+        channel,
+        accountId: event.metaPageId,
+        subject: "message",
+      })
+      continue
+    }
 
     // Bloqueo total sin suscripción activa (ADR 0002): el entrante del tenant
     // se descarta sin persistir ni reenviar; esos mensajes se pierden a
     // propósito. El webhook responde 200 a Meta igualmente.
-    if (!(await hasActiveSubscription(page.tenantId))) continue
+    if (!(await hasActiveSubscription(page.tenantId))) {
+      log({
+        entrypoint: "route",
+        action: "inbound_ingest",
+        outcome: "dropped",
+        reason: "no_active_subscription",
+        requestId,
+        ...accountFields(page),
+        subject: "message",
+      })
+      continue
+    }
 
     let entitlement: TenantEntitlement | null = null
     if (metered) {
@@ -136,7 +176,40 @@ async function ingestInboundEvents(
       createdAt: event.timestamp,
     })
 
-    if (!inserted) continue
+    const subject = { kind: "message", id: message.id } as const
+    const logSubject = {
+      subject: "message",
+      subjectId: message.id,
+      providerId: event.metaMessageId ?? undefined,
+      contactId: event.senderId,
+    } as const
+
+    if (!inserted) {
+      // Reintento de Meta o carrera entre dos requests. No es un error, pero sí
+      // la diferencia entre «no llegó» y «llegó y ya estaba».
+      log({
+        entrypoint: "route",
+        action: "inbound_ingest",
+        outcome: "duplicate",
+        reason: "already_ingested",
+        requestId,
+        ...accountFields(page),
+        ...logSubject,
+      })
+      continue
+    }
+
+    log({
+      entrypoint: "route",
+      action: "inbound_ingest",
+      outcome: "ok",
+      requestId,
+      ...accountFields(page),
+      ...logSubject,
+      // El texto no se loguea nunca; el largo alcanza para distinguir «llegó
+      // vacío» de «llegó» sin guardar lo que dijo nadie.
+      textLength: event.text.length,
+    })
 
     // El entrante persistido consume cuota aunque la cuenta esté restringida o
     // la página no tenga `webhookUrl`: lo que se cobra es recibir y persistir,
@@ -150,7 +223,15 @@ async function ingestInboundEvents(
       try {
         await incrementUsage(page.tenantId, periodStart)
       } catch (error) {
-        console.error("failed to increment usage counter", page.tenantId, error)
+        log({
+          entrypoint: "route",
+          action: "usage_increment",
+          outcome: "failed",
+          reason: "usage_counter_failed",
+          requestId,
+          ...accountFields(page),
+          errorMessage: describeError(error),
+        })
       }
     }
 
@@ -177,7 +258,9 @@ async function ingestInboundEvents(
       postbackPayload: event.postbackPayload,
     })
     const webhookUrl = page.webhookUrl
-    const subject = { kind: "message", id: message.id } as const
+    // El contexto de log viaja adentro del closure: cuando el `pushJob` corre,
+    // la request ya terminó y no hay de dónde volver a sacarlo.
+    const deliveryContext = { requestId, ...accountFields(page), ...logSubject }
     let pushJob: InboundPushJob
     // `entitlement` es null en un canal sin medir, y ahí la restricción por
     // consumo no aplica: el tenant que agotó su cuota de Messenger sigue
@@ -185,11 +268,23 @@ async function ingestInboundEvents(
     if (entitlement && !shouldPushInbound(entitlement)) {
       // Cuenta restringida (ADR 0003): el mensaje ya quedó persistido y
       // contabilizado, pero deja de reenviarse al webhook del cliente.
-      pushJob = () => recordSkippedDelivery(subject, RESTRICTED_SKIP_REASON)
+      pushJob = () =>
+        recordSkippedDelivery(subject, {
+          reason: RESTRICTED_SKIP_REASON,
+          logReason: "account_restricted",
+          context: deliveryContext,
+        })
     } else if (webhookUrl) {
-      pushJob = () => pushInboundEvent({ subject, webhookUrl, payload })
+      pushJob = () =>
+        pushInboundEvent({
+          subject,
+          webhookUrl,
+          payload,
+          context: deliveryContext,
+        })
     } else {
-      pushJob = () => recordSkippedDelivery(subject)
+      pushJob = () =>
+        recordSkippedDelivery(subject, { context: deliveryContext })
     }
 
     ingested.push({ page, message, pushJob })
@@ -206,14 +301,28 @@ async function ingestInboundEvents(
 // No lleva medición por la misma razón que los DMs de Instagram: el canal está
 // fuera de cuota por ahora.
 async function ingestInstagramComments(
-  body: unknown
+  body: unknown,
+  requestId: string
 ): Promise<IngestedInbound[]> {
   const incoming = extractInstagramComments(body)
   const ingested: IngestedInbound[] = []
 
   for (const event of incoming) {
     const page = await getActivePageByMetaPageId(event.metaPageId, "instagram")
-    if (!page) continue
+    if (!page) {
+      log({
+        entrypoint: "route",
+        action: "inbound_ingest",
+        outcome: "dropped",
+        reason: "account_not_connected",
+        requestId,
+        channel: "instagram",
+        accountId: event.metaPageId,
+        subject: "comment",
+        providerId: event.igCommentId,
+      })
+      continue
+    }
 
     // **Segunda comprobación anti-bucle.** El parser ya descartó los
     // comentarios cuyo `from.id` es la propia cuenta; acá se repite por
@@ -228,6 +337,16 @@ async function ingestInstagramComments(
       event.fromUsername &&
       event.fromUsername.toLowerCase() === page.username.toLowerCase()
     ) {
+      log({
+        entrypoint: "route",
+        action: "inbound_ingest",
+        outcome: "dropped",
+        reason: "self_authored_comment",
+        requestId,
+        ...accountFields(page),
+        subject: "comment",
+        providerId: event.igCommentId,
+      })
       continue
     }
 
@@ -244,13 +363,38 @@ async function ingestInstagramComments(
         igCommentId: event.igCommentId,
       })
     ) {
+      // Motivo propio y no un `anti_loop` genérico compartido con la señal
+      // anterior: son señales **independientes** a propósito, y si una deja de
+      // disparar hay que poder ver cuál quedó sosteniendo el filtro sola.
+      log({
+        entrypoint: "route",
+        action: "inbound_ingest",
+        outcome: "dropped",
+        reason: "own_published_comment",
+        requestId,
+        ...accountFields(page),
+        subject: "comment",
+        providerId: event.igCommentId,
+      })
       continue
     }
 
     // Bloqueo total sin suscripción activa (ADR 0002), igual que en los DMs: el
     // comentario se descarta sin persistir ni reenviar, y el webhook le
     // responde 200 a Meta igual.
-    if (!(await hasActiveSubscription(page.tenantId))) continue
+    if (!(await hasActiveSubscription(page.tenantId))) {
+      log({
+        entrypoint: "route",
+        action: "inbound_ingest",
+        outcome: "dropped",
+        reason: "no_active_subscription",
+        requestId,
+        ...accountFields(page),
+        subject: "comment",
+        providerId: event.igCommentId,
+      })
+      continue
+    }
 
     const { comment, inserted } = await insertInboundComment({
       tenantId: page.tenantId,
@@ -265,8 +409,36 @@ async function ingestInstagramComments(
       createdAt: event.timestamp,
     })
 
+    const logSubject = {
+      subject: "comment",
+      subjectId: comment.id,
+      providerId: comment.igCommentId ?? event.igCommentId,
+      contactId: comment.fromIgId,
+    } as const
+
     // Reintento de Meta o carrera entre dos requests: ya estaba, no se reenvía.
-    if (!inserted) continue
+    if (!inserted) {
+      log({
+        entrypoint: "route",
+        action: "inbound_ingest",
+        outcome: "duplicate",
+        reason: "already_ingested",
+        requestId,
+        ...accountFields(page),
+        ...logSubject,
+      })
+      continue
+    }
+
+    log({
+      entrypoint: "route",
+      action: "inbound_ingest",
+      outcome: "ok",
+      requestId,
+      ...accountFields(page),
+      ...logSubject,
+      textLength: event.text.length,
+    })
 
     if (posthog) {
       posthog.capture({
@@ -286,11 +458,12 @@ async function ingestInstagramComments(
     const payload = buildInboundCommentPayload({ page, comment })
     const subject = { kind: "comment", id: comment.id } as const
     const webhookUrl = page.webhookUrl
+    const context = { requestId, ...accountFields(page), ...logSubject }
 
     ingested.push({
       pushJob: webhookUrl
-        ? () => pushInboundEvent({ subject, webhookUrl, payload })
-        : () => recordSkippedDelivery(subject),
+        ? () => pushInboundEvent({ subject, webhookUrl, payload, context })
+        : () => recordSkippedDelivery(subject, { context }),
     })
   }
 

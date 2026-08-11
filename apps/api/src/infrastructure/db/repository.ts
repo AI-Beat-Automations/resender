@@ -136,6 +136,14 @@ export type JobRecord = {
   // ninguno.
   messageId: string | null
   commentId: string | null
+  // La cuenta de la que cuelga el job. Sale del join a `connected_pages` que
+  // `getJob` ya hacía para el secreto de firma, así que no cuesta una consulta
+  // más — y sin ella el log de la entrega solo puede nombrar al tenant, que es
+  // justo lo que no alcanza cuando un tenant tiene cuatro cuentas.
+  connectionId: string
+  channel: Channel
+  providerPageId: string
+  username: string | null
   webhookUrl: string | null
   payload: unknown
   status: "pending" | "processing" | "succeeded" | "failed_permanent" | "dead"
@@ -1457,6 +1465,7 @@ export class SqlRepository {
       select j.id, j.event_id, j.tenant_id, j.message_id,
         j.instagram_comment_id, j.webhook_url, j.payload, j.status,
         j.attempt_count, j.recover_after,
+        p.id as connected_page_id, p.channel, p.meta_page_id, p.username,
         p.webhook_signing_secret_encrypted
       from external_webhook_jobs j
       left join messages m on m.id = j.message_id
@@ -2056,6 +2065,10 @@ function mapJob(row: Record<string, unknown>): JobRecord {
     tenantId: text(row.tenant_id),
     messageId: nullableText(row.message_id),
     commentId: nullableText(row.instagram_comment_id),
+    connectionId: text(row.connected_page_id),
+    channel: channel(row.channel),
+    providerPageId: text(row.meta_page_id),
+    username: nullableText(row.username),
     webhookUrl: nullableText(row.webhook_url),
     payload: row.payload,
     status: jobStatus(row.status),
