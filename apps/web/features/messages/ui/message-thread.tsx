@@ -1,6 +1,7 @@
 import { Eye, Inbox, TriangleAlert } from "lucide-react"
 
 import { ChannelBadge } from "@/features/inbox/ui/channel-badge"
+import { EmptyPane } from "@/features/inbox/ui/empty-pane"
 import type { ThreadMessageView } from "@/lib/messages/display"
 import type { PageChannel } from "@/lib/pages/page-registry"
 import { Badge } from "@workspace/ui/components/badge"
@@ -60,26 +61,19 @@ export function MessageThread({
 
 export function EmptyThread({ filtered }: { filtered: boolean }) {
   return (
-    <section className="flex min-w-0 flex-1 flex-col items-center justify-center gap-3.5 bg-surface-app p-10 text-center">
-      <span
-        className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground"
-        aria-hidden
-      >
-        <Inbox className="size-[22px]" />
-      </span>
-      <div className="max-w-[400px]">
-        <h2 className="font-heading text-[18px] font-semibold tracking-[-0.02em]">
-          {filtered
-            ? "Esta página todavía no tiene conversaciones."
-            : "Todavía no hay conversaciones guardadas."}
-        </h2>
-        <p className="mt-2 text-[14px] leading-relaxed text-muted-foreground">
-          {filtered
-            ? "El filtro no devolvió ninguna conversación. Prueba con «Todas las páginas» para ver el resto del log."
-            : "Cuando alguien escriba a esta página, el mensaje se guarda acá y se reenvía a tu webhook."}
-        </p>
-      </div>
-    </section>
+    <EmptyPane
+      icon={Inbox}
+      title={
+        filtered
+          ? "Esta cuenta todavía no tiene conversaciones."
+          : "Todavía no hay conversaciones guardadas."
+      }
+      body={
+        filtered
+          ? "El filtro no devolvió ninguna conversación. Prueba con «Todas las cuentas» para ver el resto del log."
+          : "Cuando alguien escriba a esta cuenta, el mensaje se guarda acá y se reenvía a tu webhook."
+      }
+    />
   )
 }
 

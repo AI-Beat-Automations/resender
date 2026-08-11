@@ -277,28 +277,10 @@ export async function isOwnPublishedComment(input: {
   return row !== undefined
 }
 
-export async function listCommentsForMedia(input: {
-  tenantId: string
-  connectedPageId: string
-  mediaId: string
-}) {
-  const sql = getSql()
-  // Orden cronológico ascendente, no inverso: un hilo se entiende de arriba
-  // hacia abajo. Es el orden del índice `instagram_comments_media_idx`.
-  const rows = await sql<InstagramCommentRow[]>`
-    select id, tenant_id, connected_page_id, ig_comment_id,
-      parent_ig_comment_id, media_id, media_product_type, from_ig_id,
-      from_username, direction, status, text, error, provider_response,
-      created_at
-    from instagram_comments
-    where tenant_id = ${input.tenantId}
-      and connected_page_id = ${input.connectedPageId}
-      and media_id = ${input.mediaId}
-    order by created_at asc
-  `
-
-  return rows.map(mapComment)
-}
+// La lectura del hilo de una publicación vive en `lib/comments/read-model.ts`,
+// no acá: `listCommentsForMedia` devolvía el registro entero —`provider_response`
+// incluido, que puede ser un cuerpo de error de Graph completo— para una
+// pantalla que solo pinta ocho campos, y nunca llegó a tener un call site.
 
 function mapComment(row: InstagramCommentRow): InstagramCommentRecord {
   return {
