@@ -125,9 +125,7 @@ export function blogPostingSchema({
     datePublished: publishedOn,
     dateModified: updatedOn ?? publishedOn,
     image: `${url}/opengraph-image`,
-    author: author
-      ? { "@type": "Person", name: author }
-      : { "@id": ORG_ID },
+    author: author ? { "@type": "Person", name: author } : { "@id": ORG_ID },
     publisher: { "@id": ORG_ID },
     isPartOf: { "@id": WEBSITE_ID },
   }

@@ -194,7 +194,9 @@ describe("inbound atomicity and recovery", () => {
     clock.set("2026-07-29T18:02:00.000Z")
     await expect(
       repository.findRecoverableJobs({ limit: 100, leaseSeconds: 120 })
-    ).resolves.toEqual([{ jobId: "job_1", messageId: "message_1" }])
+    ).resolves.toEqual([
+      { jobId: "job_1", messageId: "message_1", commentId: null },
+    ])
 
     await expect(
       repository.findRecoverableJobs({ limit: 100, leaseSeconds: 120 })
@@ -246,7 +248,9 @@ describe("inbound atomicity and recovery", () => {
       )
       await expect(
         repository.findRecoverableJobs({ limit: 100, leaseSeconds: 120 })
-      ).resolves.toEqual([{ jobId: "job_1", messageId: "message_1" }])
+      ).resolves.toEqual([
+        { jobId: "job_1", messageId: "message_1", commentId: null },
+      ])
     }
   )
 
@@ -269,7 +273,9 @@ describe("inbound atomicity and recovery", () => {
     clock.set("2026-07-29T18:02:00.000Z")
     await expect(
       repository.findRecoverableJobs({ limit: 100, leaseSeconds: 120 })
-    ).resolves.toEqual([{ jobId: "job_1", messageId: "message_1" }])
+    ).resolves.toEqual([
+      { jobId: "job_1", messageId: "message_1", commentId: null },
+    ])
     expect(harness.jobs[0]).toMatchObject({
       status: "pending",
       lastError: "recovered stale processing job",
@@ -404,6 +410,13 @@ function recoveryRow(job: RecoveryJob): Row {
     event_id: job.eventId,
     tenant_id: job.tenantId,
     message_id: job.messageId,
+    // La cuenta de la que cuelga el job: sale del join a `connected_pages` que
+    // `getJob` ya hacía, y es lo que permite que el log de la entrega diga de
+    // qué cuenta se trata y no solo de qué tenant.
+    connected_page_id: "f251bd5a-2772-489a-a725-43e2ea9d44ee",
+    channel: "messenger",
+    meta_page_id: "104233889761204",
+    username: null,
     webhook_url: "https://example.com/webhook",
     payload: { type: "message.received" },
     status: job.status,
@@ -490,11 +503,14 @@ function pageRecord(): PageRecord {
   return {
     id: "7ac2cc32-38cf-4d41-8c73-c6cf640d5b15",
     tenantId: "6b402566-9e1d-4739-bb61-81ac615a5469",
+    channel: "messenger",
     providerPageId: "provider_page_1",
     name: "Support",
+    username: null,
     status: "active",
     tokenStatus: "valid",
     tokenError: null,
+    tokenExpiresAt: null,
     webhookUrl: "https://example.com/webhook",
     pageAccessTokenEncrypted: "encrypted",
     webhookSigningSecretEncrypted: "encrypted-secret",

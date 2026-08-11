@@ -12,7 +12,7 @@ import {
 import { changeUserPassword, InvalidAuthInputError } from "@/lib/auth/users"
 import { validatePasswordChangeInput } from "@/lib/auth/validation"
 import { getStripe } from "@/lib/billing/stripe"
-import { unsubscribeFromWebhook } from "@/lib/meta"
+import { unsubscribeChannelWebhook } from "@/lib/pages/channel-webhook"
 
 export type DeleteAccountState = {
   error?: string
@@ -77,7 +77,11 @@ export async function deleteAccountAction(
   const toUnsubscribe = planWebhookUnsubscribes(context.pages)
   await Promise.allSettled(
     toUnsubscribe.map((page) =>
-      unsubscribeFromWebhook(page.metaPageId, page.pageAccessToken)
+      unsubscribeChannelWebhook({
+        channel: page.channel,
+        metaPageId: page.metaPageId,
+        accessToken: page.pageAccessToken,
+      })
     )
   )
 

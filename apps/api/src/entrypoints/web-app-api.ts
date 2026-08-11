@@ -1,5 +1,6 @@
 import { WorkerEntrypoint } from "cloudflare:workers"
 import type {
+  ConnectInstagramAccountInput,
   ConnectMetaPagesInput,
   ConversationListInput,
   RpcActor,
@@ -106,6 +107,17 @@ export class WebAppApi
     )
   }
 
+  // Un solo método y no dos como en Facebook: Instagram Login autoriza una
+  // cuenta, así que entre el intercambio y la conexión no hay nada que elegir.
+  connectInstagramAccount(
+    actor: RpcActor,
+    input: ConnectInstagramAccountInput
+  ) {
+    return this.run("connect_instagram_account", actor, () =>
+      this.service().connectInstagramAccount(actor, input)
+    )
+  }
+
   listApiKeys(actor: RpcActor) {
     return this.run("list_api_keys", actor, () =>
       this.service().listApiKeys(actor)
@@ -175,9 +187,11 @@ export class WebAppApi
     const startedAt = Date.now()
     try {
       const result = await operation()
-      log("info", {
+      log({
         entrypoint: "rpc",
-        event,
+        action: "rpc",
+        outcome: "ok",
+        operation: event,
         tenantId: actor?.userId,
         status: 200,
         durationMs: Date.now() - startedAt,
@@ -192,9 +206,12 @@ export class WebAppApi
               message: "An unexpected error occurred.",
               status: 500,
             })
-      log("error", {
+      log({
         entrypoint: "rpc",
-        event,
+        action: "rpc",
+        outcome: "failed",
+        reason: "internal_error",
+        operation: event,
         tenantId: actor?.userId,
         status: contract.status,
         durationMs: Date.now() - startedAt,

@@ -35,6 +35,11 @@ import {
   classifyPagesForSelection,
   validatePageSelection,
 } from "@/lib/pages/page-selection"
+import {
+  accountFields,
+  describeError,
+  log,
+} from "@/lib/observability/logger"
 import { posthog } from "@/lib/posthog"
 
 export type ConnectMetaActionState = {
@@ -111,7 +116,15 @@ async function connectSelectedPages(
   try {
     metaPages = await listAuthorizedPages(userToken)
   } catch (error) {
-    console.error("meta pages fetch failed", error)
+    log({
+      entrypoint: "action",
+      action: "account_connect",
+      outcome: "failed",
+      reason: "profile_fetch_failed",
+      channel: "messenger",
+      tenantId,
+      errorMessage: describeError(error),
+    })
     return failed(EXPIRED_AUTHORIZATION)
   }
 
@@ -156,6 +169,15 @@ async function connectSelectedPages(
     await subscribePagesToWebhook(selected)
     const connectedPages = await connectAuthorizedPages(tenantId, selected)
 
+    for (const page of connectedPages) {
+      log({
+        entrypoint: "action",
+        action: "account_connect",
+        outcome: "ok",
+        ...accountFields(page),
+      })
+    }
+
     if (posthog) {
       for (const page of connectedPages) {
         posthog.capture({
@@ -178,20 +200,57 @@ async function connectSelectedPages(
   } catch (error) {
     if (posthog) posthog.captureException(error, tenantId)
     if (error instanceof WebhookSubscriptionError) {
-      console.error("webhook subscription failed", {
-        pageIds: error.failedPageIds,
-      })
+      // Una línea por página que no quedó suscrita: una cuenta guardada que no
+      // recibe eventos se ve conectada y está muda, que es el modo de falla más
+      // caro de esta integración.
+      for (const accountId of error.failedPageIds) {
+        log({
+          entrypoint: "action",
+          action: "webhook_subscribe",
+          outcome: "failed",
+          reason: "subscription_failed",
+          channel: "messenger",
+          tenantId,
+          accountId,
+        })
+      }
       return failed(formatMetaConnectionError("webhook_subscription_failed"))
     }
     if (error instanceof PageOwnershipError) {
+      log({
+        entrypoint: "action",
+        action: "account_connect",
+        outcome: "failed",
+        reason: "account_owned_by_other_tenant",
+        channel: "messenger",
+        tenantId,
+        accountId: error.metaPageId,
+      })
       return failed(
         formatMetaConnectionError(metaPageOwnedReason(error.metaPageId))
       )
     }
     if (error instanceof SecretEncryptionConfigError) {
+      log({
+        entrypoint: "action",
+        action: "account_connect",
+        outcome: "failed",
+        reason: "configuration_failed",
+        channel: "messenger",
+        tenantId,
+        errorMessage: describeError(error),
+      })
       return failed(formatMetaConnectionError("configuration_failed"))
     }
-    console.error("meta page connection failed", error)
+    log({
+      entrypoint: "action",
+      action: "account_connect",
+      outcome: "failed",
+      reason: "internal_error",
+      channel: "messenger",
+      tenantId,
+      errorMessage: describeError(error),
+    })
     return failed(
       "No se pudo conectar: hubo un problema con las páginas seleccionadas. Inténtalo de nuevo."
     )

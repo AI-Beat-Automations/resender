@@ -1,21 +1,24 @@
 import Link from "next/link"
 import { TriangleAlert } from "lucide-react"
 
+import { ChannelBadge } from "@/features/inbox/ui/channel-badge"
+import { inboxHref } from "@/lib/inbox/inbox-tabs"
 import type { ConversationRowView } from "@/lib/messages/display"
 import { cn } from "@workspace/ui/lib/utils"
 
 // Lista de conversaciones como LOG, no como bandeja (ADR 0005): sin avatar de
-// iniciales, el último mensaje en el renglón principal y el PSID en mono como
-// identificador secundario, porque es lo único que identifica al contacto.
+// iniciales y el último mensaje en el renglón principal. El identificador
+// secundario es el @handle desde la migración 0014; antes era el PSID crudo
+// porque era lo único que había.
 
 export function ConversationLogList({
   rows,
   selectedConversationId,
-  selectedPageId,
+  selectedAccountId,
 }: {
   rows: ConversationRowView[]
   selectedConversationId: string | null
-  selectedPageId: string | null
+  selectedAccountId: string | null
 }) {
   return (
     <aside className="flex w-[352px] shrink-0 flex-col border-r border-border bg-card">
@@ -31,7 +34,7 @@ export function ConversationLogList({
       {rows.length === 0 ? (
         // Dos vacíos distintos: sin datos vs. el filtro no devolvió nada.
         <p className="px-[18px] py-5 text-[13.5px] text-muted-foreground">
-          {selectedPageId
+          {selectedAccountId
             ? "No hay conversaciones para este filtro."
             : "Todavía no hay conversaciones."}
         </p>
@@ -42,7 +45,7 @@ export function ConversationLogList({
               key={row.id}
               row={row}
               active={row.id === selectedConversationId}
-              selectedPageId={selectedPageId}
+              selectedAccountId={selectedAccountId}
             />
           ))}
         </div>
@@ -54,19 +57,19 @@ export function ConversationLogList({
 function ConversationRow({
   row,
   active,
-  selectedPageId,
+  selectedAccountId,
 }: {
   row: ConversationRowView
   active: boolean
-  selectedPageId: string | null
+  selectedAccountId: string | null
 }) {
-  const params = new URLSearchParams()
-  if (selectedPageId) params.set("page", selectedPageId)
-  params.set("conversation", row.id)
-
   return (
     <Link
-      href={`/messages?${params.toString()}`}
+      href={inboxHref({
+        tab: "mensajes",
+        pageId: selectedAccountId,
+        conversationId: row.id,
+      })}
       aria-current={active ? "page" : undefined}
       className={cn(
         "block border-b border-l-2 border-border px-[18px] py-3.5 transition-colors",
@@ -103,9 +106,16 @@ function ConversationRow({
         )}
       >
         {row.contactLabel}
+        {row.contactName ? (
+          <span className="text-[var(--text-subtle)]">
+            {" "}
+            · {row.contactName}
+          </span>
+        ) : null}
       </p>
-      <p className="mt-0.5 truncate font-mono text-[10.5px] text-[var(--text-subtle)]">
-        {row.pageLabel}
+      <p className="mt-1 flex items-center gap-1.5 font-mono text-[10.5px] text-[var(--text-subtle)]">
+        <ChannelBadge channel={row.channel} />
+        <span className="truncate">{row.pageLabel}</span>
       </p>
     </Link>
   )

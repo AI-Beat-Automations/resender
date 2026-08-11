@@ -11,6 +11,7 @@ import type {
   AuthorizedMetaPageDto,
   BillingStateDto,
   CheckoutVerificationDto,
+  ConnectInstagramAccountInput,
   ConnectMetaPagesInput,
   CreatedApiKeyDto,
   MetaAuthorizationResultDto,
@@ -59,6 +60,14 @@ export interface WebAppApiContract {
     actor: RpcActor,
     input: { code: string; redirectUri: string }
   ): Promise<MetaAuthorizationResultDto>
+
+  // Sin gemelo de `listAuthorizedMetaPages`: Instagram Login devuelve una sola
+  // cuenta, así que no hay pantalla de selección y este método hace el flujo
+  // entero.
+  connectInstagramAccount(
+    actor: RpcActor,
+    input: ConnectInstagramAccountInput
+  ): Promise<PageDto>
 
   listApiKeys(actor: RpcActor): Promise<ApiKeyDto[]>
   createApiKey(

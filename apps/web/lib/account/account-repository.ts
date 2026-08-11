@@ -1,6 +1,6 @@
 import { decryptSecret } from "@/lib/crypto/encryption"
 import { getSql } from "@/lib/db"
-import type { PageStatus } from "@/lib/pages/page-registry"
+import type { PageChannel, PageStatus } from "@/lib/pages/page-registry"
 
 import type { DeletionPage } from "./account-deletion"
 
@@ -11,6 +11,7 @@ export type TenantDeletionContext = {
 }
 
 type ConnectedPageDeletionRow = {
+  channel: PageChannel
   meta_page_id: string
   status: PageStatus
   page_access_token_encrypted: string
@@ -31,7 +32,7 @@ export async function loadTenantDeletionContext(
   if (!user) return null
 
   const rows = await sql<ConnectedPageDeletionRow[]>`
-    select meta_page_id, status, page_access_token_encrypted
+    select channel, meta_page_id, status, page_access_token_encrypted
     from connected_pages
     where tenant_id = ${tenantId}
   `
@@ -46,6 +47,7 @@ export async function loadTenantDeletionContext(
   return {
     email: user.email,
     pages: rows.map((row) => ({
+      channel: row.channel,
       metaPageId: row.meta_page_id,
       status: row.status,
       pageAccessToken: decryptSecret(row.page_access_token_encrypted),

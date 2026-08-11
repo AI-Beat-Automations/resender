@@ -1,3 +1,10 @@
+import { describeError, log } from "@/lib/observability/logger"
+import {
+  extractMetaErrorCode,
+  extractMetaErrorMessage,
+  extractMetaErrorSubcode,
+} from "@/lib/outbound/meta-send"
+
 // Configuración y helpers del flujo OAuth de Meta (Facebook Login for Business).
 // Flujo basado en REDIRECCIÓN (no el popup del JS SDK): el `redirect_uri` que se
 // usa al intercambiar el code DEBE ser idéntico al que se usó al abrir el diálogo,
@@ -47,7 +54,12 @@ export class WebhookSubscriptionError extends Error {
 }
 
 // code -> user access token (corto) -> user access token de larga duración.
-// Lanza Error si algún paso falla (el detalle queda en console.error del servidor).
+// Lanza Error si algún paso falla; el detalle queda en el log estructurado.
+//
+// **Nunca se loguea el body crudo de Graph.** `/me/accounts` devuelve un
+// `access_token` por página, y aunque en un no-2xx lo que viene es un sobre de
+// error, un cambio de comportamiento de Meta bastaría para volcar tokens a los
+// logs. Se extraen el código y el mensaje, que es lo único que sirve.
 export async function exchangeCodeForUserToken(code: string): Promise<string> {
   // 1. code -> user access token (corto). redirect_uri = el mismo del diálogo.
   const tokenUrl = new URL(`${GRAPH}/oauth/access_token`)
@@ -59,7 +71,17 @@ export async function exchangeCodeForUserToken(code: string): Promise<string> {
   const tokenRes = await fetch(tokenUrl)
   const tokenData = await tokenRes.json()
   if (!tokenRes.ok || !tokenData.access_token) {
-    console.error("token exchange failed", tokenData)
+    log({
+      entrypoint: "route",
+      action: "token_exchange",
+      outcome: "failed",
+      reason: "token_exchange_failed",
+      channel: "messenger",
+      errorCode: extractMetaErrorCode(tokenData) ?? undefined,
+      errorSubcode: extractMetaErrorSubcode(tokenData) ?? undefined,
+      errorMessage: extractMetaErrorMessage(tokenData) ?? undefined,
+      status: tokenRes.status,
+    })
     throw new Error("token exchange failed")
   }
   const shortToken = tokenData.access_token
@@ -76,7 +98,17 @@ export async function exchangeCodeForUserToken(code: string): Promise<string> {
   const longRes = await fetch(longUrl)
   const longData = await longRes.json()
   if (!longRes.ok || !longData.access_token) {
-    console.error("long-lived token exchange failed", longData)
+    log({
+      entrypoint: "route",
+      action: "token_exchange",
+      outcome: "failed",
+      reason: "token_exchange_failed",
+      channel: "messenger",
+      errorCode: extractMetaErrorCode(longData) ?? undefined,
+      errorSubcode: extractMetaErrorSubcode(longData) ?? undefined,
+      errorMessage: extractMetaErrorMessage(longData) ?? undefined,
+      status: longRes.status,
+    })
     throw new Error("long-lived token exchange failed")
   }
 
@@ -96,7 +128,16 @@ export async function listAuthorizedPages(
   const pagesRes = await fetch(pagesUrl)
   const pagesData = await pagesRes.json()
   if (!pagesRes.ok) {
-    console.error("pages fetch failed", pagesData)
+    log({
+      entrypoint: "route",
+      action: "oauth_callback",
+      outcome: "failed",
+      reason: "profile_fetch_failed",
+      channel: "messenger",
+      errorCode: extractMetaErrorCode(pagesData) ?? undefined,
+      errorMessage: extractMetaErrorMessage(pagesData) ?? undefined,
+      status: pagesRes.status,
+    })
     throw new Error("pages fetch failed")
   }
 
@@ -123,7 +164,17 @@ export async function subscribeToWebhook(
   })
   const data = await res.json()
   if (!res.ok || !data.success) {
-    console.error("subscribed_apps failed", pageId, data)
+    log({
+      entrypoint: "route",
+      action: "webhook_subscribe",
+      outcome: "failed",
+      reason: "subscription_failed",
+      channel: "messenger",
+      accountId: pageId,
+      errorCode: extractMetaErrorCode(data) ?? undefined,
+      errorMessage: extractMetaErrorMessage(data) ?? undefined,
+      status: res.status,
+    })
     return false
   }
   return true
@@ -138,7 +189,15 @@ export async function subscribePagesToWebhook(pages: ConnectedPage[]) {
         const ok = await subscribeToWebhook(page.pageId, page.pageAccessToken)
         return { pageId: page.pageId, ok }
       } catch (error) {
-        console.error("subscribed_apps failed", page.pageId, error)
+        log({
+          entrypoint: "route",
+          action: "webhook_subscribe",
+          outcome: "failed",
+          reason: "subscription_failed",
+          channel: "messenger",
+          accountId: page.pageId,
+          errorMessage: describeError(error),
+        })
         return { pageId: page.pageId, ok: false }
       }
     })
@@ -166,7 +225,17 @@ export async function unsubscribeFromWebhook(
   const res = await fetch(url, { method: "DELETE" })
   const data = await res.json()
   if (!res.ok || !data.success) {
-    console.error("subscribed_apps unsubscribe failed", pageId, data)
+    log({
+      entrypoint: "route",
+      action: "webhook_unsubscribe",
+      outcome: "failed",
+      reason: "unsubscribe_failed",
+      channel: "messenger",
+      accountId: pageId,
+      errorCode: extractMetaErrorCode(data) ?? undefined,
+      errorMessage: extractMetaErrorMessage(data) ?? undefined,
+      status: res.status,
+    })
     return false
   }
   return true

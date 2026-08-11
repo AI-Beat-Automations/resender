@@ -20,7 +20,7 @@ if (isPostHogEnabled) {
   posthog.init(POSTHOG_KEY, {
     api_host: POSTHOG_HOST,
     // El App Router navega con la History API. Sin `history_change` solo habría
-    // un $pageview por carga completa: moverse entre /connections, /messages y
+    // un $pageview por carga completa: moverse entre /connections, /inbox y
     // /settings no generaría ninguno. Los $pageleave vienen de propina, porque
     // su default (`if_capture_pageview`) los activa junto a los pageviews.
     capture_pageview: "history_change",

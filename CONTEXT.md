@@ -66,12 +66,20 @@ El MVP no incluye recuperacion de password.
 El usuario autenticado puede cambiar su password desde `Settings` definiendo un password nuevo; esto no exige conocer el password anterior y no equivale a recuperacion de password. Tras cambiarlo, Resender cierra la sesion actual, lo envia a `login` y le indica que debe iniciar sesion con el password nuevo.
 En `login`, los errores son genericos. En `register`, el email duplicado se informa de forma explicita.
 
+### Canal
+Resender opera dos canales: `messenger` (páginas de Facebook) e `instagram` (cuentas profesionales de Instagram). El canal es un campo propio, **no** un valor de `provider`: Instagram es Meta —comparten la app, el sobre de error de Graph, la firma del webhook— y lo que cambia es la superficie. `provider` sigue valiendo `"meta"` en los dos.
+Toda resolución de una cuenta por su id de Meta exige `channel` de forma **obligatoria y sin default**: los ids de página de Facebook y los de cuenta de Instagram viven en namespaces distintos, y un default convertiría "me olvidé de decidir" en "Messenger" sin que nadie lo note. Decisión en `docs/adr/0008-instagram-como-segundo-canal.md`.
+
+### Cuenta conectada
+`connected_pages` dejó de significar "páginas de Facebook" y pasa a significar **cuentas conectadas**: una página de Facebook o una cuenta de Instagram, discriminadas por [Canal]. En Instagram, `meta_page_id` guarda el **IG user id** (el que llega como `entry.id` en el webhook), `username` guarda el @handle y `token_expires_at` la fecha de vencimiento del token (los page tokens de Messenger no vencen; los de Instagram sí, ~60 días).
+La unicidad es por `(channel, meta_page_id)`, no global: un mismo id repetido entre canales es legítimo.
+
 ### Ownership de páginas
-Una página de Facebook conectada pertenece a un solo tenant y no hay transferencia automática de ownership.
+Una página de Facebook conectada pertenece a un solo tenant y no hay transferencia automática de ownership. La regla vale igual para una cuenta de Instagram, y se evalúa **dentro de cada canal**: una cuenta de Instagram homónima de una página de Facebook no bloquea nada.
 El ownership se evalúa **página por página**, no sobre la lista completa que devuelve Meta. Que una página ya esté tomada por otro tenant no invalida las demás: si Arturo conectó A y B, y Felipe —que también las administra— quiere conectar C y D, Felipe puede hacerlo. A y B le aparecen en la lista deshabilitadas, con un cartel de que ya están conectadas en otra cuenta. Se muestran en vez de ocultarse para que el usuario entienda por qué le falta una página que sí administra. Decisión en `docs/adr/0004-page-selection-and-per-page-ownership.md`.
 
 ### Páginas conectadas por tenant
-Cada tenant puede conectar múltiples páginas de Facebook, hasta el límite de su plan (ver [Límites por plan]). El límite cuenta solo las páginas `active`: las desconectadas no ocupan cupo, pero reconectar una estando en el tope se bloquea igual que conectar una nueva.
+Cada tenant puede conectar múltiples páginas de Facebook, hasta el límite de su plan (ver [Límites por plan]). El límite cuenta solo las páginas `active` **del canal `messenger`**: las desconectadas no ocupan cupo, pero reconectar una estando en el tope se bloquea igual que conectar una nueva. Las cuentas de Instagram no ocupan cupo (ver [Instagram fuera de facturacion]), y por eso el contador de la UI dice "N de M **páginas de Facebook**" y no "páginas" a secas.
 Resender ya no conecta automáticamente todas las páginas que Meta devuelve. Ver [Selección de páginas].
 La conexión sigue siendo all-or-nothing **sobre el subconjunto seleccionado**: antes de persistir, Resender verifica que el servidor pueda cifrar tokens y que las páginas sean conectables por ownership local, y exige que Meta confirme la suscripción al webhook de cada página elegida. Si alguna suscripción falla, no se guarda ninguna.
 
@@ -85,27 +93,87 @@ Si una página ya conectada pertenece al mismo tenant y se vuelve a autorizar en
 
 ### Desconexión de páginas
 Desconectar una página elimina o desactiva la conexión para futuros envíos y recepciones, pero conserva el historial de conversaciones y mensajes como bitácora.
+La baja del webhook en Meta se despacha **por canal**: una cuenta de Instagram se da de baja contra `graph.instagram.com` y no contra el Graph de Facebook. Mandar el token de Instagram al endpoint de Facebook no da un error claro, da un `400` que se registra como "Meta no confirmó" y deja la cuenta recibiendo eventos.
+
+### Conexión de Instagram
+Instagram se conecta con **Instagram API con Instagram Login** (`graph.instagram.com`), no con la variante que cuelga de una Página de Facebook: el negocio inicia sesión con su cuenta profesional y no necesita tener ni vincular una Página.
+Los permisos van explícitos en el diálogo (`scope`) y no en un `config_id`: `instagram_business_basic`, `instagram_business_manage_messages` e `instagram_business_manage_comments`.
+El OAuth **autoriza exactamente una cuenta**, así que no hay pantalla de [Selección de páginas]: el callback persiste directo. El orden es intercambio de código → perfil → suscripción al webhook → persistencia; una cuenta guardada que no recibe eventos se ve conectada y está muda, mientras que una suscripción sin fila en la base no le hace nada a nadie.
+El token de larga duración de Instagram vence a los ~60 días y se guarda su `token_expires_at`. **Todavía no hay job de refresh**: es deuda conocida, no una decisión.
+
+### Webhook de Instagram
+Instagram tiene **ruta y secreto propios**, separados de los de Messenger: `INSTAGRAM_APP_SECRET` no es `META_APP_SECRET`. Compartir la ruta obligaría a adivinar con cuál secreto verificar cada payload. Cada webhook se registra por separado en el panel de Meta, con su propio verify token, suscrito a los campos `messages` y `comments`.
+Rutas: `/api/meta/instagram/webhook` en `apps/web` y `/webhooks/meta/instagram` en `apps/api`. El resto —verificación HMAC sobre el body crudo, dedupe por índice único, resolución cuenta→tenant, gates, bitácora de entregas y política de reintentos— es el mismo que el de Messenger.
+
+### DM de Instagram
+Los mensajes directos de Instagram usan las mismas tablas `conversations` y `messages` que Messenger; el canal se deriva de la cuenta conectada. El contacto se identifica por su **IGSID**, igual que el PSID en Messenger.
+Dos eventos se descartan y no se persisten: `is_echo` —los mensajes que manda la propia cuenta vuelven como evento entrante, y sin filtrarlos el sistema se responde a sí mismo en bucle— y `is_deleted`, que es un envío que el usuario deshizo y no un mensaje nuevo.
+
+### Comentario de Instagram
+Los comentarios viven en su **tabla propia** `instagram_comments`; `conversations`/`messages` quedan solo para DMs. Un comentario cuelga de una publicación (`mediaId`), se anida en un hilo (`parentIgCommentId`) y su respuesta pública no tiene ventana de 24 horas: meterlo en `messages` habría pedido media docena de columnas nullable y una semántica prestada.
+Un comentario entrante se persiste y se reenvía al `webhookUrl` del tenant igual que un mensaje, y comparte con él la bitácora `external_webhook_deliveries`, que desde la migración `0013` acepta **un mensaje o un comentario**, exactamente uno de los dos.
+Los comentarios que publica el propio Resender vuelven por el webhook y se descartan con **tres** señales, porque en comentarios no existe `is_echo`: que el autor sea la propia cuenta (`from.id === entry.id`), que el @handle coincida con el de la cuenta conectada, y —la única que no depende del `from` que manda Meta— que ese id de comentario sea de una fila `outbound` nuestra.
+
+### Respuesta a un comentario
+Son **dos** operaciones distintas y Meta las trata como tales:
+- **Respuesta pública**: se publica debajo de la publicación, no tiene ventana, se pueden mandar las que se quieran y se persiste en `instagram_comments`.
+- **Respuesta privada**: es un **DM** a quien comentó, se persiste en `messages` con `instagram_source_comment_id`, tiene una ventana de **7 días** desde el comentario y Meta admite **una sola por comentario**. Es la única forma de escribirle primero a alguien que nunca mandó un DM.
+El destinatario **no lo elige el cliente**: el body es `{ pageId, commentId, reply }` y no acepta `recipientId`. En la respuesta privada el IGSID sale del comentario guardado; aceptarlo del cliente habría dejado mandarle un DM a cualquiera amparándose en un comentario ajeno.
+`commentId` es el id **de Meta** y no el uuid de Resender: es el que el tenant siempre tiene, porque le llegó en el push y además lo ve en Instagram. Se exige que el comentario esté en la bitácora; si no está, es `404`.
+El límite de una respuesta privada se verifica **contra nuestra propia base antes de llamar a Meta** y se devuelve como `409` con el id del mensaje que ya salió. Meta lo rechaza con un `100/2534025` que junta cuatro causas —pasaron 7 días, ya contestamos, borraron el comentario, esa persona no acepta mensajes— y no dice cuál. Solo cuentan los envíos que Meta aceptó: un intento fallido no consume la única respuesta disponible.
+
+### Límite de texto por superficie
+Tres superficies, tres límites, y dos unidades distintas:
+| Superficie | Límite |
+|---|---|
+| Mensaje de Messenger | 2000 caracteres |
+| DM de Instagram | **1000 bytes UTF-8** |
+| Comentario de Instagram | **2200 caracteres** (code points) |
+Se validan antes de llamar a Meta y el `400` dice el número exacto, porque el rechazo de Meta no dice cuánto sobró. La unidad importa: en español cada acento son 2 bytes y cada emoji 4, así que 501 "ñ" son 1002 bytes y un control por `length` los dejaría pasar; al revés, un comentario de 1200 emojis son 1200 caracteres que Instagram acepta y que `length` rechazaría.
+
+### Traduccion de errores de Meta
+Resender traduce el sobre de error de Graph a un mensaje accionable. Hay **tres catálogos** —Messenger, DM de Instagram y comentario de Instagram— y no uno solo: los códigos coinciden pero lo que el usuario tiene que hacer es distinto, y ese es el punto entero de traducir un error. Un `10` es la ventana de 24 h en un DM y un permiso faltante en una respuesta pública, que no tiene ventana; un `190` es "revocaron permisos, reconectá la Página" en Messenger y "el token venció solo, reconectá la cuenta" en Instagram.
+Los tres motivos que no dependen de qué se estaba enviando —token vencido, rate limit, bloqueo por política— viven una sola vez y se comparten, para que no se separen con el tiempo.
+
+### Instagram fuera de facturacion
+Por ahora Instagram **no consume [Mensaje contabilizado] ni ocupa cupo de páginas**. Sus entrantes no incrementan el contador del período y no se frenan cuando el tenant queda [Cuenta restringida] por su consumo de Messenger; sus salientes tampoco suman.
+El [Gate de suscripcion] **sí aplica**: sin suscripción activa no se conecta, no se envía y los entrantes se descartan sin persistir, igual que en Messenger.
+Es una decisión provisional —los planes publicados hablan de páginas de Facebook— y el punto exacto donde vuelve el entitlement está marcado con un comentario en cada ruta de envío de Instagram.
 
 ### Entrega de entrantes al sistema externo
 El MVP usa `push`: tras persistir un mensaje entrante, Resender lo reenvía de forma no bloqueante al sistema externo del tenant.
 La URL de destino externo se configura por página. Si una página no tiene `webhookUrl`, el mensaje entrante se persiste igual y aparece en la bitácora, pero no se reenvía.
 La `webhookUrl` debe usar HTTPS para destinos reales; HTTP queda reservado a desarrollo local.
 El payload reenviado al sistema externo incluye contexto minimo pero rico de `tenant`, `page`, `conversation` y `message`.
+Un tenant recibe **mensajes y comentarios en el mismo endpoint**, así que el payload abre con un discriminador `type: "message" | "comment"`; el segundo trae `comment` en lugar de `conversation` + `message`. Y `page` lleva siempre `channel` y `username` —`username` va `null` en Messenger—, porque un tenant con los dos canales apuntando al mismo webhook necesita distinguir de cuál vino el evento y una forma uniforme se consume más fácil que una que cambia según el canal. Los tres campos son **aditivos**: no rompen a los consumidores existentes.
 
 ### API externa de salida
 La API externa de salida usa API key opaca por header `Authorization: Bearer ...`.
 `POST /api/meta/send` recibe `pageId`, `recipientId`, `reply` y puede recibir `conversationId` opcional para facilitar persistencia y auditoria del mensaje saliente.
 Si `conversationId` viene informado, debe coincidir con `pageId` y `recipientId`; si no coincide, la request se rechaza con `400`.
 Los mensajes salientes se persisten tanto en exito como en fallo, usando `status` para distinguir el resultado del envio.
+Instagram no agrega un campo `channel` al endpoint de Messenger: usa **rutas propias**, que son las de Facebook con `/instagram` insertado. En `apps/web`: `POST /api/meta/instagram/send` (DM, mismo body que Messenger, donde `pageId` es el IG id de la cuenta), `POST /api/meta/instagram/comments/reply` (respuesta pública) y `POST /api/meta/instagram/comments/private-reply` (DM al que comentó). En `apps/api`: `POST /v1/comments/{commentId}/replies` y `POST /v1/comments/{commentId}/private-replies`, donde `{commentId}` sí es el uuid de Resender porque el resto de la API v1 se direcciona por uuid propio.
+Las tres rutas de salida de Instagram comparten la API key del tenant, el header `Idempotency-Key` y la persistencia en éxito y en fallo. En `apps/api`, las respuestas a comentarios **comparten cubeta de rate limit** con el envío de mensajes: son la misma clase de operación —salir hacia Graph por cada evento entrante— y con cubetas separadas un tenant podría duplicar su presión sobre Meta sin tocar su límite.
 
-### Semantica visual de Messages
-En la bitacora, el color principal representa direccion: entrante verde y saliente amarillo. Si un saliente falla, conserva el amarillo pero muestra un indicador de error por estado.
+### Semantica visual de Inbox
+En la bitacora, el color principal representa direccion: entrante verde y saliente amarillo. Si un saliente falla, conserva el amarillo pero muestra un indicador de error por estado. Vale igual para un DM y para una respuesta publica a un comentario: los dos son un ida y vuelta con la misma persona y se leen con las mismas burbujas.
 
-### Estructura de Messages
-La seccion `Messages` se organiza como lista de conversaciones mas vista de hilo. Cada conversacion corresponde a una pagina y un contacto.
-Las conversaciones se ordenan por `lastMessageAt desc` y, al entrar a `Messages`, se abre automaticamente la conversacion mas reciente.
-Cuando un tenant tiene multiples paginas conectadas, `Messages` muestra por defecto conversaciones de todas las paginas con un filtro visible por pagina.
-Mientras no exista resolucion de nombre real del contacto, la UI identifica al contacto por su `contactId` o PSID en formato amigable.
+### Estructura de Inbox
+La seccion se llama `Inbox` y vive en `/inbox`. `/messages` sigue respondiendo con un 308 hacia ella, arrastrando el query string. Tiene **dos modos** en `?tab=`: `mensajes` (el de por defecto, que se omite de la URL) y `comentarios`. El modo es un enlace, no estado de React, y por eso la pantalla entera sigue siendo server component.
+
+En **mensajes**, `Inbox` se organiza como lista de conversaciones mas vista de hilo. Cada conversacion corresponde a una cuenta conectada y un contacto.
+Las conversaciones se ordenan por `lastMessageAt desc` y, al entrar, se abre automaticamente la conversacion mas reciente.
+Cuando un tenant tiene multiples cuentas conectadas, `Inbox` muestra por defecto conversaciones de todas, con un filtro visible por cuenta.
+El contacto se identifica por su **@handle**. Ninguno de los dos webhooks lo trae —el de DMs manda `sender.id` a secas— asi que se pide a Graph y se cachea en `conversations.contact_username` / `contact_name` (migracion 0014). El PSID/IGSID crudo queda de caida: en Messenger no hay perfil que pedir, y en Instagram Graph puede no resolver el contacto.
+Cada fila y la cabecera del hilo llevan **badge de canal**: con Messenger e Instagram en el mismo log, dos filas de cuentas distintas solo se distinguian por el id. La cuenta de Instagram se identifica por `@handle · ig_id`, igual que en `Connections`. La respuesta privada a un comentario es un DM como cualquier otro y aparece en su conversacion; lo unico que la distingue es el sufijo `· respuesta a comentario` en el metadato de la burbuja, que sale de `messages.instagram_source_comment_id`.
+
+En **comentarios**, la unidad de la lista es la **publicacion**, no el comentario suelto ni el contacto: un comentario cuelga de un post y fuera de ese hilo no significa nada. Cada fila muestra el ultimo comentario, el caption de la publicacion y el total; el panel derecho lista los comentarios de esa publicacion en orden cronologico ascendente, entrantes y respuestas publicas, incluidas las que Meta rechazo. La seleccion vive en `?media=<connectedPageId>:<mediaId>`, el par y no el `media_id` solo porque un id de Meta solo es unico dentro de la cuenta que lo publico. El filtro de cuentas lista **solo Instagram** en este modo: Messenger no tiene comentarios y una pildora que siempre devuelve cero es un control muerto.
+
+El webhook de comentarios solo trae `media.id` y `media_product_type`, asi que el **caption y el permalink** se piden a Graph y se cachean en `instagram_media` (migracion 0014). La cabecera del hilo enlaza al post en Instagram: como no hay compositor, abrir el post es lo que el usuario necesita para contestar de verdad. Mientras no esten resueltos —o si Meta no los devuelve— la publicacion se nombra por su clase y su id, que es lo que se cita en soporte.
+
+Las dos resoluciones —@handle y publicacion— corren al **leer la pantalla**, no al ingerir el webhook: asi las filas que ya existian se completan la primera vez que alguien las mira, y una caida de Graph no puede hacer fallar la recepcion de un mensaje. El intento se sella aunque falle, para no volver a pedir lo mismo en cada render.
+
+Los dos modos son de **solo lectura**: no hay compositor en ninguno, las respuestas salen por la API externa. Decision en `docs/adr/0009-inbox-mensajes-y-comentarios.md`.
 
 ### Pantallas de configuracion
 La gestion de paginas conectadas no vive dentro de `Settings` en el MVP; se realiza en una pantalla separada.
@@ -114,6 +182,7 @@ La pantalla separada se llama `Connections` y vive en la ruta `/connections`.
 
 ### Gestion de paginas en Connections
 `Connections` es la pantalla operativa de Meta. Cada pagina conectada puede mostrar y editar su `webhookUrl`, ademas de desconectarse.
+Los dos canales conviven en la misma lista. El **badge de canal va primero** en cada tarjeta: con dos canales mezclados es el dato que ordena todo lo demas. Instagram muestra `@handle · ig_id` y Messenger sigue mostrando `page_id`. El boton "Conectar Instagram" es secundario (`outline`) junto al de Facebook: dos primarios lado a lado no dicen cual es el camino habitual.
 La `webhookUrl` se guarda con accion explicita mediante boton `Guardar`.
 Desconectar una pagina requiere confirmacion explicita y debe advertir que se conserva el historial.
 
@@ -155,12 +224,13 @@ Resender NO usa el Data Deletion Callback de Meta (el `signed_request` trae un F
 
 ### Configuracion de revision Meta
 Para el envio actual a Meta App Review, Resender solicita solo permisos de Messenger: `pages_messaging`, `pages_manage_metadata` y `pages_show_list`. No se solicitan permisos de Instagram, WhatsApp, Business Management ni otros permisos extra en esta revision.
+El canal de Instagram **no altera este envio**: se desarrollo contra una app de Meta separada ("Resender.dev - Test1") y necesita su propia revision de `instagram_business_manage_messages` e `instagram_business_manage_comments` (Advanced Access + verificacion de negocio) antes de servir cuentas de terceros. Hasta entonces solo funciona con cuentas propias o de prueba en Standard Access.
 Los permisos viven en el `config_id` de Facebook Login for Business, no en codigo. El `config_id` usado para esta revision es nuevo y dedicado a este envio de Messenger; quedo configurado solo con `pages_manage_metadata`, `pages_messaging` y `pages_show_list`. En particular, `business_management` queda fuera del alcance de Messenger porque Resender no administra Business Manager, WABAs, cuentas publicitarias ni assets de negocio en este flujo. El panel de Meta debe mantenerse alineado con el alcance real del producto: listar paginas autorizadas, suscribir/desuscribir paginas al webhook y enviar/responder mensajes de Messenger.
 El dominio canonico para el envio es `resender.dev`. Las URLs publicas que deben cargarse en Meta Dashboard son `https://resender.dev/privacy` como Privacy Policy URL y `https://resender.dev/data-deletion` como Data Deletion Instructions URL.
 
 ### Documentacion publica del flujo (`/docs`)
 La pagina publica `/docs` documenta, en ingles y para developers externos, el flujo de integracion en 3 pasos. Vocabulario canonico en ingles (alineado con el modelo existente):
-- **Channel** = pagina de Facebook conectada (ver [Gestion de paginas en Connections]).
+- **Channel** = pagina de Facebook conectada (ver [Gestion de paginas en Connections]). ⚠️ Este uso **colisiona** con el [Canal] del modelo de datos, donde `channel` vale `messenger` o `instagram`. Al reescribir `/docs` —que ya no vive en este repo— la cuenta conectada debe dejar de llamarse "channel".
 - **Inbound message** = mensaje del cliente que Resender hace push al `webhookUrl` del developer (ver [Entrega de entrantes al sistema externo]). Tiene `direction: "inbound"`, `status: "received"`. NO se llama "response"/"respuesta".
 - **Reply** = respuesta del developer al cliente via `POST /api/meta/send` (ver [API externa de salida]).
 Resuelto: en el spec original "respuesta" apuntaba al mensaje que llega al webhook; eso es un **inbound message**, no una response. La unica "response" es el **reply** que sale por el endpoint.
@@ -186,6 +256,7 @@ El límite se resuelve desde `subscriptions.price_lookup_key` contra un mapa en 
 La cuota mide **ambas direcciones**: cada [Inbound message] persistido suma 1, y cada reply que Meta acepta (`status: 'sent'`) suma 1. Una conversación de ida y vuelta consume 2 unidades, así que los 50.000 del Starter son ~25.000 intercambios; los números publicados se mantienen sabiendo esto.
 **No** consumen cuota: un envío que Meta rechaza (`status: 'failed'`) —el cliente no paga por un page token vencido nuestro ni por la ventana de 24h de Messenger— ni un replay idempotente, que no llama a Meta ni inserta mensaje nuevo.
 Los entrantes **cuentan aunque no se entreguen**: si el tenant está restringido o la página no tiene `webhookUrl`, el mensaje se persiste igual y consume cuota. Lo que la cuota cubre es recibir y persistir, no entregar.
+La cuota mide **solo el canal `messenger`**: ver [Instagram fuera de facturacion].
 
 ### Período de cuota
 La ventana es el **período de facturación de Stripe**, no el mes calendario: el contador se resetea cuando cierra el ciclo que el cliente pagó, para no regalar una cuota completa a quien paga el día 28. Requiere `subscriptions.current_period_start`, que la migración `0005` no incluía. Sin período conocido no hay envío (fail-closed).

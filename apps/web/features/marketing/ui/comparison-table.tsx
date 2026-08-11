@@ -46,7 +46,9 @@ export function ComparisonTable({ lang }: { lang: Locale }) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-1/2">{comparison.headers.feature}</TableHead>
+              <TableHead className="w-1/2">
+                {comparison.headers.feature}
+              </TableHead>
               <TableHead className="text-center font-semibold text-primary">
                 {comparison.headers.resender}
               </TableHead>

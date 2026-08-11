@@ -34,9 +34,9 @@ export function buildBlogRss(lang: Locale): string {
       <title>${escapeXml(post.title)}</title>
       <link>${blogPath}/${post.slug}</link>
       <guid>${blogPath}/${post.slug}</guid>
-      <description>${escapeXml(post.abstract)}</description>${
-        pubDate(post.publishedOn)
-      }
+      <description>${escapeXml(post.abstract)}</description>${pubDate(
+        post.publishedOn
+      )}
     </item>`
     )
     .join("\n")

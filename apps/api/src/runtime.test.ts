@@ -118,6 +118,11 @@ describe("Worker runtime entrypoints", () => {
       eventId: "evt_1",
       tenantId: "6b402566-9e1d-4739-bb61-81ac615a5469",
       messageId: "ef55c94e-b861-4d19-9f9b-b5689028de80",
+      connectionId: "3f4c2d1e-0000-4000-8000-000000000001",
+      channel: "messenger",
+      providerPageId: "104233889761204",
+      username: null,
+      commentId: null,
       webhookUrl: "https://example.com/webhook",
       payload: {},
       status: "succeeded",
@@ -133,6 +138,10 @@ describe("Worker runtime entrypoints", () => {
         body: {
           jobId: "d743db7b-d4b8-4911-bf01-c639816856fc",
           messageId: "ef55c94e-b861-4d19-9f9b-b5689028de80",
+      connectionId: "3f4c2d1e-0000-4000-8000-000000000001",
+      channel: "messenger",
+      providerPageId: "104233889761204",
+      username: null,
         },
       },
     ])
@@ -155,6 +164,10 @@ describe("Worker runtime entrypoints", () => {
         body: {
           jobId: "d743db7b-d4b8-4911-bf01-c639816856fc",
           messageId: "ef55c94e-b861-4d19-9f9b-b5689028de80",
+      connectionId: "3f4c2d1e-0000-4000-8000-000000000001",
+      channel: "messenger",
+      providerPageId: "104233889761204",
+      username: null,
         },
       },
     ])
@@ -172,6 +185,11 @@ describe("Worker runtime entrypoints", () => {
       eventId: "evt_recovery",
       tenantId: ACTOR.userId,
       messageId: MESSAGE_ID,
+      commentId: null,
+      connectionId: "3f4c2d1e-0000-4000-8000-000000000001",
+      channel: "messenger",
+      providerPageId: "104233889761204",
+      username: null,
       webhookUrl: "https://example.com/webhook",
       payload: { type: "message.received" },
       status: "pending",
@@ -319,6 +337,151 @@ describe("Worker runtime entrypoints", () => {
       jobId: database.jobs[1]?.id,
       messageId: database.messages[1]?.id,
     })
+  })
+
+  // El secreto que firma es otro, y ese es el motivo entero de que Instagram
+  // tenga ruta propia. Con una sola ruta habría que adivinar con cuál verificar
+  // cada payload —o probar los dos, que es peor—.
+  it("verifies the Instagram webhook with its own secret and verify token", async () => {
+    const database = instagramRuntimeDatabase()
+    vi.spyOn(sqlTransport, "create").mockReturnValue(database.sql)
+    vi.spyOn(env.WEBHOOK_DELIVERIES, "send").mockResolvedValue(
+      queueSendResult()
+    )
+
+    const withFacebookSecret = await instagramCallback(
+      instagramDirectMessage("mid.ig"),
+      String(env.META_APP_SECRET)
+    )
+    expect(withFacebookSecret.status).toBe(400)
+    expect(await withFacebookSecret.json()).toMatchObject({
+      error: { code: "invalid_signature" },
+    })
+
+    const unsigned = await workerExports.default.fetch(
+      "https://api.resender.dev/webhooks/meta/instagram",
+      { method: "POST", body: "{}" }
+    )
+    expect(unsigned.status).toBe(400)
+
+    const challenge = await workerExports.default.fetch(
+      "https://api.resender.dev/webhooks/meta/instagram?hub.mode=subscribe" +
+        `&hub.verify_token=${String(env.INSTAGRAM_VERIFY_TOKEN)}&hub.challenge=ok`
+    )
+    expect(challenge.status).toBe(200)
+    expect(await challenge.text()).toBe("ok")
+
+    const withFacebookVerifyToken = await workerExports.default.fetch(
+      "https://api.resender.dev/webhooks/meta/instagram?hub.mode=subscribe" +
+        `&hub.verify_token=${String(env.META_VERIFY_TOKEN)}&hub.challenge=ok`
+    )
+    expect(withFacebookVerifyToken.status).toBe(403)
+  })
+
+  it("ingests an Instagram DM and a comment from one payload, out of quota and deduplicated", async () => {
+    const database = instagramRuntimeDatabase()
+    vi.spyOn(sqlTransport, "create").mockReturnValue(database.sql)
+    const queueSend = vi
+      .spyOn(env.WEBHOOK_DELIVERIES, "send")
+      .mockResolvedValue(queueSendResult())
+
+    const payload = {
+      object: "instagram",
+      entry: [
+        {
+          id: INSTAGRAM_ACCOUNT_ID,
+          time: 1_785_348_000,
+          messaging: [
+            {
+              sender: { id: "igsid_1" },
+              timestamp: 1_785_348_000_000,
+              message: { mid: "mid.ig", text: "Hello runtime" },
+            },
+          ],
+          field: "comments",
+          value: {
+            id: "ig_comment_runtime",
+            from: { id: "9876543210", username: "un_seguidor" },
+            text: "Do you ship here?",
+            media: { id: "media_runtime" },
+          },
+        },
+      ],
+    }
+
+    const first = await instagramCallback(payload)
+    expect(first.status).toBe(200)
+    expect(await first.json()).toEqual({ ok: true, accepted: 2 })
+    expect(database.messages).toHaveLength(1)
+    expect(database.comments).toHaveLength(1)
+    expect(database.jobs).toHaveLength(2)
+    // Instagram está fuera de cuota: ni el DM ni el comentario cuentan.
+    expect(database.usage).toBe(0)
+
+    // Meta reintenta el mismo webhook: el dedupe por índice impide la segunda
+    // fila en las dos ramas. El handoff a la cola sí se repite, y es
+    // deliberado: un job que todavía no fue tomado (attemptCount 0) se vuelve a
+    // encolar para que un envío perdido a la cola no deje la entrega colgada.
+    const duplicate = await instagramCallback(payload)
+    expect(await duplicate.json()).toEqual({ ok: true, accepted: 0 })
+    expect(database.messages).toHaveLength(1)
+    expect(database.comments).toHaveLength(1)
+    expect(database.jobs).toHaveLength(2)
+    expect(queueSend).toHaveBeenCalledTimes(4)
+
+    // El job del comentario viaja sin `messageId`: exigirlo, como antes de la
+    // 0013, lo habría descartado en silencio.
+    expect(queueSend).toHaveBeenCalledWith({
+      jobId: database.jobs[1]?.id,
+      commentId: database.comments[0]?.id,
+    })
+  })
+
+  // Un eco es una respuesta que mandó la propia cuenta volviendo como evento
+  // entrante. Sin filtrarlo, la cuenta termina hablando sola.
+  it("drops Instagram echoes before touching the database", async () => {
+    const database = instagramRuntimeDatabase()
+    vi.spyOn(sqlTransport, "create").mockReturnValue(database.sql)
+    vi.spyOn(env.WEBHOOK_DELIVERIES, "send").mockResolvedValue(
+      queueSendResult()
+    )
+
+    const response = await instagramCallback(
+      instagramDirectMessage("mid.echo", { is_echo: true })
+    )
+
+    expect(await response.json()).toEqual({ ok: true, accepted: 0 })
+    expect(database.messages).toHaveLength(0)
+  })
+
+  // Un id de página de Facebook y un IG ID pueden coincidir legítimamente desde
+  // la 0013: sin el canal en la consulta, el evento resolvería al tenant
+  // equivocado.
+  it("does not resolve an Instagram event against a Messenger Page", async () => {
+    const database = runtimeDatabase()
+    vi.spyOn(sqlTransport, "create").mockReturnValue(database.sql)
+    vi.spyOn(env.WEBHOOK_DELIVERIES, "send").mockResolvedValue(
+      queueSendResult()
+    )
+
+    const response = await instagramCallback({
+      object: "instagram",
+      entry: [
+        {
+          id: runtimePage().providerPageId,
+          messaging: [
+            {
+              sender: { id: "igsid_1" },
+              timestamp: 1_785_348_000_000,
+              message: { mid: "mid.ig", text: "Hello" },
+            },
+          ],
+        },
+      ],
+    })
+
+    expect(await response.json()).toEqual({ ok: true, accepted: 0 })
+    expect(database.messages).toHaveLength(0)
   })
 
   it("accepts signed Stripe callbacks while preserving canonical subscription ordering under duplicates", async () => {
@@ -472,11 +635,14 @@ function runtimePage(): PageRecord {
   return {
     id: "f251bd5a-2772-489a-a725-43e2ea9d44ee",
     tenantId: ACTOR.userId,
+    channel: "messenger",
     providerPageId: "page_runtime",
     name: "Runtime Page",
+    username: null,
     status: "active",
     tokenStatus: "valid",
     tokenError: null,
+    tokenExpiresAt: null,
     webhookUrl: "https://example.com/webhook",
     pageAccessTokenEncrypted: "encrypted",
     webhookSigningSecretEncrypted: "encrypted",
@@ -536,6 +702,56 @@ async function signedMetaCallback(providerMessageId: string) {
     headers: { "x-hub-signature-256": `sha256=${signature}` },
     body: raw,
   })
+}
+
+const INSTAGRAM_ACCOUNT_ID = "17841400000000000"
+
+function instagramRuntimeDatabase(): RuntimeDatabase {
+  return new RuntimeDatabase(
+    {
+      ...runtimePage(),
+      channel: "instagram",
+      providerPageId: INSTAGRAM_ACCOUNT_ID,
+      username: "cuenta_resender",
+    },
+    runtimeUser(),
+    activeSubscription()
+  )
+}
+
+const instagramDirectMessage = (
+  providerMessageId: string,
+  message: Record<string, unknown> = {}
+) => ({
+  object: "instagram",
+  entry: [
+    {
+      id: INSTAGRAM_ACCOUNT_ID,
+      messaging: [
+        {
+          sender: { id: "igsid_1" },
+          timestamp: 1_785_348_000_000,
+          message: { mid: providerMessageId, text: "Hello", ...message },
+        },
+      ],
+    },
+  ],
+})
+
+async function instagramCallback(payload: unknown, secret?: string) {
+  const raw = JSON.stringify(payload)
+  const signature = await hmacHex(
+    secret ?? String(env.INSTAGRAM_APP_SECRET),
+    raw
+  )
+  return workerExports.default.fetch(
+    "https://api.resender.dev/webhooks/meta/instagram",
+    {
+      method: "POST",
+      headers: { "x-hub-signature-256": `sha256=${signature}` },
+      body: raw,
+    }
+  )
 }
 
 function queueSendResult(): QueueSendResponse {

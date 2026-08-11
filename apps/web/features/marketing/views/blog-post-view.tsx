@@ -2,7 +2,9 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { compileMDX } from "next-mdx-remote/rsc"
 import remarkGfm from "remark-gfm"
-import rehypePrettyCode, { type Options as PrettyCodeOptions } from "rehype-pretty-code"
+import rehypePrettyCode, {
+  type Options as PrettyCodeOptions,
+} from "rehype-pretty-code"
 import rehypeSlug from "rehype-slug"
 import type { Highlighter } from "shiki"
 
@@ -16,7 +18,12 @@ import { HtmlLang } from "@/components/html-lang"
 import { JsonLd } from "@/components/json-ld"
 import { getPostBySlug, getHeadings, formatDate } from "@/lib/blog"
 import { createHighlighter } from "@/lib/highlighter"
-import { baseGraph, blogPostingSchema, breadcrumbSchema, schemaGraph } from "@/lib/schema"
+import {
+  baseGraph,
+  blogPostingSchema,
+  breadcrumbSchema,
+  schemaGraph,
+} from "@/lib/schema"
 import { SITE_NAME } from "@/lib/site-config"
 import { getDictionary, localePath, type Locale } from "@/content/i18n"
 
@@ -87,7 +94,7 @@ export async function BlogPostView({
       <SiteHeader lang={lang} />
       <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-12 md:py-16">
         <div className="lg:grid lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-12">
-          <aside className="mb-10 lg:mb-0 lg:sticky lg:top-24 lg:self-start lg:max-h-[calc(100svh-8rem)] lg:overflow-auto">
+          <aside className="mb-10 lg:sticky lg:top-24 lg:mb-0 lg:max-h-[calc(100svh-8rem)] lg:self-start lg:overflow-auto">
             <Link
               href={localePath("/blog", lang)}
               className="text-sm text-muted-foreground hover:text-foreground"
@@ -97,7 +104,7 @@ export async function BlogPostView({
 
             {headings.length >= 2 && (
               <nav aria-label={dict.blog.tocNavLabel} className="mt-8">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                   {dict.blog.tocTitle}
                 </p>
                 <ul className="mt-3 space-y-2 border-l border-border text-sm">
@@ -143,12 +150,14 @@ export async function BlogPostView({
               </div>
             </header>
 
-            <article className="prose prose-neutral mt-10 max-w-none dark:prose-invert prose-headings:tracking-tight prose-headings:scroll-mt-24 prose-pre:border prose-pre:border-border prose-pre:bg-muted">
+            <article className="prose mt-10 max-w-none prose-neutral dark:prose-invert prose-headings:scroll-mt-24 prose-headings:tracking-tight prose-pre:border prose-pre:border-border prose-pre:bg-muted">
               {content}
             </article>
 
             <div className="mt-16 rounded-2xl border border-border bg-muted/40 p-8 text-center">
-              <h2 className="text-xl font-semibold">{dict.blog.reading.title}</h2>
+              <h2 className="text-xl font-semibold">
+                {dict.blog.reading.title}
+              </h2>
               <p className="mt-2 text-muted-foreground">
                 {dict.blog.reading.subtitle}
               </p>

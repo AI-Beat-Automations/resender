@@ -69,8 +69,12 @@ describe("Meta send helpers", () => {
   })
 
   it("translates expired token and unavailable person errors", () => {
-    expect(explainMetaError({ error: { code: 190 } })).toMatch(/Reconnect the Page/)
-    expect(explainMetaError({ error: { code: 551 } })).toMatch(/isn't available/)
+    expect(explainMetaError({ error: { code: 190 } })).toMatch(
+      /Reconnect the Page/
+    )
+    expect(explainMetaError({ error: { code: 551 } })).toMatch(
+      /isn't available/
+    )
     expect(explainMetaError({ error: { code: 613 } })).toMatch(/rate limit/)
   })
 

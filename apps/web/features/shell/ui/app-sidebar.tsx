@@ -32,7 +32,7 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/connections", label: "Conexiones", icon: Link2 },
-  { href: "/messages", label: "Mensajes", icon: Inbox },
+  { href: "/inbox", label: "Inbox", icon: Inbox },
   { href: "/settings", label: "Ajustes", icon: Settings },
   { href: "/docs", label: "Documentación", icon: BookOpen, external: true },
 ]
@@ -139,7 +139,7 @@ export function AppSidebar({
 }
 
 // Coincidencia por segmento: `/connections` marca `/connections/select`, pero
-// `/connections-x` no, y `/messages` solo marca lo suyo.
+// `/connections-x` no, y `/inbox` solo marca lo suyo.
 function isActiveRoute(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`)
 }

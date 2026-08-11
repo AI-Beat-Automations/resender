@@ -15,16 +15,26 @@ describe("account deletion confirmation", () => {
 
   it("ignores surrounding whitespace and case", () => {
     expect(
-      accountDeletionConfirmationMatches("  USER@Example.com ", "user@example.com")
+      accountDeletionConfirmationMatches(
+        "  USER@Example.com ",
+        "user@example.com"
+      )
     ).toBe(true)
   })
 
   it("rejects a different or empty value", () => {
     expect(
-      accountDeletionConfirmationMatches("other@example.com", "user@example.com")
+      accountDeletionConfirmationMatches(
+        "other@example.com",
+        "user@example.com"
+      )
     ).toBe(false)
-    expect(accountDeletionConfirmationMatches("", "user@example.com")).toBe(false)
-    expect(accountDeletionConfirmationMatches(null, "user@example.com")).toBe(false)
+    expect(accountDeletionConfirmationMatches("", "user@example.com")).toBe(
+      false
+    )
+    expect(accountDeletionConfirmationMatches(null, "user@example.com")).toBe(
+      false
+    )
   })
 
   it("never matches when the account email is missing", () => {
@@ -34,6 +44,7 @@ describe("account deletion confirmation", () => {
 
 describe("webhook unsubscribe planning", () => {
   const page = (overrides: Partial<DeletionPage>): DeletionPage => ({
+    channel: "messenger",
     metaPageId: "100",
     status: "active",
     pageAccessToken: "token",

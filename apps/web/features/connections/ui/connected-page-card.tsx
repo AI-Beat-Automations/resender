@@ -29,8 +29,10 @@ import { Label } from "@workspace/ui/components/label"
 // límite serializable y el formato no depende de la zona del navegador.
 export type ConnectedPageView = {
   id: string
+  channel: "messenger" | "instagram"
   metaPageId: string
   name: string
+  username: string | null
   status: "active" | "disconnected"
   tokenStatus: "valid" | "invalid"
   tokenError: string | null
@@ -60,6 +62,11 @@ export function ConnectedPageCard({
   // activa puede tener el token rechazado. En una desconectada el token ya no
   // dice nada útil —no recibe tráfico—, así que ahí no se muestra.
   const tokenInvalid = active && page.tokenStatus === "invalid"
+  const instagram = page.channel === "instagram"
+  // Cada canal se reconecta por su propio diálogo de Meta.
+  const reconnectHref = instagram
+    ? "/api/meta/instagram/start"
+    : "/api/meta/start"
 
   return (
     <article
@@ -73,6 +80,13 @@ export function ConnectedPageCard({
             <h3 className="font-heading text-base font-semibold">
               {page.name}
             </h3>
+            {/* El canal va primero y siempre: con dos canales en la misma lista
+                es el dato que ordena todo lo demás —qué diálogo la reconecta,
+                qué endpoint le envía— y sin él las tarjetas son indistinguibles
+                salvo por el id. */}
+            <Badge variant="outline">
+              {instagram ? "Instagram" : "Messenger"}
+            </Badge>
             {/* Los dos badges conviven en lugar de pisarse: «activa» describe
                 el tráfico, «token inválido» describe el permiso. */}
             <Badge variant={active ? "success" : "ghost"}>
@@ -83,13 +97,24 @@ export function ConnectedPageCard({
             )}
           </div>
           <p className="mt-1 font-mono text-[11.5px] text-[var(--text-subtle)]">
-            page_id {page.metaPageId} · conectada el{" "}
+            {/* En Instagram el @handle es lo que el usuario reconoce; el IG ID
+                no le dice nada, pero es lo que cita en un correo de soporte. */}
+            {instagram && page.username
+              ? `@${page.username} · ig_id ${page.metaPageId}`
+              : `page_id ${page.metaPageId}`}{" "}
+            · conectada el{" "}
             <time dateTime={page.connectedAt}>{page.connectedAtLabel}</time>
           </p>
         </div>
 
         {active ? (
           <DisconnectDialog page={page} />
+        ) : instagram ? (
+          // Instagram no tiene pantalla de selección —el diálogo autoriza una
+          // sola cuenta—, así que reconectar es volver a autorizar directo.
+          <Button asChild variant="outline" size="sm">
+            <a href={reconnectHref}>Volver a conectar</a>
+          </Button>
         ) : (
           // Una página desconectada del mismo tenant vuelve a `selectable`
           // (page-selection.ts:75), así que reconectarla es elegirla otra vez.
@@ -104,11 +129,14 @@ export function ConnectedPageCard({
           <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
           <div className="min-w-0 flex-1">
             <p className="text-[13.5px] font-medium">
-              Hay que reconectar esta página.
+              Hay que reconectar {instagram ? "esta cuenta" : "esta página"}.
             </p>
             <p className="mt-1 text-[13px]/[1.55]">
-              Meta rechazó el token de la página. Reconéctala desde Facebook
-              para renovar permisos antes de volver a enviar respuestas.
+              {instagram
+                ? // El token de Instagram vence a los ~60 días, así que acá el
+                  // caso habitual es el vencimiento y no un permiso revocado.
+                  "Meta rechazó el token de la cuenta. Vuelve a autorizarla en Instagram para renovarlo antes de seguir enviando respuestas."
+                : "Meta rechazó el token de la página. Reconéctala desde Facebook para renovar permisos antes de volver a enviar respuestas."}
             </p>
             {(page.tokenError || page.tokenErrorAtLabel) && (
               <p className="mt-2 font-mono text-[11px] opacity-85">
@@ -131,7 +159,7 @@ export function ConnectedPageCard({
             size="sm"
             className="shrink-0 self-start sm:self-center"
           >
-            <a href="/api/meta/start">Reconectar</a>
+            <a href={reconnectHref}>Reconectar</a>
           </Button>
         </div>
       )}

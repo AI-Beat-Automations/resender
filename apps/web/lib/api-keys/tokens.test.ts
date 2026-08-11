@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest"
 
-import { API_KEY_PREFIX, generateApiKey, hashApiKey, isApiKeyFormat } from "./tokens"
+import {
+  API_KEY_PREFIX,
+  generateApiKey,
+  hashApiKey,
+  isApiKeyFormat,
+} from "./tokens"
 
 describe("opaque API keys", () => {
   it("generates a visible prefix and stores only a hash", () => {

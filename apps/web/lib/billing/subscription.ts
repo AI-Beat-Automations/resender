@@ -1,3 +1,4 @@
+import { describeError, log } from "@/lib/observability/logger"
 import { getSql } from "@/lib/db"
 
 // Estado de la suscripción replicado desde Stripe vía webhooks (una fila por
@@ -62,7 +63,17 @@ export async function hasActiveSubscription(
     `
     return hasActiveStatus(row)
   } catch (error) {
-    console.error("subscription access check failed", error)
+    // **Fail-closed**: un fallo de base bloquea al tenant entero, en todos los
+    // canales y en todos los endpoints. Es la decisión correcta, pero hasta
+    // ahora no dejaba nada que mirar: el síntoma es «dejó de funcionar todo».
+    log({
+      entrypoint: "route",
+      action: "subscription_check",
+      outcome: "failed",
+      reason: "internal_error",
+      tenantId,
+      errorMessage: describeError(error),
+    })
     return false
   }
 }

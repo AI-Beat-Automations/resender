@@ -1,19 +1,31 @@
+import {
+  formatDayLabel,
+  formatLogTimestamp,
+  formatMessageMeta,
+} from "@/lib/inbox/log-format"
+import type { PageChannel } from "@/lib/pages/page-registry"
+
 import type { ConversationListItem, ThreadMessage } from "./read-model"
 
 // Presentación del log de mensajes (ADR 0005). Módulo puro: sin DB ni red, y
 // todo lo que sale de aquí es serializable para cruzar a los componentes.
 //
-// El contacto se muestra SIEMPRE como PSID: `conversations.contact_name` existe
-// en el esquema pero `lib/messages/message-log.ts` nunca lo escribe, así que el
-// nombre no existe para ningún registro. Por eso la pantalla se dibuja como log
-// —el último mensaje en el renglón principal— y no como bandeja de entrada.
+// El contacto se identifica por su @handle desde la migración 0014, que llenó
+// `contact_username` con lo que devuelve Graph. Antes se mostraba siempre el
+// PSID crudo —dieciocho dígitos que no le dicen nada a quien los lee— porque
+// era lo único que había. El PSID sigue siendo la caída: en Messenger no hay
+// perfil que pedir, y en Instagram puede que Graph no resuelva el contacto.
 
 export type ConversationRowView = {
   id: string
-  /** Identificador del contacto, siempre `psid <id>` (ADR 0005). */
+  /** `@lori_surianno`, con caída a `psid <id>` si Graph no lo resolvió. */
   contactLabel: string
-  /** `Café Rioja · 104233889761204`. */
+  /** Nombre de perfil, cuando Graph lo dio y no es igual al @handle. */
+  contactName: string | null
+  /** `Café Rioja · 104233889761204`, o `@cafe.rioja · ig_id 178414…`. */
   pageLabel: string
+  /** Canal de la cuenta conectada, para el badge de la fila. */
+  channel: PageChannel
   /** `hoy 14:02`, `ayer 19:12`, `24 jul`, `24 jul 2025`. */
   timestamp: string
   /** El mismo instante en ISO, para el `datetime` del `<time>`. */
@@ -30,8 +42,10 @@ export type ThreadMessageView = {
   outbound: boolean
   failed: boolean
   text: string
-  /** `outbound · 14:02:11 · sent`. */
+  /** `outbound · 14:02:11 · sent`, con `· respuesta a comentario` si lo es. */
   meta: string
+  /** El saliente es la respuesta privada a un comentario de Instagram. */
+  fromComment: boolean
   /** Error crudo del proveedor, solo en `failed`. */
   error: string | null
   /** Separador de fecha cuando el mensaje abre un día nuevo. */
@@ -40,28 +54,6 @@ export type ThreadMessageView = {
 
 /** Texto del renglón principal cuando la conversación no tiene mensajes. */
 export const NO_MESSAGES_CONTENT = "Todavía no hay mensajes."
-
-const TIME_FORMAT = new Intl.DateTimeFormat("es-ES", {
-  hour: "2-digit",
-  minute: "2-digit",
-})
-
-const SECONDS_FORMAT = new Intl.DateTimeFormat("es-ES", {
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-})
-
-const DAY_FORMAT = new Intl.DateTimeFormat("es-ES", {
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-})
-
-const SHORT_DAY_FORMAT = new Intl.DateTimeFormat("es-ES", {
-  day: "numeric",
-  month: "short",
-})
 
 /**
  * Etiqueta histórica del contacto. Se conserva para no romper llamadas
@@ -75,39 +67,38 @@ export function formatContactLabel(
   return name ? name : `PSID ${contactId}`
 }
 
-/** Identificador del contacto tal y como lo pinta el log, en mono. */
+/** Identificador crudo del contacto, la caída cuando no hay @handle. */
 export function formatPsidLabel(contactId: string) {
   return `psid ${contactId}`
 }
 
-/** `Café Rioja · 104233889761204`. */
-export function formatPageLabel(page: { name: string; metaPageId: string }) {
-  return `${page.name} · ${page.metaPageId}`
-}
-
-/** `hoy 14:02` · `ayer 19:12` · `24 jul` · `24 jul 2025`. */
-export function formatLogTimestamp(value: Date, now: Date) {
-  const days = daysBetween(value, now)
-  if (days === 0) return `hoy ${TIME_FORMAT.format(value)}`
-  if (days === 1) return `ayer ${TIME_FORMAT.format(value)}`
-  if (value.getFullYear() === now.getFullYear()) {
-    return SHORT_DAY_FORMAT.format(value)
-  }
-  return DAY_FORMAT.format(value)
-}
-
-/** `27 jul 2026`, para el separador de fecha del hilo. */
-export function formatDayLabel(value: Date) {
-  return DAY_FORMAT.format(value)
-}
-
-/** `outbound · 14:02:11 · sent`, el patrón del metadato de burbuja. */
-export function formatMessageMeta(message: {
-  direction: string
-  status: string
-  createdAt: Date
+/**
+ * Etiqueta del contacto en el log: `@lori_surianno`, y `psid 1004146…` cuando
+ * Graph no lo resolvió o el canal no tiene perfil que pedir.
+ */
+export function formatContactHandle(conversation: {
+  contactUsername: string | null
+  contactId: string
 }) {
-  return `${message.direction} · ${SECONDS_FORMAT.format(message.createdAt)} · ${message.status}`
+  const handle = conversation.contactUsername?.trim()
+  return handle ? `@${handle}` : formatPsidLabel(conversation.contactId)
+}
+
+/**
+ * `Café Rioja · 104233889761204` en Messenger, `@cafe.rioja · ig_id 178414…`
+ * en Instagram. Mismo criterio que la tarjeta de Conexiones: en Instagram el
+ * @handle es lo que el usuario reconoce, y el IG ID es lo que cita en soporte.
+ */
+export function formatPageLabel(page: {
+  channel: PageChannel
+  name: string
+  username: string | null
+  metaPageId: string
+}) {
+  if (page.channel === "instagram" && page.username) {
+    return `@${page.username} · ig_id ${page.metaPageId}`
+  }
+  return `${page.name} · ${page.metaPageId}`
 }
 
 /** Renglón principal del log: el último mensaje, con `Tú: ` si es saliente. */
@@ -119,17 +110,24 @@ export function formatConversationContent(
   return `${prefix}${latestMessage.text}`
 }
 
-/** Fila del log. `contactName` se ignora a propósito (ADR 0005). */
 export function toConversationRowView(
   conversation: ConversationListItem,
   now: Date
 ): ConversationRowView {
   const { latestMessage } = conversation
+  const name = conversation.contactName?.trim()
 
   return {
     id: conversation.id,
-    contactLabel: formatPsidLabel(conversation.contactId),
+    contactLabel: formatContactHandle(conversation),
+    // El nombre solo entra si aporta algo: Instagram devuelve muchas cuentas
+    // donde `name` y `username` son lo mismo, y repetirlo es ruido.
+    contactName:
+      name && name.toLowerCase() !== conversation.contactUsername?.toLowerCase()
+        ? name
+        : null,
     pageLabel: formatPageLabel(conversation.page),
+    channel: conversation.page.channel,
     timestamp: formatLogTimestamp(conversation.lastMessageAt, now),
     timestampIso: conversation.lastMessageAt.toISOString(),
     content: formatConversationContent(latestMessage),
@@ -152,25 +150,22 @@ export function toThreadMessageViews(
     const isNewDay = dayLabel !== previousDay
     previousDay = dayLabel
     const failed = message.status === "failed"
+    // El sufijo se compone acá y no en `formatMessageMeta`, que ahora lo
+    // comparten los dos modos de Inbox: un comentario nunca es respuesta
+    // privada de nada.
+    const fromComment = message.instagramSourceCommentId !== null
 
     return {
       id: message.id,
       outbound: message.direction === "outbound",
       failed,
       text: message.text,
-      meta: formatMessageMeta(message),
+      meta: fromComment
+        ? `${formatMessageMeta(message)} · respuesta a comentario`
+        : formatMessageMeta(message),
+      fromComment,
       error: failed ? message.error : null,
       dayLabel: isNewDay ? dayLabel : null,
     }
   })
-}
-
-function daysBetween(value: Date, now: Date) {
-  const start = startOfDay(value).getTime()
-  const reference = startOfDay(now).getTime()
-  return Math.round((reference - start) / 86_400_000)
-}
-
-function startOfDay(value: Date) {
-  return new Date(value.getFullYear(), value.getMonth(), value.getDate())
 }

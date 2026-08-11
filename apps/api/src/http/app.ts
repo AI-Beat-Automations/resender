@@ -1,6 +1,9 @@
 import { swaggerUI } from "@hono/swagger-ui"
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi"
 import {
+  CommentListQuerySchema,
+  CommentReplySchema,
+  CommentSchema,
   ConversationListQuerySchema,
   ConversationSchema,
   dataEnvelope,
@@ -14,6 +17,7 @@ import {
   PageListQuerySchema,
   PageSchema,
   PageUpdateSchema,
+  PrivateReplySchema,
   SendMessageSchema,
   ThreadMessageListQuerySchema,
   WebhookSecretSchema,
@@ -52,6 +56,11 @@ const ConversationParam = z.object({
 })
 const MessageParam = z.object({
   messageId: z.uuid().openapi({ param: { name: "messageId", in: "path" } }),
+})
+// El uuid de Resender y no el id de Instagram: el resto de la API se direcciona
+// por uuid propio, y el id de Meta viaja en el cuerpo como `providerCommentId`.
+const CommentParam = z.object({
+  commentId: z.uuid().openapi({ param: { name: "commentId", in: "path" } }),
 })
 const IdempotencyHeader = z.object({
   "Idempotency-Key": z
@@ -250,6 +259,121 @@ const deliveriesRoute = createRoute({
   ),
 })
 
+// Los comentarios son recurso propio y no una variante de `/v1/messages`: un
+// comentario cuelga de una publicación, se anida y su respuesta pública no tiene
+// ventana de 24 horas. Tiene tabla propia desde la migración 0013 y por lo mismo
+// rutas propias.
+const commentsRoute = createRoute({
+  method: "get",
+  path: "/v1/comments",
+  tags: ["Comments"],
+  security: [{ bearerAuth: [] }],
+  request: { query: CommentListQuerySchema },
+  responses: responses(
+    listEnvelope(CommentSchema),
+    "Instagram comments",
+    listExample(commentExample())
+  ),
+})
+const commentRoute = createRoute({
+  method: "get",
+  path: "/v1/comments/{commentId}",
+  tags: ["Comments"],
+  security: [{ bearerAuth: [] }],
+  request: { params: CommentParam },
+  responses: responses(dataEnvelope(CommentSchema), "Instagram comment", {
+    data: commentExample(),
+  }),
+})
+const commentDeliveriesRoute = createRoute({
+  method: "get",
+  path: "/v1/comments/{commentId}/deliveries",
+  tags: ["Comments"],
+  security: [{ bearerAuth: [] }],
+  request: { params: CommentParam, query: DeliveryListQuerySchema },
+  responses: responses(
+    listEnvelope(DeliverySchema),
+    "Webhook delivery attempts",
+    listExample(deliveryExample())
+  ),
+})
+const commentReplyRoute = createRoute({
+  method: "post",
+  path: "/v1/comments/{commentId}/replies",
+  tags: ["Comments"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: CommentParam,
+    headers: IdempotencyHeader,
+    body: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: CommentReplySchema,
+          example: { text: "Thanks for reaching out! We just sent you a DM." },
+        },
+      },
+    },
+  },
+  responses: {
+    200: jsonResponse(
+      dataEnvelope(CommentSchema),
+      "Idempotent replay",
+      { data: commentExample() },
+      {
+        "Idempotent-Replayed": {
+          description: "Always true when the stored result was replayed",
+          schema: { type: "string" as const, enum: ["true"] },
+        },
+      }
+    ),
+    201: jsonResponse(
+      dataEnvelope(CommentSchema),
+      "Public reply published by Instagram",
+      { data: commentExample() }
+    ),
+    ...errorResponses(),
+  },
+})
+const privateReplyRoute = createRoute({
+  method: "post",
+  path: "/v1/comments/{commentId}/private-replies",
+  tags: ["Comments", "Messages"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: CommentParam,
+    headers: IdempotencyHeader,
+    body: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: PrivateReplySchema,
+          example: { text: "Hi! Here is the link you asked for." },
+        },
+      },
+    },
+  },
+  responses: {
+    200: jsonResponse(
+      dataEnvelope(MessageSchema),
+      "Idempotent replay",
+      { data: messageExample() },
+      {
+        "Idempotent-Replayed": {
+          description: "Always true when the stored result was replayed",
+          schema: { type: "string" as const, enum: ["true"] },
+        },
+      }
+    ),
+    201: jsonResponse(
+      dataEnvelope(MessageSchema),
+      "Private reply accepted by Instagram",
+      { data: messageExample() }
+    ),
+    ...errorResponses(),
+  },
+})
+
 export function createApp(
   options: { serviceFactory?: (env: Env) => ApiService } = {}
 ): OpenAPIHono<AppBindings> {
@@ -288,13 +412,24 @@ export function createApp(
     await next()
     context.header("x-request-id", requestId)
     context.header("x-content-type-options", "nosniff")
-    log("info", {
+    const status = context.res.status
+    log({
       entrypoint: "fetch",
-      event: "request_complete",
+      action: "request",
+      // El resultado sale del status y no es `ok` fijo: una ruta que devuelve
+      // un 400 sin lanzar no pasa por `onError`, así que con un `ok` fijo la
+      // consulta de guardia (`$.outcome != "ok"`) no la encontraría nunca.
+      ...(status < 400
+        ? { outcome: "ok" as const }
+        : {
+            outcome: status >= 500 ? ("failed" as const) : ("dropped" as const),
+            reason: "internal_error" as const,
+            level: status >= 500 ? ("error" as const) : ("warn" as const),
+          }),
       requestId,
       tenantId: context.get("tenantId") || undefined,
       route: `${context.req.method} ${context.req.routePath || context.req.path}`,
-      status: context.res.status,
+      status,
       durationMs: Date.now() - context.get("startedAt"),
     })
   })
@@ -464,6 +599,60 @@ export function createApp(
     )
   )
 
+  app.openapi(commentsRoute, async (context) =>
+    context.json(
+      await context
+        .get("service")
+        .listComments(context.get("tenantId"), context.req.valid("query")),
+      200
+    )
+  )
+  app.openapi(commentRoute, async (context) =>
+    context.json(
+      {
+        data: await context
+          .get("service")
+          .getComment(
+            context.get("tenantId"),
+            context.req.valid("param").commentId
+          ),
+      },
+      200
+    )
+  )
+  app.openapi(commentDeliveriesRoute, async (context) =>
+    context.json(
+      await context
+        .get("service")
+        .listCommentDeliveries(
+          context.get("tenantId"),
+          context.req.valid("param").commentId,
+          context.req.valid("query")
+        ),
+      200
+    )
+  )
+  app.openapi(commentReplyRoute, async (context) => {
+    const result = await context.get("service").replyToComment({
+      tenantId: context.get("tenantId"),
+      commentId: context.req.valid("param").commentId,
+      idempotencyKey: context.req.header("idempotency-key") ?? null,
+      reply: context.req.valid("json"),
+    })
+    if (result.replayed) context.header("idempotent-replayed", "true")
+    return context.json({ data: result.comment }, result.created ? 201 : 200)
+  })
+  app.openapi(privateReplyRoute, async (context) => {
+    const result = await context.get("service").sendPrivateReply({
+      tenantId: context.get("tenantId"),
+      commentId: context.req.valid("param").commentId,
+      idempotencyKey: context.req.header("idempotency-key") ?? null,
+      reply: context.req.valid("json"),
+    })
+    if (result.replayed) context.header("idempotent-replayed", "true")
+    return context.json({ data: result.message }, result.created ? 201 : 200)
+  })
+
   app.get("/webhooks/meta", (context) => {
     const mode = context.req.query("hub.mode")
     const verifyToken = context.req.query("hub.verify_token")
@@ -473,8 +662,27 @@ export function createApp(
       verifyToken !== context.env.META_VERIFY_TOKEN ||
       !challenge
     ) {
+      // Un handshake rechazado significa que el verify token del panel de Meta
+      // y el del entorno no coinciden, y el webhook no va a quedar registrado.
+      log({
+        entrypoint: "fetch",
+        action: "webhook_verify",
+        outcome: "dropped",
+        reason: "verify_token_mismatch",
+        level: "warn",
+        channel: "messenger",
+        route: "/webhooks/meta",
+        status: 403,
+      })
       return context.text("forbidden", 403)
     }
+    log({
+      entrypoint: "fetch",
+      action: "webhook_verify",
+      outcome: "ok",
+      channel: "messenger",
+      route: "/webhooks/meta",
+    })
     return context.text(challenge, 200)
   })
   app.post("/webhooks/meta", async (context) => {
@@ -482,6 +690,54 @@ export function createApp(
     const result = await context
       .get("service")
       .ingestMetaWebhook(raw, context.req.header("x-hub-signature-256") ?? null)
+    return context.json({ ok: true, accepted: result.accepted }, 200)
+  })
+  // Ruta propia y no una rama dentro de `/webhooks/meta` por una razón
+  // concreta: **el secreto que firma es otro**. `INSTAGRAM_APP_SECRET` es
+  // distinto de `META_APP_SECRET` aunque los dos vivan en la misma app de Meta.
+  // Compartir la ruta obligaría a adivinar con cuál verificar cada payload —o a
+  // probar los dos, que es peor—. El verify token también es propio, porque cada
+  // webhook se registra por separado en el panel de Meta.
+  app.get("/webhooks/meta/instagram", (context) => {
+    const mode = context.req.query("hub.mode")
+    const verifyToken = context.req.query("hub.verify_token")
+    const challenge = context.req.query("hub.challenge")
+    if (
+      mode !== "subscribe" ||
+      verifyToken !== context.env.INSTAGRAM_VERIFY_TOKEN ||
+      !challenge
+    ) {
+      // Un handshake rechazado significa que el verify token del panel de Meta
+      // y el del entorno no coinciden, y el webhook no va a quedar registrado.
+      log({
+        entrypoint: "fetch",
+        action: "webhook_verify",
+        outcome: "dropped",
+        reason: "verify_token_mismatch",
+        level: "warn",
+        channel: "instagram",
+        route: "/webhooks/meta/instagram",
+        status: 403,
+      })
+      return context.text("forbidden", 403)
+    }
+    log({
+      entrypoint: "fetch",
+      action: "webhook_verify",
+      outcome: "ok",
+      channel: "instagram",
+      route: "/webhooks/meta/instagram",
+    })
+    return context.text(challenge, 200)
+  })
+  app.post("/webhooks/meta/instagram", async (context) => {
+    const raw = await readRawLimited(context.req.raw, PROVIDER_BODY_LIMIT_BYTES)
+    const result = await context
+      .get("service")
+      .ingestInstagramWebhook(
+        raw,
+        context.req.header("x-hub-signature-256") ?? null
+      )
     return context.json({ ok: true, accepted: result.accepted }, 200)
   })
   app.post("/webhooks/stripe", async (context) => {
@@ -517,9 +773,14 @@ export function createApp(
             message: "An unexpected error occurred.",
             status: 500,
           })
-    log(contract.status >= 500 ? "error" : "warn", {
+    log({
       entrypoint: "fetch",
-      event: "request_error",
+      action: "request",
+      outcome: "failed",
+      reason: "internal_error",
+      // Un 4xx es culpa del llamador y no una alarma nuestra; solo los 5xx
+      // suben a `error`.
+      level: contract.status >= 500 ? "error" : "warn",
       requestId,
       tenantId: context.get("tenantId") || undefined,
       route: `${context.req.method} ${context.req.path}`,
@@ -748,8 +1009,10 @@ function pageExample() {
   return {
     id: "7ac2cc32-38cf-4d41-8c73-c6cf640d5b15",
     provider: "meta",
+    channel: "messenger",
     providerPageId: "104287000000001",
     name: "Acme Support",
+    username: null,
     status: "active",
     tokenStatus: "valid",
     webhook: {
@@ -772,6 +1035,24 @@ function messageExample() {
     type: "text",
     text: "Where is my order?",
     provider: { name: "meta", messageId: "mid.1" },
+    failure: null,
+    sourceCommentId: null,
+    createdAt: "2026-07-29T18:00:00.000Z",
+  }
+}
+
+function commentExample() {
+  return {
+    id: "1f0c9b2e-6d2a-4a5f-9f43-2f9a4b6d0c11",
+    pageId: "3b1f4e0a-8d61-4c92-9a77-1c53b0e2a740",
+    providerCommentId: "17982334455667788",
+    parentCommentId: null,
+    mediaId: "17895695668004550",
+    mediaProductType: "FEED",
+    from: { providerUserId: "7042996714312345", username: "ada.lovelace" },
+    direction: "inbound",
+    status: "received",
+    text: "Do you ship to Argentina?",
     failure: null,
     createdAt: "2026-07-29T18:00:00.000Z",
   }

@@ -318,8 +318,11 @@ En la API v1, `pageId` significa siempre el UUID interno de Resender. El ID exte
 Filtros de lista:
 
 - `status=active|disconnected`
+- `channel=messenger|instagram`
 - `limit`
 - `cursor`
+
+`channel` es un campo aparte de `provider`, no un valor suyo: Instagram es Meta, así que `provider` sigue en `"meta"` en los dos y lo que cambia es la superficie. `username` es el @handle de Instagram y va `null` en Messenger. Decisión en `docs/adr/0008-instagram-como-segundo-canal.md`.
 
 DTO de Page:
 
@@ -327,8 +330,10 @@ DTO de Page:
 {
   "id": "7ac2...uuid",
   "provider": "meta",
+  "channel": "messenger",
   "providerPageId": "10987654321",
   "name": "Acme",
+  "username": null,
   "status": "active",
   "tokenStatus": "valid",
   "webhook": {
@@ -506,15 +511,33 @@ Decisiones del contrato:
 }
 ```
 
+### Comments
+
+Los comentarios de Instagram son un recurso propio y no una variante de `/v1/messages`, por la misma razón por la que tienen tabla propia: cuelgan de una publicación, se anidan y su respuesta pública no tiene ventana de 24 horas. `{commentId}` es el UUID interno de Resender, igual que el resto de v1.
+
+| Método | Ruta                                        | Descripción                                    |
+| ------ | ------------------------------------------- | ---------------------------------------------- |
+| GET    | `/v1/comments`                              | Lista, filtrable por `pageId`, `mediaId` y dirección |
+| GET    | `/v1/comments/{commentId}`                  | Obtiene un comentario                          |
+| GET    | `/v1/comments/{commentId}/deliveries`       | Bitácora de entregas, misma forma que la de mensajes |
+| POST   | `/v1/comments/{commentId}/replies`          | Respuesta **pública** bajo la publicación      |
+| POST   | `/v1/comments/{commentId}/private-replies`  | **DM** a quien comentó, uno solo por comentario |
+
+Las dos respuestas comparten cubeta de rate limit con `POST /v1/messages`: son la misma clase de operación —salir hacia Graph por cada evento entrante— y con cubetas separadas un tenant podría duplicar su presión sobre Meta sin tocar su límite de mensajes. La respuesta privada se persiste en `messages` con `sourceCommentId`, no en la tabla de comentarios.
+
 ### Endpoints de proveedores
 
 Estos endpoints son públicos en red, pero no se autentican con API key ni se incluyen en el OpenAPI para clientes:
 
-| Método | Ruta               | Verificación                                            |
-| ------ | ------------------ | ------------------------------------------------------- |
-| GET    | `/webhooks/meta`   | challenge y verify token                                |
-| POST   | `/webhooks/meta`   | firma `X-Hub-Signature-256` con comparación timing-safe |
-| POST   | `/webhooks/stripe` | firma Stripe sobre el body crudo                        |
+| Método | Ruta                        | Verificación                                            |
+| ------ | --------------------------- | ------------------------------------------------------- |
+| GET    | `/webhooks/meta`            | challenge y verify token                                |
+| POST   | `/webhooks/meta`            | firma `X-Hub-Signature-256` con comparación timing-safe |
+| GET    | `/webhooks/meta/instagram`  | challenge y verify token **propio** de Instagram        |
+| POST   | `/webhooks/meta/instagram`  | firma `X-Hub-Signature-256` con `INSTAGRAM_APP_SECRET`  |
+| POST   | `/webhooks/stripe`          | firma Stripe sobre el body crudo                        |
+
+Instagram tiene ruta propia porque **el secreto que firma es otro**: compartirla obligaría a adivinar con cuál verificar cada payload, o a probar los dos, que es peor.
 
 Los límites de body deben ser explícitos. Ninguno debe parsear o registrar el body antes de verificar su firma.
 

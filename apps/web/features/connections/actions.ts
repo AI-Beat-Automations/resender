@@ -9,7 +9,12 @@ import {
   InvalidWebhookUrlError,
   updatePageWebhookUrl,
 } from "@/lib/pages/page-registry"
-import { unsubscribeFromWebhook } from "@/lib/meta"
+import { unsubscribeChannelWebhook } from "@/lib/pages/channel-webhook"
+import {
+  accountFields,
+  describeError,
+  log,
+} from "@/lib/observability/logger"
 import { posthog } from "@/lib/posthog"
 
 export type ConnectionActionState = {
@@ -37,6 +42,15 @@ export async function saveWebhookUrlAction(
     )
 
     if (!updated) return { error: "No encontramos esa página." }
+
+    log({
+      entrypoint: "action",
+      action: "webhook_url_save",
+      outcome: "ok",
+      ...accountFields(updated),
+      // Nunca la URL: la controla el cliente y las de n8n suelen llevar un
+      // token en el path. `connectionId` alcanza para saber cuál es.
+    })
 
     if (posthog) {
       posthog.capture({
@@ -84,15 +98,28 @@ export async function disconnectPageAction(
       connectionId
     )
   } catch (error) {
-    console.error(
-      "meta webhook unsubscribe context failed",
+    // Si esto falla, la baja de la suscripción no se puede intentar y la cuenta
+    // queda recibiendo eventos de una conexión que el usuario ya cerró.
+    log({
+      entrypoint: "action",
+      action: "webhook_unsubscribe",
+      outcome: "failed",
+      reason: "internal_error",
+      tenantId: session.user.id,
       connectionId,
-      error
-    )
+      errorMessage: describeError(error),
+    })
   }
 
   const disconnected = await disconnectPage(session.user.id, connectionId)
   if (!disconnected) return { error: "No encontramos esa página." }
+
+  log({
+    entrypoint: "action",
+    action: "account_disconnect",
+    outcome: "ok",
+    ...accountFields(disconnected),
+  })
 
   if (posthog) {
     posthog.capture({
@@ -109,16 +136,23 @@ export async function disconnectPageAction(
 
   if (pageToUnsubscribe) {
     try {
-      await unsubscribeFromWebhook(
-        pageToUnsubscribe.page.metaPageId,
-        pageToUnsubscribe.pageAccessToken
-      )
+      await unsubscribeChannelWebhook({
+        channel: pageToUnsubscribe.page.channel,
+        metaPageId: pageToUnsubscribe.page.metaPageId,
+        accessToken: pageToUnsubscribe.pageAccessToken,
+      })
     } catch (error) {
-      console.error(
-        "meta webhook unsubscribe failed",
-        pageToUnsubscribe.page.metaPageId,
-        error
-      )
+      // El bug latente que la etapa 2 encontró: con una cuenta de Instagram,
+      // llamar al despachador equivocado da un 400 y no un error claro, y la
+      // cuenta sigue recibiendo eventos. Ahora al menos queda registrado.
+      log({
+        entrypoint: "action",
+        action: "webhook_unsubscribe",
+        outcome: "failed",
+        reason: "unsubscribe_failed",
+        ...accountFields(pageToUnsubscribe.page),
+        errorMessage: describeError(error),
+      })
     }
   }
 

@@ -9,18 +9,25 @@ vi.mock("@/lib/db", () => ({
 }))
 
 // Mismo mock que en `features/connections` y `features/connect-meta`. Aquí es
-// imprescindible: el test mockea `fetch` y `pushInboundMessage` captura en
+// imprescindible: el test mockea `fetch` y `pushInboundEvent` captura en
 // PostHog, así que con NEXT_PUBLIC_POSTHOG_KEY en el entorno el cliente real
 // intentaría hacer flush a través del fetch mockeado y el test fallaría.
 vi.mock("@/lib/posthog", () => ({
   posthog: null,
 }))
 
-import { buildInboundPushPayload, pushInboundMessage } from "./external-push"
+import { buildInboundPushPayload, pushInboundEvent } from "./external-push"
 
 const payload = {
+  type: "message" as const,
   tenant: { id: "tenant-1" },
-  page: { id: "page-row", metaPageId: "meta-page", name: "Main Page" },
+  page: {
+    id: "page-row",
+    channel: "messenger" as const,
+    metaPageId: "meta-page",
+    name: "Main Page",
+    username: null,
+  },
   conversation: { id: "conversation-1", contactId: "psid-1" },
   message: {
     id: "message-1",
@@ -46,12 +53,15 @@ describe("inbound push payload", () => {
       page: {
         id: "page-row",
         tenantId: "tenant-1",
+        channel: "messenger",
         metaPageId: "meta-page",
         name: "Main Page",
+        username: null,
         status: "active",
         tokenStatus: "valid",
         tokenError: null,
         tokenErrorAt: null,
+        tokenExpiresAt: null,
         webhookUrl: "https://example.com/hook",
         connectedAt: new Date("2026-01-01T00:00:00.000Z"),
         disconnectedAt: null,
@@ -77,6 +87,7 @@ describe("inbound push payload", () => {
         text: "hola",
         metaMessageId: "mid-1",
         idempotencyKey: null,
+        instagramSourceCommentId: null,
         error: null,
         providerResponse: null,
         createdAt: new Date("2026-01-02T00:00:00.000Z"),
@@ -92,8 +103,8 @@ describe("inbound push payload", () => {
     const fetchMock = vi.fn()
     vi.stubGlobal("fetch", fetchMock)
 
-    await pushInboundMessage({
-      messageId: "message-1",
+    await pushInboundEvent({
+      subject: { kind: "message", id: "message-1" },
       webhookUrl: "http://example.com/hook",
       payload,
     })
@@ -102,6 +113,7 @@ describe("inbound push payload", () => {
     expect(sqlMock).toHaveBeenCalledTimes(1)
     expect(sqlMock.mock.calls[0]?.slice(1)).toEqual([
       "message-1",
+      null,
       "http://example.com/hook",
       "failed",
       null,

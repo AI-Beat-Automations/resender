@@ -1,280 +1,567 @@
-# PRD — Conexión de WhatsApp (Cloud API + Embedded Signup, modelo Tech Provider)
+# PRD — WhatsApp Fase 1: Tech Provider, Embedded Signup, Coexistence y multimedia
 
-> Extiende el MVP descrito en `prd_mvp.md` y sigue la misma convención que `prd_instagram.md` y `prd_google_reviews.md`. Incorpora un canal nuevo (`channel = "whatsapp"`) que recibe e ingiere mensajes de WhatsApp Business y los reenvía al `webhookUrl` del tenant, reutilizando la mayor parte de la plomería existente (OAuth, cifrado de tokens, webhook firmado, push externo, bitácora de entregas, envío autenticado por API key). A diferencia de Messenger/Instagram, WhatsApp impone una **ventana de servicio de 24 h** y exige **plantillas pre-aprobadas** para iniciar conversación; además, llevar el canal a producción depende de un **gate administrativo de Meta** (Business Verification + App Review como _Tech Provider_) que tarda semanas. La decisión de integrar **directo contra la Cloud API** (no vía un BSP) está registrada en `docs/adr/0001-whatsapp-direct-cloud-api-tech-provider.md`.
+> **Estado:** listo para implementación.
+> **Última validación documental:** 11 de agosto de 2026.
+> **Decisión vigente:** integración directa con WhatsApp Cloud API como Tech Provider; no usar un BSP. Ver `docs/adr/0001-whatsapp-direct-cloud-api-tech-provider.md`.
 
-## Problem Statement
+## Resumen ejecutivo
 
-Hoy Resender opera canales de mensajería de Meta vía Facebook Login + webhooks HMAC-firmados (Messenger implementado; Instagram en `prd_instagram.md`). Un negocio que atiende a sus clientes por **WhatsApp** no tiene forma de enrutar esa conversación a su automatización (responder con IA, registrar en CRM vía n8n) a través de Resender. WhatsApp no encaja "gratis" en la plomería de Messenger por cuatro diferencias técnicas y una administrativa:
+Esta fase incorpora WhatsApp como tercer canal de Resender y deja el producto listo para solicitar Advanced Access, App Review y Access Verification como Tech Provider.
 
-1. **Onboarding distinto:** no se conectan "páginas"; se conecta una **WhatsApp Business Account (WABA)** y uno o varios **números de teléfono**, mediante el flujo **Embedded Signup** (Facebook Login for Business con un `config_id` propio).
-2. **Activación del número por API:** además de obtener el token, hay que **registrar** el número en la Cloud API (`/{phone_number_id}/register`) y **suscribir** la app al WABA (`/{waba_id}/subscribed_apps`) antes de poder enviar/recibir.
-3. **Ventana de 24 h + plantillas:** se puede responder en texto libre solo dentro de las 24 h desde el último mensaje del usuario; fuera de esa ventana, todo mensaje proactivo requiere una **plantilla aprobada** por Meta.
-4. **Shape de webhook propio:** el evento llega con `object: "whatsapp_business_account"` y estructura `entry[].changes[].value.messages[]` / `value.statuses[]` (distinta a la de Messenger `entry[].messaging[]`).
-5. **Gate de App Review (Tech Provider):** para operar números de **otros** negocios (multi-tenant) Resender necesita **Advanced Access** a `whatsapp_business_messaging` y `whatsapp_business_management`, lo cual exige Business Verification + App Review.
+Incluye dos formas de conectar un número:
 
-## Solution
+1. **Onboarding estándar:** número nuevo o exclusivo para WhatsApp Cloud API.
+2. **Coexistence:** número que ya opera en WhatsApp Business App y seguirá utilizándose simultáneamente desde la aplicación móvil y Cloud API.
 
-Agregar **WhatsApp como canal bidireccional** usando la **WhatsApp Cloud API** (`graph.facebook.com`, Graph v23.0) directamente —Resender como su **propio Tech Provider**— y **Embedded Signup** para el alta self-service de los WABA/números de cada tenant.
+Incluye mensajería bidireccional de texto y los tipos multimedia comunes soportados por Cloud API. **No incluye envío ni gestión de plantillas.** Resender solo enviará mensajes dentro de la ventana de atención de 24 horas abierta por un mensaje del usuario. Fuera de esa ventana responderá con un error de dominio explícito y no llamará a Meta.
 
-Flujo de extremo a extremo:
+El desarrollo y las pruebas comienzan con WABA/números propios. Conectar negocios externos en producción queda bloqueado hasta que Meta apruebe los permisos y la verificación de Tech Provider.
 
+## Objetivo de la fase
+
+Al terminar esta fase, un tenant debe poder:
+
+- Conectar un número nuevo mediante Embedded Signup estándar.
+- Conectar un número existente de WhatsApp Business App mediante Coexistence cuando Meta lo considere elegible.
+- Recibir, conservar, visualizar y reenviar a su webhook mensajes de texto y multimedia.
+- Responder por la API pública con texto y multimedia dentro de la ventana de 24 horas.
+- Ver estados de envío, entrega, lectura y fallo.
+- Conservar una bitácora unificada con Messenger e Instagram.
+- Desconectar el número sin borrar el historial.
+- Eliminar su cuenta y todos sus objetos multimedia.
+
+Resender debe quedar además con una cuenta demo, documentación y evidencias suficientes para App Review y Access Verification.
+
+## Alcance funcional
+
+### Incluido
+
+- WhatsApp Cloud API directa contra `graph.facebook.com`.
+- Embedded Signup estándar.
+- Embedded Signup especial para Coexistence.
+- Uno o varios números por WABA, sujetos a límites de plan.
+- Mensajes entrantes:
+  - texto y enlaces;
+  - imagen;
+  - audio y nota de voz;
+  - video;
+  - documento;
+  - sticker;
+  - contacto;
+  - ubicación;
+  - reacción;
+  - respuestas de botones e interacciones;
+  - contexto de reply/forward;
+  - eventos `system`, `order` y tipos desconocidos conservados como eventos genéricos, sin descartarlos.
+- Mensajes salientes dentro de la ventana de 24 horas:
+  - texto y enlaces;
+  - imagen;
+  - audio y nota de voz;
+  - video;
+  - documento;
+  - sticker;
+  - contacto;
+  - ubicación;
+  - reacción;
+  - replies y mensajes interactivos que Cloud API permita dentro de la sesión.
+- Descarga inmediata de medios entrantes desde Meta y almacenamiento privado en Cloudflare R2.
+- Carga previa de medios salientes a R2 y posterior envío a Meta por media ID.
+- Estados `sent`, `delivered`, `read`, `failed` y `deleted` cuando Meta los emita.
+- Historial, contactos y mensajes enviados desde WhatsApp Business App en Coexistence.
+- Actualización de Connections, Messages, API pública, OpenAPI, webhooks externos, privacidad, términos y eliminación de datos.
+- Paquete de App Review: cuenta revisora, WABA/número de prueba, automatización demo, instrucciones y screencasts.
+
+### Fuera de alcance
+
+- Envío, creación, edición o listado de plantillas de WhatsApp.
+- Inicio de conversaciones por API cuando no existe una ventana de atención abierta.
+- Campañas, broadcasts o marketing masivo.
+- Catálogo/commerce como experiencia de producto, aunque un `order` entrante se conserve como evento genérico.
+- WhatsApp Flows.
+- Pagos regionales.
+- Calling API, llamadas, grupos, Channels y Status.
+- Gestión automatizada de quality rating o messaging tiers.
+- Verificación del negocio de cada tenant.
+- On-Premises API.
+- Modelo BSP, `solutionID` o línea de crédito de Resender para pagar los mensajes de sus clientes.
+
+## Regla explícita sobre plantillas
+
+Las plantillas **no son obligatorias** para recibir mensajes ni para responder con mensajes libres dentro de las 24 horas posteriores al último mensaje entrante del usuario.
+
+En esta fase:
+
+- El usuario final debe iniciar o reabrir la conversación.
+- La ventana se calcula desde el último mensaje entrante real, no desde un mensaje saliente, un status o un mensaje histórico importado.
+- Si no existe una ventana abierta, cualquier intento de envío responde `409 customer_service_window_closed` con `requiresTemplate: true` y `templateSendingSupported: false`.
+- Resender no intenta enviar a Meta cuando la ventana está cerrada.
+- La demo de App Review comienza con un mensaje enviado por el revisor al número de prueba y responde dentro de esa ventana.
+- El permiso `whatsapp_business_management` se demuestra mediante onboarding, lectura de assets y suscripción del WABA; no mediante gestión de plantillas.
+
+Agregar plantillas será una fase posterior y no debe condicionar este diseño.
+
+## Flujos de extremo a extremo
+
+### A. Número nuevo o exclusivo para Cloud API
+
+```text
+Connections → Conectar WhatsApp → Embedded Signup estándar
+  → FINISH entrega code + waba_id + phone_number_id
+  → backend intercambia code y valida assets autorizados
+  → registra el número con /{phone_number_id}/register
+  → suscribe la app con /{waba_id}/subscribed_apps
+  → persiste token cifrado y onboarding_mode='standard'
+  → muestra el número activo en Connections
 ```
-Alta (una vez por tenant):
-  Connections → botón "Conectar WhatsApp" → FB.login(config_id) [Embedded Signup popup]
-        ↓ (postMessage: waba_id, phone_number_id) + (redirect/callback: code)
-  /api/whatsapp/callback → exchange code → token (cifrado) → /{phone}/register (PIN) → /{waba}/subscribed_apps
-        ↓
-  connected_pages (channel='whatsapp', meta_page_id=phone_number_id, waba_id=…)
 
-Mensaje entrante (runtime):
-  Cliente escribe al número de WhatsApp del negocio
-        ↓
-  Meta POST /api/whatsapp/webhook  (object:"whatsapp_business_account", X-Hub-Signature-256)
-        ↓ verifica firma (HMAC) → resuelve tenant por phone_number_id → persiste msg → 200 rápido
-        ↓ after(): push no bloqueante al webhookUrl del tenant → registra en external_webhook_deliveries
+El callback solo persiste la conexión después de confirmar registro, suscripción y propiedad. Una reconexión del mismo tenant es idempotente; otro tenant no puede tomar el mismo `phone_number_id`.
 
-Respuesta saliente:
-  Sistema externo → POST /api/whatsapp/send (Bearer API key) → /{phone}/messages
-        ↓ texto libre si dentro de ventana 24 h; si no, plantilla aprobada → persiste (sent|failed)
+### B. Número existente mediante Coexistence
+
+```text
+Connections → Conectar WhatsApp existente
+  → Embedded Signup con el feature type oficial de Business App onboarding
+  → cliente completa la vinculación desde WhatsApp Business App
+  → backend valida code + waba_id + phone_number_id
+  → suscribe app y campos de Coexistence
+  → persiste onboarding_mode='coexistence'
+  → inicia inmediatamente sync autorizada de contactos e historial
+  → procesa history, smb_app_state_sync y smb_message_echoes por cola
 ```
 
-La estrategia reutiliza el discriminador `channel` sobre `connected_pages` (igual que Instagram/Google), el cifrado de tokens, el verificador de firma del webhook, el push externo (`external-push.ts`), la bitácora (`external_webhook_deliveries`), el modelo `messages`/`conversations` y el envío autenticado por API key. Lo específico de WhatsApp es: el flujo Embedded Signup, el registro del número y la suscripción del WABA, el parser del nuevo shape de webhook, la **enforcement de la ventana de 24 h** y el envío de plantillas.
+Reglas:
 
-## Decisión de arquitectura (transporte y modelo)
+- Coexistence solo aplica a WhatsApp **Business App**, no a una cuenta personal de WhatsApp.
+- La UI debe explicar que disponibilidad, países, versión de la app y dispositivos compatibles dependen de Meta.
+- El flujo estándar y el flujo Coexistence comparten UI base, pero no comparten ciegamente el paso de registro; cada uno ejecuta exactamente los pasos que Meta exija para ese modo.
+- La sincronización se solicita inmediatamente después del onboarding y registra progreso/fallo recuperable.
+- El historial importado se persiste con `historical=true` y **no** se reenvía al webhook externo para evitar disparar automatizaciones sobre conversaciones antiguas.
+- Los mensajes nuevos enviados desde Business App llegan como echoes, se persisten como `direction='outbound'`, `origin='business_app'` y sí se reenvían al webhook externo.
+- Contact sync actualiza identidad/nombre, pero no crea entregas externas por sí solo.
+- Todos los eventos se deduplican por identificador de Meta y fuente.
 
-- **Integración directa (Cloud API, Tech Provider), no BSP.** Resender llama `graph.facebook.com` directamente, igual que con Messenger, y carga con los trámites de Meta. Decisión y trade-offs en `docs/adr/0001-whatsapp-direct-cloud-api-tech-provider.md`.
-- **Transporte = webhook HMAC, igual que Meta/Messenger.** El webhook de WhatsApp se firma con **`X-Hub-Signature-256`** usando el **App Secret** de la misma Meta App. Por eso **se reutiliza el verificador de firma existente**; lo único que cambia es el _shape_ del payload (`object:"whatsapp_business_account"`, `changes[].value.messages[]`). Se usa una ruta nueva `/api/whatsapp/webhook` para no mezclar parsers, pero el mecanismo de verificación es el mismo.
-- **Misma Meta App, productos distintos.** Resender usa **una** Meta App que aloja los productos Messenger y WhatsApp. Por eso el **App Secret se comparte** (`META_APP_SECRET`) y solo se agrega un `config_id` propio para el Embedded Signup de WhatsApp y un verify token propio para su webhook. (Contrastar con Instagram-con-Instagram-Login, que sí requiere app/secret separados.)
-- **Onboarding por Embedded Signup, sin `solutionID`.** En el modelo directo se usa `FB.login` con `config_id` y `response_type: "code"`; del popup se capturan `waba_id` y `phone_number_id` (vía `postMessage`, `sessionInfoVersion: 3`) y se intercambia el `code` por el token. El campo `solutionID`/Partner Solution **es del modelo BSP** y aquí **no se usa**.
-- **Identidad de la fuente = `phone_number_id`.** En `connected_pages`, para WhatsApp `meta_page_id` almacena el **`phone_number_id`** (es lo que enruta webhooks y envíos), y se añade `waba_id` aparte. El índice único pasa a `unique(channel, meta_page_id)` para no colisionar entre namespaces de IDs.
-- **Modelo de datos = se reutiliza `messages`/`conversations`.** Un mensaje de WhatsApp (texto + dirección + estado) **sí** calza en `messages` (a diferencia de una reseña de Google). El `contact_id` es el `wa_id` (teléfono E.164 sin `+`) del cliente, y —ventaja sobre el PSID de Messenger— el webhook trae `contacts[].profile.name`, así que `contact_name` se puede poblar desde el inicio.
-- **Ventana de 24 h como regla de dominio.** El envío de texto libre solo es válido dentro de las 24 h desde el último mensaje **entrante** de esa conversación; fuera de la ventana se exige `type: "template"` con una plantilla aprobada. Esto se valida en el `send` (mismo espíritu que la ventana de 24 h del PRD de Instagram).
+### C. Mensaje entrante
 
-## User Stories
+```text
+Meta POST /webhooks/meta/whatsapp
+  → verifica X-Hub-Signature-256 sobre body crudo
+  → valida object='whatsapp_business_account'
+  → resuelve tenant por phone_number_id
+  → persiste mensaje/status/evento de forma idempotente
+  → texto: crea inmediatamente el outbox de entrega externa
+  → media: crea attachment pending + job durable de descarga
+  → responde 200 rápido a Meta
+  → cola descarga media, valida y guarda en R2 privado
+  → marca attachment available o failed
+  → crea y ejecuta entrega al webhook del tenant
+```
 
-1. As a customer with a WhatsApp Business Account, I want to connect WhatsApp from the Connections screen via Embedded Signup, so that my WhatsApp conversations are routed through Resender without manual Meta dashboard work.
-2. As a customer, I want Resender to register my phone number on the Cloud API and subscribe my WABA automatically during connection, so that messages start flowing without extra steps.
-3. As a customer who manages several numbers under one WABA, I want each connected number to appear as its own source with its own `webhookUrl`, so that I can route them to different automations.
-4. As a customer, I want Resender to remember my WhatsApp connection (token, waba_id, phone_number_id) after restart or redeploy, so that I do not lose the connection.
-5. As a customer, I want reconnecting an already-connected number to refresh its token and re-subscribe idempotently, so that reconnecting repairs the connection without duplicating data.
-6. As a customer, I want Resender to block connecting a phone number that already belongs to another tenant, so that cross-tenant takeover is impossible (same rule as pages).
-7. As a customer, I want a per-source `webhookUrl`, so that inbound WhatsApp messages are pushed to the correct external automation; if none is set, the message is still logged.
-8. As a customer, I want Resender to acknowledge Meta's webhook quickly (200 ≤ a few seconds) even if my external push is slow or broken, so that Meta does not retry/backoff.
-9. As an external automation, I want inbound payloads to include `channel: "whatsapp"` plus tenant/source/conversation/message context (wa_id, profile name, text, wamid, timestamp), so that I can branch logic per channel without extra lookups.
-10. As an external automation, I want to reply via `POST /api/whatsapp/send` authenticated with the tenant API key, so that I can respond using the same credential model as Messenger.
-11. As a customer, I want free-form replies accepted only inside the 24-hour customer-service window, and template sends required outside it, so that Resender does not silently fail against Meta's policy.
-12. As an external automation, I want to send an approved template by name (with variables) outside the window, so that I can re-engage a customer compliantly.
-13. As a customer, I want inbound idempotency by `wamid`, so that Meta re-deliveries do not duplicate messages or external pushes.
-14. As a customer, I want delivery-status callbacks (`sent`/`delivered`/`read`/`failed`) reflected on the outbound message, so that the bitácora shows real delivery state.
-15. As a customer, I want my WhatsApp conversations visible in Messages with a channel badge, so that I have a single bitácora across channels.
-16. As a customer, I want to disconnect a WhatsApp number with confirmation while preserving history and stopping traffic, so that I can stop without losing the log.
-17. As a developer, I want WhatsApp added as a `channel` discriminator over the existing deep modules, so that OAuth/webhook/push/API-key/delivery code is reused and route handlers stay thin.
-18. As a product owner, I want the shared platform-compliance pieces (privacy policy, data-deletion, terms, reviewer test access) in place, so that the WhatsApp App Review is not auto-rejected — these are shared with the pending Messenger review (`fb_requirements.md`).
+Si el medio no puede recuperarse después de los reintentos, el mensaje no desaparece: queda registrado con `attachment.status='failed'` y el webhook externo recibe el evento con el error correspondiente.
 
-## Implementation Decisions
+### D. Mensaje saliente
+
+```text
+Sistema externo
+  → para media: crea upload, sube a R2 y completa upload
+  → POST /v1/messages con API key + Idempotency-Key
+  → Resender valida tenant, fuente, destinatario y ventana de 24 h
+  → texto: envía payload directo a /{phone_number_id}/messages
+  → media: sube objeto privado a /{phone_number_id}/media y envía por media ID
+  → persiste wamid y respuesta del proveedor
+  → statuses posteriores actualizan delivery_status
+```
+
+No se aceptan URLs arbitrarias del cliente como sustituto de una carga de media en esta fase. Esto evita SSRF, enlaces caducados y mensajes cuyo archivo cambia después de calcular la idempotencia.
+
+## Arquitectura objetivo
+
+La arquitectura vigente del repo manda sobre las rutas antiguas del PRD:
+
+- `apps/api` es la fuente de verdad para contratos HTTP, aplicación, proveedor, webhooks, persistencia, Queue y observabilidad.
+- `packages/contracts` define DTOs, RPC y OpenAPI compartidos.
+- `apps/web` contiene sesión, UI y el launcher de Embedded Signup; llama a `apps/api` mediante Service Binding/RPC.
+- Una ruta de Next solo puede mantenerse como adaptador temporal si existe una callback URL de producción todavía apuntando a `resender.dev`; la lógica de dominio no se duplica allí.
+- Las migraciones siguen viviendo en `apps/web/db/migrations` y son consumidas por ambos Workers.
+
+Rutas canónicas:
+
+- `GET|POST /webhooks/meta/whatsapp` en `apps/api` para Meta.
+- `POST /v1/messages` para enviar todos los canales, discriminando por la fuente conectada.
+- `POST /v1/media/uploads` para reservar una carga privada.
+- `POST /v1/media/uploads/{mediaId}/complete` para confirmar contenido y metadata.
+- `GET /v1/media/{mediaId}` para descarga autenticada por API key.
+- RPC `connectWhatsappNumber` para finalizar Embedded Signup desde la sesión web.
+
+## Decisiones de implementación
+
+### Contratos compartidos
+
+En `packages/contracts`:
+
+- Extender `ChannelSchema` con `whatsapp`.
+- Reemplazar `MessageSchema.type = 'text'` por un discriminated union estable.
+- Mantener `text` como string para texto/caption y hacerlo nullable donde el tipo no tenga texto.
+- Añadir `content` tipado para ubicación, contactos, reacción, interacción y eventos genéricos.
+- Añadir `attachments[]` con:
+  - `id` de Resender;
+  - `kind`;
+  - `mimeType`;
+  - `filename` nullable;
+  - `caption` nullable;
+  - `sizeBytes` nullable;
+  - `sha256` nullable;
+  - `status` (`pending|available|failed|deleted`);
+  - URL de descarga autenticada solo cuando esté disponible.
+- Separar `status` interno (`received|sent|failed`) de `deliveryStatus` del proveedor (`accepted|sent|delivered|read|failed|deleted|null`).
+- Añadir `origin` (`customer|resender_api|business_app|history|system`).
+- Añadir `historical` y contexto de reply.
+- Extender el fingerprint de idempotencia con tipo, contenido, media ID y versión/etag del objeto.
+
+No deben exponerse tokens de Meta, claves R2, URLs temporales de Meta ni payloads crudos con datos innecesarios.
 
 ### Modelo de datos
-- **Fuente conectada (reuso):** extender `connected_pages`:
-  - `channel text not null default 'messenger'` con `check (channel in ('messenger','instagram','whatsapp'))` (si Instagram/Google ya lo añadieron, solo se extiende el `check`).
-  - Para WhatsApp, `meta_page_id` almacena el **`phone_number_id`**. `page_access_token_encrypted` almacena el **token de negocio** (system user / business integration token) cifrado.
-  - Garantizar el índice único `unique(channel, meta_page_id)` (no solo `unique(meta_page_id)`).
-  - Columnas nuevas en `connected_pages`:
-    - `waba_id text null` — WhatsApp Business Account ID (necesario para `subscribed_apps`, plantillas y gestión).
-    - `whatsapp_phone_e164 text null` — número en formato E.164 para mostrar en UI (display name humano del número).
-    - `token_expires_at timestamptz null` — expiración del token (reuso si Instagram/Google ya la agregó; para system-user tokens puede ser `null` = no expira).
-- **Mensajes (reuso):** `conversations` y `messages` se reutilizan tal cual.
-  - `messages.meta_message_id` guarda el **`wamid`**; el índice único parcial `unique(connected_page_id, meta_message_id)` da idempotencia de entrantes.
-  - `messages.contact_id` = `wa_id` (teléfono sin `+`); `conversations.contact_name` = `value.contacts[].profile.name`.
-  - `messages.status` admite los mismos valores (`received|sent|failed`); los callbacks de estado (`delivered`/`read`) se reflejan actualizando la fila por `wamid` (ver _Entrada_). `provider_response` (jsonb) guarda la respuesta cruda de la API.
-- **Reenvío/bitácora (reuso sin cambios):** `external_webhook_deliveries` registra cada push de entrante (success/failed/skipped), igual que hoy.
-- `api_keys`, cifrado y SSE se reutilizan tal cual.
-- Migración nueva: `apps/web/db/migrations/000X_whatsapp_channel.sql` (número siguiente al último aplicado), ejecutada con `npm --workspace web run db:migrate`.
 
-### OAuth / Embedded Signup (alta del tenant)
-- **Frontend:** cargar el Facebook JS SDK e invocar Embedded Signup desde Connections:
-  ```js
-  FB.login(cb, {
-    config_id: NEXT_PUBLIC_WHATSAPP_CONFIG_ID,
-    response_type: "code",
-    override_default_response_type: true,
-    extras: { sessionInfoVersion: 3 }   // sin solutionID (modelo directo, no BSP)
-  })
-  ```
-  Escuchar `window.addEventListener("message", …)` para capturar `phone_number_id` y `waba_id` de los eventos `WA_EMBEDDED_SIGNUP` (`FINISH`/`FINISH_ONLY_WABA`/`CANCEL`/`ERROR`). El `code` se entrega al backend (vía redirect a `/api/whatsapp/callback` o POST a un route handler).
-- **Backend — nuevo cliente `apps/web/lib/whatsapp.ts`** (espejo de `lib/meta.ts`):
-  - `exchangeCodeForToken(code)` → `GET https://graph.facebook.com/v23.0/oauth/access_token?client_id=NEXT_PUBLIC_META_APP_ID&client_secret=META_APP_SECRET&code=…` → token de negocio.
-  - `registerPhoneNumber(phoneNumberId, token, pin)` → `POST /v23.0/{phone_number_id}/register` body `{ messaging_product:"whatsapp", pin }` (PIN de 6 dígitos del 2FA del número; generado/guardado por Resender).
-  - `subscribeWabaApp(wabaId, token)` → `POST /v23.0/{waba_id}/subscribed_apps`.
-  - `getPhoneNumbers(wabaId, token)` → `GET /v23.0/{waba_id}/phone_numbers` (para resolver E.164/display y validar).
-  - `sendWhatsappMessage(phoneNumberId, token, payload)` → `POST /v23.0/{phone_number_id}/messages` (header `Authorization: Bearer <token>`).
-  - `sendWhatsappTemplate(phoneNumberId, token, { name, language, components })` → mismo endpoint con `type:"template"`.
-- **Rutas nuevas:** `apps/web/app/api/whatsapp/start/route.ts` (opcional, si se hace OAuth por redirect en vez de popup SDK) y `apps/web/app/api/whatsapp/callback/route.ts` (valida `state`/origen, intercambia `code`, registra número, suscribe WABA, persiste cifrado). Reflejan a `app/api/meta/{start,callback}`.
+Crear `apps/web/db/migrations/0014_whatsapp_channel_and_media.sql`:
 
-### Persistencia de la conexión
-- Extender `apps/web/lib/pages/page-registry.ts` con `connectWhatsappNumber(...)` (o generalizar el connect para aceptar `channel`): upsert transaccional en `connected_pages` con `channel='whatsapp'`, cifra el token, guarda `waba_id`, `whatsapp_phone_e164`, `token_expires_at`, y aplica `PageOwnershipError` (un `phone_number_id` pertenece a un solo tenant).
-- Reconexión idempotente del mismo tenant: refresca token, re-`register` (si aplica) y re-`subscribed_apps`.
-- Resolvedor: `getActiveSourceByPhoneNumberId(phoneNumberId)` para mapear webhook → tenant.
+- Extender el check de `connected_pages.channel` con `whatsapp`.
+- Añadir a `connected_pages`:
+  - `waba_id text`;
+  - `whatsapp_phone_e164 text`;
+  - `onboarding_mode text check ('standard','coexistence')`;
+  - `coexistence_status text` nullable;
+  - `history_sync_status text` nullable;
+  - reutilizar `token_expires_at`.
+- Mantener el unique existente `(channel, meta_page_id)`; para WhatsApp `meta_page_id = phone_number_id`.
+- Extender `messages`:
+  - `message_type`;
+  - `content jsonb`;
+  - `origin`;
+  - `historical boolean default false`;
+  - `delivery_status`;
+  - `reply_to_meta_message_id`;
+  - permitir `text` nullable.
+- Crear `message_attachments` con ownership por tenant, referencia al mensaje, media ID de Meta, key privada R2, metadata, estado y error.
+- Crear `media_uploads` para cargas salientes reservadas, completadas, consumidas o vencidas.
+- Crear `whatsapp_media_jobs` o una outbox equivalente para que descarga y entrega externa sean durables.
+- Índices para `provider_media_id`, `r2_key`, jobs pendientes y eliminación por tenant.
+- Mantener deduplicación por `(connected_page_id, meta_message_id)` tanto para mensajes vivos como para historia/echoes.
 
-### Entrada (webhook de WhatsApp)
-- Ruta nueva `apps/web/app/api/whatsapp/webhook/route.ts`:
-  - `GET` = verificación del reto (`hub.challenge`) con `WHATSAPP_VERIFY_TOKEN`.
-  - `POST`:
-    1. **Verifica `X-Hub-Signature-256`** (HMAC-SHA256 con `META_APP_SECRET`, `timingSafeEqual`) — **reusa el helper existente** del webhook de Meta.
-    2. **Parsea** `object:"whatsapp_business_account"` → `entry[].changes[]` con `change.field === "messages"`. De `change.value`:
-       - `metadata.phone_number_id` → resuelve fuente/tenant.
-       - `messages[]` → mensajes entrantes (procesar `type:"text"`; texto/links). `contacts[].profile.name` → nombre.
-       - `statuses[]` → callbacks de estado (`sent|delivered|read|failed`) → actualizar la fila saliente por `wamid` (`messages.status`, `error` si falla).
-    3. **Idempotencia** por `wamid` (índice único parcial).
-    4. **Ingiere** y dispara el **push no bloqueante** con `after()`.
-    5. Devuelve **`200 {ok:true}` rápido** (misma filosofía que el webhook de Meta; si tardas o respondes error, Meta reintenta con backoff).
-  - Parser y helpers en `apps/web/lib/inbound/whatsapp-webhook.ts` (`extractWhatsappInboundMessages`, `extractWhatsappStatuses`). No se mezcla con `meta-webhook.ts` (shape distinto), pero la verificación de firma se comparte.
+La desconexión conserva mensajes y R2. La eliminación de cuenta debe borrar tokens, filas y todos los objetos bajo el prefijo privado del tenant; si R2 falla, se registra un job de borrado recuperable y nunca se declara eliminación completa silenciosamente.
 
-### Ingestión y reenvío
-- `apps/web/lib/inbound/whatsapp-ingestion.ts` (nuevo, espejo de `inbound-ingestion.ts`): resuelve fuente por `phone_number_id`, upsert de conversación (`unique(connected_page_id, contact_id)`), persiste el mensaje (idempotente por `wamid`), publica al SSE y arma el `pushJob`.
-- `apps/web/lib/inbound/external-push.ts` (reuso, extendido): `buildInboundPushPayload` agrega `channel:"whatsapp"` y el contexto del mensaje, p. ej.:
-  ```json
-  {
-    "channel": "whatsapp",
-    "tenant": { "id": "..." },
-    "source": { "id": "...", "channel": "whatsapp", "phoneNumberId": "1234567890", "wabaId": "9876543210", "name": "+52 55 ..." },
-    "conversation": { "id": "...", "contactId": "5215555555555", "contactName": "Juan P." },
-    "message": { "id": "wamid.HBg...", "direction": "inbound", "text": "Hola", "timestamp": "2026-06-17T...Z" }
+### Cliente WhatsApp
+
+Crear `apps/api/src/infrastructure/meta/whatsapp-client.ts` con operaciones separadas y errores tipados:
+
+- intercambio del code de Embedded Signup;
+- validación de WABA/números compartidos;
+- registro de número estándar;
+- suscripción/desuscripción de WABA;
+- inicio/seguimiento de sync de Coexistence;
+- consulta y descarga de media entrante;
+- upload de media a Meta;
+- envío de payloads libres;
+- tratamiento de error 190, permisos, rate limits y ventana cerrada.
+
+La versión de Graph API debe estar centralizada/configurada y validada en startup. No se hardcodea `v23.0` en cada llamada.
+
+### Embedded Signup y seguridad
+
+En `apps/web`:
+
+- Botón separado para número nuevo y número existente.
+- Cargar Facebook JS SDK una sola vez.
+- Generar correlación de sesión/nonce server-side.
+- Usar `response_type: 'code'`, `override_default_response_type: true` y `sessionInfoVersion` vigente.
+- Para Coexistence, usar el feature type oficial de Business App onboarding vigente al implementar.
+- Validar estrictamente `event.origin`, tipo de evento, nonce y shape; no confiar solo en `postMessage`.
+- Enviar al RPC únicamente code e identificadores capturados, nunca persistir tokens en browser/local storage.
+- Registrar el paso exacto de fallo (`exchange`, `assets`, `register`, `subscribe`, `sync`, `persist`) sin exponer secretos.
+
+### Webhook y Coexistence
+
+Crear parsers puros en `apps/api/src/domain` para:
+
+- `messages[]` y `statuses[]` estándar;
+- `history`;
+- `smb_app_state_sync`;
+- `smb_message_echoes`;
+- eventos de cuenta/calidad necesarios para detectar offboarding o conexión degradada.
+
+El webhook:
+
+- usa el mismo `META_APP_SECRET` para verificar HMAC, pero un `WHATSAPP_VERIFY_TOKEN` propio para el challenge;
+- limita tamaño del body antes de parsear;
+- responde 200 después de persistir/outbox, no después de descargar archivos ni llamar al webhook del tenant;
+- ignora con métrica los WABA/números no conectados;
+- no convierte tipos desconocidos en texto falso: los conserva como eventos genéricos;
+- actualiza estados de forma monotónica para que un callback atrasado no rebaje `read` a `sent`.
+
+### Multimedia y Cloudflare R2
+
+Crear un bucket R2 **privado** por ambiente y binding `WHATSAPP_MEDIA` en `apps/api/wrangler.jsonc`.
+
+Reglas:
+
+- Keys con prefijo no adivinable por tenant/mensaje; nunca usar filename como path directo.
+- Guardar metadata y ownership en Postgres; R2 contiene bytes, no es la fuente de autorización.
+- Validar tipo declarado, MIME real permitido por Meta, tamaño, checksum y filename sanitizado.
+- Usar la tabla vigente de tipos/tamaños de la versión soportada de Cloud API; mantenerla centralizada y cubierta por tests.
+- Descargar media entrante inmediatamente: las URLs entregadas por Meta son temporales y no se persisten como URL final.
+- El bucket no tiene acceso público ni `r2.dev` habilitado en producción.
+- UI y API descargan mediante endpoint autenticado o URL prefirmada de vida corta emitida después de verificar ownership.
+- Tratar URLs prefirmadas como bearer tokens y no incluirlas en logs ni almacenarlas en BD.
+- Configurar lifecycle para uploads abandonados y temporales; los objetos asociados a mensajes siguen la política de retención del tenant.
+- No cargar archivos completos en memoria cuando exista una ruta streaming segura; respetar límites de Workers y Meta.
+- Los retries deben ser idempotentes: un mismo job no crea múltiples objetos ni múltiples pushes externos.
+
+La guía de Cloudflare determina esta decisión: R2 es el almacenamiento de objetos, los Workers acceden por binding y las URLs prefirmadas solo conceden acceso temporal a un objeto concreto.
+
+### Entrega al webhook externo
+
+El payload común se amplía sin romper texto existente:
+
+```json
+{
+  "channel": "whatsapp",
+  "source": {
+    "id": "uuid",
+    "phoneNumberId": "123456789",
+    "wabaId": "987654321",
+    "onboardingMode": "coexistence"
+  },
+  "conversation": {
+    "id": "uuid",
+    "contactId": "5215555555555",
+    "contactName": "Juan"
+  },
+  "message": {
+    "id": "uuid",
+    "providerMessageId": "wamid...",
+    "direction": "inbound",
+    "origin": "customer",
+    "type": "document",
+    "text": "Factura",
+    "historical": false,
+    "attachments": [
+      {
+        "id": "uuid",
+        "kind": "document",
+        "mimeType": "application/pdf",
+        "filename": "factura.pdf",
+        "sizeBytes": 12345,
+        "status": "available",
+        "downloadUrl": "https://api.resender.dev/v1/media/uuid"
+      }
+    ],
+    "createdAt": "2026-08-11T12:00:00Z"
   }
-  ```
-  Reusa `pushInboundMessage` (POST con timeout) y `recordDelivery`/`recordSkippedDelivery`.
-
-### Envío (`/api/whatsapp/send`) — ventana de 24 h y plantillas
-- Ruta nueva `apps/web/app/api/whatsapp/send/route.ts` (autenticada por API key opaca `Bearer`, mismo modelo que `/api/meta/send`). Body:
-  - Sesión (texto libre): `{ phoneNumberId, to, reply, conversationId? }`.
-  - Plantilla: `{ phoneNumberId, to, template: { name, language, variables? }, conversationId? }`.
-  - Validaciones (reusar reglas de `/api/meta/send`): si `conversationId` viene, debe coincidir con `phoneNumberId`+`to`; si no, `400`.
-- **Enforcement de ventana 24 h:** antes de enviar texto libre, calcular el último mensaje **entrante** de la conversación; si han pasado > 24 h, **rechazar** con error claro (p. ej. `409 outside_24h_window`) indicando que se requiere `template`. Si se manda `template`, no se aplica la restricción de ventana.
-- Resolver el token server-side (descifrar), llamar a `sendWhatsappMessage`/`sendWhatsappTemplate`, **persistir el saliente** en éxito y fallo (`status` distingue), guardando `wamid` y `provider_response`. (Se decide ruta nueva en vez de extender `/api/meta/send` por la diferencia de payload de plantillas; la **misma API key** del tenant sirve para ambos canales.)
-- **Plantillas:** se soporta **enviar** una plantilla ya aprobada por nombre. La **creación/gestión** de plantillas en UI queda _Out of Scope_ (se hace en WhatsApp Manager); para el video de App Review de `whatsapp_business_management`, crear una plantilla desde WhatsApp Manager es suficiente.
-
-### Refresh de tokens
-- Los tokens de **system user** de negocio normalmente **no expiran**; si se usara un token con expiración, mismo patrón que Instagram/Google: refresco on-demand antes de enviar si `token_expires_at` está vencido/próximo, y un **cron opcional** (`apps/web/app/api/whatsapp/refresh-tokens/route.ts`, protegido por `CRON_SECRET`) para mantenerlos calientes. Si `token_expires_at IS NULL`, no se refresca.
-- Manejo del **error 190** (token inválido/caduco): persistir el error y (recomendado) notificar al admin del tenant para re-conectar (gotcha heredado de Messenger en `fb_requirements.md`).
-
-### Configuración / secretos
-- Variables de entorno nuevas (agregar a `turbo.json` `globalEnv`, `apps/web/.env` y `README.md`):
-  - `NEXT_PUBLIC_WHATSAPP_CONFIG_ID` — `config_id` del Facebook Login for Business para el Embedded Signup de WhatsApp.
-  - `WHATSAPP_VERIFY_TOKEN` — verify token del webhook de WhatsApp (GET challenge).
-  - (opcional) `WHATSAPP_DEFAULT_PIN` — PIN de 6 dígitos por defecto para `register` si no se genera por número.
-  - (opcional) `CRON_SECRET` — protege la ruta de refresh (reuso si ya existe).
-- Se **reutilizan**: `NEXT_PUBLIC_META_APP_ID`/`META_APP_ID`, `META_APP_SECRET` (firma del webhook + `client_secret` del exchange), `APP_URL`, `TOKEN_ENCRYPTION_KEY`, `DATABASE_URL`, `API_KEY_PEPPER`, `AUTH_SECRET`.
-
-### UI
-- En Connections: botón **"Conectar WhatsApp"** que lanza el Embedded Signup (FB SDK). Listar los números conectados junto a páginas/cuentas con un **badge de canal** "WhatsApp", el mismo editor de `webhookUrl` y la acción de desconectar (con confirmación, conservando historial).
-- En Messages: badge de canal "WhatsApp" en conversaciones e hilos; semántica visual de dirección/estado igual que hoy (entrante verde, saliente amarillo, fallo con indicador de error).
-
-### Principios
-- Route handlers y páginas se mantienen como capas delgadas sobre los deep modules (igual que MVP/Instagram/Google).
-- No se rompen Messenger ni Instagram: `channel` default `'messenger'`, rutas `/api/meta/*` e `/api/instagram/*` intactas; el webhook de WhatsApp vive en su propia ruta aunque comparta el verificador de firma.
-
-## Testing Decisions
-
-- `lib/whatsapp.ts`: `exchangeCodeForToken` (mock fetch); `registerPhoneNumber` arma `{messaging_product,pin}`; `subscribeWabaApp` POSTea a `/{waba}/subscribed_apps`; `sendWhatsappMessage` usa header Bearer y shape `text`; `sendWhatsappTemplate` arma `type:"template"`; manejo de errores por paso (incl. error 190).
-- `lib/inbound/whatsapp-webhook.ts`:
-  - Verificación de firma compartida: firma válida pasa; inválida → `401`/descartado.
-  - `extractWhatsappInboundMessages`: parsea `object:"whatsapp_business_account"` → `changes[].value.messages[]`, toma `wa_id`, `profile.name`, texto; ignora tipos no soportados (media) de forma segura.
-  - `extractWhatsappStatuses`: mapea `statuses[]` a `sent|delivered|read|failed` por `wamid`.
-- Ruta `/api/whatsapp/webhook`: GET challenge con verify token correcto/incorrecto; POST con firma inválida → rechazo; idempotencia (dos entregas del mismo `wamid` → un insert y un push); push no bloqueante cuando el externo falla (no rompe el 200); 200 rápido en éxito.
-- Ingestión: resolución `phone_number_id` → tenant; upsert de conversación; persistencia aunque no haya `webhookUrl` (registro `skipped`); `contact_name` poblado desde `profile.name`.
-- Envío: dentro de ventana 24 h → texto libre OK; fuera de ventana sin template → `409 outside_24h_window`; con template → envía aunque esté fuera de ventana; persistencia en éxito y fallo; coincidencia `conversationId`↔`phoneNumberId`+`to`.
-- Propiedad exclusiva: bloquear `phone_number_id` ya conectado por otro tenant (`PageOwnershipError`); reconexión idempotente del mismo tenant refresca token y re-suscribe.
-- Payload de push externo: incluye `channel:"whatsapp"` y los bloques `source`/`conversation`/`message`.
-- Un test de integración por ruta nueva (`/api/whatsapp/callback`, `/api/whatsapp/webhook`, `/api/whatsapp/send`) que verifique cableado y códigos de estado.
-
-## Out of Scope (esta fase)
-
-- **Mensajes multimedia ricos** (imágenes, audio, documentos, ubicación, botones interactivos/list messages). Solo texto/links, igual que Instagram.
-- **Creación/gestión de plantillas en UI** (`message_templates`). Se hace en WhatsApp Manager; Resender solo **envía** plantillas ya aprobadas por nombre.
-- **Flujos avanzados de WhatsApp:** Flows, catálogo/commerce, pagos, Calling API, listas de difusión/marketing masivo.
-- **Métricas de calidad/quality rating y messaging tiers** automatizados (1K→10K→100K…). Se documentan; el error de Meta se registra en la bitácora cuando ocurra.
-- **Rate limiting propio** para los límites de la Cloud API (se documenta; se registra el error de Meta).
-- **Verificación de negocio del tenant:** Resender no automatiza la Business Verification del cliente; su WABA puede arrancar con límites de mensajería hasta que el propio tenant verifique su negocio.
-- **On-Premises API** (descontinuada por Meta) y **modelo BSP** (descartado en el ADR).
-
-## Further Notes / Riesgos
-
-- **Gate de App Review (bloqueante para producción):** para operar números de **otros** negocios se necesita **Advanced Access** a `whatsapp_business_messaging` y `whatsapp_business_management`, lo que exige **Business Verification + 2FA** y **App Review** con dos screencasts. La **Business Verification puede tardar semanas** → iniciarla antes de terminar el código. Hasta tener Advanced Access + app en **Live**, el Embedded Signup real no funciona para clientes (solo números/usuarios de prueba en Development).
-- **⚠️ Riesgo de modelo de producto (leer sí o sí, heredado de `fb_requirements.md`):** la guía de Meta asume una experiencia interactiva; Resender responde **vía sistema externo**. El revisor **enviará un WhatsApp al número y esperará respuesta**. Si la cuenta de prueba no tiene una **automatización demo** conectada respondiendo (dentro de la ventana de 24 h), verá silencio → **rechazo**. **Mitigación obligatoria:** dejar una automatización demo (n8n) conectada que responda cualquier mensaje y documentarlo en las notas del revisor (*"envía la palabra X → recibes respuesta automática"*). El **video de `whatsapp_business_messaging`** debe mostrar **la interfaz del negocio** (Connections/Messages de Resender), no la del consumidor, y el flujo end-to-end (alta vía Embedded Signup → llega mensaje → respuesta automática).
-- **Bloqueadores de plataforma COMPARTIDOS con Messenger/Instagram** (de `fb_requirements.md`, hoy **inexistentes**; una sola implementación cubre los tres canales): **política de privacidad pública** (`/privacy`), **método de eliminación de datos** (`/api/meta/data-deletion` con `signed_request` o opción "eliminar cuenta"), **Términos de Servicio para tenants** (`/terms`, obligación como Tech Provider), **email de reporte de vulnerabilidades** en el footer, **acceso de prueba para el revisor** (la app está tras login propio), y ajustes de panel (app icon 1024×1024 sin marcas, categoría, email de notificaciones). Son prerrequisito del envío de App Review.
-- **No pedir los permisos de WhatsApp hasta tener el canal construido y una demo respondiendo.** Misma regla que `fb_requirements.md` aplica a Instagram: el revisor prueba el flujo real. Orden de reviews recomendado: (1) Messenger `pages_messaging` (ya casi listo, solo faltan los bloqueadores compartidos), (2) WhatsApp, (3) Instagram.
-- **Registrar el número y suscribir el WABA son obligatorios y "fallan en silencio" si se omiten:** sin `/{phone}/register` el número no envía; sin `/{waba}/subscribed_apps` la app no recibe webhooks aunque el callback esté configurado. Hacer ambos explícitos en el `callback` y verificarlos.
-- **App Secret compartido:** el webhook de WhatsApp se firma con el **mismo** `META_APP_SECRET` de la app (no hay secret separado como en Instagram-con-Instagram-Login). Confundirlo es el error de config más probable.
-- **Ventana de 24 h:** calcular la ventana desde el último mensaje **entrante** (no desde cualquier mensaje). Fuera de ella, solo plantillas aprobadas; intentar texto libre devuelve error de Meta.
-- **SSE single-process:** `lib/message-store.ts` es buffer en memoria de un solo proceso; vale para UI en vivo pero no es bus durable (igual que el MVP). La durabilidad la dan `messages` + `external_webhook_deliveries`.
-- **developers.facebook.com es una SPA JS** → WebFetch no lee el cuerpo. Validar shapes exactos (Embedded Signup events, webhook payload, `register`) contra el entorno real / Graph API Explorer antes de cerrar parsers.
-
----
-
-# Guía de configuración en Meta (lo que haces tú)
-
-Esta es la parte manual; el código de arriba asume que estos pasos quedaron hechos. Hay tres bloques: **(A) hacerte Tech Provider** (gate de Meta, puede tardar semanas), **(B) montar la Meta App + producto WhatsApp + Embedded Signup**, y **(C) cumplimiento de plataforma compartido**.
-
-## Bloque A — Convertirte en Tech Provider (one-time, puede tardar semanas)
-
-> Sin Advanced Access aprobado + app en Live, el Embedded Signup real no funciona para clientes.
-
-1. **Business Manager:** ten un portfolio de negocio, activa **2FA** y completa **Business Verification** (varía por región, puede tardar semanas — empezar ya).
-2. **Self Sign-up:** registra un número de WhatsApp **propio** de prueba para desarrollar/probar en modo Development.
-3. **App Review** para `whatsapp_business_messaging` y `whatsapp_business_management` (Advanced Access):
-   - Descripción de uso por permiso, declarando que eres **technology provider** y cómo gestionas números/plantillas (`management`) y envías/recibes (`messaging`) en nombre de otros negocios.
-   - **2 screencasts:** (a) `messaging` → tu app (interfaz del **negocio**, no del consumidor) enviando un WhatsApp y la app de WhatsApp recibiéndolo, end-to-end; (b) `management` → crear/gestionar una plantilla en WhatsApp Manager.
-   - Notas del revisor con **credenciales de prueba** + frase de activación de la **automatización demo** (ver riesgo de modelo de producto).
-4. **Access Verification** post-aprobación (~5 días hábiles) si Meta lo solicita.
-
-## Bloque B — Meta App, producto WhatsApp y Embedded Signup
-
-### Paso 1 — Meta App
-1. Usa **una** Meta App tipo Business (la misma que Messenger, agregando el producto WhatsApp). Copia **App ID** → `NEXT_PUBLIC_META_APP_ID` y **App Secret** → `META_APP_SECRET` (ya en uso por Messenger).
-2. Agrega el producto **WhatsApp**; acepta términos.
-
-### Paso 2 — Webhook de WhatsApp
-1. WhatsApp → Configuration → **Webhook**: Callback URL `https://<TU_APP_URL>/api/whatsapp/webhook`, Verify Token → `WHATSAPP_VERIFY_TOKEN`.
-2. Suscribe el campo **`messages`** del webhook. (La suscripción **por WABA** la hace el código vía `subscribed_apps`.)
-
-### Paso 3 — Facebook Login for Business (Embedded Signup)
-1. Crea una **Login Configuration** con la variación **"WhatsApp Embedded Signup"**, token tipo **system-user**, asegurando el asset **WhatsApp accounts** y el permiso `whatsapp_business_management`. Copia el **Configuration ID** → `NEXT_PUBLIC_WHATSAPP_CONFIG_ID`.
-2. En Facebook Login for Business → Settings: habilita Client/Web OAuth login, Enforce HTTPS, Embedded Browser OAuth, Strict Mode, Login con JS SDK. Agrega tu dominio a **Valid OAuth Redirect URIs** y **Allowed Domains for the JS SDK** (HTTPS, sin wildcards).
-
-### Paso 4 — Variables de entorno en el software
-Pon en `apps/web/.env` (y en tu hosting):
-```bash
-NEXT_PUBLIC_META_APP_ID="<App ID>"          # reuso (Messenger)
-META_APP_SECRET="<App Secret>"              # reuso: firma webhook + client_secret del exchange
-NEXT_PUBLIC_WHATSAPP_CONFIG_ID="<Config ID del Embedded Signup>"
-WHATSAPP_VERIFY_TOKEN="<string aleatorio>"
-# opcionales:
-WHATSAPP_DEFAULT_PIN="<6 dígitos>"
-CRON_SECRET="<string aleatorio>"
-# Reutilizadas (ya existen):
-APP_URL="https://<tu-origen-publico>"
-TOKEN_ENCRYPTION_KEY="<ya configurado>"
-DATABASE_URL="<ya configurado>"
+}
 ```
 
-### Paso 5 — Pasar la app a Live
-Con App Review aprobado, pon la Meta App en **Live** y usa URLs de producción en Facebook Login. (En Development solo funcionan números/usuarios de prueba.)
+`downloadUrl` requiere la misma API key del tenant. No contiene una firma pública permanente.
 
-## Bloque C — Cumplimiento de plataforma (compartido con Messenger/Instagram)
+### API pública de salida
 
-> Estos son prerrequisito del envío de App Review en **cualquier** canal. Hoy **no existen** (ver `fb_requirements.md`). Una sola implementación cubre los tres canales.
+`POST /v1/messages` conserva API key e `Idempotency-Key` obligatoria.
 
-1. **`/privacy`** — política de privacidad pública (sin geobloqueo, accesible a crawlers), explica datos tratados y **cómo solicitar su eliminación**; publicar la URL en el panel.
-2. **Eliminación de datos** — `/api/meta/data-deletion` (valida `signed_request`, borra datos del tenant, devuelve `{url, confirmation_code}`) **o** opción "eliminar mi cuenta" + página de instrucciones.
-3. **`/terms`** — Términos de Servicio que prohíben usos indebidos a los tenants (obligación de Tech Provider).
-4. **Email de seguridad** en el footer (reporte de vulnerabilidades).
-5. **Ajustes de panel:** app icon **1024×1024** sin marcas, categoría precisa, email de notificaciones, publicar la página de Facebook asociada.
+Ejemplos conceptuales:
 
-## Checklist de validación end-to-end (cuando haya acceso aprobado)
-1. Conectar WhatsApp desde Connections vía Embedded Signup → aparece el número con badge "WhatsApp"; en BD quedan `phone_number_id`, `waba_id`, token cifrado.
-2. Verificar que el `callback` ejecutó `register` (número activo) y `subscribed_apps` (app suscrita al WABA).
-3. Enviar un WhatsApp **al** número de prueba → llega `POST /api/whatsapp/webhook`, se persiste en `messages` con `contact_name` del perfil y aparece en Messages.
-4. Si hay `webhookUrl` → el sistema externo recibe el payload con `channel:"whatsapp"` y los bloques `source`/`conversation`/`message`.
-5. Responder dentro de 24 h vía `POST /api/whatsapp/send` (texto libre) → llega al cliente, se persiste `sent`, y los `statuses` actualizan a `delivered`/`read`.
-6. Intentar texto libre fuera de 24 h → `409 outside_24h_window`; reintentar con una plantilla aprobada → se entrega.
-7. Reentregar el mismo webhook (mismo `wamid`) → no se duplica el mensaje ni el push (idempotencia).
-8. Desconectar el número → deja de enviar/recibir; el historial en `messages`/`conversations` se conserva.
+```json
+{ "pageId": "uuid", "recipientId": "521...", "type": "text", "text": "Hola" }
+```
+
+```json
+{
+  "pageId": "uuid",
+  "recipientId": "521...",
+  "type": "document",
+  "mediaId": "resender-media-uuid",
+  "caption": "Tu factura"
+}
+```
+
+Validaciones:
+
+- `pageId` pertenece al tenant y es WhatsApp activo.
+- `recipientId`, `conversationId` y contacto coinciden.
+- Existe un mensaje entrante no histórico dentro de 24 horas.
+- El upload está completo, pertenece al tenant, no expiró y su tipo coincide.
+- El mismo upload no puede mutar después de calcular idempotencia.
+- Un error de Meta se persiste y traduce sin esconder el payload seguro de diagnóstico.
+
+### Estados y UI
+
+Connections muestra:
+
+- badge WhatsApp;
+- número visible y WABA ID secundario;
+- modo estándar o Coexistence;
+- estado de token, suscripción y sync;
+- editor de webhook URL;
+- reconectar/desconectar;
+- explicación de limitaciones de Coexistence.
+
+Messages muestra:
+
+- texto/caption;
+- thumbnails y reproductores seguros para imagen, audio y video;
+- filename/tamaño y descarga para documentos;
+- ubicación, contacto, reacción y reply context;
+- estado de media pendiente/fallida;
+- origen API o Business App;
+- estados `sent/delivered/read/failed` sin confundirlos con el estado interno.
+
+## Requisitos de Meta y preparación de Tech Provider
+
+Trabajo administrativo en paralelo desde el inicio:
+
+1. Business Portfolio de AI Beat con 2FA y Business Verification.
+2. Dominio `resender.dev` y correo corporativo verificables.
+3. Meta App tipo Business propiedad del portfolio; producto WhatsApp agregado.
+4. WABA y número propios de prueba.
+5. Embedded Signup configurado para estándar y Coexistence.
+6. Webhook público HTTPS y suscripción por WABA.
+7. Advanced Access solicitado para los permisos que el dashboard vigente exija, incluyendo:
+   - `business_management` para Embedded Signup;
+   - `whatsapp_business_management` para WABA/assets/subscriptions;
+   - `whatsapp_business_messaging` para envío/recepción.
+8. App Review con cuenta revisora, instrucciones y screencasts.
+9. Access Verification como Tech Provider.
+10. App en Live antes de onboarding de negocios externos.
+
+Business Verification, App Review, Access Verification y App Live son gates distintos. La fase de ingeniería puede terminar con la solicitud enviada; el rollout público sigue bloqueado hasta recibir aprobación.
+
+## Cumplimiento
+
+Actualizar antes de App Review:
+
+- `/privacy`: WhatsApp, WABA, números, perfiles, contenido, multimedia, Coexistence, R2, Cloudflare/Neon y retención. Eliminar referencias obsoletas a un producto solo Messenger o hosting en Vercel.
+- `/terms`: opt-in, ventana de 24 h, prohibición de spam, responsabilidad por automatizaciones y contenido multimedia.
+- `/data-deletion` y eliminación de cuenta: incluir WABA, tokens, mensajes y objetos R2.
+- Footer: contacto legal y de seguridad.
+- Dashboard Meta: icono, categoría, email, URLs públicas y método de eliminación.
+- Cuenta revisora con suscripción/entitlements necesarios y datos no sensibles.
+
+La automatización demo responde solo cuando el revisor inicia la conversación; no depende de plantillas.
+
+## Estrategia de pruebas
+
+### Unitarias
+
+- Parsers de cada tipo estándar de mensaje y status.
+- Parsers `history`, `smb_app_state_sync` y `smb_message_echoes`.
+- Tipos desconocidos se conservan y nunca rompen el lote.
+- State/nonce/origin de Embedded Signup.
+- Diferencia entre registro estándar y Coexistence.
+- Ventana abierta, borde exacto y ventana cerrada.
+- Status monotónico y dedupe por `wamid`.
+- Catálogo de MIME/tamaños y filename sanitizado.
+- Fingerprint de idempotencia para texto y media.
+- Ownership de número, media y conversación.
+
+### Integración local/Worker
+
+- Migración 0014 sobre fixture con Messenger e Instagram existentes.
+- Callback/RPC estándar y Coexistence.
+- Challenge y firma válida/inválida del webhook.
+- Persistencia + outbox antes del 200.
+- Media pendiente → R2 disponible → webhook externo.
+- Retry/DLQ de descarga y de entrega externa sin duplicados.
+- Upload reservado → PUT → complete → envío.
+- Descarga autenticada y cross-tenant denegada.
+- Account deletion elimina BD y R2 o deja job recuperable visible.
+- OpenAPI snapshots y compatibilidad de mensajes de texto existentes.
+
+### End-to-end real
+
+Ejecutar con assets propios de Meta:
+
+1. Conectar número estándar, enviar texto/media al número y responder dentro de 24 h.
+2. Conectar WhatsApp Business App por Coexistence.
+3. Confirmar sync de contactos/historial sin pushes históricos.
+4. Enviar desde Business App y confirmar echo en Resender/webhook externo.
+5. Enviar desde API y verificar aparición/entrega según comportamiento de Meta.
+6. Probar imagen, audio/voz, video, documento y sticker en ambos sentidos.
+7. Confirmar `sent/delivered/read/failed` por `wamid`.
+8. Intentar envío fuera de ventana y obtener `409` sin llamada a Meta.
+9. Desconectar/reconectar y comprobar que no se pierde historial.
+
+## Criterios de aceptación de Fase 1
+
+- [ ] `whatsapp` existe en BD, contratos, API, OpenAPI y UI sin regresiones en Messenger/Instagram.
+- [ ] Onboarding estándar conecta un número propio de extremo a extremo.
+- [ ] Coexistence conecta un número elegible y procesa sync/echoes.
+- [ ] Texto y multimedia común funcionan en entrada, almacenamiento, webhook externo, UI y salida.
+- [ ] Ningún mensaje desconocido se pierde silenciosamente.
+- [ ] Media es privada, tenant-scoped, verificable y eliminable.
+- [ ] Webhook responde rápido y el trabajo lento es durable.
+- [ ] Idempotencia impide duplicar provider calls, mensajes, objetos y pushes.
+- [ ] Ventana de 24 horas se aplica localmente; plantillas no están implementadas.
+- [ ] Estados de entrega se reflejan de forma monotónica.
+- [ ] Desconexión conserva historial; eliminación de cuenta incluye R2.
+- [ ] Privacidad, términos y eliminación describen el comportamiento real.
+- [ ] Existe cuenta demo, automatización, instrucciones y screencasts de revisión.
+- [ ] Lint, typecheck, tests y build pasan.
+- [ ] Pruebas reales estándar y Coexistence quedan documentadas con evidencia.
+
+## Gates de lanzamiento
+
+### Ingeniería completa
+
+- Todos los criterios anteriores pasan con assets propios/test.
+- Solicitud de permisos y paquete de revisión están listos o enviados.
+
+### Producción multi-tenant
+
+- Business Verification aprobada.
+- Advanced Access aprobado.
+- Access Verification como Tech Provider aprobada cuando Meta la exija.
+- Meta App en Live.
+- Smoke test con un negocio externo controlado.
+- Runbook de revocación, offboarding, fallos de media y DLQ.
+
+## Riesgos principales
+
+- **Aprobación externa:** Meta puede cambiar nombres, pantallas y requisitos; registrar evidencia y fecha de cada configuración.
+- **Coexistence no universal:** país, número, cuenta, versión o dispositivo pueden ser inelegibles. Mostrar error accionable y ofrecer onboarding estándar, sin prometer migración automática.
+- **Eventos voluminosos:** history/media no pueden procesarse dentro del webhook; siempre usar outbox/Queue.
+- **Media temporal de Meta:** descargar inmediatamente y no depender de la URL original.
+- **Privacidad/costo:** R2 introduce retención de contenido sensible; ownership, borrado y lifecycle son parte del criterio de aceptación.
+- **Doble canal de salida en Coexistence:** deduplicar echoes y distinguir `business_app` de `resender_api`.
+- **Sin plantillas:** el producto no puede iniciar ni reabrir conversaciones; UI, API y marketing deben decirlo claramente.
+- **Políticas de automatización:** Resender es infraestructura para casos de negocio; los términos deben prohibir spam y usos incompatibles con las políticas vigentes de WhatsApp.
+
+## Variables y bindings
+
+### `apps/api`
+
+- `META_APP_ID` — reuso.
+- `META_APP_SECRET` — reuso para firma/intercambio.
+- `WHATSAPP_VERIFY_TOKEN` — nuevo secreto.
+- `META_GRAPH_VERSION` — versión soportada centralizada.
+- `TOKEN_ENCRYPTION_KEY` — reuso.
+- `DATABASE_URL` — reuso.
+- `WHATSAPP_MEDIA` — nuevo binding R2 privado, separado por ambiente.
+- Queue/DLQ de procesamiento de media o binding equivalente según el diseño final de outbox.
+
+### `apps/web`
+
+- `NEXT_PUBLIC_META_APP_ID` — reuso.
+- `NEXT_PUBLIC_WHATSAPP_CONFIG_ID` — nuevo Configuration ID de Embedded Signup.
+- Service Binding existente hacia `apps/api` — reuso.
+
+No guardar PIN, App Secret, system-user token ni credenciales R2 en variables públicas o en el repositorio.
+
+## Referencias vigentes
+
+- Meta — WhatsApp Business Platform: https://www.postman.com/meta/whatsapp-business-platform/overview
+- Meta — Embedded Signup: https://www.postman.com/meta/whatsapp-business-platform/documentation/du6gzjv/embedded-signup
+- Meta — Cloud API Messages: https://www.postman.com/meta/whatsapp-business-platform/folder/o48mro7/messages
+- Meta — Webhook Messages Object: https://www.postman.com/meta/whatsapp-business-platform/folder/1dtuocp/messages-object
+- Meta — Media: https://www.postman.com/meta/whatsapp-business-platform/folder/13382743-ecb27be5-4d27-4763-bbee-6a8002c04bf3
+- Meta — Customer service window/statuses: https://www.postman.com/meta/whatsapp-business-platform/folder/fuaee8l/statuses-object
+- Meta — Coexistence: https://developers.facebook.com/documentation/business-messaging/whatsapp/embedded-signup/onboarding-business-app-users
+- Meta — Tech Providers: https://developers.facebook.com/documentation/business-messaging/whatsapp/solution-providers/get-started-for-tech-providers
+- Cloudflare — R2 Workers API: https://developers.cloudflare.com/r2/api/workers/workers-api-reference/
+- Cloudflare — R2 presigned URLs: https://developers.cloudflare.com/r2/api/s3/presigned-urls/
+- Cloudflare — R2 lifecycle rules: https://developers.cloudflare.com/r2/buckets/object-lifecycles/

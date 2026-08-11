@@ -23,8 +23,18 @@ export function rateLimitFamily(
   method: string,
   pathname: string
 ): RateLimitFamily {
-  if (pathname === "/v1/messages" && method === "POST") return "message_send"
+  if (method !== "POST") {
+    return method === "PATCH" ? "page_write" : "read"
+  }
+  if (pathname === "/v1/messages") return "message_send"
+  // Las respuestas a comentarios comparten cubeta con el envío de mensajes y no
+  // con las escrituras de página: son la misma clase de operación —salir hacia
+  // Meta por cada evento entrante— y el ritmo que hay que contener es el mismo.
+  // Con cubetas separadas, un tenant que contesta comentarios podría duplicar su
+  // presión sobre Graph sin tocar su límite de mensajes.
+  if (/^\/v1\/comments\/[^/]+\/(replies|private-replies)$/u.test(pathname)) {
+    return "message_send"
+  }
   if (pathname.endsWith("/webhook-secret/rotate")) return "secret_rotation"
-  if (method === "PATCH" || method === "POST") return "page_write"
-  return "read"
+  return "page_write"
 }

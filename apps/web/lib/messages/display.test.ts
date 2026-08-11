@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest"
 import {
   NO_MESSAGES_CONTENT,
   formatContactLabel,
-  formatLogTimestamp,
   toConversationRowView,
   toThreadMessageViews,
 } from "./display"
@@ -18,11 +17,15 @@ function conversation(
     id: "conv-1",
     contactId: "8837120041",
     contactName: null,
+    contactUsername: null,
+    contactSyncedAt: null,
     lastMessageAt: new Date(2026, 6, 27, 14, 2),
     page: {
       id: "page-1",
+      channel: "messenger",
       metaPageId: "104233889761204",
       name: "Café Rioja",
+      username: null,
     },
     latestMessage: {
       text: "¿Hacen envíos a Palermo?",
@@ -41,6 +44,7 @@ function message(overrides: Partial<ThreadMessage> = {}): ThreadMessage {
     status: "received",
     text: "Hola, ¿tienen turno para hoy?",
     error: null,
+    instagramSourceCommentId: null,
     createdAt: new Date(2026, 6, 27, 14, 1, 29),
     ...overrides,
   }
@@ -55,14 +59,44 @@ describe("message display helpers", () => {
 })
 
 describe("toConversationRowView", () => {
-  it("identifica al contacto siempre por PSID, aunque hubiera nombre", () => {
-    // Invariante de la ADR 0005: `contact_name` nunca se escribe, así que la
-    // fila del log no puede depender de él ni siquiera cuando viene informado.
+  it("identifica al contacto por @handle cuando Graph lo resolvió", () => {
+    const row = toConversationRowView(
+      conversation({
+        contactUsername: "lori_surianno",
+        contactName: "Lori",
+        contactSyncedAt: new Date(2026, 6, 27, 12, 0),
+      }),
+      NOW
+    )
+
+    expect(row.contactLabel).toBe("@lori_surianno")
+    expect(row.contactName).toBe("Lori")
+  })
+
+  it("no repite el nombre cuando es el mismo @handle", () => {
+    // Instagram devuelve un montón de cuentas donde `name` y `username` son la
+    // misma cadena; pintarla dos veces en el mismo renglón es ruido.
+    const row = toConversationRowView(
+      conversation({
+        contactUsername: "cafe.rioja",
+        contactName: "Cafe.Rioja",
+        contactSyncedAt: new Date(2026, 6, 27, 12, 0),
+      }),
+      NOW
+    )
+
+    expect(row.contactLabel).toBe("@cafe.rioja")
+    expect(row.contactName).toBeNull()
+  })
+
+  it("cae al PSID mientras no haya @handle", () => {
+    // Es el caso de Messenger, donde no hay perfil que pedir, y el de una
+    // conversación que todavía nadie miró.
     expect(toConversationRowView(conversation(), NOW).contactLabel).toBe(
       "psid 8837120041"
     )
     expect(
-      toConversationRowView(conversation({ contactName: "Martina G." }), NOW)
+      toConversationRowView(conversation({ contactUsername: "  " }), NOW)
         .contactLabel
     ).toBe("psid 8837120041")
   })
@@ -74,7 +108,43 @@ describe("toConversationRowView", () => {
     expect(row.hasMessages).toBe(true)
     expect(row.failed).toBe(false)
     expect(row.pageLabel).toBe("Café Rioja · 104233889761204")
+    expect(row.channel).toBe("messenger")
     expect(row.timestamp).toBe("hoy 14:02")
+  })
+
+  it("identifica la cuenta por @handle cuando la conversación es de Instagram", () => {
+    const row = toConversationRowView(
+      conversation({
+        page: {
+          id: "page-2",
+          channel: "instagram",
+          metaPageId: "17841400000000000",
+          name: "Café Rioja",
+          username: "cafe.rioja",
+        },
+      }),
+      NOW
+    )
+
+    expect(row.pageLabel).toBe("@cafe.rioja · ig_id 17841400000000000")
+    expect(row.channel).toBe("instagram")
+  })
+
+  it("cae al nombre de la cuenta si Instagram no dio el @handle", () => {
+    const row = toConversationRowView(
+      conversation({
+        page: {
+          id: "page-2",
+          channel: "instagram",
+          metaPageId: "17841400000000000",
+          name: "Café Rioja",
+          username: null,
+        },
+      }),
+      NOW
+    )
+
+    expect(row.pageLabel).toBe("Café Rioja · 17841400000000000")
   })
 
   it("prefija los salientes con «Tú: » y marca los fallidos", () => {
@@ -105,15 +175,6 @@ describe("toConversationRowView", () => {
     expect(row.content).toBe(NO_MESSAGES_CONTENT)
     expect(row.hasMessages).toBe(false)
     expect(row.failed).toBe(false)
-  })
-})
-
-describe("formatLogTimestamp", () => {
-  it("usa fecha corta fuera de hoy y ayer, con año solo si no es el actual", () => {
-    expect(formatLogTimestamp(new Date(2026, 6, 24, 9, 5), NOW)).toBe("24 jul")
-    expect(formatLogTimestamp(new Date(2025, 6, 24, 9, 5), NOW)).toBe(
-      "24 jul 2025"
-    )
   })
 })
 
@@ -166,5 +227,30 @@ describe("toThreadMessageViews", () => {
     expect(failed?.meta).toBe("outbound · 14:05:02 · failed")
     expect(sent?.failed).toBe(false)
     expect(sent?.error).toBeNull()
+  })
+
+  it("marca la respuesta privada a un comentario, que es un DM como cualquier otro", () => {
+    const [privateReply, plain] = toThreadMessageViews([
+      message({
+        id: "a",
+        direction: "outbound",
+        status: "sent",
+        instagramSourceCommentId: "17851400000000000",
+        createdAt: new Date(2026, 6, 27, 14, 2, 11),
+      }),
+      message({
+        id: "b",
+        direction: "outbound",
+        status: "sent",
+        createdAt: new Date(2026, 6, 27, 14, 3, 0),
+      }),
+    ])
+
+    expect(privateReply?.fromComment).toBe(true)
+    expect(privateReply?.meta).toBe(
+      "outbound · 14:02:11 · sent · respuesta a comentario"
+    )
+    expect(plain?.fromComment).toBe(false)
+    expect(plain?.meta).toBe("outbound · 14:03:00 · sent")
   })
 })

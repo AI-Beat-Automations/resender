@@ -25,6 +25,11 @@ import {
   getBearerToken,
   parseOutboundSendInput,
 } from "@/lib/outbound/send-request"
+import { describeError, log } from "@/lib/observability/logger"
+import {
+  outboundLogger,
+  resolveRequestId,
+} from "@/lib/observability/outbound-log"
 import { posthog } from "@/lib/posthog"
 
 // Envía una respuesta al contacto.
@@ -35,30 +40,54 @@ import { posthog } from "@/lib/posthog"
 export const runtime = "nodejs"
 
 export async function POST(request: NextRequest) {
+  const requestId = resolveRequestId(request.headers.get("x-request-id"))
+  const trace = outboundLogger({
+    action: "outbound_send",
+    channel: "messenger",
+    subject: "message",
+    requestId,
+  })
+
   const bearer = getBearerToken(request.headers.get("authorization"))
   const apiKey = await authenticateApiKey(bearer)
   if (!apiKey) {
-    return Response.json({ error: "unauthorized" }, { status: 401 })
+    return trace.drop(
+      "unauthorized",
+      Response.json({ error: "unauthorized" }, { status: 401 })
+    )
   }
+  trace.setTenant(apiKey.tenantId)
 
   const idempotencyHeader = request.headers.get("idempotency-key")
   const idempotencyKey = idempotencyHeader?.trim() ?? null
-  if (idempotencyHeader !== null && (!idempotencyKey || idempotencyKey.length > 200)) {
-    return Response.json(
-      { error: "Idempotency-Key must be a non-empty string of at most 200 characters" },
-      { status: 400 }
+  if (
+    idempotencyHeader !== null &&
+    (!idempotencyKey || idempotencyKey.length > 200)
+  ) {
+    return trace.drop(
+      "invalid_request",
+      Response.json(
+        {
+          error:
+            "Idempotency-Key must be a non-empty string of at most 200 characters",
+        },
+        { status: 400 }
+      )
     )
   }
 
   if (await isUserWaitlisted(apiKey.tenantId)) {
-    return Response.json(
-      { error: "account is on the waitlist" },
-      { status: 403 }
+    return trace.drop(
+      "waitlisted",
+      Response.json({ error: "account is on the waitlist" }, { status: 403 })
     )
   }
 
   if (!(await hasActiveSubscription(apiKey.tenantId))) {
-    return Response.json({ error: "no active subscription" }, { status: 403 })
+    return trace.drop(
+      "no_active_subscription",
+      Response.json({ error: "no active subscription" }, { status: 403 })
+    )
   }
 
   // El replay idempotente se resuelve ANTES del gate de cuota: no llama a Meta
@@ -71,7 +100,11 @@ export async function POST(request: NextRequest) {
       apiKey.tenantId,
       idempotencyKey
     )
-    if (replay) return idempotentReplayResponse(replay)
+    if (replay) {
+      return trace.duplicate(idempotentReplayResponse(replay), {
+        subjectId: replay.id,
+      })
+    }
   }
 
   // Tercer gate en serie (ADR 0003): con la cuota del período agotada o con
@@ -82,14 +115,18 @@ export async function POST(request: NextRequest) {
   // puro es fail-closed); comprobar ambos es lo que estrecha el tipo de
   // `periodStart` hasta el incremento del contador, sin recurrir a `!`.
   if (block || !periodStart) {
-    return Response.json(
-      {
-        error: block?.code ?? "plan_unavailable",
-        message:
-          block?.message ??
-          "We couldn't resolve your current billing period. Contact support at info@resender.dev.",
-      },
-      { status: block?.status ?? 403 }
+    return trace.drop(
+      "plan_restricted",
+      Response.json(
+        {
+          error: block?.code ?? "plan_unavailable",
+          message:
+            block?.message ??
+            "We couldn't resolve your current billing period. Contact support at info@resender.dev.",
+        },
+        { status: block?.status ?? 403 }
+      ),
+      { errorCode: block?.code ?? "plan_unavailable" }
     )
   }
 
@@ -97,30 +134,48 @@ export async function POST(request: NextRequest) {
   try {
     body = await request.json()
   } catch {
-    return Response.json({ error: "invalid json" }, { status: 400 })
+    return trace.drop(
+      "invalid_request",
+      Response.json({ error: "invalid json" }, { status: 400 })
+    )
   }
 
   if (!body || typeof body !== "object") {
-    return Response.json({ error: "invalid body" }, { status: 400 })
+    return trace.drop(
+      "invalid_request",
+      Response.json({ error: "invalid body" }, { status: 400 })
+    )
   }
 
   const input = parseOutboundSendInput(body)
   if (!input.ok) {
-    return Response.json({ error: input.error }, { status: 400 })
-  }
-
-  const connectedPage = await getActivePageWithTokenForTenant(
-    apiKey.tenantId,
-    input.value.pageId
-  )
-  if (!connectedPage) {
-    return Response.json(
-      {
-        error: "page is not connected for this tenant",
-      },
-      { status: 404 }
+    return trace.drop(
+      "invalid_request",
+      Response.json({ error: input.error }, { status: 400 })
     )
   }
+
+  // Canal explícito: este endpoint es el de Messenger. Instagram tiene el suyo
+  // en `/api/meta/instagram/send`, y desde la migración 0013 el mismo
+  // `meta_page_id` puede existir en los dos canales.
+  const connectedPage = await getActivePageWithTokenForTenant(
+    apiKey.tenantId,
+    input.value.pageId,
+    "messenger"
+  )
+  if (!connectedPage) {
+    return trace.drop(
+      "page_not_connected",
+      Response.json(
+        {
+          error: "page is not connected for this tenant",
+        },
+        { status: 404 }
+      ),
+      { errorMessage: `accountId=${input.value.pageId}` }
+    )
+  }
+  trace.setAccount(connectedPage.page)
 
   let conversation = input.value.conversationId
     ? await getConversationById(apiKey.tenantId, input.value.conversationId)
@@ -132,9 +187,12 @@ export async function POST(request: NextRequest) {
       conversation.connectedPageId !== connectedPage.page.id ||
       conversation.contactId !== input.value.recipientId
     ) {
-      return Response.json(
-        { error: "conversationId does not match pageId and recipientId" },
-        { status: 400 }
+      return trace.drop(
+        "invalid_request",
+        Response.json(
+          { error: "conversationId does not match pageId and recipientId" },
+          { status: 400 }
+        )
       )
     }
   } else {
@@ -147,7 +205,10 @@ export async function POST(request: NextRequest) {
   }
 
   if (!conversation) {
-    return Response.json({ error: "conversation not found" }, { status: 400 })
+    return trace.drop(
+      "invalid_request",
+      Response.json({ error: "conversation not found" }, { status: 400 })
+    )
   }
 
   const sentAt = new Date()
@@ -168,11 +229,18 @@ export async function POST(request: NextRequest) {
           "Meta rejected the Page token. Reconnect the Page in Resender.",
       })
     } catch (error) {
-      console.error(
-        "failed to mark page token invalid",
-        connectedPage.page.metaPageId,
-        error
-      )
+      log({
+        entrypoint: "route",
+        action: "token_invalidate",
+        outcome: "failed",
+        reason: "internal_error",
+        requestId,
+        tenantId: apiKey.tenantId,
+        connectionId: connectedPage.page.id,
+        channel: "messenger",
+        accountId: connectedPage.page.metaPageId,
+        errorMessage: describeError(error),
+      })
     }
   }
 
@@ -201,9 +269,34 @@ export async function POST(request: NextRequest) {
         apiKey.tenantId,
         idempotencyKey
       )
-      if (existing) return idempotentReplayResponse(existing)
+      if (existing) {
+        return trace.duplicate(idempotentReplayResponse(existing), {
+          subjectId: existing.id,
+        })
+      }
     }
+    trace.failed("internal_error", { errorMessage: describeError(error) })
     throw error
+  }
+
+  // Una línea terminal por request, con el código de Meta traducido al catálogo
+  // de Messenger —que no es el de Instagram: un `10` acá es `pages_messaging`
+  // faltante o la ventana con el subcode 2018278—.
+  const traceFields = {
+    subjectId: message.id,
+    providerId: extractMetaMessageId(metaResult.data) ?? undefined,
+    contactId: input.value.recipientId,
+    textLength: input.value.reply.length,
+    status: metaResult.status,
+    durationMs: Date.now() - sentAt.getTime(),
+  }
+  if (metaResult.ok) {
+    trace.ok(traceFields)
+  } else {
+    trace.failed("meta_rejected", {
+      ...traceFields,
+      errorMessage: metaResult.reason ?? metaResult.error ?? undefined,
+    })
   }
 
   // Solo consume cuota la respuesta que Meta aceptó: el cliente no paga por un
@@ -215,7 +308,17 @@ export async function POST(request: NextRequest) {
     try {
       await incrementUsage(apiKey.tenantId, periodStart)
     } catch (error) {
-      console.error("failed to increment usage counter", apiKey.tenantId, error)
+      log({
+        entrypoint: "route",
+        action: "usage_increment",
+        outcome: "failed",
+        reason: "usage_counter_failed",
+        requestId,
+        tenantId: apiKey.tenantId,
+        channel: "messenger",
+        accountId: connectedPage.page.metaPageId,
+        errorMessage: describeError(error),
+      })
     }
   }
 
@@ -236,7 +339,9 @@ export async function POST(request: NextRequest) {
 
   return Response.json(
     {
-      ...(metaResult.ok ? {} : { error: metaResult.reason ?? metaResult.error }),
+      ...(metaResult.ok
+        ? {}
+        : { error: metaResult.reason ?? metaResult.error }),
       meta: metaResult.data,
       resender: {
         conversationId: conversation.id,

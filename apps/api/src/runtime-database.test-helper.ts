@@ -15,8 +15,17 @@ type StoredInbound = {
   text: string
 }
 
+type StoredComment = {
+  id: string
+  pageId: string
+  providerCommentId: string
+  direction: "inbound" | "outbound"
+  text: string
+}
+
 export class RuntimeDatabase {
   readonly messages: StoredInbound[] = []
+  readonly comments: StoredComment[] = []
   readonly jobs: JobRecord[] = []
   inboundInsertStatements = 0
   subscriptionWrites = 0
@@ -59,7 +68,53 @@ export class RuntimeDatabase {
       statement.includes("from connected_pages") &&
       statement.includes("where meta_page_id =")
     ) {
-      return values[0] === this.page.providerPageId ? [pageRow(this.page)] : []
+      // El canal viaja como segundo parámetro desde la 0013: `meta_page_id`
+      // solo es único dentro de un canal, así que el fake tiene que filtrar
+      // igual que la consulta real o dejaría pasar una resolución ambigua.
+      const channelMatches =
+        !statement.includes("and channel =") || values[1] === this.page.channel
+      return values[0] === this.page.providerPageId && channelMatches
+        ? [pageRow(this.page)]
+        : []
+    }
+    if (
+      statement.includes("from instagram_comments") &&
+      statement.includes("direction = 'outbound'")
+    ) {
+      return this.comments.some(
+        (comment) =>
+          comment.pageId === values[0] &&
+          comment.providerCommentId === values[1] &&
+          comment.direction === "outbound"
+      )
+        ? [{ id: "own" }]
+        : []
+    }
+    if (statement.includes("with inserted_comment as")) {
+      return this.executeCommentCte(values)
+    }
+    if (
+      statement.includes("join external_webhook_jobs") &&
+      statement.includes("c.ig_comment_id")
+    ) {
+      const comment = this.comments.find(
+        (candidate) =>
+          candidate.pageId === values[0] &&
+          candidate.providerCommentId === values[1]
+      )
+      const job = comment
+        ? this.jobs.find((candidate) => candidate.commentId === comment.id)
+        : undefined
+      return comment && job
+        ? [
+            {
+              comment_id: comment.id,
+              job_id: job.id,
+              job_status: job.status,
+              job_attempt_count: job.attemptCount,
+            },
+          ]
+        : []
     }
     if (
       statement.includes("from users") &&
@@ -150,7 +205,11 @@ export class RuntimeDatabase {
         .map((job) => {
           job.status = "pending"
           job.recoverAfter = leaseUntil
-          return { id: job.id, message_id: job.messageId }
+          return {
+            id: job.id,
+            message_id: job.messageId,
+            instagram_comment_id: job.commentId,
+          }
         })
     }
     throw new Error(`Unexpected runtime database statement: ${statement}`)
@@ -173,7 +232,7 @@ export class RuntimeDatabase {
     const index = this.messages.length + 1
     const messageId = uuidFor(index)
     const jobId = uuidFor(index + 100)
-    const deliveryEnabled = values[23] === true
+    const deliveryEnabled = values[25] === true
     const status: JobRecord["status"] =
       deliveryEnabled && this.page.webhookUrl ? "pending" : "failed_permanent"
     this.messages.push({
@@ -187,6 +246,11 @@ export class RuntimeDatabase {
       eventId: stringValue(values[10]),
       tenantId: this.page.tenantId,
       messageId,
+      commentId: null,
+      connectionId: this.page.id,
+      channel: this.page.channel,
+      providerPageId: this.page.providerPageId,
+      username: this.page.username,
       webhookUrl: this.page.webhookUrl,
       payload: {
         id: stringValue(values[10]),
@@ -194,17 +258,73 @@ export class RuntimeDatabase {
       },
       status,
       attemptCount: 0,
-      recoverAfter: dateValue(values[28]),
+      recoverAfter: dateValue(values[30]),
       signingSecretEncrypted: this.page.webhookSigningSecretEncrypted,
     })
-    this.usage += 1
+    // El CTE real trae un where sobre periodStart is not null: sin
+    // período no hay contador que incrementar, que es exactamente el caso de
+    // Instagram.
+    if (values[32] !== null && values[32] !== undefined) this.usage += 1
     return [
       {
         message_id: messageId,
         job_id: jobId,
         job_status: status,
         job_attempt_count: 0,
-        job_recover_after: dateValue(values[28]),
+        job_recover_after: dateValue(values[30]),
+      },
+    ]
+  }
+
+  private executeCommentCte(values: unknown[]): Row[] {
+    const providerCommentId = stringValue(values[2])
+    if (
+      this.comments.some(
+        (comment) =>
+          comment.pageId === this.page.id &&
+          comment.providerCommentId === providerCommentId &&
+          comment.direction === "inbound"
+      )
+    ) {
+      return []
+    }
+    const index = this.comments.length + 1
+    const commentId = uuidFor(index + 200)
+    const jobId = uuidFor(index + 300)
+    const deliveryEnabled = values[29] === true
+    const status: JobRecord["status"] =
+      deliveryEnabled && this.page.webhookUrl ? "pending" : "failed_permanent"
+    this.comments.push({
+      id: commentId,
+      pageId: this.page.id,
+      providerCommentId,
+      direction: "inbound",
+      text: stringValue(values[8]),
+    })
+    this.jobs.push({
+      id: jobId,
+      eventId: stringValue(values[10]),
+      tenantId: this.page.tenantId,
+      messageId: null,
+      commentId,
+      connectionId: this.page.id,
+      channel: this.page.channel,
+      providerPageId: this.page.providerPageId,
+      username: this.page.username,
+      webhookUrl: this.page.webhookUrl,
+      payload: { id: stringValue(values[10]), type: "comment.received" },
+      status,
+      attemptCount: 0,
+      recoverAfter: dateValue(values[34]),
+      signingSecretEncrypted: this.page.webhookSigningSecretEncrypted,
+    })
+    // Sin `usage`: Instagram está fuera de cuota.
+    return [
+      {
+        comment_id: commentId,
+        job_id: jobId,
+        job_status: status,
+        job_attempt_count: 0,
       },
     ]
   }
@@ -219,13 +339,16 @@ function pageRow(page: PageRecord): Row {
     id: page.id,
     tenant_id: page.tenantId,
     meta_page_id: page.providerPageId,
+    channel: page.channel,
     name: page.name,
+    username: page.username,
     status: page.status,
     token_status: page.tokenStatus,
     token_error: page.tokenError,
     webhook_url: page.webhookUrl,
     page_access_token_encrypted: page.pageAccessTokenEncrypted,
     webhook_signing_secret_encrypted: page.webhookSigningSecretEncrypted,
+    token_expires_at: page.tokenExpiresAt,
     connected_at: page.connectedAt,
     updated_at: page.updatedAt,
   }

@@ -1,6 +1,9 @@
 import { Eye, Inbox, TriangleAlert } from "lucide-react"
 
+import { ChannelBadge } from "@/features/inbox/ui/channel-badge"
+import { EmptyPane } from "@/features/inbox/ui/empty-pane"
 import type { ThreadMessageView } from "@/lib/messages/display"
+import type { PageChannel } from "@/lib/pages/page-registry"
 import { Badge } from "@workspace/ui/components/badge"
 import { cn } from "@workspace/ui/lib/utils"
 
@@ -11,6 +14,7 @@ import { cn } from "@workspace/ui/lib/utils"
 export type ThreadHeaderView = {
   contactLabel: string
   pageLabel: string
+  channel: PageChannel
 }
 
 export function MessageThread({
@@ -27,8 +31,9 @@ export function MessageThread({
           <h2 className="truncate font-mono text-[14px] font-semibold">
             {header.contactLabel}
           </h2>
-          <p className="mt-0.5 truncate font-mono text-[11px] text-[var(--text-subtle)]">
-            {header.pageLabel}
+          <p className="mt-1 flex items-center gap-1.5 font-mono text-[11px] text-[var(--text-subtle)]">
+            <ChannelBadge channel={header.channel} />
+            <span className="truncate">{header.pageLabel}</span>
           </p>
         </div>
         {/* El badge declara lo que la pantalla no tiene: no hay compositor,
@@ -56,26 +61,19 @@ export function MessageThread({
 
 export function EmptyThread({ filtered }: { filtered: boolean }) {
   return (
-    <section className="flex min-w-0 flex-1 flex-col items-center justify-center gap-3.5 bg-surface-app p-10 text-center">
-      <span
-        className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground"
-        aria-hidden
-      >
-        <Inbox className="size-[22px]" />
-      </span>
-      <div className="max-w-[400px]">
-        <h2 className="font-heading text-[18px] font-semibold tracking-[-0.02em]">
-          {filtered
-            ? "Esta página todavía no tiene conversaciones."
-            : "Todavía no hay conversaciones guardadas."}
-        </h2>
-        <p className="mt-2 text-[14px] leading-relaxed text-muted-foreground">
-          {filtered
-            ? "El filtro no devolvió ninguna conversación. Prueba con «Todas las páginas» para ver el resto del log."
-            : "Cuando alguien escriba a esta página, el mensaje se guarda acá y se reenvía a tu webhook."}
-        </p>
-      </div>
-    </section>
+    <EmptyPane
+      icon={Inbox}
+      title={
+        filtered
+          ? "Esta cuenta todavía no tiene conversaciones."
+          : "Todavía no hay conversaciones guardadas."
+      }
+      body={
+        filtered
+          ? "El filtro no devolvió ninguna conversación. Prueba con «Todas las cuentas» para ver el resto del log."
+          : "Cuando alguien escriba a esta cuenta, el mensaje se guarda acá y se reenvía a tu webhook."
+      }
+    />
   )
 }
 
@@ -113,6 +111,14 @@ function MessageBubble({ message }: { message: ThreadMessageView }) {
             "mt-[5px] flex items-center gap-1.5 font-mono text-[10.5px]",
             failed ? "text-[var(--danger-text)]" : "text-[var(--text-subtle)]"
           )}
+          // El sufijo `· respuesta a comentario` es lo único que distingue a
+          // una respuesta privada de un DM cualquiera; el title explica de
+          // dónde salió sin gastar otro renglón.
+          title={
+            message.fromComment
+              ? "Salió como respuesta privada a un comentario de Instagram"
+              : undefined
+          }
         >
           {failed ? (
             <TriangleAlert className="size-3 shrink-0" aria-hidden />

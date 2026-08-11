@@ -49,7 +49,11 @@ function Row({
 // problema), no adorno: antes el bloque entero iba con `aria-hidden`, así que
 // para un lector de pantalla la sección quedaba muda. Ahora se lee una sola vez
 // —la primera fila— y las repeticiones que el efecto necesita quedan ocultas.
-export function QuestionMarquee({ questions }: { questions: readonly string[] }) {
+export function QuestionMarquee({
+  questions,
+}: {
+  questions: readonly string[]
+}) {
   const items = [...questions]
   return (
     <div className="flex flex-col gap-3">

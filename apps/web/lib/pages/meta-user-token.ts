@@ -1,3 +1,4 @@
+import { describeError, log } from "@/lib/observability/logger"
 import { decryptSecret, encryptSecret } from "@/lib/crypto/encryption"
 import { getSql } from "@/lib/db"
 
@@ -40,7 +41,14 @@ export async function getMetaUserAccessToken(
   } catch (error) {
     // Credencial ilegible (clave rotada, payload corrupto): devolvemos null
     // para mandar al usuario de vuelta al diálogo de Meta, no un 500.
-    console.error("meta user token decrypt failed", tenantId, error)
+    log({
+      entrypoint: "route",
+      action: "token_decrypt",
+      outcome: "failed",
+      reason: "configuration_failed",
+      tenantId,
+      errorMessage: describeError(error),
+    })
     return null
   }
 }

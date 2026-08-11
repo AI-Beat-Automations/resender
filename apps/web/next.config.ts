@@ -9,7 +9,16 @@ initOpenNextCloudflareForDev()
 
 const nextConfig: NextConfig = {
   transpilePackages: ["@workspace/ui"],
-  allowedDevOrigins: ["*.ngrok-free.app", "*.ngrok.app"],
+  // Los dominios reservados de ngrok migraron de `.ngrok-free.app` a
+  // `.ngrok-free.dev`. Sin el `.dev`, el guard de Next bloquea con 403 todo
+  // `/_next` y `/__nextjs` que venga por el túnel — incluido el websocket de
+  // HMR, que queda reconectando en bucle.
+  allowedDevOrigins: [
+    "*.ngrok-free.dev",
+    "*.ngrok-free.app",
+    "*.ngrok.app",
+    "*.ngrok.dev",
+  ],
   // MDX sigue habilitado como extensión de página para futuros contenidos.
   pageExtensions: ["ts", "tsx", "js", "jsx", "md", "mdx"],
 
@@ -20,6 +29,12 @@ const nextConfig: NextConfig = {
     return [
       { source: "/docs", destination: DOCS_URL, permanent: true },
       { source: "/docs/:path*", destination: DOCS_URL, permanent: true },
+      // `/messages` pasó a ser `/inbox` cuando la pantalla dejó de ser solo
+      // DMs. El 308 (Next no usa 301: preserva el método) mantiene vivos los
+      // enlaces guardados y el histórico de PostHog. Los query values viajan
+      // solos, así que un `/messages?conversation=…` compartido sigue abriendo
+      // la misma conversación.
+      { source: "/messages", destination: "/inbox", permanent: true },
     ]
   },
 }

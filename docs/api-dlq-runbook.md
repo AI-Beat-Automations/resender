@@ -11,8 +11,12 @@ retain non-zero Queue retries. It never calls the customer webhook.
 ## Triage
 
 1. Identify the environment and incident window.
-2. Inspect structured logs for `event=webhook_delivery_dead`; correlate
-   `jobId` and `messageId`.
+2. Inspect structured logs for `event=webhook_delivery_dead` (equivalently
+   `action=webhook_delivery` with `outcome=dead`); correlate `jobId` and
+   `subjectId`. The subject is a message **or** an Instagram comment — `subject`
+   says which. Note `queueMessageId` is the Cloudflare Queue message id, not a
+   Resender message id. See `docs/observability-runbook.md` for the full field
+   catalog.
 3. Query only stable metadata from:
    - `external_webhook_jobs`: status, attempt count, last status/error, URL
      host, timestamps.

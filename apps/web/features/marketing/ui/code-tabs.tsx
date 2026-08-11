@@ -58,7 +58,7 @@ export function CodeTabs({
           type="button"
           onClick={copy}
           aria-label={copied ? copiedLabel : copyLabel}
-          className="absolute right-2 top-2 z-10 flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="absolute top-2 right-2 z-10 flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           {copied ? (
             <Check className="size-4 text-primary" />

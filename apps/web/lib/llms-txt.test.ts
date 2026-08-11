@@ -69,7 +69,10 @@ describe.each(locales)("buildLlmsTxt(%s)", (lang: Locale) => {
   })
 
   it("apunta a las URLs de su propio idioma", () => {
-    const own = lang === "es" ? "https://resender.dev/blog" : "https://resender.dev/en/blog"
+    const own =
+      lang === "es"
+        ? "https://resender.dev/blog"
+        : "https://resender.dev/en/blog"
     expect(txt).toContain(`(${own})`)
     if (lang === "es") {
       // El único /en admitido es el link cruzado al índice del otro idioma.

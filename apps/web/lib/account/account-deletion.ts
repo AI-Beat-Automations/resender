@@ -1,9 +1,12 @@
 import { normalizeEmail } from "@/lib/auth/validation"
-import type { PageStatus } from "@/lib/pages/page-registry"
+import type { PageChannel, PageStatus } from "@/lib/pages/page-registry"
 
 // A connected page as seen by the deletion flow: enough to decide whether it
 // needs a best-effort Meta webhook unsubscribe before the tenant is wiped.
+// `channel` picks which unsubscribe endpoint applies: Messenger and Instagram
+// take different hosts, paths and tokens.
 export type DeletionPage = {
+  channel: PageChannel
   metaPageId: string
   status: PageStatus
   pageAccessToken: string

@@ -226,6 +226,7 @@ describe("OpenAPI document", () => {
           ?.replace("{pageId}", "7ac2cc32-38cf-4d41-8c73-c6cf640d5b15")
           .replace("{conversationId}", "9e2327a8-0c42-493e-bd6c-c08ed81010f0")
           .replace("{messageId}", "ef55c94e-b861-4d19-9f9b-b5689028de80")
+          .replace("{commentId}", "1f0c9b2e-6d2a-4a5f-9f43-2f9a4b6d0c11")
         const response = await app.request(
           `http://localhost${concretePath}`,
           { method },
