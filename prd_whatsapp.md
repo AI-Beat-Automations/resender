@@ -1,8 +1,32 @@
 # PRD — WhatsApp Fase 1: Tech Provider, Embedded Signup, Coexistence y multimedia
 
-> **Estado:** listo para implementación.
-> **Última validación documental:** 11 de agosto de 2026.
+> **Estado:** en implementación. El slice 1 (contratos + migración) está completo; ver «Estado de implementación».
+> **Última validación documental:** 11 de agosto de 2026. **Última actualización de estado:** 13 de agosto de 2026.
 > **Decisión vigente:** integración directa con WhatsApp Cloud API como Tech Provider; no usar un BSP. Ver `docs/adr/0001-whatsapp-direct-cloud-api-tech-provider.md`.
+
+## Estado de implementación
+
+### Hecho — slice 1: contratos y modelo de datos (13 de agosto de 2026)
+
+- **`packages/contracts`**: `whatsapp` en `ChannelSchema`; `MessageSchema` con `type` (enum de 13 tipos), `text` nullable, `content` (union discriminada, `generic_event` conserva tipos desconocidos), `attachments[]`, `origin`, `historical`, `deliveryStatus` y `replyTo`; `PageSchema` con `wabaId`/`phoneE164`/`onboardingMode`/`whatsappStatus` (planos, null fuera del canal, patrón `username`); `SendMessageSchema` como union discriminada por `type` (texto, media por `mediaId`, ubicación, reacción, contactos); DTOs de media uploads; errores `customer_service_window_closed` y `media_not_ready`; RPC `connectWhatsappNumber` en el contrato.
+- **Migración `apps/web/db/migrations/0015_whatsapp_channel_and_media.sql`** (el 0014 que menciona este PRD ya estaba ocupado por `0014_inbox_labels.sql`): check de `channel` con `whatsapp`, columnas WABA en `connected_pages`, columnas nuevas en `messages` (`text` ahora nullable), `conversations.last_inbound_at` con backfill, tablas `message_attachments`, `media_uploads` y `whatsapp_media_jobs`, índice de dedupe de echoes/history scoped por `origin`. Validada de 0001→0015 sobre PGlite con datos legacy; **pendiente de aplicarse en los ambientes reales** (`npm run db:migrate`, la corre Arturo).
+- **Shims para mantener todo verde**: `sendMessage` rechaza `type !== "text"` en la puerta (el pipeline de media llega después); proyecciones de `repository.ts` pueblan los campos nuevos con fallbacks (las filas legacy derivan `origin` por `direction`); ambos workers mantienen `last_inbound_at` en la ingesta entrante desde ya; el entrypoint RPC expone `connectWhatsappNumber` como stub que rechaza hasta que exista Embedded Signup; snapshot OpenAPI regenerado.
+
+Decisiones tomadas durante el slice (vigentes para los siguientes):
+
+- **Upload de media saliente por el Worker**: `PUT /v1/media/uploads/{mediaId}/complete` no cambia, pero los bytes suben vía `PUT /v1/media/uploads/{mediaId}/content` autenticado con la API key y el Worker streamea a R2 por binding. Sin URLs prefirmadas de subida ni credenciales S3.
+- `MessageSchema` sigue **sin** exponer `channel` (decisión documentada en `api.ts`); el canal se resuelve por `pageId`.
+- Un `caption` enviado en `audio`/`sticker` se stripea en silencio (zod stripea llaves no declaradas en toda la API; `zod-to-openapi` no soporta `z.never()` para prohibirlo).
+- El dedupe de echoes/history es un unique parcial sobre `(connected_page_id, meta_message_id)` con `direction='outbound' and origin in ('business_app','history')` para no chocar con datos legacy de Messenger.
+
+### Pendiente (orden sugerido)
+
+1. `whatsapp-client.ts` + `META_GRAPH_VERSION` centralizada (hoy `v23.0` está hardcodeada en `client.ts` e `instagram-client.ts`).
+2. Webhook `GET|POST /webhooks/meta/whatsapp` + parsers de dominio (`messages[]`, `statuses[]`, `history`, `smb_app_state_sync`, `smb_message_echoes`). Ningún canal parsea `statuses` hoy.
+3. Binding R2 `WHATSAPP_MEDIA` + endpoints `/v1/media/*` + jobs de descarga (la tabla `whatsapp_media_jobs` ya existe).
+4. Ventana de 24 h en `/v1/messages` usando `conversations.last_inbound_at` (ya mantenida) + `409 customer_service_window_closed`.
+5. RPC `connectWhatsappNumber` real + Embedded Signup UI (ojo: el repo eliminó a propósito el FB JS SDK; Messenger/IG usan redirect OAuth server-side, Embedded Signup exige reintroducir `FB.login` + popup + `postMessage`) + Coexistence.
+6. UI Inbox/Connections, páginas legales (hoy obsoletas: dicen Vercel y solo-Messenger) y paquete de App Review.
 
 ## Resumen ejecutivo
 
@@ -196,7 +220,7 @@ Rutas canónicas:
 
 ### Contratos compartidos
 
-En `packages/contracts`:
+**Hecho** — ver «Estado de implementación». El plan original, como referencia. En `packages/contracts`:
 
 - Extender `ChannelSchema` con `whatsapp`.
 - Reemplazar `MessageSchema.type = 'text'` por un discriminated union estable.
@@ -221,7 +245,7 @@ No deben exponerse tokens de Meta, claves R2, URLs temporales de Meta ni payload
 
 ### Modelo de datos
 
-Crear `apps/web/db/migrations/0014_whatsapp_channel_and_media.sql`:
+**Hecho** en `apps/web/db/migrations/0015_whatsapp_channel_and_media.sql` (el número 0014 de este plan ya estaba ocupado). Lo que sigue era el plan original:
 
 - Extender el check de `connected_pages.channel` con `whatsapp`.
 - Añadir a `connected_pages`:
