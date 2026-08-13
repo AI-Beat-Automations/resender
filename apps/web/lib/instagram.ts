@@ -24,6 +24,7 @@ import {
 // del intercambio. Firmarlos con el de Facebook es el error de configuración
 // más común, y es la razón por la que Instagram lleva su propia ruta de webhook.
 
+import { META_GRAPH_VERSION } from "@/lib/meta-graph"
 import { APP_URL } from "@/lib/meta"
 
 const APP_ID = process.env.INSTAGRAM_APP_ID!
@@ -31,8 +32,7 @@ const APP_SECRET = process.env.INSTAGRAM_APP_SECRET!
 
 // `graph.instagram.com`, no `graph.facebook.com`: con Instagram Login el token
 // no sirve contra el Graph de Facebook.
-const GRAPH_VERSION = "v23.0"
-const GRAPH = `https://graph.instagram.com/${GRAPH_VERSION}`
+const GRAPH = `https://graph.instagram.com/${META_GRAPH_VERSION}`
 // El intercambio del code vive en otro host que el resto de la API, y sin
 // versión en el path.
 const OAUTH_TOKEN_URL = "https://api.instagram.com/oauth/access_token"

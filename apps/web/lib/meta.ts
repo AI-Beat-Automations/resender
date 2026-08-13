@@ -1,3 +1,4 @@
+import { META_GRAPH_VERSION } from "@/lib/meta-graph"
 import { describeError, log } from "@/lib/observability/logger"
 import {
   extractMetaErrorCode,
@@ -12,8 +13,7 @@ import {
 const APP_ID = process.env.NEXT_PUBLIC_META_APP_ID!
 const APP_SECRET = process.env.META_APP_SECRET!
 const CONFIG_ID = process.env.NEXT_PUBLIC_META_CONFIG_ID!
-const GRAPH_VERSION = "v23.0"
-const GRAPH = `https://graph.facebook.com/${GRAPH_VERSION}`
+const GRAPH = `https://graph.facebook.com/${META_GRAPH_VERSION}`
 export const META_WEBHOOK_SUBSCRIBED_FIELDS =
   "messages,messaging_postbacks,messaging_policy_enforcement"
 
@@ -31,7 +31,9 @@ export const STATE_COOKIE = "meta_oauth_state"
 // URL del diálogo de OAuth (flujo de redirección). Con Login for Business los
 // permisos van en el config_id, por eso no pasamos `scope`.
 export function buildDialogUrl(state: string) {
-  const url = new URL(`https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth`)
+  const url = new URL(
+    `https://www.facebook.com/${META_GRAPH_VERSION}/dialog/oauth`
+  )
   url.searchParams.set("client_id", APP_ID)
   url.searchParams.set("config_id", CONFIG_ID)
   url.searchParams.set("response_type", "code")

@@ -501,6 +501,7 @@ function serviceWithRepository(
       INSTAGRAM_APP_ID: "0",
       INSTAGRAM_APP_SECRET: "instagram-secret",
       INSTAGRAM_VERIFY_TOKEN: "instagram-verify",
+      WHATSAPP_VERIFY_TOKEN: "whatsapp-verify",
       META_VERIFY_TOKEN: "verify",
       TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 2).toString("base64"),
       DATABASE_URL: "postgres://example",

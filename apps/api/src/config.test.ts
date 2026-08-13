@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { rateLimitFamily } from "./config"
+import { META_GRAPH_VERSION, rateLimitFamily } from "./config"
 
 describe("rate limit families", () => {
   it("keeps reads and page writes where they were", () => {
@@ -36,5 +36,11 @@ describe("rate limit families", () => {
     expect(rateLimitFamily("POST", "/v1/comments/abc/replies/extra")).toBe(
       "page_write"
     )
+  })
+})
+
+describe("meta graph version", () => {
+  it("pins a concrete Graph version", () => {
+    expect(META_GRAPH_VERSION).toMatch(/^v\d+\.\d+$/u)
   })
 })

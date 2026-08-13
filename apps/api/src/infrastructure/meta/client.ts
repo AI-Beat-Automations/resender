@@ -1,8 +1,7 @@
 import { ContractError } from "@workspace/contracts"
 
-import { META_TIMEOUT_MS } from "../../config"
+import { META_GRAPH_VERSION, META_TIMEOUT_MS } from "../../config"
 
-const GRAPH_VERSION = "v23.0"
 const SUBSCRIBED_FIELDS =
   "messages,messaging_postbacks,messaging_policy_enforcement"
 
@@ -243,7 +242,7 @@ export class MetaClient {
 }
 
 function graphUrl(path: string, parameters: Record<string, string>): string {
-  const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}${path}`)
+  const url = new URL(`https://graph.facebook.com/${META_GRAPH_VERSION}${path}`)
   for (const [key, value] of Object.entries(parameters)) {
     url.searchParams.set(key, value)
   }
@@ -260,7 +259,7 @@ function validateGraphPagingUrl(value: string): string {
   if (
     url.protocol !== "https:" ||
     url.hostname !== "graph.facebook.com" ||
-    !url.pathname.startsWith(`/${GRAPH_VERSION}/`)
+    !url.pathname.startsWith(`/${META_GRAPH_VERSION}/`)
   ) {
     throw invalidPagingUrl()
   }

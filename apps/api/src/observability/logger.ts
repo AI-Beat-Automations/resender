@@ -47,6 +47,13 @@ export type LogReason =
   | "already_ingested"
   | "self_authored_comment"
   | "own_published_comment"
+  // Un `field` que Meta manda y este worker todavía no modela. Nombrarlo es el
+  // punto: el campo nuevo tiene que aparecer en la bitácora, no desaparecer.
+  | "unsupported_field"
+  // El sujeto del evento no existe de nuestro lado: un status sobre un `wamid`
+  // que nunca persistimos, o un contacto sincronizado que no tiene conversación.
+  // Ninguno de los dos es un error — Meta habla de cosas que no son nuestras.
+  | "subject_not_found"
   // entrega y cola
   | "http_error"
   | "network_error"
@@ -72,9 +79,14 @@ type BaseFields = {
   accountId?: string
   accountHandle?: string
   // sujeto
-  subject?: "message" | "comment"
+  subject?: "message" | "comment" | "contact"
   subjectId?: string
   providerId?: string
+  // El `field` del webhook del proveedor (`messages`, `history`,
+  // `smb_app_state_sync`, `account_update`…). Va como campo propio y no dentro
+  // de `action` por el mismo motivo que `operation`: mantiene cerrada la unión
+  // de acciones y deja «todos los campos que no modelamos» en un solo filtro.
+  providerField?: string
   eventId?: string
   jobId?: string
   // El id del mensaje **de la cola de Cloudflare**, que no es el id de un

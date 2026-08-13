@@ -1,3 +1,4 @@
+import { META_GRAPH_VERSION } from "@/lib/meta-graph"
 import {
   extractMetaErrorCode,
   extractMetaErrorMessage,
@@ -25,7 +26,7 @@ import {
 // nada más, y sobre todo no comparten catálogo de errores: lo que el usuario
 // tiene que hacer cuando una falla no se parece a lo que tiene que hacer cuando
 // falla la otra.
-const GRAPH = "https://graph.instagram.com/v23.0"
+const GRAPH = `https://graph.instagram.com/${META_GRAPH_VERSION}`
 
 // Un comentario de Instagram admite 2200 caracteres, el mismo techo que un pie
 // de foto. **Se cuenta en caracteres y no en bytes**, al revés que el DM

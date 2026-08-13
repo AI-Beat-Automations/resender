@@ -138,6 +138,55 @@ describe("OpenAPI document", () => {
     info.mockRestore()
   })
 
+  // WhatsApp es la excepción al límite común: Cloud API agrupa hasta 1000
+  // updates y un lote lleno de acuses no entra en 256 KB. Que Meta reintente un
+  // cuerpo que nunca va a caber es perder el lote entero en silencio, así que
+  // esta ruta —y solo ésta— tiene un techo propio.
+  it("lets the WhatsApp callback carry a batch that no other provider route would accept", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined)
+    const info = vi.spyOn(console, "log").mockImplementation(() => undefined)
+    const environment = {
+      META_APP_ID: "",
+      META_APP_SECRET: "",
+      DATABASE_URL: "",
+    } as Env
+
+    // Por encima del límite de los demás proveedores y por debajo del suyo: no
+    // lo frena el tamaño, lo frena la firma. Un 413 acá sería el bug.
+    const oversizedElsewhere = await createApp().request(
+      "http://localhost/webhooks/meta/whatsapp",
+      { method: "POST", body: "x".repeat(512 * 1024) },
+      environment
+    )
+    expect(oversizedElsewhere.status).toBe(400)
+    expect(await oversizedElsewhere.json()).toMatchObject({
+      error: { code: "invalid_signature" },
+    })
+
+    // El mismo cuerpo en la ruta de Messenger sí se rechaza por tamaño: subirle
+    // el techo a WhatsApp no se lo subió a nadie más.
+    const onMessengerRoute = await createApp().request(
+      "http://localhost/webhooks/meta",
+      { method: "POST", body: "x".repeat(512 * 1024) },
+      environment
+    )
+    expect(onMessengerRoute.status).toBe(413)
+
+    // Y por encima de su propio techo vuelve a ser 413.
+    const overItsOwnLimit = await createApp().request(
+      "http://localhost/webhooks/meta/whatsapp",
+      { method: "POST", body: "x".repeat(1024 * 1024 + 1) },
+      environment
+    )
+    expect(overItsOwnLimit.status).toBe(413)
+    expect(await overItsOwnLimit.json()).toMatchObject({
+      error: { code: "validation_error" },
+    })
+
+    warn.mockRestore()
+    info.mockRestore()
+  })
+
   it("accepts the documented idempotency header at runtime", async () => {
     const info = vi.spyOn(console, "log").mockImplementation(() => undefined)
     const sendMessage = vi.fn(async () => ({

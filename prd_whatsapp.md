@@ -1,6 +1,6 @@
 # PRD — WhatsApp Fase 1: Tech Provider, Embedded Signup, Coexistence y multimedia
 
-> **Estado:** en implementación. El slice 1 (contratos + migración) está completo; ver «Estado de implementación».
+> **Estado:** en implementación. Los slices 1 (contratos + migración) y 2 (ingesta entrante) están completos; ver «Estado de implementación».
 > **Última validación documental:** 11 de agosto de 2026. **Última actualización de estado:** 13 de agosto de 2026.
 > **Decisión vigente:** integración directa con WhatsApp Cloud API como Tech Provider; no usar un BSP. Ver `docs/adr/0001-whatsapp-direct-cloud-api-tech-provider.md`.
 
@@ -19,14 +19,47 @@ Decisiones tomadas durante el slice (vigentes para los siguientes):
 - Un `caption` enviado en `audio`/`sticker` se stripea en silencio (zod stripea llaves no declaradas en toda la API; `zod-to-openapi` no soporta `z.never()` para prohibirlo).
 - El dedupe de echoes/history es un unique parcial sobre `(connected_page_id, meta_message_id)` con `direction='outbound' and origin in ('business_app','history')` para no chocar con datos legacy de Messenger.
 
+### Hecho — slice 2: ingesta entrante (13 de agosto de 2026)
+
+- **`META_GRAPH_VERSION` centralizada**: una constante por app (`apps/api/src/config.ts` y `apps/web/lib/meta-graph.ts`), no una compartida. Las dos apps no comparten código de runtime y `packages/contracts` es exclusivo de `apps/api` (arrastra zod, que `apps/web` no usa); un paquete nuevo para una cadena de cinco caracteres costaba más de lo que resolvía. Es constante de código y **no** variable de entorno, al contrario de lo que pedía este PRD: como env var costaba ocho registros más `wrangler secret put`, para algo que al cambiar obliga a revisar los parsers de todos modos.
+- **Parsers de dominio** en `apps/api/src/domain/whatsapp-events.ts`: entrada única `parseWhatsappWebhook` que devuelve `{messages, statuses, history, contactSync, echoes, unhandledFields}`, más cinco extractores finos que delegan en ella. Un `field` desconocido cae en `unhandledFields` y no rompe el lote. 72 tests con fixtures tomadas de la documentación oficial.
+- **Webhook `GET|POST /webhooks/meta/whatsapp`**: challenge con `WHATSAPP_VERIFY_TOKEN` propio, HMAC con `META_APP_SECRET` compartido (WhatsApp vive en la misma Meta App que Messenger; Instagram es la excepción por ser otra app), y 200 solo después de persistir y encolar.
+- **Persistencia**: `ingestWhatsappInbound`, `applyWhatsappStatus` (monotónico en SQL) y `applyWhatsappContactSync` en el repositorio. Adjuntos registrados en `message_attachments` como `pending` + fila en `whatsapp_media_jobs`, **sin descargar** y sin una sola llamada a Meta dentro del webhook: el payload de Cloud API ya trae `id`, `mime_type` y `sha256`. `messageDto` proyecta adjuntos reales; se acabó el `attachments: []` hardcodeado.
+- Primera vez que el repo parsea `statuses`: `delivery_status` ya tiene escritor.
+
+Decisiones tomadas durante el slice (vigentes para los siguientes):
+
+- **`whatsapp-client.ts` se pospone** al slice que lo consuma. El webhook entrante no hace ninguna llamada a Meta, así que escribirlo ahora habría sido código sin consumidor. Sus operaciones reales (register, subscribe, download de media) pertenecen a Embedded Signup y a media.
+- **`played` se mapea a `read`.** Meta lo emite para notas de voz, pero no está en `DeliveryStatusSchema` ni en el check de la 0015. Es el estado monotónicamente equivalente y evita una migración 0016 solo por esto. Si alguna vez toca otra migración de `messages`, vale la pena darle valor propio. En sentido inverso, `deleted` sigue en el enum aunque Meta **no** lo emita.
+- **Método hermano y no ampliación de `ingestInbound`**: la ruta caliente de Messenger e Instagram no se toca en este commit. El precio es SQL duplicado.
+- **El historial no encola entrega ni consume cuota**; los echoes sí hacen ambas cosas. Que un echo consuma cuota es defendible (lo persistimos y lo reenviamos) pero **puede sorprender a un cliente que no envió ese mensaje desde Resender**: conviene revisarlo en el slice de facturación.
+- **`on conflict do nothing` sin conflict target** en la ingesta: los dos índices parciales de `messages` dependen de `direction`/`origin` de la propia fila, así que no hay un predicado único que reproducir. Postgres elige el índice por fila.
+- **Límite de body propio de 1 MB** para esta ruta (`WHATSAPP_BODY_LIMIT_BYTES`), frente a los 256 KB de los demás proveedores. Un lote lleno de acuses de Cloud API no cabe en 256 KB, y Meta reintentaría el mismo cuerpo que nunca va a caber hasta perder el lote entero en silencio.
+- **El sobre del webhook externo no cambia**: sigue siendo `{id, type, createdAt, data:{page, conversation, message}}` con `type: "message.received"`. Se amplió `data.message` con `type`, `origin`, `historical`, `replyTo`, `content`, `deliveryStatus` y `attachments[]`, y `data.page` con la identidad del canal. El ejemplo de la sección «Entrega al webhook externo» de este PRD es conceptual; la regla que manda es no romper a los clientes existentes.
+- **Los statuses no emiten evento nuevo** al webhook del tenant: solo persisten `delivery_status`. Exponerlos ampliaría el contrato público y merece su propio slice.
+
+Arreglado de paso, porque el canal no funcionaba sin ello: las ocho proyecciones de `PageRecord` no seleccionaban las columnas de la 0015, así que el sobre habría salido con `wabaId` y `onboardingMode` en `null` para todos los eventos de WhatsApp.
+
+**Pendiente de infraestructura (lo corre Arturo):** `wrangler secret put WHATSAPP_VERIFY_TOKEN` en el Worker `api`, producción y staging; y registrar `https://api.resender.dev/webhooks/meta/whatsapp` como callback del producto WhatsApp en el panel de Meta, suscribiendo los campos `messages`, `history`, `smb_app_state_sync` y `smb_message_echoes`. Hasta entonces el challenge responde 403.
+
+### Deuda conocida del slice 2 — bloqueantes de slices posteriores
+
+Una revisión adversarial ejecutó el SQL real contra PGlite (no los fakes) y encontró cinco problemas en caminos que **hoy están inertes** porque no existe onboarding de WhatsApp y no hay números conectados. No se arreglan en el slice 2 a propósito: pertenecen al slice que los activa, y arreglarlos antes sería escribir código sin forma de probarlo de extremo a extremo. Cada uno es **bloqueante** del slice indicado.
+
+1. **Bloqueante de Coexistence — el multimedia del historial no se reconcilia.** La sync manda primero un `media_placeholder` y después un segundo webhook con los IDs de media reales. Hoy el segundo choca con el dedupe y se descarta entero: no queda fila `pending` ni job, así que el slice de descarga tampoco podrá recuperarlo. `ingestWhatsappInbound` necesita reconciliar por `wamid` (upsert de adjuntos sobre un mensaje ya existente), no solo insertar.
+2. **Bloqueante de Coexistence — un mensaje que llega primero por historial y después en vivo nunca se entrega al tenant.** El histórico crea la fila sin job; el vivo choca con el dedupe, la relectura devuelve `jobId: null` y el servicio no encola. La ventana de 24 h sí se abre. Se registra como `duplicate`, que es el log que nadie mira.
+3. **Bloqueante de Coexistence — el parser del historial depende de `display_phone_number`.** Sin ese campo, los salientes del negocio se archivan como entrantes y la conversación queda con el número del propio negocio como contacto. Y un saliente sin `to` se descarta en silencio. Hay que decidir la identidad del hilo con algo más robusto antes de activar la sync.
+4. **Bloqueante del slice de envío — `completeOutbound` no escribe `origin`, y su `returning` proyecta columnas viejas** (el DTO del 201 recién creado difiere del que devuelve `GET /v1/messages/{id}`). Un saliente de la API queda con `origin = NULL`, fuera de los dos índices parciales de `messages`, así que un echo de Coexistence del mismo mensaje crea una fila duplicada. Ampliar el índice exige migración; decidirlo al implementar el envío.
+5. **Antes de producción multi-tenant — el lote grande no converge.** El límite de 1 MB permite recibir hasta 1000 updates, pero el bucle que los consume es secuencial: un round-trip a Neon y un `send` a la cola por evento. Meta cortaría por timeout y reintentaría el mismo cuerpo. Hace falta batching (`sendBatch` y escritura agrupada) antes de que el volumen lo justifique.
+
+Nota metodológica que vale para todo el repo: **ningún test de `repository.test.ts` ejecuta SQL** — `capturingSql` captura el texto y los binds, y el ranking de estados está reimplementado en JavaScript. Por eso los problemas 1, 2 y 4 conviven con la suite en verde. Cuando el SQL sea la parte delicada de un cambio, hay que ejecutarlo contra PGlite como se hizo en esta revisión.
+
 ### Pendiente (orden sugerido)
 
-1. `whatsapp-client.ts` + `META_GRAPH_VERSION` centralizada (hoy `v23.0` está hardcodeada en `client.ts` e `instagram-client.ts`).
-2. Webhook `GET|POST /webhooks/meta/whatsapp` + parsers de dominio (`messages[]`, `statuses[]`, `history`, `smb_app_state_sync`, `smb_message_echoes`). Ningún canal parsea `statuses` hoy.
-3. Binding R2 `WHATSAPP_MEDIA` + endpoints `/v1/media/*` + jobs de descarga (la tabla `whatsapp_media_jobs` ya existe).
-4. Ventana de 24 h en `/v1/messages` usando `conversations.last_inbound_at` (ya mantenida) + `409 customer_service_window_closed`.
-5. RPC `connectWhatsappNumber` real + Embedded Signup UI (ojo: el repo eliminó a propósito el FB JS SDK; Messenger/IG usan redirect OAuth server-side, Embedded Signup exige reintroducir `FB.login` + popup + `postMessage`) + Coexistence.
-6. UI Inbox/Connections, páginas legales (hoy obsoletas: dicen Vercel y solo-Messenger) y paquete de App Review.
+1. Binding R2 `WHATSAPP_MEDIA` + endpoints `/v1/media/*` + jobs de descarga (las tablas `whatsapp_media_jobs` y `media_uploads` ya existen y la ingesta ya crea los jobs en `pending`).
+2. Ventana de 24 h en `/v1/messages` usando `conversations.last_inbound_at` (ya mantenida, y ya protegida de que un historial la abra en falso) + `409 customer_service_window_closed`, y envío saliente real de texto y media. Ojo: `conversation.expiration_timestamp` de Meta **no** sirve — desaparece del webhook en v24.0 y en v23.0 solo llega con `status: "sent"`. El cálculo local es la única vía.
+3. `whatsapp-client.ts` + RPC `connectWhatsappNumber` real + Embedded Signup UI (ojo: el repo eliminó a propósito el FB JS SDK; Messenger/IG usan redirect OAuth server-side, Embedded Signup exige reintroducir `FB.login` + popup + `postMessage`) + Coexistence.
+4. UI Inbox/Connections, páginas legales (hoy obsoletas: dicen Vercel y solo-Messenger) y paquete de App Review.
 
 ## Resumen ejecutivo
 

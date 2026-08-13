@@ -18,10 +18,15 @@ export default defineConfig({
           META_VERIFY_TOKEN: "development-only",
           // Distintos de los de Facebook a propósito: los tests de runtime
           // comprueban que un webhook de Instagram firmado con el secreto de
-          // Facebook se rechaza, y con valores iguales esa prueba pasaría sola.
+          // Facebook se rechaza, y que el challenge de WhatsApp no acepta el
+          // verify token de Messenger; con valores iguales esas pruebas
+          // pasarían solas.
           INSTAGRAM_APP_ID: "development-only-instagram",
           INSTAGRAM_APP_SECRET: "development-only-instagram-secret",
           INSTAGRAM_VERIFY_TOKEN: "development-only-instagram-verify",
+          // WhatsApp comparte META_APP_SECRET para la firma HMAC: lo único
+          // propio es el verify token del challenge.
+          WHATSAPP_VERIFY_TOKEN: "development-only-whatsapp-verify",
           STRIPE_SECRET_KEY: "rk_test_development-only",
           STRIPE_WEBHOOK_SECRET: "whsec_development-only",
         },

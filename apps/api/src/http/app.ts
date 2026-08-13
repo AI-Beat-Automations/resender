@@ -30,6 +30,7 @@ import {
   OPENAPI_VERSION,
   PROVIDER_BODY_LIMIT_BYTES,
   rateLimitFamily,
+  WHATSAPP_BODY_LIMIT_BYTES,
 } from "../config"
 import { ApiService } from "../application/service"
 import { log } from "../observability/logger"
@@ -735,6 +736,58 @@ export function createApp(
     const result = await context
       .get("service")
       .ingestInstagramWebhook(
+        raw,
+        context.req.header("x-hub-signature-256") ?? null
+      )
+    return context.json({ ok: true, accepted: result.accepted }, 200)
+  })
+  // Tercera ruta propia, y por un motivo distinto al de Instagram: acá el
+  // secreto que firma **sí** es `META_APP_SECRET` —WhatsApp Cloud API vive en la
+  // misma app de Meta que Messenger—, así que compartir `/webhooks/meta` habría
+  // sido técnicamente posible. Lo que no se puede compartir es el verify token:
+  // cada webhook se registra por separado en el panel de Meta y el handshake de
+  // Messenger no vale para WhatsApp. Con rutas separadas, además, el payload no
+  // tiene que autodetectarse: el parser de cada canal recibe solo lo suyo.
+  app.get("/webhooks/meta/whatsapp", (context) => {
+    const mode = context.req.query("hub.mode")
+    const verifyToken = context.req.query("hub.verify_token")
+    const challenge = context.req.query("hub.challenge")
+    if (
+      mode !== "subscribe" ||
+      verifyToken !== context.env.WHATSAPP_VERIFY_TOKEN ||
+      !challenge
+    ) {
+      // Un handshake rechazado significa que el verify token del panel de Meta
+      // y el del entorno no coinciden, y el webhook no va a quedar registrado.
+      log({
+        entrypoint: "fetch",
+        action: "webhook_verify",
+        outcome: "dropped",
+        reason: "verify_token_mismatch",
+        level: "warn",
+        channel: "whatsapp",
+        route: "/webhooks/meta/whatsapp",
+        status: 403,
+      })
+      return context.text("forbidden", 403)
+    }
+    log({
+      entrypoint: "fetch",
+      action: "webhook_verify",
+      outcome: "ok",
+      channel: "whatsapp",
+      route: "/webhooks/meta/whatsapp",
+    })
+    return context.text(challenge, 200)
+  })
+  app.post("/webhooks/meta/whatsapp", async (context) => {
+    // Límite propio y más alto que el de los otros proveedores: un lote lleno
+    // de acuses de Cloud API no entra en 256 KB. El porqué del número está en
+    // `WHATSAPP_BODY_LIMIT_BYTES`.
+    const raw = await readRawLimited(context.req.raw, WHATSAPP_BODY_LIMIT_BYTES)
+    const result = await context
+      .get("service")
+      .ingestWhatsappWebhook(
         raw,
         context.req.header("x-hub-signature-256") ?? null
       )
