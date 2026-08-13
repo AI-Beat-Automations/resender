@@ -6,8 +6,12 @@ import type {
   ConversationDto,
   ConversationListInput,
   DeliveryDto,
+  DeliveryStatus,
+  MessageContent,
   MessageDto,
   MessageListInput,
+  MessageOrigin,
+  MessageType,
   PageDto,
   PageListQuery,
   PaginationDto,
@@ -76,6 +80,14 @@ export type PageRecord = {
   webhookUrl: string | null
   pageAccessTokenEncrypted: string
   webhookSigningSecretEncrypted: string | null
+  // Identidad de WhatsApp (migración 0015). Null en messenger/instagram, y
+  // también en consultas que todavía no seleccionan las columnas: el mapeo es
+  // tolerante a la ausencia, igual que `channel()`.
+  wabaId: string | null
+  phoneE164: string | null
+  onboardingMode: "standard" | "coexistence" | null
+  coexistenceStatus: string | null
+  historySyncStatus: string | null
   connectedAt: Date
   updatedAt: Date
 }
@@ -106,7 +118,15 @@ export type MessageRecord = {
   contactId: string
   direction: "inbound" | "outbound"
   status: "received" | "sent" | "failed"
-  text: string
+  // Nullable desde 0015: una ubicación o un sticker no llevan texto.
+  text: string | null
+  type: MessageType
+  content: unknown
+  // Null en filas anteriores a 0015; el DTO lo deriva de `direction`.
+  origin: MessageOrigin | null
+  historical: boolean
+  deliveryStatus: DeliveryStatus | null
+  replyToProviderMessageId: string | null
   providerMessageId: string | null
   // Informado solo en una respuesta privada a un comentario de Instagram: es lo
   // único que la distingue de un DM normal (migración 0013).
@@ -958,16 +978,23 @@ export class SqlRepository {
     const rows = await this.sql`
       with conversation as (
         insert into conversations (
-          tenant_id, connected_page_id, contact_id, last_message_at
+          tenant_id, connected_page_id, contact_id, last_message_at,
+          last_inbound_at
         )
         values (
           ${input.page.tenantId}, ${input.page.id}, ${input.contactId},
-          ${input.createdAt}
+          ${input.createdAt}, ${input.createdAt}
         )
         on conflict (connected_page_id, contact_id) do update set
           last_message_at = greatest(
             conversations.last_message_at,
             excluded.last_message_at
+          ),
+          -- Base de la ventana de 24 h (0015): solo un entrante real la mueve,
+          -- y un webhook reintentado fuera de orden no la retrocede.
+          last_inbound_at = greatest(
+            coalesce(conversations.last_inbound_at, excluded.last_inbound_at),
+            excluded.last_inbound_at
           ),
           updated_at = now()
         returning id, contact_name
@@ -1900,6 +1927,11 @@ function mapPage(row: Record<string, unknown>): PageRecord {
     webhookSigningSecretEncrypted: nullableText(
       row.webhook_signing_secret_encrypted
     ),
+    wabaId: nullableText(row.waba_id),
+    phoneE164: nullableText(row.whatsapp_phone_e164),
+    onboardingMode: onboardingMode(row.onboarding_mode),
+    coexistenceStatus: nullableText(row.coexistence_status),
+    historySyncStatus: nullableText(row.history_sync_status),
     connectedAt: date(row.connected_at),
     updatedAt: date(row.updated_at),
   }
@@ -1915,6 +1947,16 @@ export function pageDto(page: PageRecord): PageDto {
     providerPageId: page.providerPageId,
     name: page.name,
     username: page.username,
+    wabaId: page.wabaId,
+    phoneE164: page.phoneE164,
+    onboardingMode: page.onboardingMode,
+    whatsappStatus:
+      page.channel === "whatsapp"
+        ? {
+            coexistence: page.coexistenceStatus,
+            historySync: page.historySyncStatus,
+          }
+        : null,
     status: page.status,
     tokenStatus: page.tokenStatus,
     webhook: {
@@ -1953,7 +1995,7 @@ function mapConversationDto(row: Record<string, unknown>): ConversationDto {
     latestMessage: latestId
       ? {
           id: latestId,
-          text: text(row.latest_text),
+          text: nullableText(row.latest_text),
           direction:
             text(row.latest_direction) === "outbound" ? "outbound" : "inbound",
           status: messageStatus(row.latest_status),
@@ -1975,7 +2017,13 @@ function mapMessage(row: Record<string, unknown>): MessageRecord {
     contactId: text(row.contact_id),
     direction: text(row.direction) === "outbound" ? "outbound" : "inbound",
     status: messageStatus(row.status),
-    text: text(row.text),
+    text: nullableText(row.text),
+    type: messageType(row.message_type),
+    content: row.content ?? null,
+    origin: messageOrigin(row.origin),
+    historical: row.historical === true,
+    deliveryStatus: deliveryStatus(row.delivery_status),
+    replyToProviderMessageId: nullableText(row.reply_to_meta_message_id),
     providerMessageId: nullableText(row.meta_message_id),
     sourceCommentId: nullableText(row.instagram_source_comment_id),
     error: nullableText(row.error),
@@ -1994,8 +2042,23 @@ export function messageDto(message: MessageRecord): MessageDto {
     contactId: message.contactId,
     direction: message.direction,
     status: message.status,
-    type: "text",
+    type: message.type,
     text: message.text,
+    // `content` lo escriben solo los parsers de webhook con el shape del
+    // contrato, la misma confianza que ya se le da a `provider_response`.
+    content: (message.content ?? null) as MessageContent | null,
+    // Hasta el slice de media no hay adjuntos que proyectar.
+    attachments: [],
+    // Antes de 0015 la columna no existía, pero la semántica sí: todo entrante
+    // vino del cliente y todo saliente salió por la API.
+    origin:
+      message.origin ??
+      (message.direction === "inbound" ? "customer" : "resender_api"),
+    historical: message.historical,
+    deliveryStatus: message.deliveryStatus,
+    replyTo: message.replyToProviderMessageId
+      ? { providerMessageId: message.replyToProviderMessageId }
+      : null,
     provider: {
       name: "meta",
       messageId: message.providerMessageId,
@@ -2049,13 +2112,70 @@ export function commentDto(comment: CommentRecord): CommentDto {
 function channel(value: unknown): Channel {
   // El default de la columna es 'messenger' y las filas anteriores a la 0013
   // quedaron ahí sin backfill, así que cualquier valor que no sea 'instagram'
-  // es Messenger.
+  // ni 'whatsapp' es Messenger.
   //
   // Deliberadamente **no** pasa por `text()`, que tira ante un valor ausente:
   // una fila legítima leída por una consulta que todavía no selecciona la
   // columna se convertiría en un 500, y el canal correcto para ese caso ya es
   // el default de la columna.
-  return value === "instagram" ? "instagram" : "messenger"
+  if (value === "instagram" || value === "whatsapp") return value
+  return "messenger"
+}
+
+// Los tres helpers siguientes comparten el criterio de `channel()`: el check
+// de la migración 0015 ya garantiza los valores en BD, y una consulta que
+// todavía no selecciona la columna cae en el default correcto en vez de tirar.
+
+function messageType(value: unknown): MessageRecord["type"] {
+  if (
+    value === "image" ||
+    value === "audio" ||
+    value === "video" ||
+    value === "document" ||
+    value === "sticker" ||
+    value === "contacts" ||
+    value === "location" ||
+    value === "reaction" ||
+    value === "interactive" ||
+    value === "system" ||
+    value === "order" ||
+    value === "unknown"
+  ) {
+    return value
+  }
+  return "text"
+}
+
+function messageOrigin(value: unknown): MessageRecord["origin"] {
+  if (
+    value === "customer" ||
+    value === "resender_api" ||
+    value === "business_app" ||
+    value === "history" ||
+    value === "system"
+  ) {
+    return value
+  }
+  return null
+}
+
+function deliveryStatus(value: unknown): MessageRecord["deliveryStatus"] {
+  if (
+    value === "accepted" ||
+    value === "sent" ||
+    value === "delivered" ||
+    value === "read" ||
+    value === "failed" ||
+    value === "deleted"
+  ) {
+    return value
+  }
+  return null
+}
+
+function onboardingMode(value: unknown): PageRecord["onboardingMode"] {
+  if (value === "standard" || value === "coexistence") return value
+  return null
 }
 
 function mapJob(row: Record<string, unknown>): JobRecord {

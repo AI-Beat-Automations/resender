@@ -216,7 +216,7 @@ export class RuntimeDatabase {
   }
 
   private executeInboundCte(values: unknown[]): Row[] {
-    const providerMessageId = stringValue(values[8])
+    const providerMessageId = stringValue(values[9])
     // This is the transport fake's equivalent of the database uniqueness
     // constraint. Whether the repository performs its follow-up lookup and
     // Queue handoff remains production behavior under test.
@@ -232,18 +232,18 @@ export class RuntimeDatabase {
     const index = this.messages.length + 1
     const messageId = uuidFor(index)
     const jobId = uuidFor(index + 100)
-    const deliveryEnabled = values[25] === true
+    const deliveryEnabled = values[26] === true
     const status: JobRecord["status"] =
       deliveryEnabled && this.page.webhookUrl ? "pending" : "failed_permanent"
     this.messages.push({
       id: messageId,
       pageId: this.page.id,
       providerMessageId,
-      text: stringValue(values[7]),
+      text: stringValue(values[8]),
     })
     this.jobs.push({
       id: jobId,
-      eventId: stringValue(values[10]),
+      eventId: stringValue(values[11]),
       tenantId: this.page.tenantId,
       messageId,
       commentId: null,
@@ -253,25 +253,25 @@ export class RuntimeDatabase {
       username: this.page.username,
       webhookUrl: this.page.webhookUrl,
       payload: {
-        id: stringValue(values[10]),
+        id: stringValue(values[11]),
         type: "message.received",
       },
       status,
       attemptCount: 0,
-      recoverAfter: dateValue(values[30]),
+      recoverAfter: dateValue(values[31]),
       signingSecretEncrypted: this.page.webhookSigningSecretEncrypted,
     })
     // El CTE real trae un where sobre periodStart is not null: sin
     // período no hay contador que incrementar, que es exactamente el caso de
     // Instagram.
-    if (values[32] !== null && values[32] !== undefined) this.usage += 1
+    if (values[33] !== null && values[33] !== undefined) this.usage += 1
     return [
       {
         message_id: messageId,
         job_id: jobId,
         job_status: status,
         job_attempt_count: 0,
-        job_recover_after: dateValue(values[30]),
+        job_recover_after: dateValue(values[31]),
       },
     ]
   }

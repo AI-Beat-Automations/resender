@@ -9,7 +9,7 @@
 
 type LogLevel = "info" | "warn" | "error"
 
-type Channel = "messenger" | "instagram"
+type Channel = "messenger" | "instagram" | "whatsapp"
 
 export type LogEntrypoint = "fetch" | "rpc" | "queue" | "scheduled"
 

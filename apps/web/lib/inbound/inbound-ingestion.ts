@@ -165,6 +165,7 @@ async function ingestInboundEvents(
       connectedPageId: page.id,
       contactId: event.senderId,
       lastMessageAt: event.timestamp,
+      lastInboundAt: event.timestamp,
     })
     const { message, inserted } = await insertInboundMessage({
       tenantId: page.tenantId,

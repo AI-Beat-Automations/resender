@@ -343,6 +343,17 @@ export class ApiService {
         details: [{ path: "Idempotency-Key", message: "Invalid header value" }],
       })
     }
+    // El contrato ya define los tipos de media de WhatsApp, pero el pipeline
+    // de envío llega en un slice posterior; mientras tanto se rechaza acá, en
+    // la puerta, para no reservar idempotencia de algo que no se puede enviar.
+    if (input.message.type !== "text") {
+      throw new ContractError({
+        code: "validation_error",
+        message: `Sending type "${input.message.type}" is not available yet; only "text" is supported.`,
+        status: 400,
+        details: [{ path: "type", message: "Unsupported message type" }],
+      })
+    }
     const page = await this.requirePage(input.tenantId, input.message.pageId)
     // El esquema tope en 2000 caracteres, que es el techo de Messenger.
     // Instagram corta antes y en otra unidad, y recién acá se sabe a qué canal

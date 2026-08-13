@@ -64,6 +64,9 @@ export async function upsertConversation(input: {
   connectedPageId: string
   contactId: string
   lastMessageAt: Date
+  // Solo la ingesta entrante lo informa: es la base de la ventana de 24 h
+  // (migración 0015) y un saliente no debe moverla.
+  lastInboundAt?: Date
 }) {
   const sql = getSql()
   const [row] = await sql<ConversationRow[]>`
@@ -71,17 +74,25 @@ export async function upsertConversation(input: {
       tenant_id,
       connected_page_id,
       contact_id,
-      last_message_at
+      last_message_at,
+      last_inbound_at
     )
     values (
       ${input.tenantId},
       ${input.connectedPageId},
       ${input.contactId},
-      ${input.lastMessageAt}
+      ${input.lastMessageAt},
+      ${input.lastInboundAt ?? null}
     )
     on conflict (connected_page_id, contact_id)
     do update set
       last_message_at = greatest(conversations.last_message_at, excluded.last_message_at),
+      -- Un saliente (excluded null) conserva el valor; un entrante solo puede
+      -- adelantarlo, para que un webhook reintentado no lo retroceda.
+      last_inbound_at = greatest(
+        coalesce(conversations.last_inbound_at, excluded.last_inbound_at),
+        coalesce(excluded.last_inbound_at, conversations.last_inbound_at)
+      ),
       updated_at = now()
     returning id, tenant_id, connected_page_id, contact_id, contact_name, last_message_at
   `

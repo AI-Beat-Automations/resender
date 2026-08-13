@@ -255,6 +255,11 @@ function recoveryPage(): PageRecord {
     webhookUrl: "https://example.com/webhook",
     pageAccessTokenEncrypted: "encrypted",
     webhookSigningSecretEncrypted: "encrypted",
+    wabaId: null,
+    phoneE164: null,
+    onboardingMode: null,
+    coexistenceStatus: null,
+    historySyncStatus: null,
     connectedAt: new Date("2026-07-01T00:00:00.000Z"),
     updatedAt: new Date("2026-07-29T18:00:00.000Z"),
   }

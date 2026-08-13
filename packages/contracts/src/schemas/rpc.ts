@@ -118,6 +118,18 @@ export type ConnectInstagramAccountInput = {
   redirectUri: string
 }
 
+// El FINISH de Embedded Signup entrega, además del code, los assets que el
+// usuario autorizó en el popup (waba_id + phone_number_id). Viajan juntos para
+// que el backend valide que el code realmente autoriza esos assets y no confíe
+// en lo que reportó el browser. `mode` discrimina el flujo: estándar y
+// Coexistence comparten pantalla pero no comparten el paso de registro.
+export type ConnectWhatsappNumberInput = {
+  code: string
+  wabaId: string
+  phoneNumberId: string
+  mode: "standard" | "coexistence"
+}
+
 export type CheckoutVerificationDto = {
   complete: boolean
 }
