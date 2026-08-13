@@ -58,6 +58,7 @@ vi.mock("@/lib/observability/logger", async (importOriginal) => ({
 vi.mock("@/lib/posthog", () => ({ posthog: null }))
 
 import {
+  CHANNEL_IS_METERED,
   ingestInstagramWebhookPayload as ingestInstagramRaw,
   ingestMetaWebhookPayload as ingestMetaRaw,
 } from "./inbound-ingestion"
@@ -685,5 +686,24 @@ describe("ningún evento se descarta en silencio", () => {
     expect(mocks.log).toHaveBeenCalledWith(
       expect.objectContaining({ requestId: REQUEST_ID })
     )
+  })
+})
+
+// La tabla de medición es política de facturación, no un detalle de
+// implementación: se afirma entera para que cambiarla obligue a tocar un test
+// que la nombra, en vez de que un canal pase a cobrarse (o a dejar de cobrarse)
+// dentro de un commit que hablaba de otra cosa.
+describe("qué canales miden cuota", () => {
+  it("mide la mensajería de pleno derecho y deja a Instagram fuera", () => {
+    expect(CHANNEL_IS_METERED).toEqual({
+      messenger: true,
+      // WhatsApp mide igual que Messenger: es el mismo producto —una
+      // conversación uno a uno que se recibe, se persiste y se reenvía— y
+      // regalarlo sería regalar el canal por donde va a entrar el volumen.
+      whatsapp: true,
+      // Instagram queda fuera mientras su valor sean las respuestas a
+      // comentarios y no la mensajería.
+      instagram: false,
+    })
   })
 })

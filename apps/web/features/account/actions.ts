@@ -75,12 +75,23 @@ export async function deleteAccountAction(
   // Best-effort: dejar de recibir mensajes de Meta antes de borrar. Un fallo
   // aquí no debe bloquear el borrado de datos del tenant.
   const toUnsubscribe = planWebhookUnsubscribes(context.pages)
+  // Todas las conexiones del tenant se van con él. Hay que nombrarlas: en este
+  // punto siguen `active` en la base, y la regla de WhatsApp —desuscribir el
+  // WABA solo cuando no le quedan números activos— las contaría como vivas y no
+  // desuscribiría nunca un WABA con dos números de este mismo tenant. Lo que
+  // queda fuera de la lista son los números de **otros** tenants en el mismo
+  // WABA, que son justo los que no hay que apagar.
+  const goingAway = context.pages.map((page) => page.id)
   await Promise.allSettled(
     toUnsubscribe.map((page) =>
       unsubscribeChannelWebhook({
         channel: page.channel,
         metaPageId: page.metaPageId,
         accessToken: page.pageAccessToken,
+        // Solo WhatsApp lo trae; sin él el despachador se niega a llamar en vez
+        // de desuscribir el id equivocado.
+        wabaId: page.wabaId,
+        excludeConnectionIds: goingAway,
       })
     )
   )

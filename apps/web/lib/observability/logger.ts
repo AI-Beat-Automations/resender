@@ -102,6 +102,14 @@ export type LogReason =
   | "profile_fetch_failed"
   | "subscription_failed"
   | "unsubscribe_failed"
+  // WhatsApp: la suscripción cuelga del WABA, no del número. Sin ese id no hay
+  // desuscripción posible y la llamada ni se intenta (lib/pages/channel-webhook).
+  | "missing_waba_id"
+  // Y con ese id, la baja se salta cuando al WABA le quedan números activos:
+  // desuscribirlo apagaría los webhooks de los demás, incluidos los de otros
+  // tenants. No es un fallo, pero tiene que quedar registrado para poder
+  // explicar por qué un WABA sigue mandando eventos tras una desconexión.
+  | "waba_has_active_numbers"
   | "account_owned_by_other_tenant"
   | "page_limit_reached"
   | "configuration_failed"

@@ -67,38 +67,77 @@ export function formatContactLabel(
   return name ? name : `PSID ${contactId}`
 }
 
+/**
+ * Cómo se llama el id crudo del contacto en cada canal. Messenger e Instagram
+ * comparten `psid` —es la redacción histórica de la ADR 0005 y lo que el log ya
+ * pinta—, pero WhatsApp no puede: ahí el id es el `wa_id`, que es el teléfono
+ * del contacto, y llamarlo PSID mandaría a buscarlo en un panel de Facebook
+ * donde no existe.
+ */
+const CONTACT_ID_PREFIX: Record<PageChannel, string> = {
+  messenger: "psid",
+  instagram: "psid",
+  whatsapp: "wa_id",
+}
+
 /** Identificador crudo del contacto, la caída cuando no hay @handle. */
 export function formatPsidLabel(contactId: string) {
   return `psid ${contactId}`
 }
 
 /**
- * Etiqueta del contacto en el log: `@lori_surianno`, y `psid 1004146…` cuando
- * Graph no lo resolvió o el canal no tiene perfil que pedir.
+ * Etiqueta del contacto en el log: `@lori_surianno`, y `psid 1004146…` /
+ * `wa_id 5215512345678` cuando Graph no lo resolvió o el canal no tiene @handle
+ * que pedir.
+ *
+ * En WhatsApp nunca hay @handle —no existe el concepto— y el nombre del
+ * contacto llega en `profile.name` del propio webhook, ya persistido en
+ * `conversations.contact_name`: sale por `contactName` en la fila, y acá queda
+ * el `wa_id`, que es el dato con el que se contesta.
  */
 export function formatContactHandle(conversation: {
+  channel: PageChannel
   contactUsername: string | null
   contactId: string
 }) {
   const handle = conversation.contactUsername?.trim()
-  return handle ? `@${handle}` : formatPsidLabel(conversation.contactId)
+  if (handle) return `@${handle}`
+  return `${CONTACT_ID_PREFIX[conversation.channel]} ${conversation.contactId}`
 }
 
 /**
  * `Café Rioja · 104233889761204` en Messenger, `@cafe.rioja · ig_id 178414…`
- * en Instagram. Mismo criterio que la tarjeta de Conexiones: en Instagram el
- * @handle es lo que el usuario reconoce, y el IG ID es lo que cita en soporte.
+ * en Instagram, `+5215512345678 · phone_number_id 1093…` en WhatsApp. Mismo
+ * criterio que la tarjeta de Conexiones: se nombra la cuenta con lo que el
+ * usuario reconoce —el @handle, el número— y se cita el id con el nombre que
+ * el proveedor le da, porque es lo que va a copiar en un correo de soporte.
+ *
+ * `switch` exhaustivo sobre el canal y no una cadena de `if`: la caída por
+ * omisión pintaba `nombre · id` para cualquier canal desconocido, que en
+ * WhatsApp habría llamado `page_id` implícito a un `phone_number_id`.
  */
 export function formatPageLabel(page: {
   channel: PageChannel
   name: string
   username: string | null
   metaPageId: string
+  phoneE164: string | null
 }) {
-  if (page.channel === "instagram" && page.username) {
-    return `@${page.username} · ig_id ${page.metaPageId}`
+  switch (page.channel) {
+    case "instagram":
+      return page.username
+        ? `@${page.username} · ig_id ${page.metaPageId}`
+        : `${page.name} · ${page.metaPageId}`
+    case "whatsapp":
+      // El nombre del negocio queda fuera a propósito: en una lista de
+      // conversaciones el número es lo que identifica de qué línea salió el
+      // mensaje, y el nombre ya se repite en cada tarjeta de Conexiones.
+      return page.phoneE164
+        ? `${page.phoneE164} · phone_number_id ${page.metaPageId}`
+        : `${page.name} · phone_number_id ${page.metaPageId}`
+    case "messenger":
+      return `${page.name} · ${page.metaPageId}`
   }
-  return `${page.name} · ${page.metaPageId}`
 }
 
 /** Renglón principal del log: el último mensaje, con `Tú: ` si es saliente. */
@@ -119,9 +158,15 @@ export function toConversationRowView(
 
   return {
     id: conversation.id,
-    contactLabel: formatContactHandle(conversation),
+    contactLabel: formatContactHandle({
+      channel: conversation.page.channel,
+      contactUsername: conversation.contactUsername,
+      contactId: conversation.contactId,
+    }),
     // El nombre solo entra si aporta algo: Instagram devuelve muchas cuentas
-    // donde `name` y `username` son lo mismo, y repetirlo es ruido.
+    // donde `name` y `username` son lo mismo, y repetirlo es ruido. En WhatsApp
+    // no hay @handle contra el que comparar, así que el `profile.name` que trajo
+    // el webhook siempre aporta.
     contactName:
       name && name.toLowerCase() !== conversation.contactUsername?.toLowerCase()
         ? name

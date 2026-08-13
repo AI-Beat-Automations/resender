@@ -42,6 +42,26 @@ Arreglado de paso, porque el canal no funcionaba sin ello: las ocho proyecciones
 
 **Pendiente de infraestructura (lo corre Arturo):** `wrangler secret put WHATSAPP_VERIFY_TOKEN` en el Worker `api`, producción y staging; y registrar `https://api.resender.dev/webhooks/meta/whatsapp` como callback del producto WhatsApp en el panel de Meta, suscribiendo los campos `messages`, `history`, `smb_app_state_sync` y `smb_message_echoes`. Hasta entonces el challenge responde 403.
 
+### Hecho — slice 3: onboarding estándar y UI (13 de agosto de 2026)
+
+Se adelantó sobre media/R2 para poder validar el comportamiento por pantalla en vez de por logs.
+
+- **`apps/web/lib/whatsapp.ts`**: cliente de Cloud API con errores tipados por paso (`exchange|assets|register|subscribe|persist`). Seis llamadas en el orden que exige Meta: canje del code (sin `redirect_uri`, al revés que Messenger) → `debug_token` → `GET /{waba_id}` → `/{waba_id}/phone_numbers` → `subscribed_apps` → `register`.
+- **Validación de propiedad**: los identificadores del `postMessage` son una pista, no una autoridad. Se confirman contra `granular_scopes[].target_ids` de los dos permisos de WhatsApp y contra la lista real de números del WABA. **Falla cerrado si `granular_scopes` no viene**, porque su uso para esto es inferencia nuestra y no doctrina documentada de Meta.
+- **Nonce en cookie `httpOnly`** con el patrón double-submit, emitido por una server action (un Server Component no puede escribir cookies durante el render) y consumido antes de comparar, en tiempo constante. Sustituye a la cookie de `state` que protege a Messenger, que el popup hace inviable.
+- **PIN de dos pasos**: se genera si el número no lo tiene, se cifra y se persiste (migración `0016_whatsapp_pin.sql`), y se relee al reconectar. Sin esa relectura la reconexión falla siempre, porque el número queda con 2FA activada con un PIN que solo nosotros conocemos. Si el número ya tenía otro PIN, Meta responde `133005` y la UI pide el PIN en vez de dar un error genérico.
+- **UI del tercer canal**: `PageChannel` deja de ser una unión de dos valores y los ternarios binarios pasan a mapas exhaustivos, para que el próximo canal rompa la compilación en vez de mentir. Corregidos de paso dos bugs que ya existían: `account-deletion.ts` desuscribía contra el Graph de Facebook para cualquier canal, y `formatContactHandle` etiquetaba todo contacto como `psid`.
+- **WhatsApp mide cuota y ocupa cupo de página**, como Messenger. Instagram sigue fuera por ser respuestas a comentarios. El criterio queda escrito: cuota y cupo se mueven juntos o el plan deja de tener una lectura única.
+- Primera dependencia de script de terceros del producto (el JS SDK de Facebook), acotada a la pantalla de Conexiones. Los otros dos canales siguen con redirect OAuth server-side.
+
+Una revisión adversarial encontró tres problemas graves que van arreglados en el mismo commit: conectar un número **saltaba el cupo del plan**, y al superarlo el tenant dejaba de recibir entregas de Messenger aunque se le siguiera cobrando (Instagram estaba a salvo solo porque no contaba para el cupo); el **registro en Meta ocurría antes de comprobar la propiedad**, así que un fallo posterior dejaba el número del cliente con 2FA y un PIN perdido; y **desconectar un número desuscribía el WABA entero**, silenciando al resto de números de esa cuenta, incluidos los de otros tenants.
+
+**Residual conocido, evaluado y aceptado**: si la *primera* conexión de un número falla al escribir en base de datos **después** de un `/register` correcto, el PIN se pierde igual. Cerrarlo exigiría reservar la fila antes de registrar y borrarla por compensación, lo que crearía filas fantasma en Conexiones ante cada `133005`. El reintento sí reutiliza el PIN cuando ya existe fila (reconexión, o escritura fallida sobre una fila previa).
+
+**Migraciones del slice**: `0016_whatsapp_pin.sql` (PIN cifrado) y `0017_whatsapp_pin_origin.sql` (marca de si el PIN lo generamos nosotros, que es lo que decide si se le ofrece al cliente en pantalla). Van separadas a propósito: el runner lleva la cuenta por nombre de archivo, así que editar una migración ya aplicada la dejaría marcada como hecha sin ejecutar el cambio nuevo.
+
+**Coexistence no entra**: su payload solo trae `waba_id`, el `featureType` no está confirmado verbatim en la documentación actual, y depende de los bloqueantes de historial de abajo.
+
 ### Deuda conocida del slice 2 — bloqueantes de slices posteriores
 
 Una revisión adversarial ejecutó el SQL real contra PGlite (no los fakes) y encontró cinco problemas en caminos que **hoy están inertes** porque no existe onboarding de WhatsApp y no hay números conectados. No se arreglan en el slice 2 a propósito: pertenecen al slice que los activa, y arreglarlos antes sería escribir código sin forma de probarlo de extremo a extremo. Cada uno es **bloqueante** del slice indicado.
@@ -328,8 +348,13 @@ En `apps/web`:
 - Botón separado para número nuevo y número existente.
 - Cargar Facebook JS SDK una sola vez.
 - Generar correlación de sesión/nonce server-side.
-- Usar `response_type: 'code'`, `override_default_response_type: true` y `sessionInfoVersion` vigente.
-- Para Coexistence, usar el feature type oficial de Business App onboarding vigente al implementar.
+- **Embedded Signup v4.** Corrección sobre la versión original de este PRD, que pedía `sessionInfoVersion`: ese parámetro es de la v2, **que Meta depreca el 15 de octubre de 2026**. En v4 no se envía, `extras` va prácticamente vacío (`{ setup: {} }`) y la configuración vive en el Configuration ID. Se mantienen `response_type: 'code'` y `override_default_response_type: true`.
+- **`FB.login` tiene que invocarse de forma síncrona desde el `onClick`**: cualquier `await` previo en el handler hace que el navegador bloquee el popup. El nonce, por tanto, se genera en el servidor y viaja como prop; no se pide dentro del handler.
+- **El `code` caduca a los 30 segundos**: el intercambio va inmediatamente y sin pasos intermedios. Y no lleva `redirect_uri`, al revés que el flujo de Messenger.
+- **Los identificadores del `postMessage` no son autoritativos.** El `waba_id` y el `phone_number_id` que entrega el navegador son una pista: se confirman contra `debug_token` (que el `waba_id` esté en `granular_scopes[].target_ids`) y contra `GET /{waba_id}/phone_numbers`. Es lo que impide que un tenant reclame el número de otro.
+- **El `origin` del `postMessage` no está documentado por Meta**, y su propio ejemplo usa `endsWith('facebook.com')`, que acepta un dominio como `evilfacebook.com`. Usar allowlist explícita más `event.isTrusted`, y registrar el origin real en la primera prueba.
+- En el panel hay que declarar el dominio en **Allowed domains** y en **Valid OAuth redirect URIs**. Omitirlo es el fallo más común: el flujo se completa en pantalla y no llega nada de vuelta.
+- Para Coexistence, usar el feature type oficial de Business App onboarding vigente al implementar. **No verificado verbatim en la documentación actual**: la página que lo describe no renderiza esa sección. Comprobar en pantalla antes de implementarlo.
 - Validar estrictamente `event.origin`, tipo de evento, nonce y shape; no confiar solo en `postMessage`.
 - Enviar al RPC únicamente code e identificadores capturados, nunca persistir tokens en browser/local storage.
 - Registrar el paso exacto de fallo (`exchange`, `assets`, `register`, `subscribe`, `sync`, `persist`) sin exponer secretos.

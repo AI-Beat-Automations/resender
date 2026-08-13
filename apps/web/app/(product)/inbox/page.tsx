@@ -56,10 +56,12 @@ export default async function InboxPage({
 
   const tab = resolveInboxTab(params.tab)
   const accounts = await listTenantPages(tenantId)
-  // En comentarios el filtro solo lista Instagram: los comentarios no existen
-  // en Messenger, y una píldora que siempre devuelve cero es un control muerto.
-  // Filtrar acá además invalida solo el `?page=` de una cuenta de Messenger al
-  // cambiar de modo, sin tener que limpiarlo aparte.
+  // En comentarios el filtro solo lista Instagram, y con el tercer canal sigue
+  // siendo así: los comentarios **solo** existen en Instagram —ni Messenger ni
+  // WhatsApp tienen publicaciones que comentar— y una píldora que siempre
+  // devuelve cero es un control muerto. Filtrar acá además invalida solo el
+  // `?page=` de una cuenta de otro canal al cambiar de modo, sin tener que
+  // limpiarlo aparte.
   const filterable =
     tab === "comentarios"
       ? accounts.filter((account) => account.channel === "instagram")

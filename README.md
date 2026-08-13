@@ -38,6 +38,7 @@ META_APP_SECRET="meta-app-secret"
 META_VERIFY_TOKEN="meta-webhook-verify-token"
 NEXT_PUBLIC_META_APP_ID="meta-app-id"
 NEXT_PUBLIC_META_CONFIG_ID="meta-login-config-id"
+NEXT_PUBLIC_WHATSAPP_CONFIG_ID="whatsapp-embedded-signup-config-id"
 INSTAGRAM_APP_ID="instagram-app-id"
 INSTAGRAM_APP_SECRET="instagram-app-secret"
 INSTAGRAM_VERIFY_TOKEN="instagram-webhook-verify-token"
@@ -55,6 +56,25 @@ here, which is why Instagram has its own webhook route in both workers —
 instead of sharing the Facebook one. Register both routes separately in the Meta
 app, each with its own verify token, subscribed to the `messages` and `comments`
 fields.
+
+`NEXT_PUBLIC_WHATSAPP_CONFIG_ID` is a **second** Facebook Login for Business
+configuration, separate from `NEXT_PUBLIC_META_CONFIG_ID`: the one created from
+the **WhatsApp Embedded Signup Configuration With 60 Expiration Token** template
+(App Dashboard → Facebook Login for Business → Configurations). It lives in the
+same Meta app as Messenger — only Instagram has its own app credentials — and it
+is what `features/connect-whatsapp/ui/connect-whatsapp-button.tsx` passes to
+`FB.login` as `config_id`. Being a `NEXT_PUBLIC_*`, it is **inlined at build
+time**: setting it on the Worker afterwards does nothing, it has to be present
+when `next build` runs (hence `turbo.json` → `globalEnv` and the three
+workflows). Without it the button renders disabled and says so instead of
+opening a broken dialog.
+
+Embedded Signup also needs the origin serving the console listed in **both**
+Allowed domains and Valid OAuth redirect URIs of that Login for Business
+configuration (production, staging and any tunnel used in development), over
+HTTPS. If it is missing, the popup completes the whole flow and then nothing
+comes back to the page — no `postMessage`, no code — which is the single most
+common way this integration fails.
 
 `STRIPE_SECRET_KEY` should be a restricted API key (`rk_…`, Dashboard →
 Developers → API keys → Create restricted key) with only: Customers (write),

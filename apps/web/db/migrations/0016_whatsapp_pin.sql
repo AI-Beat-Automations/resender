@@ -1,0 +1,32 @@
+-- migration 0016: el PIN de verificación en dos pasos del número de WhatsApp
+--
+-- Registrar un número en Cloud API (`POST /{phone_number_id}/register`) exige
+-- un PIN de verificación en dos pasos, y solo hay dos casos: o el número ya la
+-- tenía activada —y entonces el PIN lo aporta el cliente— o no la tenía, y el
+-- PIN que mandamos **lo estamos creando nosotros** en ese momento, activándole
+-- de paso la verificación en dos pasos a un número que no la pedía.
+--
+-- Ese segundo caso es el que obliga a esta columna. Meta no vuelve a mostrar
+-- ese PIN nunca y no hay endpoint para leerlo: si no lo guardamos, el cliente
+-- se queda con la verificación en dos pasos activada y un PIN que no conoce
+-- nadie —ni él ni nosotros—, sin poder re-registrar su propio número acá ni en
+-- ninguna otra plataforma. Es dato del cliente que custodiamos, no un secreto
+-- nuestro, y por eso además de guardarlo hay que poder devolvérselo.
+--
+-- También es lo que hace posible la reconexión: al volver a lanzar el Embedded
+-- Signup sobre un número que ya registramos, `/register` vuelve a pedir el PIN
+-- vigente —el nuestro—, y sin esta columna la segunda conexión fallaría siempre
+-- con 133005 pidiéndole al cliente un PIN que inventamos nosotros.
+--
+-- Cifrada con el mismo aes-256-gcm y la misma `TOKEN_ENCRYPTION_KEY` que
+-- `page_access_token_encrypted` (`lib/crypto/encryption.ts`): una clave aparte
+-- solo para esto sería una segunda rotación que mantener. El sufijo `_encrypted`
+-- va en el nombre a propósito, igual que en el token: es lo que impide que una
+-- consulta de soporte la seleccione creyendo que es texto plano.
+--
+-- Nullable y sin default, como el resto de las columnas de canal de la 0015:
+-- Messenger e Instagram no tienen PIN, y un número que entre por Coexistence
+-- tampoco pasa por `/register`.
+
+alter table connected_pages
+  add column if not exists whatsapp_pin_encrypted text;

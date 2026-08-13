@@ -11,10 +11,12 @@ export type TenantDeletionContext = {
 }
 
 type ConnectedPageDeletionRow = {
+  id: string
   channel: PageChannel
   meta_page_id: string
   status: PageStatus
   page_access_token_encrypted: string
+  waba_id: string | null
 }
 
 // Loads everything the deletion flow needs before the tenant row is wiped: the
@@ -32,7 +34,8 @@ export async function loadTenantDeletionContext(
   if (!user) return null
 
   const rows = await sql<ConnectedPageDeletionRow[]>`
-    select channel, meta_page_id, status, page_access_token_encrypted
+    select id, channel, meta_page_id, status, page_access_token_encrypted,
+      waba_id
     from connected_pages
     where tenant_id = ${tenantId}
   `
@@ -47,10 +50,12 @@ export async function loadTenantDeletionContext(
   return {
     email: user.email,
     pages: rows.map((row) => ({
+      id: row.id,
       channel: row.channel,
       metaPageId: row.meta_page_id,
       status: row.status,
       pageAccessToken: decryptSecret(row.page_access_token_encrypted),
+      wabaId: row.waba_id ?? null,
     })),
     stripeSubscriptionId: subscription?.stripe_subscription_id ?? null,
   }

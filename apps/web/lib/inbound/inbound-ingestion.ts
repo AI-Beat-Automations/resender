@@ -52,17 +52,41 @@ export type IngestedInboundMessage = IngestedInbound & {
 const RESTRICTED_SKIP_REASON =
   "account is restricted: quota exhausted or too many connected Pages"
 
-// Instagram está **fuera de cuota y fuera del cupo de páginas** por ahora: sus
-// entrantes no suman al contador del período ni se frenan cuando el tenant
-// quedó restringido por su consumo de Messenger. El gate de suscripción activa
-// sí aplica, y por eso está arriba y fuera de esta tabla.
+// Qué canal mide cuota. El criterio, que hasta ahora no estaba escrito en
+// ningún lado: **mide el canal que es mensajería de pleno derecho** —una
+// conversación uno a uno que el cliente abre y que Resender persiste y
+// reenvía—, y no mide el que existe como reacción a otra cosa.
 //
-// La consecuencia práctica es que en Instagram ni siquiera se resuelve el
-// entitlement: sin contador que incrementar ni restricción que consultar, esa
+// - `messenger`: mensajería. Mide.
+// - `whatsapp`: mensajería, exactamente igual que Messenger. Mide. Que sea el
+//   canal más nuevo no lo hace más barato: un DM de WhatsApp cuesta lo mismo de
+//   recibir, persistir y entregar que uno de Messenger, y regalarlo sería
+//   regalar justo el canal por el que va a entrar el volumen.
+// - `instagram`: queda **fuera de cuota y fuera del cupo de páginas** por ahora.
+//   Sus entrantes no suman al contador del período ni se frenan cuando el tenant
+//   quedó restringido por su consumo de Messenger, porque el valor del canal hoy
+//   son las respuestas a comentarios y no la mensajería.
+//
+// El gate de suscripción activa aplica a los tres, y por eso está arriba y
+// fuera de esta tabla.
+//
+// La consecuencia práctica en un canal sin medir es que ni siquiera se resuelve
+// el entitlement: sin contador que incrementar ni restricción que consultar, esa
 // lectura sería una ida a la base por evento sin nada que decidir.
-const CHANNEL_IS_METERED: Record<PageChannel, boolean> = {
+//
+// Se exporta para que la decisión se pueda afirmar en un test: es política de
+// facturación, no un detalle de implementación, y el día que alguien la cambie
+// tiene que romper algo que la nombre.
+//
+// Ojo: la ingesta de WhatsApp **no vive en esta app** —entra por
+// `apps/api` (`/webhooks/meta/whatsapp`)—, así que hoy esta fila no la ejecuta
+// nadie desde acá. Está igual porque el `Record<PageChannel, …>` obliga a
+// decidir, y porque el día que la web ingiera WhatsApp la decisión ya está
+// tomada en vez de defaultearse sola.
+export const CHANNEL_IS_METERED: Record<PageChannel, boolean> = {
   messenger: true,
   instagram: false,
+  whatsapp: true,
 }
 
 // Entrada del webhook de Messenger.

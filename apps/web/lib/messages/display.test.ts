@@ -26,6 +26,7 @@ function conversation(
       metaPageId: "104233889761204",
       name: "Café Rioja",
       username: null,
+      phoneE164: null,
     },
     latestMessage: {
       text: "¿Hacen envíos a Palermo?",
@@ -121,6 +122,7 @@ describe("toConversationRowView", () => {
           metaPageId: "17841400000000000",
           name: "Café Rioja",
           username: "cafe.rioja",
+          phoneE164: null,
         },
       }),
       NOW
@@ -128,6 +130,74 @@ describe("toConversationRowView", () => {
 
     expect(row.pageLabel).toBe("@cafe.rioja · ig_id 17841400000000000")
     expect(row.channel).toBe("instagram")
+  })
+
+  // En WhatsApp `metaPageId` guarda el `phone_number_id`, que no se parece al
+  // teléfono del negocio: la etiqueta nombra el número —que es lo que el
+  // usuario reconoce— y cita el id con el nombre que Meta le da.
+  it("identifica la cuenta por el número cuando la conversación es de WhatsApp", () => {
+    const row = toConversationRowView(
+      conversation({
+        page: {
+          id: "page-3",
+          channel: "whatsapp",
+          metaPageId: "109876543210987",
+          name: "Café Rioja",
+          username: null,
+          phoneE164: "+5215512345678",
+        },
+      }),
+      NOW
+    )
+
+    expect(row.pageLabel).toBe(
+      "+5215512345678 · phone_number_id 109876543210987"
+    )
+    expect(row.channel).toBe("whatsapp")
+  })
+
+  it("cae al nombre del negocio si la fila de WhatsApp no tiene el número", () => {
+    const row = toConversationRowView(
+      conversation({
+        page: {
+          id: "page-3",
+          channel: "whatsapp",
+          metaPageId: "109876543210987",
+          name: "Café Rioja",
+          username: null,
+          phoneE164: null,
+        },
+      }),
+      NOW
+    )
+
+    // Nunca `page_id`: el id sigue nombrado como lo que es aunque falte el
+    // número, o mandaría a buscar una página de Facebook que no existe.
+    expect(row.pageLabel).toBe("Café Rioja · phone_number_id 109876543210987")
+  })
+
+  // El contacto de WhatsApp no tiene @handle —no existe el concepto— y su id es
+  // el teléfono. Llamarlo PSID mandaba a buscarlo a un panel de Facebook donde
+  // no está; el nombre sale aparte, del `profile.name` que trajo el webhook.
+  it("identifica al contacto de WhatsApp por su wa_id, con el nombre del perfil aparte", () => {
+    const row = toConversationRowView(
+      conversation({
+        contactId: "5215512345678",
+        contactName: "Lori Surianno",
+        page: {
+          id: "page-3",
+          channel: "whatsapp",
+          metaPageId: "109876543210987",
+          name: "Café Rioja",
+          username: null,
+          phoneE164: "+5215512345678",
+        },
+      }),
+      NOW
+    )
+
+    expect(row.contactLabel).toBe("wa_id 5215512345678")
+    expect(row.contactName).toBe("Lori Surianno")
   })
 
   it("cae al nombre de la cuenta si Instagram no dio el @handle", () => {
@@ -139,6 +209,7 @@ describe("toConversationRowView", () => {
           metaPageId: "17841400000000000",
           name: "Café Rioja",
           username: null,
+          phoneE164: null,
         },
       }),
       NOW
