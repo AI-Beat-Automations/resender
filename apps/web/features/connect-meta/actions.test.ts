@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const mocks = vi.hoisted(() => ({
   auth: vi.fn(),
   connectAuthorizedPages: vi.fn(),
-  countActivePages: vi.fn(),
+  countActiveAccounts: vi.fn(),
   getMetaUserAccessToken: vi.fn(),
   getPageOwnership: vi.fn(),
   getSubscriptionByTenantId: vi.fn(),
@@ -72,7 +72,7 @@ vi.mock("@/lib/pages/page-registry", () => {
 
   return {
     connectAuthorizedPages: mocks.connectAuthorizedPages,
-    countActivePages: mocks.countActivePages,
+    countActiveAccounts: mocks.countActiveAccounts,
     getPageOwnership: mocks.getPageOwnership,
     PageOwnershipError,
   }
@@ -114,7 +114,7 @@ describe("connectSelectedPagesAction", () => {
     mocks.getSubscriptionByTenantId.mockResolvedValue({
       priceLookupKey: "starter_monthly",
     })
-    mocks.countActivePages.mockResolvedValue(0)
+    mocks.countActiveAccounts.mockResolvedValue(0)
     mocks.getPageOwnership.mockResolvedValue([])
     mocks.subscribePagesToWebhook.mockResolvedValue(undefined)
   })
@@ -168,7 +168,7 @@ describe("connectSelectedPagesAction", () => {
   })
 
   it("rejects a selection that exceeds the remaining slots of the plan", async () => {
-    mocks.countActivePages.mockResolvedValue(1)
+    mocks.countActiveAccounts.mockResolvedValue(1)
 
     const result = await connectSelectedPagesAction(
       {},
@@ -176,7 +176,7 @@ describe("connectSelectedPagesAction", () => {
     )
 
     expect(result.error).toBe(
-      "Tu plan permite 2 páginas conectadas y ya tienes 1 activas: puedes añadir 1 página más. Desmarca las que sobren o desconecta una página para liberar cupo."
+      "Tu plan permite 2 cuentas conectadas y ya tienes 1 activas: puedes añadir 1 cuenta más. Desmarca las que sobren o desconecta una cuenta para liberar cupo."
     )
     expect(mocks.subscribePagesToWebhook).not.toHaveBeenCalled()
     expect(mocks.connectAuthorizedPages).not.toHaveBeenCalled()

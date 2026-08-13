@@ -2,8 +2,10 @@ import { NextResponse, type NextRequest } from "next/server"
 
 import { auth } from "@/auth"
 import { resolveProductAccess } from "@/lib/auth/waitlist"
+import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
 import { log, type LogReason } from "@/lib/observability/logger"
+import { hasActiveAccountOnChannel } from "@/lib/pages/page-registry"
 import {
   buildInstagramDialogUrl,
   INSTAGRAM_STATE_COOKIE,
@@ -14,8 +16,9 @@ import {
 // apunta acá.
 //
 // Mismos gates que `/api/meta/start` y en el mismo orden: sesión → acceso →
-// suscripción activa. Instagram queda fuera de cuota y del cupo de páginas,
-// pero el bloqueo por suscripción sí aplica, así que este portón no cambia.
+// suscripción activa → cupo. Desde el ADR 0010 una cuenta de Instagram ocupa un
+// slot del plan igual que una Página de Facebook, así que el cupo también es un
+// portón acá.
 export const runtime = "nodejs"
 
 export async function GET(request: NextRequest) {
@@ -50,6 +53,29 @@ export async function GET(request: NextRequest) {
 
   if (!(await hasActiveSubscription(session.user.id))) {
     return gate("no_active_subscription", "/billing")
+  }
+
+  // Gate de cupo anticipado (ADR 0010). El autoritativo vive en el callback,
+  // porque solo ahí se conoce el IG ID y se puede distinguir una re-autorización
+  // —que no consume slot— de una cuenta nueva.
+  //
+  // Acá se puede adelantar en un caso, y es exacto, no heurístico: si el tenant
+  // no tiene **ninguna** cuenta de Instagram activa, el OAuth solo puede
+  // terminar en cuenta nueva. Bloquear ahí le ahorra autorizar en Meta para
+  // recibir un error al volver. Con una cuenta activa no se decide acá: podría
+  // ser la renovación del token, que vence a los ~60 días.
+  const entitlement = await getTenantEntitlement(session.user.id)
+  const noSlots =
+    !entitlement.limits ||
+    entitlement.activeAccountCount >= entitlement.limits.maxAccounts
+  if (
+    noSlots &&
+    !(await hasActiveAccountOnChannel(session.user.id, "instagram"))
+  ) {
+    return gate(
+      "page_limit_reached",
+      "/connections?instagram=error&reason=account_limit_reached"
+    )
   }
 
   log({

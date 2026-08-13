@@ -1,6 +1,6 @@
 export const PLAN_LIMITS = {
-  starter_monthly: { messagesPerPeriod: 50_000, maxPages: 2 },
-  pro_monthly: { messagesPerPeriod: 100_000, maxPages: 5 },
+  starter_monthly: { messagesPerPeriod: 50_000, maxAccounts: 2 },
+  pro_monthly: { messagesPerPeriod: 100_000, maxAccounts: 5 },
 } as const
 
 export type CanonicalPlanLookupKey = keyof typeof PLAN_LIMITS
@@ -14,8 +14,8 @@ export type Entitlement = {
   priceLookupKey: CanonicalPlanLookupKey | null
   periodStart: Date | null
   usage: number
-  activePageCount: number
-  limits: { messagesPerPeriod: number; maxPages: number } | null
+  activeAccountCount: number
+  limits: { messagesPerPeriod: number; maxAccounts: number } | null
   blockCode: EntitlementBlockCode | null
 }
 
@@ -30,7 +30,7 @@ export function evaluateEntitlement(input: {
   currentPeriodStart: Date | null
   currentPeriodEnd: Date | null
   usage: number
-  activePageCount: number
+  activeAccountCount: number
   now?: Date
 }): Entitlement {
   const now = input.now ?? new Date()
@@ -48,7 +48,7 @@ export function evaluateEntitlement(input: {
 
   let blockCode: EntitlementBlockCode | null = null
   if (!limits || !periodStart) blockCode = "plan_unavailable"
-  else if (input.activePageCount > limits.maxPages) {
+  else if (input.activeAccountCount > limits.maxAccounts) {
     blockCode = "page_limit_exceeded"
   } else if (input.usage >= limits.messagesPerPeriod) {
     blockCode = "quota_exceeded"
@@ -58,7 +58,7 @@ export function evaluateEntitlement(input: {
     priceLookupKey: canonicalKey,
     periodStart,
     usage: input.usage,
-    activePageCount: input.activePageCount,
+    activeAccountCount: input.activeAccountCount,
     limits,
     blockCode,
   }
@@ -79,7 +79,7 @@ export function entitlementHttpError(blockCode: EntitlementBlockCode): {
     return {
       status: 403,
       message:
-        "The account has more active Pages than its plan allows. Disconnect Pages to resume sending.",
+        "The account has more connected accounts than its plan allows. Disconnect accounts to resume sending.",
     }
   }
   return {

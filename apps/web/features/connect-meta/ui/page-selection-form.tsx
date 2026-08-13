@@ -8,7 +8,7 @@ import {
   type ConnectMetaActionState,
 } from "@/features/connect-meta/actions"
 import {
-  formatPageAllowance,
+  formatAccountAllowance,
   type PageSelectionView,
 } from "@/lib/pages/page-selection"
 import { Badge } from "@workspace/ui/components/badge"
@@ -125,10 +125,10 @@ export function PageSelectionForm({ view }: { view: PageSelectionView }) {
       {atLimit && (
         <p className="rounded-lg bg-surface-sunken px-3.5 py-3 text-[13px] text-muted-foreground">
           {view.remainingSlots === 0
-            ? formatPageAllowance(view)
+            ? formatAccountAllowance(view)
             : `Ya marcaste las ${view.remainingSlots} ${
-                view.remainingSlots === 1 ? "página" : "páginas"
-              } que te permite tu plan (${view.maxPages} en total). Desmarca una para elegir otra, o desconecta una página para liberar cupo.`}
+                view.remainingSlots === 1 ? "cuenta" : "cuentas"
+              } que te permite tu plan (${view.maxAccounts} en total). Desmarca una para elegir otra, o desconecta una cuenta para liberar cupo.`}
         </p>
       )}
 

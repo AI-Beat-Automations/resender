@@ -9,10 +9,10 @@ export type PlanLookupKey = (typeof PLAN_LOOKUP_KEYS)[number]
 
 // Límites por plan (ADR 0003). `messagesPerPeriod` cuenta ambas direcciones:
 // un entrante persistido suma 1 y una respuesta aceptada por Meta suma 1.
-// `maxPages` cuenta solo las páginas en estado `active`.
+// `maxAccounts` cuenta solo las páginas en estado `active`.
 export type PlanLimits = {
   messagesPerPeriod: number
-  maxPages: number
+  maxAccounts: number
 }
 
 export type Plan = {
@@ -27,13 +27,13 @@ export const PLANS: Plan[] = [
     lookupKey: "starter_monthly",
     name: "Starter",
     priceMonthlyUsd: 15,
-    limits: { messagesPerPeriod: 50_000, maxPages: 2 },
+    limits: { messagesPerPeriod: 50_000, maxAccounts: 2 },
   },
   {
     lookupKey: "pro_monthly",
     name: "Pro",
     priceMonthlyUsd: 25,
-    limits: { messagesPerPeriod: 100_000, maxPages: 5 },
+    limits: { messagesPerPeriod: 100_000, maxAccounts: 5 },
   },
 ]
 

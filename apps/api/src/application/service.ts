@@ -35,6 +35,7 @@ import {
   RECOVERY_HANDOFF_GRACE_SECONDS,
   WEBHOOK_PAYLOAD_VERSION,
 } from "../config"
+import { evaluateAccountSlot } from "../domain/account-allowance"
 import {
   entitlementHttpError,
   evaluateEntitlement,
@@ -533,6 +534,12 @@ export class ApiService {
       return { comment: commentDto(replay), replayed: true, created: false }
     }
 
+    // El gate va **después** del replay, igual que en `sendMessage`: un replay
+    // no llama a Meta ni inserta, así que no consume cuota, y bloquearlo diría
+    // que falló una respuesta que Meta ya publicó (ADR 0010).
+    const entitlement = await this.entitlement(input.tenantId)
+    this.assertCanMessage(entitlement)
+
     const { page, source } = await this.requireCommentTarget(
       input.tenantId,
       input.commentId
@@ -574,6 +581,9 @@ export class ApiService {
       idempotencyKey: key,
       error: result.ok ? null : result.message,
       providerResponse: result.response,
+      // Solo consume cuota la respuesta que Meta aceptó: el cliente no paga por
+      // un rechazo nuestro.
+      periodStart: result.ok ? entitlement.periodStart : null,
       createdAt: this.now(),
     })
     if (result.ok) {
@@ -605,6 +615,10 @@ export class ApiService {
     if (replay) {
       return { message: messageDto(replay), replayed: true, created: false }
     }
+
+    // Después del replay, por la misma razón que en `replyToComment`.
+    const entitlement = await this.entitlement(input.tenantId)
+    this.assertCanMessage(entitlement)
 
     const { page, source } = await this.requireCommentTarget(
       input.tenantId,
@@ -691,8 +705,9 @@ export class ApiService {
       error: result.ok ? null : result.message,
       providerResponse: result.response,
       createdAt: this.now(),
-      // Instagram no consume cuota: sin período no hay contador que incrementar.
-      periodStart: null,
+      // La respuesta privada es un DM y consume una unidad como cualquier otro
+      // (ADR 0010). Solo si Meta la aceptó: el rechazo no se cobra.
+      periodStart: result.ok ? entitlement.periodStart : null,
       // Lo que convierte este DM en una respuesta privada auditable. Se guarda
       // también cuando Meta rechazó: el intento fallido no consumió la única
       // respuesta disponible —por eso el chequeo de arriba solo mira los
@@ -788,6 +803,30 @@ export class ApiService {
     const profile = await this.providerOperation("Instagram", () =>
       this.instagram.getProfile(token.accessToken)
     )
+
+    // Gate de cupo (ADR 0010). Va acá porque necesita el id de la cuenta —sin él
+    // no se distingue una re-autorización de una cuenta nueva— y antes de la
+    // suscripción, para no dejarle a Meta una suscripción colgando de una cuenta
+    // que después rechazamos.
+    //
+    // La cuenta de otro tenant no entra al gate: ese caso lo resuelve el 422 de
+    // más abajo, y contestarle «no te queda cupo» le mentiría sobre la causa.
+    const ownership = await this.repository.getAccountOwnership({
+      tenantId: user.id,
+      channel: "instagram",
+      providerAccountId: profile.providerAccountId,
+    })
+    if (ownership.owner !== "other") {
+      const entitlement = await this.entitlement(user.id)
+      if (!entitlement.limits) throw planError("plan_unavailable")
+      const slot = evaluateAccountSlot({
+        maxAccounts: entitlement.limits.maxAccounts,
+        activeAccountCount: entitlement.activeAccountCount,
+        existingStatus: ownership.owner === "self" ? ownership.status : null,
+      })
+      if (!slot.ok) throw planError("page_limit_exceeded")
+    }
+
     await this.providerOperation("Instagram", () =>
       this.instagram.subscribeAccount(token.accessToken)
     )
@@ -909,7 +948,7 @@ export class ApiService {
     )
     const byPage = new Map(ownership.map((item) => [item.providerPageId, item]))
     const entitlement = await this.entitlement(user.id)
-    const maxPages = entitlement.limits?.maxPages ?? 0
+    const maxAccounts = entitlement.limits?.maxAccounts ?? 0
     return {
       pages: pages.map((page) => {
         const owner = byPage.get(page.id)
@@ -924,9 +963,9 @@ export class ApiService {
                 : "selectable",
         }
       }),
-      maxPages,
-      activePageCount: entitlement.activePageCount,
-      remainingSlots: Math.max(0, maxPages - entitlement.activePageCount),
+      maxAccounts,
+      activeAccountCount: entitlement.activeAccountCount,
+      remainingSlots: Math.max(0, maxAccounts - entitlement.activeAccountCount),
     }
   }
 
@@ -973,9 +1012,9 @@ export class ApiService {
         .map((item) => item.providerPageId)
     )
     if (
-      entitlement.activePageCount +
+      entitlement.activeAccountCount +
         ids.filter((id) => !alreadyActive.has(id)).length >
-      entitlement.limits.maxPages
+      entitlement.limits.maxAccounts
     ) {
       throw planError("page_limit_exceeded")
     }
@@ -1385,14 +1424,28 @@ export class ApiService {
     const parsed = parseWebhookJson(raw)
     const accessByTenant = new Map<string, boolean>()
 
-    const messages = await this.ingestInstagramMessages(parsed, accessByTenant)
-    const comments = await this.ingestInstagramComments(parsed, accessByTenant)
+    // Un solo caché de entitlement para las dos ramas: DMs y comentarios de un
+    // mismo payload son del mismo tenant, y desde el ADR 0010 los dos consumen
+    // cuota y los dos se frenan cuando la cuenta está restringida.
+    const entitlementByTenant = new Map<string, Entitlement>()
+
+    const messages = await this.ingestInstagramMessages(
+      parsed,
+      accessByTenant,
+      entitlementByTenant
+    )
+    const comments = await this.ingestInstagramComments(
+      parsed,
+      accessByTenant,
+      entitlementByTenant
+    )
     return { accepted: messages + comments }
   }
 
   private async ingestInstagramMessages(
     parsed: unknown,
-    accessByTenant: Map<string, boolean>
+    accessByTenant: Map<string, boolean>,
+    entitlementByTenant: Map<string, Entitlement>
   ): Promise<number> {
     let accepted = 0
     for (const event of extractInstagramDirectMessages(parsed)) {
@@ -1424,6 +1477,12 @@ export class ApiService {
         continue
       }
 
+      let entitlement = entitlementByTenant.get(page.tenantId)
+      if (!entitlement) {
+        entitlement = await this.entitlement(page.tenantId)
+        entitlementByTenant.set(page.tenantId, entitlement)
+      }
+
       const eventId = await this.eventId(
         `${event.providerAccountId}:${event.providerMessageId}`
       )
@@ -1435,14 +1494,13 @@ export class ApiService {
         eventId,
         createdAt: event.createdAt,
         payloadVersion: WEBHOOK_PAYLOAD_VERSION,
-        // Instagram está **fuera de cuota** por ahora: sin período no hay
-        // contador que incrementar, y por eso tampoco se resuelve el
-        // entitlement — sería una ida a la base por evento sin nada que decidir.
-        periodStart: null,
-        // La contracara: la restricción por consumo tampoco lo frena. Un tenant
-        // que agotó su cuota de Messenger sigue recibiendo sus DMs de Instagram.
-        deliveryEnabled: true,
-        deliveryBlockedReason: null,
+        // Idéntico a Messenger (ADR 0010): los dos canales miden igual y los dos
+        // dejan de reenviar cuando la cuenta está restringida.
+        periodStart: entitlement.periodStart,
+        deliveryEnabled: entitlement.blockCode === null,
+        deliveryBlockedReason: entitlement.blockCode
+          ? `account is restricted: ${entitlement.blockCode}`
+          : null,
         recoverAfter: this.recoverAfter(),
       })
       log({
@@ -1466,7 +1524,8 @@ export class ApiService {
 
   private async ingestInstagramComments(
     parsed: unknown,
-    accessByTenant: Map<string, boolean>
+    accessByTenant: Map<string, boolean>,
+    entitlementByTenant: Map<string, Entitlement>
   ): Promise<number> {
     let accepted = 0
     for (const event of extractInstagramComments(parsed)) {
@@ -1543,6 +1602,12 @@ export class ApiService {
         continue
       }
 
+      let entitlement = entitlementByTenant.get(page.tenantId)
+      if (!entitlement) {
+        entitlement = await this.entitlement(page.tenantId)
+        entitlementByTenant.set(page.tenantId, entitlement)
+      }
+
       const eventId = await this.eventId(
         `${event.providerAccountId}:comment:${event.providerCommentId}`
       )
@@ -1558,8 +1623,13 @@ export class ApiService {
         eventId,
         createdAt: event.createdAt,
         payloadVersion: WEBHOOK_PAYLOAD_VERSION,
-        deliveryEnabled: true,
-        deliveryBlockedReason: null,
+        // Un comentario entrante persistido consume una unidad, igual que un DM
+        // (ADR 0010): la tabla es otra, pero recibir y persistir cuesta lo mismo.
+        periodStart: entitlement.periodStart,
+        deliveryEnabled: entitlement.blockCode === null,
+        deliveryBlockedReason: entitlement.blockCode
+          ? `account is restricted: ${entitlement.blockCode}`
+          : null,
         recoverAfter: this.recoverAfter(),
       })
       log({
@@ -1719,9 +1789,9 @@ export class ApiService {
   }
 
   private async entitlement(tenantId: string): Promise<Entitlement> {
-    const [subscription, activePageCount] = await Promise.all([
+    const [subscription, activeAccountCount] = await Promise.all([
       this.repository.getSubscription(tenantId),
-      this.repository.countActivePages(tenantId),
+      this.repository.countActiveAccounts(tenantId),
     ])
     const periodStart =
       isActiveSubscription(subscription) && subscription
@@ -1738,7 +1808,7 @@ export class ApiService {
       currentPeriodStart: periodStart,
       currentPeriodEnd: subscription?.currentPeriodEnd ?? null,
       usage,
-      activePageCount,
+      activeAccountCount,
     })
   }
 
@@ -1797,8 +1867,8 @@ function entitlementDto(entitlement: Entitlement) {
     priceLookupKey: entitlement.priceLookupKey,
     usage: entitlement.usage,
     messageLimit: entitlement.limits?.messagesPerPeriod ?? null,
-    activePageCount: entitlement.activePageCount,
-    pageLimit: entitlement.limits?.maxPages ?? null,
+    activeAccountCount: entitlement.activeAccountCount,
+    accountLimit: entitlement.limits?.maxAccounts ?? null,
     blockCode: entitlement.blockCode,
   }
 }

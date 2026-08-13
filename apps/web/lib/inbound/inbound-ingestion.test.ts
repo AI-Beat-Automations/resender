@@ -192,7 +192,10 @@ describe("ingesta de entrantes por canal", () => {
   })
 })
 
-describe("Instagram fuera de cuota", () => {
+// ADR 0010: Instagram entró a facturación con paridad total. Este bloque fijaba
+// lo contrario —«no cuenta el DM ni resuelve el entitlement», «reenvía igual con
+// el tenant restringido»— y son justamente las dos afirmaciones que cambiaron.
+describe("Instagram cuenta igual que Messenger", () => {
   beforeEach(() => {
     for (const mock of Object.values(mocks)) mock.mockReset()
     mocks.hasActiveSubscription.mockResolvedValue(true)
@@ -207,20 +210,21 @@ describe("Instagram fuera de cuota", () => {
     )
   })
 
-  // Sin contador que incrementar ni restricción que consultar, resolver el
-  // entitlement sería una ida a la base por evento sin nada que decidir.
-  it("no cuenta el DM ni resuelve el entitlement", async () => {
+  it("cuenta el DM entrante contra la cuota del período", async () => {
     await ingestInstagramWebhookPayload(
       instagramPayload({ mid: "mid-1", text: "hola" })
     )
 
-    expect(mocks.incrementUsage).not.toHaveBeenCalled()
-    expect(mocks.getTenantEntitlement).not.toHaveBeenCalled()
+    expect(mocks.getTenantEntitlement).toHaveBeenCalledWith("tenant-1")
+    expect(mocks.incrementUsage).toHaveBeenCalledWith(
+      "tenant-1",
+      unrestricted.periodStart
+    )
   })
 
-  // La contracara de no consumir cuota: tampoco la restricción por consumo lo
-  // frena. Un tenant que agotó su cuota de Messenger sigue recibiendo sus DMs.
-  it("reenvía igual con el tenant restringido por su consumo de Messenger", async () => {
+  // La contracara de consumir cuota: la restricción también lo frena. Antes del
+  // ADR 0010 este mismo caso reenviaba igual.
+  it("deja de reenviar el DM cuando el tenant está restringido, pero persiste y cuenta igual", async () => {
     mocks.getTenantEntitlement.mockResolvedValue(restricted)
 
     const [ingested] = await ingestInstagramWebhookPayload(
@@ -228,8 +232,13 @@ describe("Instagram fuera de cuota", () => {
     )
     await ingested!.pushJob()
 
-    expect(mocks.pushInboundEvent).toHaveBeenCalledTimes(1)
-    expect(mocks.recordSkippedDelivery).not.toHaveBeenCalled()
+    expect(mocks.insertInboundMessage).toHaveBeenCalledTimes(1)
+    expect(mocks.incrementUsage).toHaveBeenCalledTimes(1)
+    expect(mocks.recordSkippedDelivery).toHaveBeenCalledWith(
+      { kind: "message", id: "message-1" },
+      expect.objectContaining({ logReason: "account_restricted" })
+    )
+    expect(mocks.pushInboundEvent).not.toHaveBeenCalled()
   })
 
   it("registra el salto cuando la cuenta de Instagram no tiene webhookUrl", async () => {
@@ -297,7 +306,7 @@ describe("Messenger sigue medido", () => {
       { kind: "message", id: "message-1" },
       expect.objectContaining({
         reason:
-          "account is restricted: quota exhausted or too many connected Pages",
+          "account is restricted: quota exhausted or too many connected accounts",
         logReason: "account_restricted",
       })
     )
@@ -336,12 +345,98 @@ describe("ingesta de comentarios de Instagram", () => {
   beforeEach(() => {
     for (const mock of Object.values(mocks)) mock.mockReset()
     mocks.hasActiveSubscription.mockResolvedValue(true)
+    mocks.getTenantEntitlement.mockResolvedValue(unrestricted)
     mocks.getActivePageByMetaPageId.mockResolvedValue(instagramPage())
     mocks.isOwnPublishedComment.mockResolvedValue(false)
     mocks.insertInboundComment.mockResolvedValue({
       comment: comment(),
       inserted: true,
     })
+  })
+
+  // ADR 0010: un comentario entrante persistido consume una unidad igual que un
+  // DM. La tabla es otra, pero recibir y persistir cuesta lo mismo.
+  it("cuenta el comentario entrante contra la cuota del período", async () => {
+    await ingestInstagramWebhookPayload(
+      commentPayload({
+        id: "ig-comment-1",
+        from: { id: "9876543210", username: "un_seguidor" },
+        text: "qué bueno",
+        media: { id: "media-1" },
+      })
+    )
+
+    expect(mocks.incrementUsage).toHaveBeenCalledWith(
+      "tenant-1",
+      unrestricted.periodStart
+    )
+  })
+
+  // Antes del ADR 0010 esta rama solo distinguía «hay webhookUrl» de «no hay»:
+  // un tenant restringido seguía recibiendo sus comentarios reenviados.
+  it("deja de reenviar el comentario cuando el tenant está restringido, pero persiste y cuenta igual", async () => {
+    mocks.getTenantEntitlement.mockResolvedValue(restricted)
+
+    const [ingested] = await ingestInstagramWebhookPayload(
+      commentPayload({
+        id: "ig-comment-1",
+        from: { id: "9876543210", username: "un_seguidor" },
+        text: "qué bueno",
+        media: { id: "media-1" },
+      })
+    )
+    await ingested!.pushJob()
+
+    expect(mocks.insertInboundComment).toHaveBeenCalledTimes(1)
+    expect(mocks.incrementUsage).toHaveBeenCalledTimes(1)
+    expect(mocks.recordSkippedDelivery).toHaveBeenCalledWith(
+      { kind: "comment", id: "comment-row" },
+      expect.objectContaining({ logReason: "account_restricted" })
+    )
+    expect(mocks.pushInboundEvent).not.toHaveBeenCalled()
+  })
+
+  // El caché de entitlement es por payload y se comparte entre las dos ramas
+  // —DMs y comentarios corren en `Promise.all`—, y guarda la **promesa** y no el
+  // valor: si guardara el valor, las dos dispararían la lectura a la vez.
+  it("resuelve el entitlement una sola vez para el DM y el comentario del mismo sobre", async () => {
+    mocks.upsertConversation.mockResolvedValue({ id: "conversation-1" })
+    mocks.insertInboundMessage.mockResolvedValue({
+      message: { id: "message-1", tenantId: "tenant-1" },
+      inserted: true,
+    })
+
+    await ingestInstagramWebhookPayload({
+      object: "instagram",
+      entry: [
+        {
+          id: IG_ACCOUNT,
+          time: 1_769_000_000,
+          messaging: [
+            {
+              sender: { id: "igsid-1" },
+              timestamp: 1_769_000_000_000,
+              message: { mid: "mid-1", text: "hola" },
+            },
+          ],
+        },
+        {
+          id: IG_ACCOUNT,
+          time: 1_769_000_000,
+          field: "comments",
+          value: {
+            id: "ig-comment-1",
+            from: { id: "9876543210", username: "un_seguidor" },
+            text: "qué bueno",
+            media: { id: "media-1" },
+          },
+        },
+      ],
+    })
+
+    expect(mocks.getTenantEntitlement).toHaveBeenCalledTimes(1)
+    // Pero los dos suman: un DM y un comentario son dos unidades.
+    expect(mocks.incrementUsage).toHaveBeenCalledTimes(2)
   })
 
   it("persiste el comentario y prepara su reenvío", async () => {
@@ -551,6 +646,7 @@ describe("ningún evento se descarta en silencio", () => {
   beforeEach(() => {
     for (const mock of Object.values(mocks)) mock.mockReset()
     mocks.hasActiveSubscription.mockResolvedValue(true)
+    mocks.getTenantEntitlement.mockResolvedValue(unrestricted)
     mocks.isOwnPublishedComment.mockResolvedValue(false)
     mocks.getActivePageByMetaPageId.mockResolvedValue(instagramPage())
     mocks.upsertConversation.mockResolvedValue({

@@ -21,9 +21,12 @@ import {
   log,
   type LogReason,
 } from "@/lib/observability/logger"
+import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
+import { evaluateAccountSlot } from "@/lib/pages/account-allowance"
 import { instagramAccountOwnedReason } from "@/lib/pages/meta-connection-error"
 import {
   connectInstagramAccount,
+  getAccountOwnership,
   PageOwnershipError,
 } from "@/lib/pages/page-registry"
 import { posthog } from "@/lib/posthog"
@@ -124,7 +127,8 @@ export async function GET(request: NextRequest) {
     return fail("state_mismatch", "state_mismatch", { level: "warn" })
   }
 
-  let step: "exchange" | "profile" | "subscribe" | "persist" = "exchange"
+  let step: "exchange" | "profile" | "allowance" | "subscribe" | "persist" =
+    "exchange"
   try {
     assertSecretEncryptionConfigured()
 
@@ -132,6 +136,37 @@ export async function GET(request: NextRequest) {
 
     step = "profile"
     const profile = await fetchInstagramProfile(token.accessToken)
+
+    // Gate de cupo (ADR 0010). Va acá y no antes porque necesita el IG ID: sin
+    // él no se distingue una re-autorización —que no consume slot— de una cuenta
+    // nueva. Y va antes de la suscripción para no dejarle a Meta una suscripción
+    // colgando de una cuenta que después rechazamos.
+    //
+    // Sin este gate, conectar una cuenta de más empujaría al tenant a
+    // `page_limit_exceeded`, que bloquea **los dos canales**: mataría en
+    // silencio su tráfico de Messenger.
+    //
+    // La cuenta de otro tenant no entra: ese caso es de propiedad, lo resuelve
+    // `PageOwnershipError` más abajo, y decirle «no te queda cupo» le mentiría
+    // sobre la causa.
+    step = "allowance"
+    const ownership = await getAccountOwnership({
+      tenantId: session.user.id,
+      channel: "instagram",
+      metaPageId: profile.igUserId,
+    })
+    if (ownership.owner !== "other") {
+      const entitlement = await getTenantEntitlement(session.user.id)
+      if (!entitlement.limits) {
+        return fail("plan_unavailable", "configuration_failed")
+      }
+      const slot = evaluateAccountSlot({
+        maxAccounts: entitlement.limits.maxAccounts,
+        activeAccountCount: entitlement.activeAccountCount,
+        existingStatus: ownership.owner === "self" ? ownership.status : null,
+      })
+      if (!slot.ok) return fail(slot.code, "page_limit_reached")
+    }
 
     step = "subscribe"
     await subscribeInstagramWebhook(token.accessToken)

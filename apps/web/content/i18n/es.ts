@@ -166,7 +166,7 @@ export const es: Dict = {
     subtitle:
       "Un plan para cada etapa. Sin contratos, sin sorpresas. Cancelas cuando quieras.",
     intro: [
-      "Los dos planes incluyen lo mismo: la API completa, webhooks entrantes y salientes, y soporte. Lo único que cambia es cuántos mensajes procesas por mes y cuántas páginas de Facebook conectas.",
+      "Los dos planes incluyen lo mismo: la API completa, webhooks entrantes y salientes, y soporte. Lo único que cambia es cuántos mensajes procesas por mes y cuántas cuentas conectas.",
       "Un mensaje es cada evento que pasa por el relay, en cualquier dirección: el que te manda un usuario y llega a tu webhook cuenta uno, y tu respuesta por API cuenta otro. Una conversación de ida y vuelta de diez turnos consume veinte mensajes. Los reintentos por webhook caído no se cobran.",
       "Si dudas entre los dos, empieza por Starter. 50.000 mensajes por mes son unas 25.000 conversaciones cortas, de sobra para un proyecto propio o los primeros clientes. Cuando te acerques al límite te avisamos, y subir a Pro es inmediato: no se corta el servicio ni hay que reconectar nada.",
       "Cobramos por mensaje procesado y no por contacto alcanzado, que es la diferencia que más se nota contra ManyChat a medida que creces: tu factura sigue al tráfico real, no al tamaño acumulado de tu audiencia.",
@@ -182,7 +182,7 @@ export const es: Dict = {
         cta: "Empezar con Starter",
         features: [
           "50.000 mensajes por mes",
-          "2 páginas de Facebook",
+          "2 cuentas conectadas (páginas de Facebook o cuentas de Instagram)",
           "Soporte por email + Discord",
         ],
       },
@@ -196,7 +196,7 @@ export const es: Dict = {
         cta: "Empezar con Pro",
         features: [
           "100.000 mensajes por mes",
-          "5 páginas de Facebook",
+          "5 cuentas conectadas (páginas de Facebook o cuentas de Instagram)",
           "Soporte por email + Discord",
         ],
       },
@@ -334,8 +334,8 @@ export const es: Dict = {
         a: "No. Si tu webhook se cae y reintentamos la entrega, el mensaje se cobra una sola vez. Solo contamos eventos únicos, no intentos de red.",
       },
       {
-        q: "¿Puedo conectar más páginas de las que incluye mi plan?",
-        a: "El límite de páginas es por plan: 2 en Starter y 5 en Pro. Si necesitas más, subes a Pro o nos escribes y armamos algo a medida para tu volumen.",
+        q: "¿Puedo conectar más cuentas de las que incluye mi plan?",
+        a: "El límite es por plan y cuenta las cuentas conectadas de cualquier canal: 2 en Starter y 5 en Pro. Una página de Facebook y una cuenta de Instagram ocupan un lugar cada una, en cualquier combinación. Si necesitas más, subes a Pro o nos escribes y armamos algo a medida para tu volumen.",
       },
       {
         q: "¿Qué pasa con mis datos si cancelo?",
@@ -497,7 +497,7 @@ export const es: Dict = {
     pricing: {
       title: "Precios y planes desde $15 por mes",
       description:
-        "Planes de Resender desde $15/mes con 50.000 mensajes y 2 páginas de Facebook. Sin contratos, sin cargo por contacto y cancelas cuando quieras.",
+        "Planes de Resender desde $15/mes con 50.000 mensajes y 2 cuentas conectadas. Sin contratos, sin cargo por contacto y cancelas cuando quieras.",
       ogTitle: "Precios y planes desde $15 por mes",
       ogDescription:
         "Planes simples desde $15/mes. La alternativa developer-first a ManyChat.",
@@ -521,7 +521,7 @@ export const es: Dict = {
       "Resender resuelve un problema puntual: recibir en tu propio servidor los mensajes que llegan a una página de Facebook (Messenger) y responderlos por API. La lógica corre donde tú quieras — n8n, Make, Zapier, un agente de IA o tu propio backend — y Resender se encarga solo del transporte hacia y desde Facebook.",
       "Cómo funciona: conectas tu página con Facebook Login, configuras una URL HTTPS por página, cada mensaje entrante llega a ese endpoint como JSON, y respondes con un POST a la API de salida de Resender. Los permisos de Messenger ya están aprobados, así que no pasas por un review de app propio.",
       "Qué NO es: Resender no tiene builder visual de flujos, difusiones, plantillas ni analítica de engagement. Si necesitas eso, ManyChat es la mejor opción y así lo decimos en la comparativa.",
-      "Precios: Starter $15/mes (50.000 mensajes, 2 páginas de Facebook) y Pro $25/mes (100.000 mensajes, 5 páginas). Se cobra por mensaje procesado en cualquier dirección, no por contacto alcanzado. Los reintentos por webhook caído no se cobran. Sin contratos: es mes a mes.",
+      "Precios: Starter $15/mes (50.000 mensajes, 2 cuentas conectadas) y Pro $25/mes (100.000 mensajes, 5 cuentas). Una cuenta es una página de Facebook o una cuenta de Instagram, en cualquier combinación. Se cobra por mensaje procesado en cualquier dirección, no por contacto alcanzado. Los reintentos por webhook caído no se cobran. Sin contratos: es mes a mes.",
       "El sitio está en español en la raíz y en inglés bajo /en. Las páginas legales existen solo en español.",
     ],
     sections: {

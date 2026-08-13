@@ -27,7 +27,7 @@ import {
 import { getMetaUserAccessToken } from "@/lib/pages/meta-user-token"
 import {
   connectAuthorizedPages,
-  countActivePages,
+  countActiveAccounts,
   getPageOwnership,
   PageOwnershipError,
 } from "@/lib/pages/page-registry"
@@ -128,9 +128,9 @@ async function connectSelectedPages(
     return failed(EXPIRED_AUTHORIZATION)
   }
 
-  const [subscription, activePageCount, ownership] = await Promise.all([
+  const [subscription, activeAccountCount, ownership] = await Promise.all([
     getSubscriptionByTenantId(tenantId),
-    countActivePages(tenantId),
+    countActiveAccounts(tenantId),
     getPageOwnership(metaPages.map((page) => page.pageId)),
   ])
 
@@ -148,8 +148,8 @@ async function connectSelectedPages(
     })),
     ownership,
     tenantId,
-    activePageCount,
-    maxPages: limits.maxPages,
+    activeAccountCount,
+    maxAccounts: limits.maxAccounts,
   })
 
   const validated = validatePageSelection({ view, selectedPageIds })

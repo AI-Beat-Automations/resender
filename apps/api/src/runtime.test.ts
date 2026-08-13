@@ -415,8 +415,11 @@ describe("Worker runtime entrypoints", () => {
     expect(database.messages).toHaveLength(1)
     expect(database.comments).toHaveLength(1)
     expect(database.jobs).toHaveLength(2)
-    // Instagram está fuera de cuota: ni el DM ni el comentario cuentan.
-    expect(database.usage).toBe(0)
+    // ADR 0010: el DM y el comentario cuentan una unidad cada uno. Este test
+    // fijaba 0, que era la decisión anterior. Que el comentario sume es también
+    // la prueba de que el `usage_increment` nuevo de `ingestInboundComment`
+    // quedó atado al binding correcto de `periodStart`.
+    expect(database.usage).toBe(2)
 
     // Meta reintenta el mismo webhook: el dedupe por índice impide la segunda
     // fila en las dos ramas. El handoff a la cola sí se repite, y es

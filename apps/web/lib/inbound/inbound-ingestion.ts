@@ -50,19 +50,27 @@ export type IngestedInboundMessage = IngestedInbound & {
 // Motivo del `skipped` cuando la cuenta está restringida (ADR 0003): el
 // entrante se persiste y consume cuota, pero no se reenvía.
 const RESTRICTED_SKIP_REASON =
-  "account is restricted: quota exhausted or too many connected Pages"
+  "account is restricted: quota exhausted or too many connected accounts"
 
-// Instagram está **fuera de cuota y fuera del cupo de páginas** por ahora: sus
-// entrantes no suman al contador del período ni se frenan cuando el tenant
-// quedó restringido por su consumo de Messenger. El gate de suscripción activa
-// sí aplica, y por eso está arriba y fuera de esta tabla.
+// Resolver de entitlement memoizado por payload. Un POST de Meta puede traer
+// varios eventos del mismo tenant —y en Instagram, DMs y comentarios a la vez—,
+// y todos necesitan la misma respuesta.
 //
-// La consecuencia práctica es que en Instagram ni siquiera se resuelve el
-// entitlement: sin contador que incrementar ni restricción que consultar, esa
-// lectura sería una ida a la base por evento sin nada que decidir.
-const CHANNEL_IS_METERED: Record<PageChannel, boolean> = {
-  messenger: true,
-  instagram: false,
+// Cachea la **promesa** y no el valor: los DMs y los comentarios de un payload
+// de Instagram se procesan en paralelo, y guardar el valor dejaría que las dos
+// ramas dispararan la lectura antes de que ninguna terminara.
+type EntitlementResolver = (tenantId: string) => Promise<TenantEntitlement>
+
+function createEntitlementResolver(): EntitlementResolver {
+  const cache = new Map<string, Promise<TenantEntitlement>>()
+  return (tenantId) => {
+    let pending = cache.get(tenantId)
+    if (!pending) {
+      pending = getTenantEntitlement(tenantId)
+      cache.set(tenantId, pending)
+    }
+    return pending
+  }
 }
 
 // Entrada del webhook de Messenger.
@@ -70,7 +78,12 @@ export async function ingestMetaWebhookPayload(
   body: unknown,
   requestId: string
 ) {
-  return ingestInboundEvents(extractInboundEvents(body), "messenger", requestId)
+  return ingestInboundEvents(
+    extractInboundEvents(body),
+    "messenger",
+    requestId,
+    createEntitlementResolver()
+  )
 }
 
 // Entrada del webhook de Instagram: mensajes directos **y** comentarios.
@@ -87,13 +100,17 @@ export async function ingestInstagramWebhookPayload(
   body: unknown,
   requestId: string
 ): Promise<IngestedInbound[]> {
+  // Un solo resolver para las dos ramas: DMs y comentarios de un mismo payload
+  // son del mismo tenant, y desde el ADR 0010 los dos consumen su cuota.
+  const resolveEntitlement = createEntitlementResolver()
   const [messages, comments] = await Promise.all([
     ingestInboundEvents(
       extractInstagramDirectMessages(body),
       "instagram",
-      requestId
+      requestId,
+      resolveEntitlement
     ),
-    ingestInstagramComments(body, requestId),
+    ingestInstagramComments(body, requestId, resolveEntitlement),
   ])
 
   return [...messages, ...comments]
@@ -106,13 +123,10 @@ export async function ingestInstagramWebhookPayload(
 async function ingestInboundEvents(
   incoming: InboundEvent[],
   channel: PageChannel,
-  requestId: string
+  requestId: string,
+  resolveEntitlement: EntitlementResolver
 ) {
   const ingested: IngestedInboundMessage[] = []
-  // Un payload de Meta puede traer varios eventos del mismo tenant; el
-  // entitlement se resuelve una sola vez por tenant y por payload.
-  const entitlements = new Map<string, TenantEntitlement>()
-  const metered = CHANNEL_IS_METERED[channel]
 
   for (const event of incoming) {
     // El canal viene del webhook que recibió el evento, no del payload: sin él,
@@ -151,14 +165,7 @@ async function ingestInboundEvents(
       continue
     }
 
-    let entitlement: TenantEntitlement | null = null
-    if (metered) {
-      entitlement = entitlements.get(page.tenantId) ?? null
-      if (!entitlement) {
-        entitlement = await getTenantEntitlement(page.tenantId)
-        entitlements.set(page.tenantId, entitlement)
-      }
-    }
+    const entitlement = await resolveEntitlement(page.tenantId)
 
     const conversation = await upsertConversation({
       tenantId: page.tenantId,
@@ -214,8 +221,8 @@ async function ingestInboundEvents(
     // El entrante persistido consume cuota aunque la cuenta esté restringida o
     // la página no tenga `webhookUrl`: lo que se cobra es recibir y persistir,
     // no entregar. Best-effort — el contador nunca puede romper la ingesta.
-    // En un canal sin medir no hay entitlement resuelto y no se cuenta nada.
-    const periodStart = entitlement?.periodStart
+    // Los dos canales se miden igual (ADR 0010).
+    const periodStart = entitlement.periodStart
     if (
       periodStart &&
       countsTowardQuota({ kind: "inbound", persisted: true })
@@ -262,10 +269,7 @@ async function ingestInboundEvents(
     // la request ya terminó y no hay de dónde volver a sacarlo.
     const deliveryContext = { requestId, ...accountFields(page), ...logSubject }
     let pushJob: InboundPushJob
-    // `entitlement` es null en un canal sin medir, y ahí la restricción por
-    // consumo no aplica: el tenant que agotó su cuota de Messenger sigue
-    // recibiendo sus DMs de Instagram.
-    if (entitlement && !shouldPushInbound(entitlement)) {
+    if (!shouldPushInbound(entitlement)) {
       // Cuenta restringida (ADR 0003): el mensaje ya quedó persistido y
       // contabilizado, pero deja de reenviarse al webhook del cliente.
       pushJob = () =>
@@ -294,15 +298,16 @@ async function ingestInboundEvents(
 }
 
 // Ingesta de comentarios. Mismo esqueleto que la de mensajes —resolver la
-// cuenta, gate de suscripción, insertar con dedupe, reenviar— pero contra
+// cuenta, gate de suscripción, insertar con dedupe, medir, reenviar— pero contra
 // `instagram_comments`, que es otra tabla porque un comentario cuelga de una
 // publicación y se anida (migración 0013).
 //
-// No lleva medición por la misma razón que los DMs de Instagram: el canal está
-// fuera de cuota por ahora.
+// Un comentario entrante persistido suma 1 al contador, igual que un DM (ADR
+// 0010): la tabla es distinta, pero recibir y persistir cuesta lo mismo.
 async function ingestInstagramComments(
   body: unknown,
-  requestId: string
+  requestId: string,
+  resolveEntitlement: EntitlementResolver
 ): Promise<IngestedInbound[]> {
   const incoming = extractInstagramComments(body)
   const ingested: IngestedInbound[] = []
@@ -396,6 +401,8 @@ async function ingestInstagramComments(
       continue
     }
 
+    const entitlement = await resolveEntitlement(page.tenantId)
+
     const { comment, inserted } = await insertInboundComment({
       tenantId: page.tenantId,
       connectedPageId: page.id,
@@ -440,6 +447,29 @@ async function ingestInstagramComments(
       textLength: event.text.length,
     })
 
+    // Mismo trato que el DM entrante: se cobra recibir y persistir, no entregar,
+    // así que cuenta aunque la cuenta esté restringida o no haya `webhookUrl`.
+    // Best-effort — el contador nunca puede romper la ingesta.
+    const periodStart = entitlement.periodStart
+    if (
+      periodStart &&
+      countsTowardQuota({ kind: "inbound", persisted: true })
+    ) {
+      try {
+        await incrementUsage(page.tenantId, periodStart)
+      } catch (error) {
+        log({
+          entrypoint: "route",
+          action: "usage_increment",
+          outcome: "failed",
+          reason: "usage_counter_failed",
+          requestId,
+          ...accountFields(page),
+          errorMessage: describeError(error),
+        })
+      }
+    }
+
     if (posthog) {
       posthog.capture({
         distinctId: page.tenantId,
@@ -460,11 +490,25 @@ async function ingestInstagramComments(
     const webhookUrl = page.webhookUrl
     const context = { requestId, ...accountFields(page), ...logSubject }
 
-    ingested.push({
-      pushJob: webhookUrl
-        ? () => pushInboundEvent({ subject, webhookUrl, payload, context })
-        : () => recordSkippedDelivery(subject, { context }),
-    })
+    // La cuenta restringida deja de recibir sus comentarios reenviados, igual
+    // que sus DMs (ADR 0003 + 0010): ya quedaron persistidos y contabilizados.
+    // Hasta acá esta rama solo distinguía «hay webhookUrl» de «no hay».
+    let pushJob: InboundPushJob
+    if (!shouldPushInbound(entitlement)) {
+      pushJob = () =>
+        recordSkippedDelivery(subject, {
+          reason: RESTRICTED_SKIP_REASON,
+          logReason: "account_restricted",
+          context,
+        })
+    } else if (webhookUrl) {
+      pushJob = () =>
+        pushInboundEvent({ subject, webhookUrl, payload, context })
+    } else {
+      pushJob = () => recordSkippedDelivery(subject, { context })
+    }
+
+    ingested.push({ pushJob })
   }
 
   return ingested

@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server"
 
 import { authenticateApiKey } from "@/lib/api-keys/api-keys"
 import { isUserWaitlisted } from "@/lib/auth/waitlist"
+import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
 import {
   getInboundCommentByIgCommentId,
@@ -37,10 +38,13 @@ export type AuthResult =
 
 // Autenticación y gates, en el mismo orden que `/api/meta/instagram/send`.
 //
-// Acá tampoco va el gate de entitlement: Instagram está fuera de cuota y fuera
-// del cupo de páginas por ahora, así que no hay período que resolver ni
-// contador que consultar. El gate de suscripción activa, que sí aplica, está.
-// Cuando Instagram entre en la facturación, este es el punto donde vuelve.
+// El gate de entitlement **no va acá**, aunque sea lo compartido y este sea el
+// módulo de lo compartido: las dos rutas resuelven su replay idempotente
+// *después* de llamar a esta función, y el gate de cuota tiene que ir *después*
+// del replay (ver `assertCommentReplyEntitlement`). Metido acá quedaría antes, y
+// un 402 sobre un replay le diría al cliente que falló un mensaje que Meta ya
+// entregó, justo en la tormenta de reintentos que la Idempotency-Key existe
+// para hacer segura.
 export async function authenticateCommentReplyRequest(
   request: NextRequest
 ): Promise<AuthResult> {
@@ -96,6 +100,44 @@ export async function authenticateCommentReplyRequest(
   }
 
   return { ok: true, value: { tenantId: apiKey.tenantId, idempotencyKey } }
+}
+
+export type EntitlementResult =
+  | { ok: true; periodStart: Date }
+  | { ok: false; response: Response; reason: LogReason; errorCode: string }
+
+// Gate de cuota y cupo (ADR 0003 + 0010), separado de la autenticación por una
+// razón de **orden**, no de estilo: cada ruta lo llama después de resolver su
+// propio replay idempotente, en su propia tabla. Ver el comentario de
+// `authenticateCommentReplyRequest`.
+//
+// Una implementación, dos call sites: la lógica sigue sin duplicarse.
+export async function assertCommentReplyEntitlement(
+  tenantId: string
+): Promise<EntitlementResult> {
+  const { block, periodStart } = await getTenantEntitlement(tenantId)
+  // Un período sin resolver siempre viene acompañado de `block` (el módulo puro
+  // es fail-closed); comprobar ambos estrecha el tipo de `periodStart` hasta el
+  // incremento del contador, sin recurrir a `!`.
+  if (block || !periodStart) {
+    const errorCode = block?.code ?? "plan_unavailable"
+    return {
+      ok: false,
+      response: Response.json(
+        {
+          error: errorCode,
+          message:
+            block?.message ??
+            "We couldn't resolve your current billing period. Contact support at info@resender.dev.",
+        },
+        { status: block?.status ?? 403 }
+      ),
+      reason: "plan_restricted",
+      errorCode,
+    }
+  }
+
+  return { ok: true, periodStart }
 }
 
 export type CommentReplyTarget = {

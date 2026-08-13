@@ -1,11 +1,13 @@
 import { type NextRequest } from "next/server"
 
+import { incrementUsage } from "@/lib/billing/usage-counter"
 import {
   insertOutboundComment,
   getOutboundCommentByIdempotencyKey,
   type InstagramCommentRecord,
 } from "@/lib/comments/comment-log"
 import {
+  assertCommentReplyEntitlement,
   authenticateCommentReplyRequest,
   isUniqueViolation,
   resolveCommentReplyTarget,
@@ -58,8 +60,10 @@ export async function POST(request: NextRequest) {
   const { tenantId, idempotencyKey } = auth.value
   trace.setTenant(tenantId)
 
-  // El replay se resuelve antes que nada: no llama a Meta ni inserta, así que
-  // devolver el resultado ya almacenado es lo único correcto.
+  // El replay se resuelve ANTES del gate de cuota: no llama a Meta ni inserta,
+  // así que no consume cuota, y devolver el resultado ya almacenado es lo único
+  // correcto. Bloquearlo con 402 le diría al cliente que falló una respuesta que
+  // Meta ya publicó.
   if (idempotencyKey) {
     const replay = await getOutboundCommentByIdempotencyKey(
       tenantId,
@@ -70,6 +74,13 @@ export async function POST(request: NextRequest) {
         subjectId: replay.id,
       })
     }
+  }
+
+  const entitlement = await assertCommentReplyEntitlement(tenantId)
+  if (!entitlement.ok) {
+    return trace.drop(entitlement.reason, entitlement.response, {
+      errorCode: entitlement.errorCode,
+    })
   }
 
   let body: unknown
@@ -192,7 +203,28 @@ export async function POST(request: NextRequest) {
     throw error
   }
 
-  // Sin `incrementUsage`: Instagram no consume cuota.
+  // Una respuesta pública que Meta aceptó consume una unidad, igual que un DM
+  // (ADR 0010): es una operación de Graph y una fila persistida. Solo la
+  // aceptada — el cliente no paga por un rechazo nuestro— y los replays ya
+  // devolvieron arriba. Best-effort: el contador no puede hacer fallar una
+  // respuesta que Meta ya publicó.
+  if (metaResult.ok) {
+    try {
+      await incrementUsage(tenantId, entitlement.periodStart)
+    } catch (error) {
+      log({
+        entrypoint: "route",
+        action: "usage_increment",
+        outcome: "failed",
+        reason: "usage_counter_failed",
+        requestId,
+        tenantId,
+        channel: "instagram",
+        accountId: page.metaPageId,
+        errorMessage: describeError(error),
+      })
+    }
+  }
 
   if (posthog) {
     posthog.capture({

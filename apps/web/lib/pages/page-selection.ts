@@ -29,8 +29,8 @@ export type SelectablePage = {
 
 export type PageSelectionView = {
   pages: SelectablePage[]
-  maxPages: number
-  activePageCount: number
+  maxAccounts: number
+  activeAccountCount: number
   remainingSlots: number
 }
 
@@ -41,8 +41,8 @@ export function classifyPagesForSelection(input: {
   // Páginas `active` del tenant; puede incluir páginas que no están en
   // `metaPages` (el usuario dejó de administrarlas en Meta pero siguen
   // ocupando cupo hasta que las desconecte).
-  activePageCount: number
-  maxPages: number
+  activeAccountCount: number
+  maxAccounts: number
 }): PageSelectionView {
   const byPageId = new Map<string, PageOwnershipRow>()
   for (const row of input.ownership) {
@@ -57,9 +57,9 @@ export function classifyPagesForSelection(input: {
 
   return {
     pages,
-    maxPages: input.maxPages,
-    activePageCount: input.activePageCount,
-    remainingSlots: Math.max(0, input.maxPages - input.activePageCount),
+    maxAccounts: input.maxAccounts,
+    activeAccountCount: input.activeAccountCount,
+    remainingSlots: Math.max(0, input.maxAccounts - input.activeAccountCount),
   }
 }
 
@@ -75,18 +75,22 @@ function resolveState(
   return row.status === "active" ? "already_connected" : "selectable"
 }
 
-// Cuántas páginas puede añadir todavía, en una frase. Se usa en la cabecera de
+// Cuántas cuentas puede añadir todavía, en una frase. Se usa en la cabecera de
 // `/connections/select` y en el aviso del formulario, para que el mismo dato no
 // se redacte dos veces. Sin cupo nombra **la acción** (desconectar), no la
 // pantalla: quien llegó desde «Volver a conectar» ya viene de Conexiones
 // (ADR 0005).
-export function formatPageAllowance(view: PageSelectionView): string {
+//
+// Dice «cuentas» aunque esta pantalla solo muestre Páginas de Facebook: desde el
+// ADR 0010 el slot que hay que liberar lo puede estar ocupando una cuenta de
+// Instagram, y decir «desconecta una página» mandaría a buscar donde no está.
+export function formatAccountAllowance(view: PageSelectionView): string {
   if (view.remainingSlots === 0) {
-    return "No te queda cupo: desconecta una página para liberar cupo y conectar otra."
+    return "No te queda cupo: desconecta una cuenta para liberar cupo y conectar otra."
   }
 
   return `Puedes añadir ${view.remainingSlots} ${
-    view.remainingSlots === 1 ? "página" : "páginas"
+    view.remainingSlots === 1 ? "cuenta" : "cuentas"
   } más.`
 }
 
@@ -126,18 +130,20 @@ export function validatePageSelection(input: {
   }
 
   if (newPages.length > input.view.remainingSlots) {
-    const { maxPages, activePageCount, remainingSlots } = input.view
-    const plan = `Tu plan permite ${maxPages} páginas conectadas y ya tienes ${activePageCount} activas`
+    const { maxAccounts, activeAccountCount, remainingSlots } = input.view
+    const plan = `Tu plan permite ${maxAccounts} cuentas conectadas y ya tienes ${activeAccountCount} activas`
 
     return {
       ok: false,
+      // El código se queda con el nombre viejo: es contrato de cable público
+      // (ADR 0003) y renombrarlo rompería a cualquier cliente que lo parsee.
       code: "page_limit_exceeded",
       message:
         remainingSlots === 0
-          ? `${plan}: no te queda cupo. Desconecta una página para liberar cupo y conectar otra.`
+          ? `${plan}: no te queda cupo. Desconecta una cuenta para liberar cupo y conectar otra.`
           : `${plan}: puedes añadir ${remainingSlots} ${
-              remainingSlots === 1 ? "página" : "páginas"
-            } más. Desmarca las que sobren o desconecta una página para liberar cupo.`,
+              remainingSlots === 1 ? "cuenta" : "cuentas"
+            } más. Desmarca las que sobren o desconecta una cuenta para liberar cupo.`,
     }
   }
 

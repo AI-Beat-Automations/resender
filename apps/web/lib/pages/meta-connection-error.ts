@@ -61,6 +61,18 @@ export function formatMetaConnectionError(reason?: string | null): string {
     return `${PREFIX}: la cuenta de Instagram ${accountId} ya pertenece a otra cuenta de Resender.`
   }
 
+  // Cupo agotado (ADR 0010). Nombra **la acción** —desconectar— y no la
+  // pantalla, igual que `formatAccountAllowance`: quien llega acá ya está en
+  // Conexiones. No dice «páginas»: desde el cupo unificado, el slot lo puede
+  // liberar tanto una Página de Facebook como una cuenta de Instagram.
+  if (reason === "account_limit_reached") {
+    return `${PREFIX}: no te queda cupo en tu plan. Desconecta una cuenta para liberar cupo y conectar otra.`
+  }
+
+  if (reason === "plan_unavailable") {
+    return `${PREFIX}: no pudimos resolver los límites de tu plan. Escríbenos a info@resender.dev.`
+  }
+
   // Motivo desconocido: se muestra crudo antes que tragárselo, porque es lo
   // único que el usuario puede citarnos en un correo de soporte.
   return `${PREFIX}: ${reason}.`

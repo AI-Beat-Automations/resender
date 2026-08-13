@@ -154,6 +154,63 @@ Cada uno es una prueba **negativa**, que es el punto.
 
 ---
 
+## Verificación de cuota de Instagram (ADR 0010)
+
+Instagram entró a facturación con paridad total, y lo único que lo demuestra es
+el contador. Baseline y control después de cada paso, con la cuenta de IG
+conectada y el `.env` apuntando a la branch de Neon (**confirmar que no es
+producción antes de empezar**):
+
+```sql
+select tenant_id, period_start, message_count
+from usage_counters where tenant_id = '<tenant>';
+```
+
+| Paso | Esperado |
+|---|---|
+| 0. Baseline | anotar el valor |
+| 1. DM entrante a la cuenta de IG | **+1** |
+| 2. `POST /api/meta/instagram/send` aceptado | **+1** |
+| 2b. Un envío rechazado por la ventana de 24 h | **+0** |
+| 3. Comentario entrante | **+1** |
+| 4. `POST …/comments/reply` aceptado | **+1** |
+| 5. `POST …/comments/private-reply` aceptado | **+1** — *total +5* |
+| 6. Repetir 2, 4 y 5 con la **misma** `Idempotency-Key` | **+0** cada una, con `idempotentReplay: true` |
+| 7. `update usage_counters set message_count = 999999 …` | las tres rutas dan **402 `quota_exceeded`**; un DM y un comentario entrantes nuevos **se persisten y suman igual**, y su entrega queda `skipped` / `account_restricted` |
+| 8. `update subscriptions set price_lookup_key = 'starter_monthly'` con 3 cuentas activas | **403 `page_limit_exceeded`** en las rutas de Instagram **y** en `/api/meta/send` |
+| 9. Con 2/2 en Starter: re-autorizar una cuenta de IG ya activa | **conecta** (no consume lugar nuevo) |
+| 9b. Desconectarla y volver a autorizarla con las otras 2 activas | **bloqueada por cupo**, `reason=account_limit_reached` |
+
+El paso 6 es el que importa más y el más fácil de romper: verifica que el gate de
+cuota siga **después** del replay idempotente en las tres rutas. Invertido, un
+402 caería sobre un replay y le diría al cliente que falló un mensaje que Meta ya
+entregó.
+
+### Antes de desplegar el cupo unificado
+
+`countActiveAccounts` es una consulta, no un valor guardado: el significado del
+cupo cambia en el instante del deploy, sin migración. Contra **producción**:
+
+```sql
+select p.tenant_id,
+       count(*) filter (where p.channel = 'messenger') as fb,
+       count(*) filter (where p.channel = 'instagram') as ig,
+       count(*) as total, s.price_lookup_key
+from connected_pages p
+join subscriptions s on s.tenant_id = p.tenant_id
+where p.status = 'active' and s.status = 'active'
+group by p.tenant_id, s.price_lookup_key
+having count(*) > case s.price_lookup_key
+  when 'starter_monthly' then 2 when 'pro_monthly' then 5 else 0 end;
+```
+
+Cada fila es un tenant que quedaría en `page_limit_exceeded` **al instante**, lo
+que le corta el envío por los dos canales sin que haya hecho nada. Si vuelve
+vacía, no hay nada que hacer. Si no, moverlos de plan en Stripe **antes** del
+deploy.
+
+---
+
 ## Muestreo
 
 `head_sampling_rate` está en **1** en los dos workers y no hay que bajarlo. El

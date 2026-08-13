@@ -134,8 +134,8 @@ function toSubscriptionView(
     cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
     usage: entitlement?.usage ?? 0,
     messageLimit: entitlement?.limits?.messagesPerPeriod ?? null,
-    pagesInUse: entitlement?.activePageCount ?? 0,
-    pageLimit: entitlement?.limits?.maxPages ?? null,
+    accountsInUse: entitlement?.activeAccountCount ?? 0,
+    accountLimit: entitlement?.limits?.maxAccounts ?? null,
   }
 }
 

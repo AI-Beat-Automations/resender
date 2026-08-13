@@ -9,10 +9,10 @@ import { resolvePlanLimits } from "@/lib/billing/entitlements"
 import { getSubscriptionByTenantId } from "@/lib/billing/subscription"
 import { listAuthorizedPages, type ConnectedPage } from "@/lib/meta"
 import { getMetaUserAccessToken } from "@/lib/pages/meta-user-token"
-import { countActivePages, getPageOwnership } from "@/lib/pages/page-registry"
+import { countActiveAccounts, getPageOwnership } from "@/lib/pages/page-registry"
 import {
   classifyPagesForSelection,
-  formatPageAllowance,
+  formatAccountAllowance,
 } from "@/lib/pages/page-selection"
 
 // v2 no dibuja esta pantalla (ADR 0005): se resuelve con el mismo lenguaje
@@ -60,9 +60,9 @@ export default async function SelectPagesPage() {
     redirect("/connections?meta=error&reason=meta_session_expired")
   }
 
-  const [subscription, activePageCount, ownership] = await Promise.all([
+  const [subscription, activeAccountCount, ownership] = await Promise.all([
     getSubscriptionByTenantId(tenantId),
-    countActivePages(tenantId),
+    countActiveAccounts(tenantId),
     getPageOwnership(metaPages.map((page) => page.pageId)),
   ])
 
@@ -95,8 +95,8 @@ export default async function SelectPagesPage() {
     })),
     ownership,
     tenantId,
-    activePageCount,
-    maxPages: limits.maxPages,
+    activeAccountCount,
+    maxAccounts: limits.maxAccounts,
   })
 
   return (
@@ -106,8 +106,8 @@ export default async function SelectPagesPage() {
       <section className="rounded-2xl border border-border bg-card p-[22px] shadow-[var(--shadow-sm)]">
         <h2 className="font-heading text-base font-semibold">Tu plan</h2>
         <p className="mt-1 text-[13.5px] text-muted-foreground">
-          Tienes {view.activePageCount} de {view.maxPages} páginas conectadas.{" "}
-          {formatPageAllowance(view)}
+          Tienes {view.activeAccountCount} de {view.maxAccounts} cuentas conectadas.{" "}
+          {formatAccountAllowance(view)}
         </p>
       </section>
       <PageSelectionForm view={view} />

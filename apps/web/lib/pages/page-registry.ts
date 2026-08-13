@@ -150,25 +150,78 @@ export async function connectAuthorizedPages(
   )
 }
 
-// Cupo del plan: cuenta solo las páginas `active` (desconectar es un UPDATE,
-// no un DELETE, y las desconectadas no ocupan cupo).
+// Cupo del plan: cuenta las cuentas `active` (desconectar es un UPDATE, no un
+// DELETE, y las desconectadas no ocupan cupo).
 //
-// **Solo Messenger.** Instagram queda fuera del cupo de páginas por ahora, así
-// que conectar una cuenta de IG no puede consumir un slot del plan ni empujar a
-// un tenant a `page_limit_exceeded`. El filtro va acá y no en el llamador
-// porque este es el número que alimenta a la vez el entitlement (`ADR 0003`) y
+// **Sin filtro de canal, a propósito** (ADR 0010): el cupo se mide en cuentas
+// conectadas, y una cuenta de Instagram ocupa un slot igual que una Página de
+// Facebook. Este es el número que alimenta a la vez el entitlement (ADR 0003) y
 // la pantalla de selección.
-export async function countActivePages(tenantId: string): Promise<number> {
+//
+// No confundir con `getPageOwnership`, acá abajo, que **sí** filtra por
+// `channel = 'messenger'`. No es una inconsistencia: son dos preguntas
+// distintas. Esta cuenta slots del plan; aquella busca ids de Página de
+// Facebook, donde una cuenta de IG homónima no significa nada.
+export async function countActiveAccounts(tenantId: string): Promise<number> {
   const sql = getSql()
   const [row] = await sql<{ count: number }[]>`
     select count(*)::int as count
     from connected_pages
     where tenant_id = ${tenantId}
-      and channel = 'messenger'
       and status = 'active'
   `
 
   return row?.count ?? 0
+}
+
+// Estado de una cuenta concreta frente a este tenant, para el gate de cupo de
+// las conexiones de una cuenta por vez (Instagram). Distingue tres casos porque
+// el llamador les debe tres respuestas distintas: `other` no es un problema de
+// cupo sino de propiedad, y contestarle «no te queda cupo» a quien intenta
+// conectar la cuenta de otro sería mentirle sobre la causa.
+export type AccountOwnership =
+  | { owner: "none" }
+  | { owner: "self"; status: PageStatus }
+  | { owner: "other" }
+
+export async function getAccountOwnership(input: {
+  tenantId: string
+  channel: PageChannel
+  metaPageId: string
+}): Promise<AccountOwnership> {
+  const sql = getSql()
+  const [row] = await sql<Pick<ConnectedPageRow, "tenant_id" | "status">[]>`
+    select tenant_id, status
+    from connected_pages
+    where channel = ${input.channel}
+      and meta_page_id = ${input.metaPageId}
+    limit 1
+  `
+
+  if (!row) return { owner: "none" }
+  if (row.tenant_id !== input.tenantId) return { owner: "other" }
+  return { owner: "self", status: row.status }
+}
+
+// Si el tenant no tiene ninguna cuenta activa en el canal, un OAuth de ese canal
+// solo puede terminar en «cuenta nueva»: nunca en una re-autorización. Es lo que
+// deja bloquear en `/start`, antes de mandar al usuario a autorizar en Meta,
+// sin arriesgarse a rechazar una reconexión legítima.
+export async function hasActiveAccountOnChannel(
+  tenantId: string,
+  channel: PageChannel
+): Promise<boolean> {
+  const sql = getSql()
+  const [row] = await sql<{ exists: number }[]>`
+    select 1 as exists
+    from connected_pages
+    where tenant_id = ${tenantId}
+      and channel = ${channel}
+      and status = 'active'
+    limit 1
+  `
+
+  return row !== undefined
 }
 
 // Ownership de una lista de páginas de Meta, de cualquier tenant y en
@@ -177,7 +230,9 @@ export async function countActivePages(tenantId: string): Promise<number> {
 //
 // Acotado a Messenger: los ids que llegan son page ids de Facebook, y una
 // cuenta de Instagram que casualmente tenga el mismo id se mostraría como
-// «ya pertenece a otra cuenta» sin que tenga nada que ver.
+// «ya pertenece a otra cuenta» sin que tenga nada que ver. Este filtro se
+// conserva aunque `countActiveAccounts` haya perdido el suyo (ADR 0010): son
+// preguntas distintas, y el test de `page-registry.test.ts` fija las dos.
 export async function getPageOwnership(
   metaPageIds: string[]
 ): Promise<PageOwnershipRow[]> {

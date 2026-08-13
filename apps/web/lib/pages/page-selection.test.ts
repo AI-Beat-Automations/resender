@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   classifyPagesForSelection,
-  formatPageAllowance,
+  formatAccountAllowance,
   validatePageSelection,
   type PageOwnershipRow,
 } from "./page-selection"
@@ -21,8 +21,8 @@ describe("page selection classification", () => {
       metaPages: [metaPage("a"), metaPage("b"), metaPage("c"), metaPage("d")],
       ownership: [ownedBy("a", "arturo"), ownedBy("b", "arturo")],
       tenantId: "felipe",
-      activePageCount: 0,
-      maxPages: 2,
+      activeAccountCount: 0,
+      maxAccounts: 2,
     })
 
     expect(view.pages).toEqual([
@@ -48,13 +48,13 @@ describe("page selection classification", () => {
       metaPages: [metaPage("a"), metaPage("b")],
       ownership: [ownedBy("a", "felipe")],
       tenantId: "felipe",
-      activePageCount: 1,
-      maxPages: 2,
+      activeAccountCount: 1,
+      maxAccounts: 2,
     })
 
     expect(view.remainingSlots).toBe(1)
-    expect(view.activePageCount).toBe(1)
-    expect(view.maxPages).toBe(2)
+    expect(view.activeAccountCount).toBe(1)
+    expect(view.maxAccounts).toBe(2)
   })
 
   it("does not count disconnected pages against the cap but charges a slot to reconnect them", () => {
@@ -65,8 +65,8 @@ describe("page selection classification", () => {
         ownedBy("b", "felipe"),
       ],
       tenantId: "felipe",
-      activePageCount: 1,
-      maxPages: 2,
+      activeAccountCount: 1,
+      maxAccounts: 2,
     })
 
     expect(view.pages).toEqual([
@@ -97,8 +97,8 @@ describe("page selection classification", () => {
         ownedBy("b", "arturo", "disconnected"),
       ],
       tenantId: "felipe",
-      activePageCount: 0,
-      maxPages: 2,
+      activeAccountCount: 0,
+      maxAccounts: 2,
     })
 
     expect(view.pages.map((page) => page.state)).toEqual([
@@ -116,8 +116,8 @@ describe("page selection classification", () => {
       metaPages: [metaPage("a"), metaPage("b"), metaPage("c")],
       ownership: [],
       tenantId: "felipe",
-      activePageCount: 0,
-      maxPages: 2,
+      activeAccountCount: 0,
+      maxAccounts: 2,
     })
 
     const result = validatePageSelection({
@@ -129,7 +129,7 @@ describe("page selection classification", () => {
     expect(result).toMatchObject({ code: "page_limit_exceeded" })
     if (!result.ok) {
       expect(result.message).toBe(
-        "Tu plan permite 2 páginas conectadas y ya tienes 0 activas: puedes añadir 2 páginas más. Desmarca las que sobren o desconecta una página para liberar cupo."
+        "Tu plan permite 2 cuentas conectadas y ya tienes 0 activas: puedes añadir 2 cuentas más. Desmarca las que sobren o desconecta una cuenta para liberar cupo."
       )
     }
   })
@@ -139,8 +139,8 @@ describe("page selection classification", () => {
       metaPages: [metaPage("a"), metaPage("b")],
       ownership: [ownedBy("a", "felipe")],
       tenantId: "felipe",
-      activePageCount: 1,
-      maxPages: 2,
+      activeAccountCount: 1,
+      maxAccounts: 2,
     })
 
     expect(view.pages[0]).toEqual({
@@ -161,38 +161,38 @@ describe("page selection classification", () => {
 // Copy en español (ADR 0005). El caso sin cupo tiene que nombrar la acción
 // —desconectar una página— y no la pantalla de Conexiones.
 describe("page selection copy", () => {
-  const viewWith = (activePageCount: number, maxPages: number) =>
+  const viewWith = (activeAccountCount: number, maxAccounts: number) =>
     classifyPagesForSelection({
       metaPages: [metaPage("a"), metaPage("b"), metaPage("c")],
       ownership: [],
       tenantId: "felipe",
-      activePageCount,
-      maxPages,
+      activeAccountCount,
+      maxAccounts,
     })
 
   it("names the disconnect action instead of the Connections screen when there is no room left", () => {
     const view = viewWith(2, 2)
 
-    expect(formatPageAllowance(view)).toBe(
-      "No te queda cupo: desconecta una página para liberar cupo y conectar otra."
+    expect(formatAccountAllowance(view)).toBe(
+      "No te queda cupo: desconecta una cuenta para liberar cupo y conectar otra."
     )
 
     const result = validatePageSelection({ view, selectedPageIds: ["a"] })
     expect(result.ok).toBe(false)
     if (!result.ok) {
       expect(result.message).toBe(
-        "Tu plan permite 2 páginas conectadas y ya tienes 2 activas: no te queda cupo. Desconecta una página para liberar cupo y conectar otra."
+        "Tu plan permite 2 cuentas conectadas y ya tienes 2 activas: no te queda cupo. Desconecta una cuenta para liberar cupo y conectar otra."
       )
       expect(result.message).not.toMatch(/Conexiones/)
     }
   })
 
   it("says how many pages can still be added, in singular and plural", () => {
-    expect(formatPageAllowance(viewWith(1, 2))).toBe(
-      "Puedes añadir 1 página más."
+    expect(formatAccountAllowance(viewWith(1, 2))).toBe(
+      "Puedes añadir 1 cuenta más."
     )
-    expect(formatPageAllowance(viewWith(0, 3))).toBe(
-      "Puedes añadir 3 páginas más."
+    expect(formatAccountAllowance(viewWith(0, 3))).toBe(
+      "Puedes añadir 3 cuentas más."
     )
   })
 
@@ -201,8 +201,8 @@ describe("page selection copy", () => {
       metaPages: [metaPage("a")],
       ownership: [ownedBy("a", "arturo")],
       tenantId: "felipe",
-      activePageCount: 0,
-      maxPages: 2,
+      activeAccountCount: 0,
+      maxAccounts: 2,
     })
 
     const result = validatePageSelection({ view, selectedPageIds: ["a"] })

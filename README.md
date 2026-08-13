@@ -13,7 +13,7 @@ Two channels, discriminated by `connected_pages.channel`:
 | Surfaces | DMs | DMs **and** comments on posts |
 | Token | does not expire | ~60 days, needs refreshing |
 | Webhook signature | `META_APP_SECRET` | `INSTAGRAM_APP_SECRET` |
-| Counts against plan quota / page limit | yes | not for now |
+| Counts against plan quota / account limit | yes | yes (ADR 0010) |
 
 Instagram routes are the Facebook ones with `/instagram` inserted:
 `/api/meta/instagram/{start,callback,webhook,send}` plus

@@ -13,6 +13,14 @@ import type { InstagramClient } from "../infrastructure/meta/instagram-client"
 import { ApiService } from "./service"
 
 const CREATED_AT = new Date("2026-07-29T18:00:00.000Z")
+
+// El período de facturación va relativo al reloj real y no a `CREATED_AT`, igual
+// que en `service.test.ts`: `entitlement()` lo evalúa contra `new Date()`, así
+// que un período fijo caduca y deja todo Instagram en `plan_unavailable`. Desde
+// el ADR 0010 Instagram resuelve el entitlement, así que esto ya le importa.
+const DAY_MS = 24 * 60 * 60 * 1000
+const PERIOD_START = new Date(Date.now() - 15 * DAY_MS)
+const PERIOD_END = new Date(Date.now() + 15 * DAY_MS)
 const KEY = "0000000000000000000000000000000000000000000000000000000000000000"
 const IG_ACCOUNT = "17841400000000000"
 const PAGE_ID = "3b1f4e0a-8d61-4c92-9a77-1c53b0e2a740"
@@ -63,9 +71,10 @@ describe("Instagram inbound ingestion", () => {
     )
   })
 
-  // Instagram está fuera de cuota: sin período no hay contador que incrementar,
-  // y la restricción por consumo de Messenger tampoco lo frena.
-  it("ingests a DM without a billing period and without blocking delivery", async () => {
+  // ADR 0010: Instagram entró a facturación. Antes este test fijaba lo
+  // contrario —`periodStart: null` y entrega siempre habilitada—; ahora el DM
+  // viaja con el período real y con la entrega atada al bloqueo del tenant.
+  it("ingests a DM with the real billing period and delivery tied to the block", async () => {
     const ingestInbound = vi.fn(async () => inboundResult())
     const getUsage = vi.fn(async () => 0)
     const service = instagramService({ ingestInbound, getUsage })
@@ -75,13 +84,32 @@ describe("Instagram inbound ingestion", () => {
     })
     expect(ingestInbound).toHaveBeenCalledWith(
       expect.objectContaining({
-        periodStart: null,
+        periodStart: subscription().currentPeriodStart,
         deliveryEnabled: true,
         deliveryBlockedReason: null,
       })
     )
-    // Sin contador que incrementar, el entitlement ni se resuelve.
-    expect(getUsage).not.toHaveBeenCalled()
+    expect(getUsage).toHaveBeenCalled()
+  })
+
+  // La contracara de consumir cuota: el tenant restringido deja de recibir sus
+  // DMs de Instagram reenviados, igual que los de Messenger.
+  it("stops delivering the DM when the tenant is restricted, but still ingests it", async () => {
+    const ingestInbound = vi.fn(async () => inboundResult())
+    const service = instagramService({
+      ingestInbound,
+      getUsage: async () => 50_000,
+    })
+
+    await expect(ingest(service, directMessagePayload())).resolves.toEqual({
+      accepted: 1,
+    })
+    expect(ingestInbound).toHaveBeenCalledWith(
+      expect.objectContaining({
+        deliveryEnabled: false,
+        deliveryBlockedReason: "account is restricted: quota_exceeded",
+      })
+    )
   })
 
   it("discards events for a tenant without product access, before persisting", async () => {
@@ -312,8 +340,9 @@ describe("private replies to comments", () => {
         // El destinatario sale del comentario guardado, no del cuerpo.
         contactId: "9876543210",
         sourceCommentId: "ig-comment-1",
-        // Instagram no consume cuota.
-        periodStart: null,
+        // ADR 0010: la respuesta privada es un DM y consume una unidad. Este
+        // test fijaba `periodStart: null`, que era la decisión anterior.
+        periodStart: subscription().currentPeriodStart,
       })
     )
   })
@@ -410,6 +439,80 @@ describe("connecting an Instagram account", () => {
     expect(result).toMatchObject({ channel: "instagram", provider: "meta" })
   })
 
+  // ADR 0010: una cuenta de Instagram ocupa un slot del plan. Sin este gate,
+  // conectar una de más empujaría al tenant a `page_limit_exceeded`, que bloquea
+  // **los dos canales**: le mataría en silencio el tráfico de Messenger.
+  it("refuses a new account when the plan has no slots left", async () => {
+    const connectInstagramAccount = vi.fn(async () => page())
+    const subscribeAccount = vi.fn(async () => undefined)
+    const service = instagramService(
+      {
+        connectInstagramAccount,
+        // starter_monthly permite 2 y ya tiene 2 activas.
+        countActiveAccounts: async () => 2,
+        getAccountOwnership: async () => ({ owner: "none" as const }),
+      },
+      {
+        exchangeAuthorizationCode: async () => ({
+          accessToken: "ig-token",
+          expiresAt: null,
+        }),
+        getProfile: async () => ({
+          providerAccountId: IG_ACCOUNT,
+          username: "cuenta_resender",
+          name: "Cuenta",
+        }),
+        subscribeAccount,
+      }
+    )
+
+    await expect(
+      service.connectInstagramAccount(
+        { userId: TENANT },
+        { code: "AQB123", redirectUri: "https://app.example/callback" }
+      )
+    ).rejects.toMatchObject({ code: "page_limit_exceeded", status: 403 })
+
+    // Antes de suscribir: rechazar después dejaría a Meta con una suscripción
+    // colgando de una cuenta que no conectamos.
+    expect(subscribeAccount).not.toHaveBeenCalled()
+    expect(connectInstagramAccount).not.toHaveBeenCalled()
+  })
+
+  // Renovar el token de una cuenta que ya está activa no consume un slot nuevo:
+  // ya estaba contada. En Instagram el token vence a los ~60 días, así que
+  // cobrárselo dejaría sin salida a quien esté justo en el tope.
+  it("allows re-authorizing an account that is already active at the cap", async () => {
+    const service = instagramService(
+      {
+        countActiveAccounts: async () => 2,
+        getAccountOwnership: async () => ({
+          owner: "self" as const,
+          status: "active" as const,
+        }),
+      },
+      {
+        exchangeAuthorizationCode: async () => ({
+          accessToken: "ig-token",
+          expiresAt: null,
+        }),
+        getProfile: async () => ({
+          providerAccountId: IG_ACCOUNT,
+          username: "cuenta_resender",
+          name: "Cuenta",
+        }),
+        subscribeAccount: async () => undefined,
+      }
+    )
+
+    await expect(
+      service.connectInstagramAccount(
+        { userId: TENANT },
+        { code: "AQB123", redirectUri: "https://app.example/callback" }
+      )
+    ).resolves.toMatchObject({ channel: "instagram" })
+  })
+
   // El upsert no devuelve fila cuando el `where` del `do update` no aplica, y
   // eso solo pasa si la cuenta ya es de otro tenant.
   it("reports an account already owned by another tenant", async () => {
@@ -464,6 +567,11 @@ function instagramService(
         getActivePageByProviderId: async () => page(),
         getUserById: async () => user(),
         getSubscription: async () => subscription(),
+        // Desde el ADR 0010 Instagram resuelve el entitlement como Messenger, y
+        // eso son dos lecturas más: el consumo del período y las cuentas activas.
+        getUsage: async () => 0,
+        countActiveAccounts: async () => 1,
+        getAccountOwnership: async () => ({ owner: "none" as const }),
         getPage: async () => page(),
         getComment: async () => sourceComment(),
         isOwnPublishedComment: async () => false,
@@ -652,8 +760,8 @@ function subscription(): SubscriptionRecord {
     stripeSubscriptionId: "sub_1",
     status: "active",
     priceLookupKey: "starter_monthly",
-    currentPeriodStart: new Date("2026-07-01T00:00:00.000Z"),
-    currentPeriodEnd: new Date("2026-08-01T00:00:00.000Z"),
+    currentPeriodStart: PERIOD_START,
+    currentPeriodEnd: PERIOD_END,
     cancelAtPeriodEnd: false,
     lastStripeEventAt: CREATED_AT,
   }

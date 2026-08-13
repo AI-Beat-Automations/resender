@@ -23,7 +23,7 @@ function input(overrides: Partial<EntitlementInput> = {}): EntitlementInput {
     currentPeriodEnd: PERIOD_END,
     now: NOW,
     usage: 0,
-    activePageCount: 1,
+    activeAccountCount: 1,
     ...overrides,
   }
 }
@@ -32,11 +32,11 @@ describe("plan limits resolution", () => {
   it("resolves the limits of each plan by lookup key", () => {
     expect(resolvePlanLimits("starter_monthly")).toEqual({
       messagesPerPeriod: 50_000,
-      maxPages: 2,
+      maxAccounts: 2,
     })
     expect(resolvePlanLimits("pro_monthly")).toEqual({
       messagesPerPeriod: 100_000,
-      maxPages: 5,
+      maxAccounts: 5,
     })
   })
 
@@ -114,7 +114,7 @@ describe("quota period resolution", () => {
 describe("send decision", () => {
   it("allows sending within the quota and the page limit", () => {
     const result = evaluateEntitlement(
-      input({ usage: 49_999, activePageCount: 2 })
+      input({ usage: 49_999, activeAccountCount: 2 })
     )
     expect(result.block).toBe(null)
   })
@@ -131,8 +131,8 @@ describe("send decision", () => {
     expect(result.block?.status).toBe(402)
   })
 
-  it("blocks with 403 page_limit_exceeded above maxPages", () => {
-    const result = evaluateEntitlement(input({ activePageCount: 3 }))
+  it("blocks with 403 page_limit_exceeded above maxAccounts", () => {
+    const result = evaluateEntitlement(input({ activeAccountCount: 3 }))
     expect(result.block?.code).toBe("page_limit_exceeded")
     expect(result.block?.status).toBe(403)
   })
@@ -141,7 +141,7 @@ describe("send decision", () => {
     // Desconectar una página es gratis; subir de plan no. Mandar al usuario a
     // pagar cuando le basta con desconectar lo haría pagar de más.
     const result = evaluateEntitlement(
-      input({ usage: 80_000, activePageCount: 4 })
+      input({ usage: 80_000, activeAccountCount: 4 })
     )
     expect(result.block?.code).toBe("page_limit_exceeded")
     expect(result.block?.status).toBe(403)
@@ -202,7 +202,7 @@ describe("inbound push decision", () => {
   })
 
   it("stops pushing with too many pages, but still counts the inbound", () => {
-    const entitlement = evaluateEntitlement(input({ activePageCount: 3 }))
+    const entitlement = evaluateEntitlement(input({ activeAccountCount: 3 }))
     expect(shouldPushInbound(entitlement)).toBe(false)
     expect(countsTowardQuota({ kind: "inbound", persisted: true })).toBe(true)
   })

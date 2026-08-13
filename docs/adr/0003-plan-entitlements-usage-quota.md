@@ -48,6 +48,10 @@ ninguna suscripción en ese plan, así que la baja es limpia: se quita la entrad
   de ida y vuelta consume 2 unidades, y los 50.000 del Starter son ~25.000 intercambios. Los
   números publicados **se mantienen** aun sabiendo esto; es una decisión consciente, no un
   descuido de conversión.
+  **Ampliado por la ADR 0010**: «mensaje entrante» incluye el comentario de Instagram, y
+  «respuesta» incluye la respuesta pública a un comentario y la respuesta privada. Las cinco
+  superficies —DM de Messenger, DM de Instagram, comentario entrante, respuesta pública,
+  respuesta privada— se miden con la misma regla.
 - **Qué NO cuenta**: un envío que Meta rechaza (`status: 'failed'`) no consume cuota — el
   cliente no debe pagar por un page token vencido nuestro ni por la ventana de 24h de Messenger.
   Un replay idempotente tampoco: no llama a Meta ni inserta mensaje nuevo.

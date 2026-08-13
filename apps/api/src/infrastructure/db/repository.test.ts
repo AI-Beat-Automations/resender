@@ -167,6 +167,94 @@ describe("inbound atomicity and recovery", () => {
     expect(sql.taggedStatements[0]).toContain("usage_increment as")
   })
 
+  // ADR 0010: los comentarios entran a cuota. Las dos rutas nuevas son las que
+  // el fake DB de `runtime-database.test-helper` emula por índice posicional, y
+  // esta aserción es lo que impide que el SQL y esa emulación deriven en
+  // silencio: si el CTE desapareciera, el helper seguiría sumando y el test de
+  // runtime pasaría mintiendo.
+  it("persists an inbound comment, its job, and usage in one statement", async () => {
+    const sql = capturingSql([
+      [
+        {
+          comment_id: "b1f0f2c0-0000-4000-8000-000000000001",
+          job_id: "b1f0f2c0-0000-4000-8000-000000000002",
+          job_status: "pending",
+          job_attempt_count: 0,
+        },
+      ],
+    ])
+    const repository = new SqlRepository(sql.client)
+    await expect(
+      repository.ingestInboundComment({
+        page: pageRecord(),
+        providerCommentId: "ig_comment_1",
+        parentCommentId: null,
+        mediaId: "media_1",
+        mediaProductType: "FEED",
+        fromProviderUserId: "9876543210",
+        fromUsername: "un_seguidor",
+        text: "hello",
+        eventId: "evt_c1",
+        createdAt: new Date("2026-07-29T18:00:00.000Z"),
+        payloadVersion: 1,
+        periodStart: new Date("2026-07-01T00:00:00.000Z"),
+        deliveryEnabled: true,
+        deliveryBlockedReason: null,
+        recoverAfter: new Date("2026-07-29T18:02:00.000Z"),
+      })
+    ).resolves.toMatchObject({ inserted: true })
+    expect(sql.taggedStatements).toHaveLength(1)
+    expect(sql.taggedStatements[0]).toContain("inserted_comment as")
+    expect(sql.taggedStatements[0]).toContain("inserted_job as")
+    expect(sql.taggedStatements[0]).toContain("usage_increment as")
+  })
+
+  // Era un `insert` pelado hasta el ADR 0010: una respuesta pública aceptada
+  // consume una unidad, así que pasó al patrón CTE de `completeOutbound`.
+  it("persists a public comment reply and its usage in one statement", async () => {
+    const sql = capturingSql([
+      [
+        {
+          id: "b1f0f2c0-0000-4000-8000-000000000003",
+          tenant_id: "6b402566-9e1d-4739-bb61-81ac615a5469",
+          connected_page_id: "3b1f4e0a-8d61-4c92-9a77-1c53b0e2a740",
+          ig_comment_id: "ig_reply_1",
+          parent_ig_comment_id: "ig_comment_1",
+          media_id: "media_1",
+          media_product_type: "FEED",
+          from_ig_id: "17841400000000000",
+          from_username: "cuenta",
+          direction: "outbound",
+          status: "sent",
+          text: "gracias",
+          error: null,
+          idempotency_key: "idem-1",
+          created_at: "2026-07-29T18:00:00.000Z",
+        },
+      ],
+    ])
+    const repository = new SqlRepository(sql.client)
+    await repository.insertOutboundComment({
+      tenantId: "6b402566-9e1d-4739-bb61-81ac615a5469",
+      pageId: "3b1f4e0a-8d61-4c92-9a77-1c53b0e2a740",
+      providerCommentId: "ig_reply_1",
+      parentCommentId: "ig_comment_1",
+      mediaId: "media_1",
+      mediaProductType: "FEED",
+      fromProviderUserId: "17841400000000000",
+      fromUsername: "cuenta",
+      status: "sent",
+      text: "gracias",
+      idempotencyKey: "idem-1",
+      error: null,
+      providerResponse: null,
+      periodStart: new Date("2026-07-01T00:00:00.000Z"),
+      createdAt: new Date("2026-07-29T18:00:00.000Z"),
+    })
+    expect(sql.taggedStatements).toHaveLength(1)
+    expect(sql.taggedStatements[0]).toContain("usage_increment as")
+  })
+
   it("fails closed when a DLQ job has no durable terminal row", async () => {
     const repository = new SqlRepository(capturingSql([[], []]).client)
     await expect(

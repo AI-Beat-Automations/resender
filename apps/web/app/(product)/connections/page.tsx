@@ -16,7 +16,7 @@ type ConnectedPage = { id: string; name: string }
 
 // Cupo de páginas del plan. `null` = no se pudo resolver: fail-closed, se
 // muestra el bloqueo y no un «N de ?» inventado (ADR 0005).
-type PageQuotaView = { activePageCount: number; maxPages: number } | null
+type PageQuotaView = { activeAccountCount: number; maxAccounts: number } | null
 
 const dateTimeFormat = new Intl.DateTimeFormat("es-ES", {
   day: "numeric",
@@ -212,9 +212,10 @@ function EmptyState() {
   )
 }
 
-// El cupo del plan cuenta solo páginas de Facebook: Instagram queda fuera del
-// límite por ahora, así que el contador lo dice en vez de llamarlas «páginas» a
-// secas y dejar al usuario buscando por qué su cuenta de IG no suma.
+// El cupo del plan cuenta **cuentas conectadas**, de cualquier canal (ADR
+// 0010): una cuenta de Instagram ocupa un slot igual que una Página de Facebook.
+// Por eso el contador dice «cuentas» y no «páginas de Facebook», que es lo que
+// decía cuando Instagram estaba fuera del límite.
 function PageQuota({ quota }: { quota: PageQuotaView }) {
   if (!quota) {
     return (
@@ -226,7 +227,7 @@ function PageQuota({ quota }: { quota: PageQuotaView }) {
 
   return (
     <p className="font-mono text-[11px] text-muted-foreground">
-      {quota.activePageCount} de {quota.maxPages} páginas de Facebook
+      {quota.activeAccountCount} de {quota.maxAccounts} cuentas conectadas
     </p>
   )
 }
@@ -245,8 +246,8 @@ async function resolvePageQuota(tenantId: string): Promise<PageQuotaView> {
     const entitlement = await getTenantEntitlement(tenantId)
     if (!entitlement.limits) return null
     return {
-      activePageCount: entitlement.activePageCount,
-      maxPages: entitlement.limits.maxPages,
+      activeAccountCount: entitlement.activeAccountCount,
+      maxAccounts: entitlement.limits.maxAccounts,
     }
   } catch (error) {
     console.error("page quota unavailable", error)

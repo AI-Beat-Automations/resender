@@ -37,7 +37,7 @@ export type EntitlementInput = {
   // Consumo ya contabilizado del período vigente.
   usage: number
   // Páginas del tenant en estado `active`.
-  activePageCount: number
+  activeAccountCount: number
 }
 
 export type TenantEntitlement = {
@@ -46,7 +46,7 @@ export type TenantEntitlement = {
   // conocido (fail-closed).
   periodStart: Date | null
   usage: number
-  activePageCount: number
+  activeAccountCount: number
   // null = cuenta operativa. Cualquier otro valor = cuenta restringida.
   block: EntitlementBlock | null
   notice: QuotaNotice
@@ -93,9 +93,9 @@ export function evaluateEntitlement(
   const limits = resolvePlanLimits(input.priceLookupKey)
   const periodStart = resolveQuotaPeriodStart(input)
   const usage = input.usage
-  const activePageCount = input.activePageCount
+  const activeAccountCount = input.activeAccountCount
 
-  const base = { limits, periodStart, usage, activePageCount }
+  const base = { limits, periodStart, usage, activeAccountCount }
 
   if (!limits) {
     return {
@@ -125,13 +125,13 @@ export function evaluateEntitlement(
     }
   }
 
-  if (activePageCount > limits.maxPages) {
+  if (activeAccountCount > limits.maxAccounts) {
     return {
       ...base,
       block: {
         code: "page_limit_exceeded",
         status: 403,
-        message: `Your plan allows ${limits.maxPages} connected Pages and you have ${activePageCount}. Disconnect Pages in Connections to resume sending.`,
+        message: `Your plan allows ${limits.maxAccounts} connected accounts and you have ${activeAccountCount}. Disconnect accounts in Connections to resume sending.`,
       },
       notice: { ...notice, level: "restricted" },
     }

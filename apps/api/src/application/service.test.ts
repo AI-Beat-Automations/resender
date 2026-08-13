@@ -177,7 +177,7 @@ describe("inbound Meta ingestion", () => {
     ["page_limit_exceeded", 0, 3],
   ])(
     "persists and counts an inbound blocked by %s without enqueueing delivery",
-    async (blockCode, usage, activePageCount) => {
+    async (blockCode, usage, activeAccountCount) => {
       const ingestInbound = vi.fn(async () => ({
         inserted: true,
         messageId: MESSAGE_ID,
@@ -190,7 +190,7 @@ describe("inbound Meta ingestion", () => {
       const service = inboundService(
         {
           getUsage: async () => usage,
-          countActivePages: async () => activePageCount,
+          countActiveAccounts: async () => activeAccountCount,
           ingestInbound,
         },
         queueSend
@@ -657,7 +657,7 @@ function inboundService(
     getUserById: async () => user(),
     getSubscription: async () => subscription(),
     getUsage: async () => 0,
-    countActivePages: async () => 1,
+    countActiveAccounts: async () => 1,
     ...overrides,
   })
   Object.defineProperty(service.env, "WEBHOOK_DELIVERIES", {

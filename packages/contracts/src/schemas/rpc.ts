@@ -31,8 +31,8 @@ export const ProductShellSchema = z.object({
     priceLookupKey: PlanLookupKeySchema.nullable(),
     usage: z.number().int().nonnegative(),
     messageLimit: z.number().int().positive().nullable(),
-    activePageCount: z.number().int().nonnegative(),
-    pageLimit: z.number().int().positive().nullable(),
+    activeAccountCount: z.number().int().nonnegative(),
+    accountLimit: z.number().int().positive().nullable(),
     blockCode: z
       .enum(["quota_exceeded", "page_limit_exceeded", "plan_unavailable"])
       .nullable(),
@@ -47,8 +47,8 @@ export const AuthorizedMetaPageSchema = z.object({
 
 export const MetaPageSelectionSchema = z.object({
   pages: z.array(AuthorizedMetaPageSchema),
-  maxPages: z.number().int().nonnegative(),
-  activePageCount: z.number().int().nonnegative(),
+  maxAccounts: z.number().int().nonnegative(),
+  activeAccountCount: z.number().int().nonnegative(),
   remainingSlots: z.number().int().nonnegative(),
 })
 

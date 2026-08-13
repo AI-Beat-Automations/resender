@@ -22,8 +22,8 @@ export type SubscriptionView = {
   // cuando el plan no se pudo resolver.
   usage: number
   messageLimit: number | null
-  pagesInUse: number
-  pageLimit: number | null
+  accountsInUse: number
+  accountLimit: number | null
 }
 
 // B8. Server component: `openPortal` es una server action que se invoca desde
@@ -89,12 +89,12 @@ export function SubscriptionPanel({
             </span>
           </SettingsDataRow>
         ) : null}
-        <SettingsDataRow label="páginas" labelWidth={92}>
+        <SettingsDataRow label="cuentas" labelWidth={92}>
           {/* Contador, no barra: una barra para «2 de 5» es ruido
               (ADR 0005). */}
           <span className="font-mono text-[12.5px]">
-            {formatCount(subscription.pagesInUse)} /{" "}
-            {formatCount(subscription.pageLimit)}
+            {formatCount(subscription.accountsInUse)} /{" "}
+            {formatCount(subscription.accountLimit)}
           </span>
         </SettingsDataRow>
       </div>

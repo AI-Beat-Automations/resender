@@ -161,7 +161,9 @@ Los tres motivos que no dependen de qué se estaba enviando —token vencido, ra
 
 ### Facturación
 
-Instagram queda **fuera de cuota y fuera del cupo de páginas**. El gate de suscripción activa sí aplica. En `web` es una constante explícita (`CHANNEL_IS_METERED`); en `api` sale de pasar `periodStart: null`, porque el CTE de ingesta ya traía `where periodStart is not null`. Consecuencia en los dos: en Instagram **ni siquiera se resuelve el entitlement**, porque no hay contador que incrementar ni restricción que consultar.
+Instagram se factura **igual que Messenger**, sin excepciones (ADR 0010). Sus cuentas ocupan cupo —el límite del plan pasó a contar cuentas conectadas de cualquier canal— y sus tres superficies consumen cuota: DM entrante y saliente, comentario entrante, respuesta pública y respuesta privada. Con la cuota agotada o el cupo excedido, las rutas de Instagram devuelven 402/403 y sus entrantes dejan de reenviarse.
+
+La entrega anterior lo había dejado fuera de las dos cosas: en `web` con una constante `CHANNEL_IS_METERED` y en `api` con un `periodStart: null` forzado. Las dos desaparecieron — la paridad se implementó borrando la excepción, no agregando una segunda.
 
 ### Payload al sistema externo
 
@@ -192,7 +194,6 @@ Verificación adicional hecha a mano contra la base y contra la API real de Meta
 - **Cron de refresh de tokens.** `refreshInstagramToken` y `token_expires_at` existen; no hay job que los use. A los ~60 días de la primera cuenta conectada deja de ser teórico.
 - **`Messages` no muestra badge de canal ni comentarios.** Los DMs de Instagram entran a la bitácora existente; los comentarios solo se leen por API.
 - **App Review de Instagram** (Advanced Access + verificación de negocio) antes de servir cuentas de terceros.
-- **Facturación de Instagram**: entra a cuota y a cupo cuando se decida; el punto exacto está marcado con un comentario en cada ruta de envío.
 
 ## Out of Scope
 

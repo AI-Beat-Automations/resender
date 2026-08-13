@@ -2,7 +2,9 @@ import { type NextRequest } from "next/server"
 
 import { authenticateApiKey } from "@/lib/api-keys/api-keys"
 import { isUserWaitlisted } from "@/lib/auth/waitlist"
+import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
+import { incrementUsage } from "@/lib/billing/usage-counter"
 import {
   getConversationById,
   getOutboundMessageByIdempotencyKey,
@@ -100,8 +102,11 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  // El replay idempotente se resuelve antes que nada: no llama a Meta ni
-  // inserta, así que devolver el resultado ya almacenado es lo único correcto.
+  // El replay idempotente se resuelve ANTES del gate de cuota: no llama a Meta
+  // ni inserta nada, así que no consume cuota, y devolver el resultado ya
+  // almacenado es lo único correcto. Bloquearlo con 402 le diría al cliente que
+  // falló un mensaje que Meta ya entregó, justo en el reintento agresivo que la
+  // Idempotency-Key existe para hacer seguro.
   if (idempotencyKey) {
     const replay = await getOutboundMessageByIdempotencyKey(
       apiKey.tenantId,
@@ -114,11 +119,28 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Acá NO va el gate de entitlement. Instagram está fuera de cuota y fuera del
-  // cupo de páginas por ahora, así que no hay período que resolver ni contador
-  // que consultar; el gate de suscripción activa, que sí aplica, ya pasó arriba.
-  // Cuando Instagram entre en la facturación, este es el punto donde vuelve el
-  // bloque `getTenantEntitlement` de `/api/meta/send`.
+  // Tercer gate en serie (ADR 0003 + 0010): con la cuota del período agotada o
+  // con más cuentas conectadas de las que permite el plan, la cuenta queda
+  // restringida y no envía por ninguno de sus canales.
+  const { block, periodStart } = await getTenantEntitlement(apiKey.tenantId)
+  // Un período sin resolver siempre viene acompañado de `block` (el módulo puro
+  // es fail-closed); comprobar ambos es lo que estrecha el tipo de `periodStart`
+  // hasta el incremento del contador, sin recurrir a `!`.
+  if (block || !periodStart) {
+    return trace.drop(
+      "plan_restricted",
+      Response.json(
+        {
+          error: block?.code ?? "plan_unavailable",
+          message:
+            block?.message ??
+            "We couldn't resolve your current billing period. Contact support at info@resender.dev.",
+        },
+        { status: block?.status ?? 403 }
+      ),
+      { errorCode: block?.code ?? "plan_unavailable" }
+    )
+  }
 
   let body: unknown
   try {
@@ -311,8 +333,27 @@ export async function POST(request: NextRequest) {
     })
   }
 
-  // Sin `incrementUsage`: Instagram no consume cuota. Es la contracara de que
-  // tampoco lo frene el bloqueo por cuota agotada.
+  // Solo consume cuota la respuesta que Meta aceptó: el cliente no paga por un
+  // token vencido nuestro ni por la ventana de 24 h. Los replays idempotentes ya
+  // devolvieron antes de llegar acá, así que tampoco suman. Best-effort: un
+  // fallo del contador no puede hacer fallar un mensaje que Meta ya entregó.
+  if (metaResult.ok) {
+    try {
+      await incrementUsage(apiKey.tenantId, periodStart)
+    } catch (error) {
+      log({
+        entrypoint: "route",
+        action: "usage_increment",
+        outcome: "failed",
+        reason: "usage_counter_failed",
+        requestId,
+        tenantId: apiKey.tenantId,
+        channel: "instagram",
+        accountId: input.value.pageId,
+        errorMessage: describeError(error),
+      })
+    }
+  }
 
   if (posthog) {
     posthog.capture({

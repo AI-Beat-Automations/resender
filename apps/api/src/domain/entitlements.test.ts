@@ -19,7 +19,7 @@ describe("evaluateEntitlement", () => {
         ...period,
         priceLookupKey: "starter_monthly",
         usage: 49_999,
-        activePageCount: 2,
+        activeAccountCount: 2,
       })
     ).toMatchObject({
       priceLookupKey: "starter_monthly",
@@ -33,21 +33,21 @@ describe("evaluateEntitlement", () => {
       name: "unknown plan",
       priceLookupKey: "legacy",
       usage: 0,
-      activePageCount: 0,
+      activeAccountCount: 0,
       blockCode: "plan_unavailable",
     },
     {
       name: "message quota",
       priceLookupKey: "starter_monthly",
       usage: 50_000,
-      activePageCount: 1,
+      activeAccountCount: 1,
       blockCode: "quota_exceeded",
     },
     {
       name: "page limit",
       priceLookupKey: "starter_monthly",
       usage: 0,
-      activePageCount: 3,
+      activeAccountCount: 3,
       blockCode: "page_limit_exceeded",
     },
   ])("fails closed for $name", (input) => {
@@ -63,7 +63,7 @@ describe("evaluateEntitlement", () => {
         currentPeriodEnd: new Date("2026-07-28T00:00:00.000Z"),
         priceLookupKey: "pro_monthly",
         usage: 0,
-        activePageCount: 0,
+        activeAccountCount: 0,
       }).blockCode
     ).toBe("plan_unavailable")
   })

@@ -73,7 +73,7 @@ export default async function ProductLayout({
 function toQuotaNoticeView(
   entitlement: TenantEntitlement
 ): QuotaNoticeView | null {
-  const { notice, block, limits, activePageCount } = entitlement
+  const { notice, block, limits, activeAccountCount } = entitlement
   if (notice.level === "none") return null
 
   return {
@@ -81,7 +81,7 @@ function toQuotaNoticeView(
     usage: notice.usage,
     limit: notice.limit,
     blockCode: block?.code ?? null,
-    activePageCount,
-    maxPages: limits?.maxPages ?? null,
+    activeAccountCount,
+    maxAccounts: limits?.maxAccounts ?? null,
   }
 }

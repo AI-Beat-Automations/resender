@@ -1,4 +1,4 @@
-import { countActivePages } from "@/lib/pages/page-registry"
+import { countActiveAccounts } from "@/lib/pages/page-registry"
 
 import {
   evaluateEntitlement,
@@ -18,9 +18,9 @@ export async function getTenantEntitlement(
   tenantId: string,
   now = new Date()
 ): Promise<TenantEntitlement> {
-  const [subscription, activePageCount] = await Promise.all([
+  const [subscription, activeAccountCount] = await Promise.all([
     getSubscriptionByTenantId(tenantId),
-    countActivePages(tenantId),
+    countActiveAccounts(tenantId),
   ])
 
   const priceLookupKey = subscription?.priceLookupKey ?? null
@@ -44,6 +44,6 @@ export async function getTenantEntitlement(
     currentPeriodEnd,
     now,
     usage,
-    activePageCount,
+    activeAccountCount,
   })
 }

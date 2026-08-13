@@ -94,8 +94,8 @@ export default async function BillingPage() {
                       superficie donde se pagaba sin ver qué se compra. */}
                   <p className="mt-2 text-[13.5px] text-muted-foreground">
                     {numberFormat.format(plan.limits.messagesPerPeriod)}{" "}
-                    mensajes · {plan.limits.maxPages}{" "}
-                    {plan.limits.maxPages === 1 ? "página" : "páginas"}
+                    mensajes · {plan.limits.maxAccounts}{" "}
+                    {plan.limits.maxAccounts === 1 ? "cuenta" : "cuentas"}
                   </p>
                 </div>
                 <form

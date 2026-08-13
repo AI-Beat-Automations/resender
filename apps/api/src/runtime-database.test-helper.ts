@@ -318,7 +318,11 @@ export class RuntimeDatabase {
       recoverAfter: dateValue(values[34]),
       signingSecretEncrypted: this.page.webhookSigningSecretEncrypted,
     })
-    // Sin `usage`: Instagram está fuera de cuota.
+    // Misma emulación que el CTE de mensajes: el `where periodStart is not
+    // null` del SQL real. Desde el ADR 0010 un comentario entrante sí mide, así
+    // que acá llega un período de verdad. El índice sale de contar los bindings
+    // del template, no de estimarlos: `periodStart` es el 36.
+    if (values[36] !== null && values[36] !== undefined) this.usage += 1
     return [
       {
         comment_id: commentId,

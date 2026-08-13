@@ -1,5 +1,6 @@
 import { type NextRequest } from "next/server"
 
+import { incrementUsage } from "@/lib/billing/usage-counter"
 import {
   getOutboundMessageByIdempotencyKey,
   getPrivateReplyForComment,
@@ -8,6 +9,7 @@ import {
   type MessageRecord,
 } from "@/lib/messages/message-log"
 import {
+  assertCommentReplyEntitlement,
   authenticateCommentReplyRequest,
   isUniqueViolation,
   resolveCommentReplyTarget,
@@ -61,6 +63,9 @@ export async function POST(request: NextRequest) {
   const { tenantId, idempotencyKey } = auth.value
   trace.setTenant(tenantId)
 
+  // Antes del gate de cuota, a propósito: un replay no llama a Meta ni inserta,
+  // así que no consume cuota, y un 402 encima le diría al cliente que falló un
+  // DM que Meta ya entregó.
   if (idempotencyKey) {
     const replay = await getOutboundMessageByIdempotencyKey(
       tenantId,
@@ -71,6 +76,13 @@ export async function POST(request: NextRequest) {
         subjectId: replay.id,
       })
     }
+  }
+
+  const entitlement = await assertCommentReplyEntitlement(tenantId)
+  if (!entitlement.ok) {
+    return trace.drop(entitlement.reason, entitlement.response, {
+      errorCode: entitlement.errorCode,
+    })
   }
 
   let body: unknown
@@ -234,7 +246,27 @@ export async function POST(request: NextRequest) {
     throw error
   }
 
-  // Sin `incrementUsage`: Instagram no consume cuota.
+  // La respuesta privada es un DM y consume una unidad como cualquier otro (ADR
+  // 0010). Contestar un comentario en público y en privado suma 2 —más 1 del
+  // comentario entrante— porque son tres operaciones de Graph y tres filas.
+  // Solo la aceptada por Meta; los replays ya devolvieron arriba. Best-effort.
+  if (metaResult.ok) {
+    try {
+      await incrementUsage(tenantId, entitlement.periodStart)
+    } catch (error) {
+      log({
+        entrypoint: "route",
+        action: "usage_increment",
+        outcome: "failed",
+        reason: "usage_counter_failed",
+        requestId,
+        tenantId,
+        channel: "instagram",
+        accountId: page.metaPageId,
+        errorMessage: describeError(error),
+      })
+    }
+  }
 
   // Una línea terminal por request. El rechazo más frecuente acá es el
   // `100/2534025`, que junta cuatro causas —pasaron 7 días, ya contestamos, lo

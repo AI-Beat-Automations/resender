@@ -88,7 +88,7 @@ export async function listPublicationReadModel(input: {
 }) {
   const sql = getSql()
   // `count(*)::int` con el cast puesto: el driver HTTP de Neon entrega `bigint`
-  // como string. Es el mismo cast que `countActivePages`.
+  // como string. Es el mismo cast que `countActiveAccounts`.
   //
   // El lateral repite `tenant_id` a propósito, aunque la agregación ya lo
   // filtró: sin RLS, un scan correlacionado que no lo lleve podría salirse del

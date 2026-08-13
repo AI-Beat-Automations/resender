@@ -66,7 +66,10 @@ versión original: rutas `/api/instagram/*` y comentarios fuera de alcance.
 - **`external_webhook_deliveries` y `external_webhook_jobs` aceptan mensaje _o_ comentario**, con
   `check (num_nonnulls(...) = 1)`, en vez de duplicar la bitácora de entregas: el consumidor y la
   política de reintentos son idénticos.
-- **Instagram queda fuera de cuota y fuera del cupo de páginas.** El [Gate de suscripcion] sí
+- **Instagram queda fuera de cuota y fuera del cupo de páginas.** ⚠️ **Superseded in part by
+  ADR 0010**, que revirtió esta decisión: el cupo pasó a medirse en cuentas conectadas de
+  cualquier canal y las tres superficies de Instagram consumen cuota. Se conserva escrita
+  porque explica la forma que tuvo el código hasta entonces. El [Gate de suscripcion] sí
   aplica. Es una decisión de negocio provisional —los planes publicados hablan de páginas de
   Facebook— y por eso el punto exacto donde vuelve el entitlement está marcado con un comentario
   en cada una de las dos rutas de envío.
@@ -109,6 +112,7 @@ versión original: rutas `/api/instagram/*` y comentarios fuera de alcance.
   verificación de negocio. Hasta entonces el canal solo sirve para cuentas propias o de prueba.
 - **El contador de páginas del plan cuenta solo Messenger**, y la UI lo dice literalmente
   ("N de M páginas de Facebook"): si dijera "páginas" a secas, el usuario buscaría por qué su
-  cuenta de Instagram no suma.
+  cuenta de Instagram no suma. ⚠️ **Revertido por la ADR 0010**: hoy cuenta los dos canales y
+  la UI dice "N de M cuentas conectadas".
 - La app de Meta usada durante el desarrollo es una separada ("Resender.dev - Test1"); la
   productiva no se tocó.
