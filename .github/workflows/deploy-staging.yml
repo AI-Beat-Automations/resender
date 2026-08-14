@@ -50,6 +50,7 @@ jobs:
           # PostHog de prod y abre el login de la app de Meta productiva.
           NEXT_PUBLIC_META_APP_ID: ${{ vars.NEXT_PUBLIC_META_APP_ID_STAGING }}
           NEXT_PUBLIC_META_CONFIG_ID: ${{ vars.NEXT_PUBLIC_META_CONFIG_ID_STAGING }}
+          NEXT_PUBLIC_WHATSAPP_CONFIG_ID: ${{ vars.NEXT_PUBLIC_WHATSAPP_CONFIG_ID_STAGING }}
           NEXT_PUBLIC_POSTHOG_KEY: ${{ vars.NEXT_PUBLIC_POSTHOG_KEY_STAGING }}
           NEXT_PUBLIC_POSTHOG_HOST: ${{ vars.NEXT_PUBLIC_POSTHOG_HOST_STAGING }}
           # Solo para que `next build` tenga un valor presente; en runtime el

@@ -55,6 +55,7 @@ jobs:
           APP_URL: http://localhost:3000
           NEXT_PUBLIC_META_APP_ID: "0"
           NEXT_PUBLIC_META_CONFIG_ID: "0"
+          NEXT_PUBLIC_WHATSAPP_CONFIG_ID: "0"
 
   # Sube una versión del Worker por PR sin promoverla a deployment: valida que
   # el bundle de OpenNext no solo compile sino que Cloudflare lo acepte, que es
@@ -97,5 +98,6 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           NEXT_PUBLIC_META_APP_ID: ${{ vars.NEXT_PUBLIC_META_APP_ID_STAGING }}
           NEXT_PUBLIC_META_CONFIG_ID: ${{ vars.NEXT_PUBLIC_META_CONFIG_ID_STAGING }}
+          NEXT_PUBLIC_WHATSAPP_CONFIG_ID: ${{ vars.NEXT_PUBLIC_WHATSAPP_CONFIG_ID_STAGING }}
           NEXT_PUBLIC_POSTHOG_KEY: ${{ vars.NEXT_PUBLIC_POSTHOG_KEY_STAGING }}
           NEXT_PUBLIC_POSTHOG_HOST: ${{ vars.NEXT_PUBLIC_POSTHOG_HOST_STAGING }}

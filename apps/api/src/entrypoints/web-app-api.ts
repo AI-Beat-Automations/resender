@@ -3,6 +3,7 @@ import type {
   ConnectInstagramAccountInput,
   ConnectMetaPagesInput,
   ConversationListInput,
+  PageDto,
   RpcActor,
   WebAppApiContract,
 } from "@workspace/contracts"
@@ -116,6 +117,20 @@ export class WebAppApi
     return this.run("connect_instagram_account", actor, () =>
       this.service().connectInstagramAccount(actor, input)
     )
+  }
+
+  // El contrato de WhatsApp existe desde la fase 1 (migración 0015), pero el
+  // onboarding llega con el slice de Embedded Signup; hasta entonces la puerta
+  // está cerrada del lado del servidor, no solo escondida en la UI. El stub
+  // omite el input del contrato porque todavía no hay nada que hacer con él.
+  connectWhatsappNumber(actor: RpcActor): Promise<PageDto> {
+    return this.run("connect_whatsapp_number", actor, () => {
+      throw new ContractError({
+        code: "validation_error",
+        message: "WhatsApp onboarding is not available yet.",
+        status: 400,
+      })
+    })
   }
 
   listApiKeys(actor: RpcActor) {

@@ -1,4 +1,6 @@
+import { META_GRAPH_VERSION } from "@/lib/meta-graph"
 import { describeError, log } from "@/lib/observability/logger"
+import type { PageChannel } from "@/lib/pages/page-registry"
 import {
   extractMetaErrorCode,
   extractMetaErrorMessage,
@@ -12,8 +14,7 @@ import {
 const APP_ID = process.env.NEXT_PUBLIC_META_APP_ID!
 const APP_SECRET = process.env.META_APP_SECRET!
 const CONFIG_ID = process.env.NEXT_PUBLIC_META_CONFIG_ID!
-const GRAPH_VERSION = "v23.0"
-const GRAPH = `https://graph.facebook.com/${GRAPH_VERSION}`
+const GRAPH = `https://graph.facebook.com/${META_GRAPH_VERSION}`
 export const META_WEBHOOK_SUBSCRIBED_FIELDS =
   "messages,messaging_postbacks,messaging_policy_enforcement"
 
@@ -31,7 +32,9 @@ export const STATE_COOKIE = "meta_oauth_state"
 // URL del diálogo de OAuth (flujo de redirección). Con Login for Business los
 // permisos van en el config_id, por eso no pasamos `scope`.
 export function buildDialogUrl(state: string) {
-  const url = new URL(`https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth`)
+  const url = new URL(
+    `https://www.facebook.com/${META_GRAPH_VERSION}/dialog/oauth`
+  )
   url.searchParams.set("client_id", APP_ID)
   url.searchParams.set("config_id", CONFIG_ID)
   url.searchParams.set("response_type", "code")
@@ -212,15 +215,25 @@ export async function subscribePagesToWebhook(pages: ConnectedPage[]) {
   }
 }
 
-// Desuscribe una página del webhook del app. Se usa best-effort al eliminar la
-// cuenta del tenant: si falla, el borrado de datos continúa igual.
+// Desuscribe un nodo del webhook del app. Se usa best-effort al desconectar una
+// cuenta y al eliminar la del tenant: si falla, el resto continúa igual.
+//
+// **No es solo de Messenger.** `DELETE /{id}/subscribed_apps` en el Graph de
+// Facebook es literalmente la misma llamada para una página y para un WABA —solo
+// cambia el id—, así que `channel-webhook.ts` la reusa en los dos canales en vez
+// de duplicarla. Por eso el canal es un parámetro y no un literal: con
+// `"messenger"` fijo, el fallo al desuscribir un WABA salía en los logs como un
+// fallo de Messenger con un id de WhatsApp, y filtrar por `$.channel =
+// "whatsapp"` —que es como se investiga un número que sigue recibiendo
+// mensajes— no lo encontraba.
 export async function unsubscribeFromWebhook(
-  pageId: string,
-  pageAccessToken: string
+  nodeId: string,
+  pageAccessToken: string,
+  channel: PageChannel
 ): Promise<boolean> {
   // Graph espera el access_token como query param en DELETE; algunos stacks
   // descartan el body de una request DELETE.
-  const url = new URL(`${GRAPH}/${pageId}/subscribed_apps`)
+  const url = new URL(`${GRAPH}/${nodeId}/subscribed_apps`)
   url.searchParams.set("access_token", pageAccessToken)
   const res = await fetch(url, { method: "DELETE" })
   const data = await res.json()
@@ -230,8 +243,8 @@ export async function unsubscribeFromWebhook(
       action: "webhook_unsubscribe",
       outcome: "failed",
       reason: "unsubscribe_failed",
-      channel: "messenger",
-      accountId: pageId,
+      channel,
+      accountId: nodeId,
       errorCode: extractMetaErrorCode(data) ?? undefined,
       errorMessage: extractMetaErrorMessage(data) ?? undefined,
       status: res.status,

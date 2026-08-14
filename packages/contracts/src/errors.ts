@@ -10,6 +10,8 @@ export const ERROR_CODES = [
   "quota_exceeded",
   "not_found",
   "idempotency_conflict",
+  "customer_service_window_closed",
+  "media_not_ready",
   "provider_rejected",
   "provider_unavailable",
   "rate_limited",

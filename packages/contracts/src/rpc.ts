@@ -13,6 +13,7 @@ import type {
   CheckoutVerificationDto,
   ConnectInstagramAccountInput,
   ConnectMetaPagesInput,
+  ConnectWhatsappNumberInput,
   CreatedApiKeyDto,
   MetaAuthorizationResultDto,
   MetaPageSelectionDto,
@@ -67,6 +68,14 @@ export interface WebAppApiContract {
   connectInstagramAccount(
     actor: RpcActor,
     input: ConnectInstagramAccountInput
+  ): Promise<PageDto>
+
+  // Como Instagram, sin pantalla de selección: Embedded Signup autoriza un
+  // número concreto y el método completa el flujo entero (exchange, validación
+  // de assets, registro/suscripción según `mode` y persistencia).
+  connectWhatsappNumber(
+    actor: RpcActor,
+    input: ConnectWhatsappNumberInput
   ): Promise<PageDto>
 
   listApiKeys(actor: RpcActor): Promise<ApiKeyDto[]>

@@ -44,10 +44,12 @@ describe("account deletion confirmation", () => {
 
 describe("webhook unsubscribe planning", () => {
   const page = (overrides: Partial<DeletionPage>): DeletionPage => ({
+    id: "connection-1",
     channel: "messenger",
     metaPageId: "100",
     status: "active",
     pageAccessToken: "token",
+    wabaId: null,
     ...overrides,
   })
 

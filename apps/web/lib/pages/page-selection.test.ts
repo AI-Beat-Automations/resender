@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  checkAccountSlotAvailable,
   classifyPagesForSelection,
   formatPageAllowance,
   validatePageSelection,
@@ -212,5 +213,76 @@ describe("page selection copy", () => {
         "Esa selección incluye una página que no puedes conectar. Recarga la pantalla e inténtalo de nuevo."
       )
     }
+  })
+})
+
+// El cupo para un canal que conecta una cuenta por autorización (WhatsApp). Es
+// el mismo límite que mide `validatePageSelection` para Messenger, con la
+// diferencia de que acá no hay lista que marcar: o entra una, o no entra.
+describe("account slot for single-account channels", () => {
+  it("lets a new account in while the plan has room", () => {
+    expect(
+      checkAccountSlotAvailable({
+        activePageCount: 1,
+        maxPages: 2,
+        reconnectingActiveAccount: false,
+      })
+    ).toEqual({ ok: true })
+  })
+
+  // El caso que dejaba mudo a Messenger: el tenant tenía 2 páginas de Facebook
+  // en un plan de 2 y conectaba un número de WhatsApp igual. `countActivePages`
+  // pasaba a 3 > 2 y el entitlement entero caía en `page_limit_exceeded`, así
+  // que sus mensajes de Messenger se seguían cobrando y dejaban de entregarse.
+  it("refuses a new account when every slot is taken, naming the way out", () => {
+    const result = checkAccountSlotAvailable({
+      activePageCount: 2,
+      maxPages: 2,
+      reconnectingActiveAccount: false,
+    })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      // Nombra las dos cosas que cuentan y la acción que libera el hueco: quien
+      // lee «no se pudo conectar» a secas no sabe que la salida es desconectar.
+      expect(result.message).toBe(
+        "Tu plan permite 2 páginas de Facebook y números de WhatsApp conectados, y ya tienes 2 activos. Desconecta uno en Conexiones para liberar un hueco y vuelve a lanzar la conexión."
+      )
+    }
+  })
+
+  // Reconectar no pide un hueco nuevo: ya ocupa el suyo. Sin esta excepción,
+  // quien está al límite no podría renovarle el token a una cuenta que ya tiene.
+  it("always lets an already active account reconnect", () => {
+    expect(
+      checkAccountSlotAvailable({
+        activePageCount: 2,
+        maxPages: 2,
+        reconnectingActiveAccount: true,
+      })
+    ).toEqual({ ok: true })
+  })
+
+  // Una cuenta desconectada no ocupa cupo, así que volver a conectarla consume
+  // un slot igual que una nueva (mismo criterio que `page-selection`).
+  it("treats a disconnected account as a new one", () => {
+    expect(
+      checkAccountSlotAvailable({
+        activePageCount: 2,
+        maxPages: 2,
+        reconnectingActiveAccount: false,
+      }).ok
+    ).toBe(false)
+  })
+
+  // Ya pasado del límite (bajó de plan, por ejemplo): sigue sin poder conectar.
+  it("keeps refusing when the tenant is already over the limit", () => {
+    expect(
+      checkAccountSlotAvailable({
+        activePageCount: 5,
+        maxPages: 2,
+        reconnectingActiveAccount: false,
+      }).ok
+    ).toBe(false)
   })
 })

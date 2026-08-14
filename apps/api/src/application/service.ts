@@ -46,6 +46,12 @@ import { extractInstagramComments } from "../domain/instagram-comments"
 import { extractInstagramDirectMessages } from "../domain/instagram-events"
 import { extractInboundMetaEvents } from "../domain/meta-events"
 import {
+  parseWhatsappWebhook,
+  type WhatsappContactSyncEvent,
+  type WhatsappMessageEvent,
+  type WhatsappStatusEvent,
+} from "../domain/whatsapp-events"
+import {
   decryptSecret,
   encryptSecret,
   generateApiKey,
@@ -99,6 +105,20 @@ export type QueuePayload = {
 export type AuthenticatedApiKey = {
   tenantId: string
   apiKeyId: string
+}
+
+// Estado compartido por todos los eventos de un mismo POST de WhatsApp. Vive
+// por request y no en el servicio: un lote de Cloud API trae hasta 1000 updates
+// —casi siempre del mismo número y del mismo tenant— y sin estas cachés cada
+// uno repetiría las mismas tres consultas. Fuera del request no debe sobrevivir
+// nada: una cuenta desconectada entre dos webhooks tiene que volver a resolverse.
+type WhatsappIngestContext = {
+  // El valor cacheado incluye el `null` de «este número no está conectado»:
+  // repetir la consulta por cada uno de los 1000 updates de un número que no es
+  // nuestro sería el peor caso, no el mejor.
+  pageByPhoneNumberId: Map<string, PageRecord | null>
+  accessByTenant: Map<string, boolean>
+  entitlementByTenant: Map<string, Entitlement>
 }
 
 export class ApiService {
@@ -343,7 +363,37 @@ export class ApiService {
         details: [{ path: "Idempotency-Key", message: "Invalid header value" }],
       })
     }
+    // El contrato ya define los tipos de media de WhatsApp, pero el pipeline
+    // de envío llega en un slice posterior; mientras tanto se rechaza acá, en
+    // la puerta, para no reservar idempotencia de algo que no se puede enviar.
+    if (input.message.type !== "text") {
+      throw new ContractError({
+        code: "validation_error",
+        message: `Sending type "${input.message.type}" is not available yet; only "text" is supported.`,
+        status: 400,
+        details: [{ path: "type", message: "Unsupported message type" }],
+      })
+    }
     const page = await this.requirePage(input.tenantId, input.message.pageId)
+    // La otra mitad del mismo shim, y va acá y no arriba porque el canal no se
+    // sabe hasta tener la fila. El envío de abajo es un ternario de dos ramas
+    // para tres canales: sin este guard, una cuenta de WhatsApp cae en la de
+    // Messenger y sale un POST con forma de Send API contra
+    // `graph.facebook.com/v23.0/{phone_number_id}/messages`. La única defensa
+    // sería que Meta lo rechazara, ya con la idempotencia reservada y una fila
+    // `failed` persistida por un envío que nunca tuvo forma de funcionar.
+    //
+    // Desaparece con el slice de envío de WhatsApp, que es el que trae el
+    // cliente de Cloud API, las plantillas y la ventana de 24 h.
+    if (page.channel === "whatsapp") {
+      throw new ContractError({
+        code: "validation_error",
+        message:
+          "Sending through WhatsApp is not available yet; connect a Messenger or Instagram Page instead.",
+        status: 400,
+        details: [{ path: "pageId", message: "Unsupported channel" }],
+      })
+    }
     // El esquema tope en 2000 caracteres, que es el techo de Messenger.
     // Instagram corta antes y en otra unidad, y recién acá se sabe a qué canal
     // apunta el `pageId`.
@@ -1579,6 +1629,316 @@ export class ApiService {
       accepted += result.inserted ? 1 : 0
     }
     return accepted
+  }
+
+  // **Firma con `META_APP_SECRET`, y no es un descuido.** WhatsApp Cloud API
+  // vive dentro de la misma app de Meta que Messenger y comparte su App Secret:
+  // un `WHATSAPP_APP_SECRET` sería un secreto con el que Meta nunca firmaría
+  // nada. Instagram es la excepción, no la regla — su App Secret es propio
+  // porque es el `client_secret` de su OAuth—, así que la asimetría entre los
+  // tres canales está del lado de Instagram.
+  //
+  // Lo que sí es propio de este canal es el verify token (`WHATSAPP_VERIFY_TOKEN`),
+  // porque cada webhook se registra por separado en el panel de Meta y el
+  // handshake de uno no vale para el otro.
+  async verifyWhatsappSignature(
+    raw: string,
+    signature: string | null
+  ): Promise<void> {
+    if (!signature?.startsWith("sha256=")) throw invalidSignature("WhatsApp")
+    const expected = await hmacHex(this.env.META_APP_SECRET, raw)
+    if (!(await safeEqualText(signature.slice(7), expected))) {
+      throw invalidSignature("WhatsApp")
+    }
+  }
+
+  // Webhook de WhatsApp Cloud API. Un solo POST puede traer cinco cosas
+  // distintas —entrantes, acuses de entrega, echoes de la WhatsApp Business App,
+  // el historial de Coexistence y la libreta de contactos del negocio—, y el
+  // parser ya las separó; acá solo se decide qué hacer con cada grupo.
+  //
+  // Nada se responde antes de tiempo: el 200 sale después de persistir y
+  // encolar, igual que en los otros dos canales. Si la cola falla, Meta recibe
+  // 500 y reintenta, y el dedupe idempotente hace que el reintento no duplique.
+  async ingestWhatsappWebhook(
+    raw: string,
+    signature: string | null
+  ): Promise<{ accepted: number }> {
+    await this.verifyWhatsappSignature(raw, signature)
+    const batch = parseWhatsappWebhook(parseWebhookJson(raw))
+    // Cachés por request y no por evento. Un lote de Cloud API admite hasta
+    // 1000 updates y en Coexistence suelen ser todos del mismo número: sin esto
+    // serían 1000 resoluciones idénticas de cuenta contra la base.
+    const context: WhatsappIngestContext = {
+      pageByPhoneNumberId: new Map(),
+      accessByTenant: new Map(),
+      entitlementByTenant: new Map(),
+    }
+
+    // Los tres orígenes de mensaje entran por la misma ruta porque entre ellos
+    // cambian los datos, no las ramas: el propio evento lleva `direction`,
+    // `origin` e `historical`, y el repositorio decide con eso si abre ventana
+    // de 24 h, si cuenta cuota y si genera entrega.
+    //
+    // Del chunk de historial solo se usan sus mensajes: `progress` y `phase`
+    // describen el avance de la sincronización, que es estado de la cuenta y no
+    // de la conversación, y este slice todavía no lo cierra.
+    const accepted = await this.ingestWhatsappMessages(
+      [
+        ...batch.messages,
+        ...batch.echoes,
+        ...batch.history.flatMap((chunk) => chunk.messages),
+      ],
+      context
+    )
+    const statuses = await this.applyWhatsappStatuses(batch.statuses, context)
+    const contacts = await this.syncWhatsappContacts(batch.contactSync, context)
+
+    // Un `field` que el parser no modela se registra por su nombre en vez de
+    // desaparecer: es la única forma de enterarse de que Meta empezó a mandar
+    // algo nuevo sin esperar a que alguien lo eche de menos.
+    for (const field of batch.unhandledFields) {
+      log({
+        entrypoint: "fetch",
+        action: "inbound_ingest",
+        outcome: "dropped",
+        reason: "unsupported_field",
+        channel: "whatsapp",
+        providerField: field,
+      })
+    }
+
+    return { accepted: accepted + statuses + contacts }
+  }
+
+  private async ingestWhatsappMessages(
+    events: WhatsappMessageEvent[],
+    context: WhatsappIngestContext
+  ): Promise<number> {
+    let accepted = 0
+    for (const event of events) {
+      const page = await this.whatsappPage(event, context, "message")
+      if (!page) continue
+      if (
+        !(await this.hasProductAccess(page.tenantId, context.accessByTenant))
+      ) {
+        log({
+          entrypoint: "fetch",
+          action: "inbound_ingest",
+          outcome: "dropped",
+          reason: "no_active_subscription",
+          ...accountFields(page),
+          subject: "message",
+          providerId: event.providerMessageId,
+        })
+        continue
+      }
+
+      // WhatsApp sí está **dentro de la cuota**, al revés que Instagram: es
+      // mensajería de pleno derecho y consume plan como Messenger.
+      //
+      // La excepción es el historial: son conversaciones que ya ocurrieron
+      // antes de conectar el número, y cobrarlas vaciaría la cuota del plan en
+      // el primer minuto del onboarding. El repositorio ya tiene el guard, pero
+      // ni siquiera se le pasa el período: así tampoco se resuelve el
+      // entitlement, que sería una ida a la base por mensaje importado sin nada
+      // que decidir.
+      const entitlement = event.historical
+        ? null
+        : await this.whatsappEntitlement(page.tenantId, context)
+      // Namespace propio en la clave del evento. Messenger e Instagram usan
+      // `${cuenta}:${id}` y `${cuenta}:comment:${id}`; sin el segmento del
+      // canal, un `phone_number_id` que coincidiera con un id de página daría
+      // el mismo `eventId` para dos eventos de tenants distintos.
+      const eventId = await this.eventId(
+        `${event.providerPhoneNumberId}:whatsapp:${event.providerMessageId}`
+      )
+      const result = await this.repository.ingestWhatsappInbound({
+        page,
+        event,
+        eventId,
+        payloadVersion: WEBHOOK_PAYLOAD_VERSION,
+        periodStart: entitlement?.periodStart ?? null,
+        deliveryEnabled: entitlement === null || entitlement.blockCode === null,
+        deliveryBlockedReason: entitlement?.blockCode
+          ? `account is restricted: ${entitlement.blockCode}`
+          : null,
+        recoverAfter: this.recoverAfter(),
+      })
+      log({
+        entrypoint: "fetch",
+        action: "inbound_ingest",
+        ...(result.inserted
+          ? { outcome: "ok" as const }
+          : { outcome: "duplicate" as const, reason: "already_ingested" as const }),
+        ...accountFields(page),
+        subject: "message",
+        subjectId: result.messageId,
+        providerId: event.providerMessageId,
+        eventId,
+        ...(result.jobId ? { jobId: result.jobId } : {}),
+      })
+      // El historial se persiste pero no se entrega: reenviar seis meses de
+      // conversaciones dispararía las automatizaciones del tenant sobre hechos
+      // viejos. El repositorio lo dice con `jobId: null` —no hay job que
+      // encolar— y estrechar por ahí deja el resto de las llaves ya no-nulas,
+      // que es justo lo que `enqueueIfPending` necesita. Un echo, en cambio, se
+      // encola como cualquier entrante: es un mensaje real de ahora mismo.
+      if (result.jobId !== null) {
+        await this.enqueueIfPending(result, { messageId: result.messageId })
+      }
+      accepted += result.inserted ? 1 : 0
+    }
+    return accepted
+  }
+
+  // Los acuses de entrega solo persisten: no hay nada que entregar al webhook
+  // del tenant que no viajara ya con el mensaje, y el repositorio los aplica
+  // monotónicamente para que un `sent` rezagado no pise un `read`.
+  private async applyWhatsappStatuses(
+    events: WhatsappStatusEvent[],
+    context: WhatsappIngestContext
+  ): Promise<number> {
+    let accepted = 0
+    for (const event of events) {
+      const page = await this.whatsappPage(event, context, "message")
+      if (!page) continue
+      if (
+        !(await this.hasProductAccess(page.tenantId, context.accessByTenant))
+      ) {
+        log({
+          entrypoint: "fetch",
+          action: "inbound_ingest",
+          outcome: "dropped",
+          reason: "no_active_subscription",
+          ...accountFields(page),
+          subject: "message",
+          providerId: event.providerMessageId,
+        })
+        continue
+      }
+      const result = await this.repository.applyWhatsappStatus({ page, event })
+      log({
+        entrypoint: "fetch",
+        action: "inbound_ingest",
+        // Las dos formas de no aplicar son normales y ninguna es un error: el
+        // status llegó tarde (`messageId` informado) o habla de un mensaje que
+        // este tenant nunca persistió —en Coexistence el número también se usa
+        // desde otras herramientas—.
+        ...(result.updated
+          ? { outcome: "ok" as const }
+          : result.messageId
+            ? {
+                outcome: "skipped" as const,
+                reason: "already_ingested" as const,
+              }
+            : {
+                outcome: "dropped" as const,
+                reason: "subject_not_found" as const,
+              }),
+        ...accountFields(page),
+        subject: "message",
+        ...(result.messageId ? { subjectId: result.messageId } : {}),
+        providerId: event.providerMessageId,
+      })
+      accepted += result.updated ? 1 : 0
+    }
+    return accepted
+  }
+
+  // La libreta del negocio tampoco encola: solo rellena el nombre del contacto
+  // en las conversaciones que ya existen. No crear las que faltan es
+  // deliberado —el sync trae la agenda entera del teléfono—, así que un `add`
+  // que no toca ninguna fila es el caso corriente, no un fallo.
+  private async syncWhatsappContacts(
+    events: WhatsappContactSyncEvent[],
+    context: WhatsappIngestContext
+  ): Promise<number> {
+    let accepted = 0
+    for (const event of events) {
+      const page = await this.whatsappPage(event, context, "contact")
+      if (!page) continue
+      if (
+        !(await this.hasProductAccess(page.tenantId, context.accessByTenant))
+      ) {
+        log({
+          entrypoint: "fetch",
+          action: "inbound_ingest",
+          outcome: "dropped",
+          reason: "no_active_subscription",
+          ...accountFields(page),
+          subject: "contact",
+        })
+        continue
+      }
+      const result = await this.repository.applyWhatsappContactSync({
+        page,
+        event,
+      })
+      log({
+        entrypoint: "fetch",
+        action: "inbound_ingest",
+        ...(result.updated
+          ? { outcome: "ok" as const }
+          : {
+              outcome: "skipped" as const,
+              reason: "subject_not_found" as const,
+            }),
+        ...accountFields(page),
+        subject: "contact",
+      })
+      accepted += result.updated ? 1 : 0
+    }
+    return accepted
+  }
+
+  // El `phone_number_id` es el `meta_page_id` de este canal (0015 reusa la
+  // columna), así que la resolución es la misma consulta de siempre con otro
+  // canal.
+  //
+  // Un número que no resuelve se **descarta con log y métrica**, nunca lanza:
+  // lanzar haría que Meta reintentara indefinidamente un evento que no es
+  // nuestro. En Coexistence esto pasa de verdad —el mismo WABA puede tener
+  // números que este tenant nunca conectó—, así que no es un caso teórico.
+  private async whatsappPage(
+    event: { providerPhoneNumberId: string },
+    context: WhatsappIngestContext,
+    subject: "message" | "contact"
+  ): Promise<PageRecord | null> {
+    const cached = context.pageByPhoneNumberId.get(event.providerPhoneNumberId)
+    const page =
+      cached !== undefined
+        ? cached
+        : await this.repository.getActivePageByProviderId(
+            event.providerPhoneNumberId,
+            "whatsapp"
+          )
+    if (cached === undefined) {
+      context.pageByPhoneNumberId.set(event.providerPhoneNumberId, page)
+    }
+    if (!page) {
+      log({
+        entrypoint: "fetch",
+        action: "inbound_ingest",
+        outcome: "dropped",
+        reason: "account_not_connected",
+        channel: "whatsapp",
+        accountId: event.providerPhoneNumberId,
+        subject,
+      })
+    }
+    return page
+  }
+
+  private async whatsappEntitlement(
+    tenantId: string,
+    context: WhatsappIngestContext
+  ): Promise<Entitlement> {
+    const cached = context.entitlementByTenant.get(tenantId)
+    if (cached) return cached
+    const entitlement = await this.entitlement(tenantId)
+    context.entitlementByTenant.set(tenantId, entitlement)
+    return entitlement
   }
 
   async handleStripeWebhook(

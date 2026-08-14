@@ -82,6 +82,7 @@ npx wrangler secret put TOKEN_ENCRYPTION_KEY
 npx wrangler secret put META_APP_ID
 npx wrangler secret put META_APP_SECRET
 npx wrangler secret put META_VERIFY_TOKEN
+npx wrangler secret put WHATSAPP_VERIFY_TOKEN
 npx wrangler secret put STRIPE_SECRET_KEY
 npx wrangler secret put STRIPE_WEBHOOK_SECRET
 ```

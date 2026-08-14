@@ -1,3 +1,4 @@
+import { META_GRAPH_VERSION } from "@/lib/meta-graph"
 import {
   extractMetaErrorCode,
   extractMetaErrorMessage,
@@ -16,7 +17,7 @@ import {
 // 2. **El token va en el header** `Authorization: Bearer`, no como query param.
 // 3. **No lleva `messaging_type`**. Ese campo es de la Send API de Messenger;
 //    Instagram no lo documenta y mandarlo es pedirle a Meta que lo rechace.
-const GRAPH = "https://graph.instagram.com/v23.0"
+const GRAPH = `https://graph.instagram.com/${META_GRAPH_VERSION}`
 
 // Instagram limita el texto a **1000 bytes UTF-8**, no a 1000 caracteres. La
 // distinción importa en español: cada acento son 2 bytes y cada emoji 4, así

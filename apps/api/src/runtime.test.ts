@@ -484,6 +484,225 @@ describe("Worker runtime entrypoints", () => {
     expect(database.messages).toHaveLength(0)
   })
 
+  // La asimetría del canal: el App Secret se comparte con Messenger —WhatsApp
+  // Cloud API vive en la misma app de Meta—, pero el verify token es propio
+  // porque cada webhook se registra por separado en el panel.
+  it("verifies the WhatsApp webhook with the shared secret and its own verify token", async () => {
+    const database = whatsappRuntimeDatabase()
+    vi.spyOn(sqlTransport, "create").mockReturnValue(database.sql)
+    vi.spyOn(env.WEBHOOK_DELIVERIES, "send").mockResolvedValue(
+      queueSendResult()
+    )
+
+    const withInstagramSecret = await whatsappCallback(
+      whatsappInbound("wamid.runtime"),
+      String(env.INSTAGRAM_APP_SECRET)
+    )
+    expect(withInstagramSecret.status).toBe(400)
+    expect(await withInstagramSecret.json()).toMatchObject({
+      error: { code: "invalid_signature" },
+    })
+
+    const unsigned = await workerExports.default.fetch(
+      "https://api.resender.dev/webhooks/meta/whatsapp",
+      { method: "POST", body: "{}" }
+    )
+    expect(unsigned.status).toBe(400)
+
+    const challenge = await workerExports.default.fetch(
+      "https://api.resender.dev/webhooks/meta/whatsapp?hub.mode=subscribe" +
+        `&hub.verify_token=${String(env.WHATSAPP_VERIFY_TOKEN)}&hub.challenge=ok`
+    )
+    expect(challenge.status).toBe(200)
+    expect(await challenge.text()).toBe("ok")
+
+    const withMessengerVerifyToken = await workerExports.default.fetch(
+      "https://api.resender.dev/webhooks/meta/whatsapp?hub.mode=subscribe" +
+        `&hub.verify_token=${String(env.META_VERIFY_TOKEN)}&hub.challenge=ok`
+    )
+    expect(withMessengerVerifyToken.status).toBe(403)
+  })
+
+  it("ingests a WhatsApp text message inside the plan quota and deduplicates the retry", async () => {
+    const database = whatsappRuntimeDatabase()
+    vi.spyOn(sqlTransport, "create").mockReturnValue(database.sql)
+    const queueSend = vi
+      .spyOn(env.WEBHOOK_DELIVERIES, "send")
+      .mockResolvedValue(queueSendResult())
+
+    const first = await whatsappCallback(whatsappInbound("wamid.runtime"))
+    expect(first.status).toBe(200)
+    expect(await first.json()).toEqual({ ok: true, accepted: 1 })
+    expect(database.messages).toHaveLength(1)
+    expect(database.jobs).toHaveLength(1)
+    // A diferencia de Instagram, WhatsApp sí consume cuota.
+    expect(database.usage).toBe(1)
+    expect(queueSend).toHaveBeenCalledWith({
+      jobId: database.jobs[0]?.id,
+      messageId: database.messages[0]?.id,
+    })
+
+    const duplicate = await whatsappCallback(whatsappInbound("wamid.runtime"))
+    expect(await duplicate.json()).toEqual({ ok: true, accepted: 0 })
+    expect(database.messages).toHaveLength(1)
+    expect(database.usage).toBe(1)
+  })
+
+  // Un número que no está conectado no es un error nuestro: en Coexistence el
+  // mismo WABA puede tener números que este tenant nunca conectó, y lanzar haría
+  // que Meta reintentara indefinidamente un evento ajeno.
+  it("drops a WhatsApp event from an unconnected phone number with 200", async () => {
+    const database = whatsappRuntimeDatabase()
+    vi.spyOn(sqlTransport, "create").mockReturnValue(database.sql)
+    vi.spyOn(env.WEBHOOK_DELIVERIES, "send").mockResolvedValue(
+      queueSendResult()
+    )
+
+    const response = await whatsappCallback(
+      whatsappWebhook(
+        "messages",
+        {
+          contacts: [{ profile: { name: "Ada" }, wa_id: WHATSAPP_USER_PHONE }],
+          messages: [
+            {
+              from: WHATSAPP_USER_PHONE,
+              id: "wamid.ajeno",
+              timestamp: "1785348000",
+              type: "text",
+              text: { body: "Hello" },
+            },
+          ],
+        },
+        "999999999999999"
+      )
+    )
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ ok: true, accepted: 0 })
+    expect(database.messages).toHaveLength(0)
+  })
+
+  // El lote entero de Coexistence en un solo POST: entrante, acuse, echo de la
+  // Business App, historial importado y libreta de contactos.
+  it("processes the whole Coexistence batch, enqueuing everything except the imported history", async () => {
+    const database = whatsappRuntimeDatabase()
+    vi.spyOn(sqlTransport, "create").mockReturnValue(database.sql)
+    const queueSend = vi
+      .spyOn(env.WEBHOOK_DELIVERIES, "send")
+      .mockResolvedValue(queueSendResult())
+
+    const inbound = await whatsappCallback(whatsappInbound("wamid.cliente"))
+    expect(await inbound.json()).toEqual({ ok: true, accepted: 1 })
+
+    const rest = await whatsappCallback({
+      object: "whatsapp_business_account",
+      entry: [
+        {
+          id: WHATSAPP_WABA_ID,
+          changes: [
+            whatsappChange("smb_message_echoes", {
+              message_echoes: [
+                {
+                  from: WHATSAPP_BUSINESS_PHONE,
+                  to: WHATSAPP_USER_PHONE,
+                  id: "wamid.eco",
+                  timestamp: "1785348100",
+                  type: "text",
+                  text: { body: "Sure, in blue too" },
+                },
+              ],
+            }),
+            whatsappChange("messages", {
+              statuses: [
+                {
+                  id: "wamid.cliente",
+                  status: "read",
+                  timestamp: "1785348200",
+                  recipient_id: WHATSAPP_USER_PHONE,
+                },
+              ],
+            }),
+            whatsappChange("history", {
+              history: [
+                {
+                  metadata: { phase: 0, chunk_order: 1, progress: 100 },
+                  threads: [
+                    {
+                      id: WHATSAPP_USER_PHONE,
+                      messages: [
+                        {
+                          from: WHATSAPP_USER_PHONE,
+                          id: "wamid.historico",
+                          timestamp: "1739230970",
+                          type: "text",
+                          text: { body: "Thanks!" },
+                          history_context: { status: "READ" },
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            }),
+            whatsappChange("smb_app_state_sync", {
+              state_sync: [
+                {
+                  type: "contact",
+                  contact: {
+                    full_name: "Pablo Morales",
+                    first_name: "Pablo",
+                    phone_number: WHATSAPP_USER_PHONE,
+                  },
+                  action: "add",
+                  metadata: { timestamp: "1785348300" },
+                },
+              ],
+            }),
+            // Un `field` que este worker no modela no rompe el lote ni se cuenta.
+            whatsappChange("message_template_status_update", {}),
+          ],
+        },
+      ],
+    })
+
+    // Echo + status + historial + contacto: cuatro hechos nuevos.
+    expect(await rest.json()).toEqual({ ok: true, accepted: 4 })
+    expect(database.messages.map((message) => message.providerMessageId)).toEqual([
+      "wamid.cliente",
+      "wamid.eco",
+      "wamid.historico",
+    ])
+    // El historial se persiste sin job: solo el entrante y el echo se entregan.
+    expect(database.jobs).toHaveLength(2)
+    expect(queueSend).toHaveBeenCalledTimes(2)
+    // Y tampoco consume cuota, aunque el tenant tenga período activo.
+    expect(database.usage).toBe(2)
+    expect(database.deliveryStatuses.get("wamid.cliente")).toBe("read")
+    expect(database.contactSyncs).toEqual([
+      {
+        pageId: whatsappRuntimePage().id,
+        phoneNumber: WHATSAPP_USER_PHONE,
+        action: "add",
+      },
+    ])
+
+    // Un `sent` rezagado no puede pisar el `read` ya escrito.
+    const stale = await whatsappCallback(
+      whatsappWebhook("messages", {
+        statuses: [
+          {
+            id: "wamid.cliente",
+            status: "sent",
+            timestamp: "1785348000",
+            recipient_id: WHATSAPP_USER_PHONE,
+          },
+        ],
+      })
+    )
+    expect(await stale.json()).toEqual({ ok: true, accepted: 0 })
+    expect(database.deliveryStatuses.get("wamid.cliente")).toBe("read")
+  })
+
   it("accepts signed Stripe callbacks while preserving canonical subscription ordering under duplicates", async () => {
     const database = new RuntimeDatabase(runtimePage(), runtimeUser(), null)
     vi.spyOn(sqlTransport, "create").mockReturnValue(database.sql)
@@ -646,6 +865,11 @@ function runtimePage(): PageRecord {
     webhookUrl: "https://example.com/webhook",
     pageAccessTokenEncrypted: "encrypted",
     webhookSigningSecretEncrypted: "encrypted",
+    wabaId: null,
+    phoneE164: null,
+    onboardingMode: null,
+    coexistenceStatus: null,
+    historySyncStatus: null,
     connectedAt: new Date("2026-07-01T00:00:00.000Z"),
     updatedAt: new Date("2026-07-29T18:00:00.000Z"),
   }
@@ -746,6 +970,90 @@ async function instagramCallback(payload: unknown, secret?: string) {
   )
   return workerExports.default.fetch(
     "https://api.resender.dev/webhooks/meta/instagram",
+    {
+      method: "POST",
+      headers: { "x-hub-signature-256": `sha256=${signature}` },
+      body: raw,
+    }
+  )
+}
+
+// 0015 reusa `meta_page_id` para el `phone_number_id`, que es el identificador
+// con el que Cloud API enruta: ni el WABA ni el número visible sirven.
+const WHATSAPP_WABA_ID = "102290129340398"
+const WHATSAPP_PHONE_NUMBER_ID = "106540352242922"
+const WHATSAPP_BUSINESS_PHONE = "15550783881"
+const WHATSAPP_USER_PHONE = "16505551234"
+
+function whatsappRuntimePage(): PageRecord {
+  return {
+    ...runtimePage(),
+    channel: "whatsapp",
+    providerPageId: WHATSAPP_PHONE_NUMBER_ID,
+    wabaId: WHATSAPP_WABA_ID,
+    phoneE164: `+${WHATSAPP_BUSINESS_PHONE}`,
+    onboardingMode: "coexistence",
+  }
+}
+
+function whatsappRuntimeDatabase(): RuntimeDatabase {
+  return new RuntimeDatabase(
+    whatsappRuntimePage(),
+    runtimeUser(),
+    activeSubscription()
+  )
+}
+
+const whatsappChange = (
+  field: string,
+  value: Record<string, unknown>,
+  phoneNumberId: string = WHATSAPP_PHONE_NUMBER_ID
+) => ({
+  value: {
+    messaging_product: "whatsapp",
+    metadata: {
+      display_phone_number: WHATSAPP_BUSINESS_PHONE,
+      phone_number_id: phoneNumberId,
+    },
+    ...value,
+  },
+  field,
+})
+
+const whatsappWebhook = (
+  field: string,
+  value: Record<string, unknown>,
+  phoneNumberId: string = WHATSAPP_PHONE_NUMBER_ID
+) => ({
+  object: "whatsapp_business_account",
+  entry: [
+    {
+      id: WHATSAPP_WABA_ID,
+      changes: [whatsappChange(field, value, phoneNumberId)],
+    },
+  ],
+})
+
+const whatsappInbound = (providerMessageId: string) =>
+  whatsappWebhook("messages", {
+    contacts: [{ profile: { name: "Ada" }, wa_id: WHATSAPP_USER_PHONE }],
+    messages: [
+      {
+        from: WHATSAPP_USER_PHONE,
+        id: providerMessageId,
+        timestamp: "1785348000",
+        type: "text",
+        text: { body: "Hello runtime" },
+      },
+    ],
+  })
+
+async function whatsappCallback(payload: unknown, secret?: string) {
+  const raw = JSON.stringify(payload)
+  // El App Secret es el de Messenger: WhatsApp Cloud API vive en la misma app.
+  const signature = await hmacHex(secret ?? String(env.META_APP_SECRET), raw)
+  return workerExports.default.fetch(
+    "https://api.resender.dev/webhooks/meta/whatsapp",
     {
       method: "POST",
       headers: { "x-hub-signature-256": `sha256=${signature}` },

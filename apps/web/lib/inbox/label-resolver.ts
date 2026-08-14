@@ -2,7 +2,10 @@ import {
   fetchInstagramContactProfile,
   fetchInstagramMedia,
 } from "@/lib/instagram"
-import { getActivePageWithTokenByConnectionId } from "@/lib/pages/page-registry"
+import {
+  getActivePageWithTokenByConnectionId,
+  type PageChannel,
+} from "@/lib/pages/page-registry"
 
 import {
   listCachedMedia,
@@ -30,10 +33,34 @@ const RETRY_AFTER_MS = 24 * 60 * 60 * 1000
 // más recientes —que son las de arriba— y el resto cae en la siguiente visita.
 const MAX_LOOKUPS_PER_RENDER = 20
 
+// Qué canales necesitan una ida a Graph para saber quién escribió. Era un
+// `channel === "instagram"` suelto contra un `channel: string`: con un canal
+// desconocido el filtro simplemente no lo elegía, así que WhatsApp habría caído
+// del lado correcto —no se pide nada— pero **por accidente**, y nadie podría
+// leer de ese `if` si eso era la decisión o el olvido.
+//
+// - `instagram`: el @handle no viene en el webhook de DMs; hay que pedirlo.
+// - `messenger`: queda fuera porque sus perfiles piden `pages_user_profile`, que
+//   no está en el `config_id` del login, y el PSID sigue siendo lo único que
+//   identifica al contacto.
+// - `whatsapp`: queda fuera porque **no hace falta**. El webhook trae
+//   `contacts[].profile.name` en el mismo POST del mensaje, y la ingesta ya lo
+//   persiste en `conversations.contact_name`. Pedirlo a Graph sería pagar una
+//   llamada en el render por un dato que ya está en la fila —y WhatsApp no
+//   tiene @handle que resolver, así que tampoco habría qué pedir.
+const CHANNEL_NEEDS_PROFILE_LOOKUP: Record<PageChannel, boolean> = {
+  messenger: false,
+  instagram: true,
+  whatsapp: false,
+}
+
 export type ResolvableContact = {
   conversationId: string
   connectedPageId: string
-  channel: string
+  // Tipado como `PageChannel` y no como `string`: es lo que hace que el mapa de
+  // arriba pueda ser exhaustivo, y con él que el próximo canal tenga que decir
+  // si su contacto se resuelve contra Graph o no.
+  channel: PageChannel
   contactId: string
   contactUsername: string | null
   contactSyncedAt: Date | null
@@ -67,10 +94,7 @@ export async function resolveContactProfiles(
   const pending = contacts
     .filter(
       (contact) =>
-        // Messenger queda fuera: sus perfiles piden `pages_user_profile`, que
-        // no está en el `config_id` del login, y el PSID sigue siendo lo único
-        // que identifica al contacto.
-        contact.channel === "instagram" &&
+        CHANNEL_NEEDS_PROFILE_LOOKUP[contact.channel] &&
         !contact.contactUsername &&
         isStale(contact.contactSyncedAt)
     )

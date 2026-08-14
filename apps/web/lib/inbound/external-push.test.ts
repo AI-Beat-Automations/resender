@@ -62,6 +62,8 @@ describe("inbound push payload", () => {
         tokenError: null,
         tokenErrorAt: null,
         tokenExpiresAt: null,
+        wabaId: null,
+        phoneE164: null,
         webhookUrl: "https://example.com/hook",
         connectedAt: new Date("2026-01-01T00:00:00.000Z"),
         disconnectedAt: null,

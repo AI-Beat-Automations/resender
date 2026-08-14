@@ -27,6 +27,7 @@
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "0.19.0",
+    "@electric-sql/pglite": "^0.5.5",
     "@workspace/eslint-config": "*",
     "@workspace/typescript-config": "*",
     "eslint": "^9",

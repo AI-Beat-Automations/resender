@@ -90,6 +90,47 @@ export function formatPageAllowance(view: PageSelectionView): string {
   } más.`
 }
 
+// Cupo del plan para un canal que conecta **una cuenta por autorización**:
+// WhatsApp hoy, y cualquier otro que entre por un diálogo sin pantalla de
+// selección. Messenger no lo usa —allá el usuario marca varias a la vez y el que
+// decide es `validatePageSelection`, que además tiene que contar cuántas de las
+// marcadas son nuevas—, pero el texto sale del mismo sitio a propósito: es el
+// mismo límite, y contarlo dos veces con dos redacciones es cómo empiezan a no
+// coincidir.
+//
+// Sin esta puerta, el Embedded Signup de WhatsApp escribía la fila igual y el
+// tenant terminaba con más cuentas activas que su plan. El daño no se ve en la
+// pantalla de Conexiones: `countActivePages` pasa a superar el límite, el
+// entitlement entero cae en `page_limit_exceeded` (ADR 0003) y **las páginas de
+// Messenger que ya funcionaban dejan de entregar** —se siguen persistiendo y
+// contando, pero no se reenvían— y `/api/meta/send` empieza a responder 403.
+// Conectar un canal nuevo no puede apagar otro que ya estaba pagado y andando.
+export type AccountSlotResult = { ok: true } | { ok: false; message: string }
+
+export function checkAccountSlotAvailable(input: {
+  // Cuentas `active` del tenant que ocupan cupo (`countActivePages`).
+  activePageCount: number
+  maxPages: number
+  // `true` cuando la cuenta que se está conectando **ya está activa** para este
+  // mismo tenant. Reconectarla no pide un hueco nuevo: ya ocupa el suyo, y
+  // contarlo dos veces dejaría a quien está al límite sin poder renovar el token
+  // de una cuenta que ya tiene.
+  reconnectingActiveAccount: boolean
+}): AccountSlotResult {
+  if (input.reconnectingActiveAccount) return { ok: true }
+  if (input.activePageCount < input.maxPages) return { ok: true }
+
+  return {
+    ok: false,
+    // Nombra las dos cosas que cuentan —páginas de Facebook y números de
+    // WhatsApp—, igual que el contador de la pantalla de Conexiones: quien
+    // tiene dos páginas y ninguna cuenta de WhatsApp no entendería un «ya
+    // tienes 2 números». Y nombra la acción, no la pantalla: liberar un hueco
+    // es lo único que desbloquea esto.
+    message: `Tu plan permite ${input.maxPages} páginas de Facebook y números de WhatsApp conectados, y ya tienes ${input.activePageCount} activos. Desconecta uno en Conexiones para liberar un hueco y vuelve a lanzar la conexión.`,
+  }
+}
+
 export type PageSelectionResult =
   | { ok: true; value: MetaPageSummary[] }
   | {

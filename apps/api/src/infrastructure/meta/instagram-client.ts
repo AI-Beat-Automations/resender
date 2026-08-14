@@ -1,6 +1,6 @@
 import { ContractError } from "@workspace/contracts"
 
-import { META_TIMEOUT_MS } from "../../config"
+import { META_GRAPH_VERSION, META_TIMEOUT_MS } from "../../config"
 
 // Cliente de **Instagram API con Instagram Login**. No es una variante del de
 // Facebook: es otro protocolo, y casi nada del `MetaClient` se podía reusar.
@@ -14,7 +14,6 @@ import { META_TIMEOUT_MS } from "../../config"
 // | Devuelve | N páginas a elegir | **una** cuenta |
 // | Token | no vence | ~60 días, se refresca |
 const GRAPH = "https://graph.instagram.com"
-const GRAPH_VERSION = "v23.0"
 const OAUTH_HOST = "https://api.instagram.com"
 
 // Los campos del webhook a los que se suscribe la cuenta. Deliberadamente no
@@ -131,7 +130,7 @@ export class InstagramClient {
     // `fields` explícito y no el default: sin pedir `user_id` Graph devuelve
     // solo el `id` app-scoped, que no es el que llega en el webhook.
     const body = await this.getJson(
-      `${GRAPH}/${GRAPH_VERSION}/me?${new URLSearchParams({
+      `${GRAPH}/${META_GRAPH_VERSION}/me?${new URLSearchParams({
         fields: "user_id,username,name",
         access_token: accessToken,
       }).toString()}`
@@ -180,7 +179,7 @@ export class InstagramClient {
     // Sin id en el path: el token ya identifica a la cuenta. Es la diferencia
     // con Messenger, donde la suscripción va contra `/<page-id>/subscribed_apps`.
     await this.postForm(
-      `${GRAPH}/${GRAPH_VERSION}/me/subscribed_apps`,
+      `${GRAPH}/${META_GRAPH_VERSION}/me/subscribed_apps`,
       { subscribed_fields: SUBSCRIBED_FIELDS, access_token: accessToken },
       "Instagram rejected the webhook subscription."
     )
@@ -188,7 +187,7 @@ export class InstagramClient {
 
   async unsubscribeAccount(accessToken: string): Promise<void> {
     await this.request(
-      `${GRAPH}/${GRAPH_VERSION}/me/subscribed_apps?${new URLSearchParams({
+      `${GRAPH}/${META_GRAPH_VERSION}/me/subscribed_apps?${new URLSearchParams({
         access_token: accessToken,
       }).toString()}`,
       { method: "DELETE" },
@@ -236,7 +235,7 @@ export class InstagramClient {
     providerCommentId: string
     text: string
   }): Promise<InstagramCommentResult> {
-    const url = `${GRAPH}/${GRAPH_VERSION}/${encodeURIComponent(
+    const url = `${GRAPH}/${META_GRAPH_VERSION}/${encodeURIComponent(
       input.providerCommentId
     )}/replies`
     try {
@@ -280,7 +279,7 @@ export class InstagramClient {
   ): Promise<InstagramSendResult> {
     try {
       const response = await this.fetcher(
-        `${GRAPH}/${GRAPH_VERSION}/me/messages`,
+        `${GRAPH}/${META_GRAPH_VERSION}/me/messages`,
         {
           method: "POST",
           redirect: "manual",

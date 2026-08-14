@@ -8,7 +8,7 @@ import { Badge } from "@workspace/ui/components/badge"
 // pantalla sigue siendo server component.
 //
 // Dice «cuentas» y no «páginas» desde la ADR 0008: `connected_pages` dejó de
-// ser páginas de Facebook y hoy mezcla Messenger e Instagram.
+// ser páginas de Facebook y hoy mezcla Messenger, Instagram y WhatsApp.
 
 export type InboxFilterAccount = {
   id: string

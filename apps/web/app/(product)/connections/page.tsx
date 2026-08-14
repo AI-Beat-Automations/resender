@@ -1,8 +1,16 @@
 import Link from "next/link"
-import { AtSign, Check, Link2, TriangleAlert, X } from "lucide-react"
+import {
+  AtSign,
+  Check,
+  Link2,
+  MessageCircle,
+  TriangleAlert,
+  X,
+} from "lucide-react"
 
 import { ConnectFacebookButton } from "@/features/connect-meta/ui/connect-facebook-button"
 import { ConnectInstagramButton } from "@/features/connect-meta/ui/connect-instagram-button"
+import { ConnectWhatsAppButton } from "@/features/connect-whatsapp/ui/connect-whatsapp-button"
 import {
   ConnectedPageCard,
   type ConnectedPageView,
@@ -29,15 +37,24 @@ const dateTimeFormat = new Intl.DateTimeFormat("es-ES", {
 export default async function ConnectionsPage({
   searchParams,
 }: {
+  // Un parámetro de resultado por canal (`meta`, `instagram`, `whatsapp`) y su
+  // dato de confirmación: cada callback vuelve al mismo sitio y esto es lo único
+  // que distingue de dónde vino. `reason` sí es compartido a propósito: el
+  // catálogo de errores es uno solo (`meta-connection-error.ts`).
   searchParams: Promise<{
     meta?: string
     pages?: string
     reason?: string
     instagram?: string
     username?: string
+    whatsapp?: string
+    // El número en E.164 que quedó conectado, para nombrarlo en el aviso. Lo
+    // pondrá el callback de WhatsApp que se escribe en paralelo.
+    phone?: string
   }>
 }) {
-  const { meta, pages, reason, instagram, username } = await searchParams
+  const { meta, pages, reason, instagram, username, whatsapp, phone } =
+    await searchParams
   const connected = parseConnectedPages(pages)
   const session = await auth()
   const tenantId = session?.user?.id ?? null
@@ -62,9 +79,9 @@ export default async function ConnectionsPage({
             Conexiones
           </h1>
           <p className="mt-2 max-w-[620px] text-[14.5px]/[1.6] text-muted-foreground">
-            Conecta tus páginas de Facebook y tus cuentas de Instagram,
-            configura un webhook por cuenta y desconecta canales sin borrar el
-            historial.
+            Conecta tus páginas de Facebook, tus cuentas de Instagram y tus
+            números de WhatsApp, configura un webhook por cuenta y desconecta
+            canales sin borrar el historial.
           </p>
         </div>
         {/* En el estado vacío los CTA viven en las tarjetas de abajo, no acá. */}
@@ -72,6 +89,7 @@ export default async function ConnectionsPage({
           <div className="flex shrink-0 flex-wrap gap-2.5">
             <ConnectFacebookButton />
             <ConnectInstagramButton />
+            <ConnectWhatsAppButton />
           </div>
         )}
       </header>
@@ -113,10 +131,33 @@ export default async function ConnectionsPage({
           </div>
         )}
 
-        {/* Los dos canales comparten el catálogo de motivos: el mismo problema
-            se redacta igual, llegue por el callback de Facebook o el de
-            Instagram. */}
-        {(meta === "error" || instagram === "error") && (
+        {/* WhatsApp conecta un número por autorización, así que el aviso lo
+            nombra por su número en E.164 —que es lo que el usuario reconoce— y
+            no por el `phone_number_id`, que no se parece a nada suyo. */}
+        {whatsapp === "connected" && (
+          <div className="flex items-center gap-3 rounded-lg border border-success-soft-border bg-success-soft px-4 py-3 text-success-soft-foreground">
+            <Check className="size-4 shrink-0" aria-hidden />
+            <p className="flex-1 text-[13.5px]">
+              {phone
+                ? `Conectado: el número de WhatsApp ${phone} quedó autorizado.`
+                : "Conectado: el número de WhatsApp quedó autorizado."}
+            </p>
+            <Link
+              href="/connections"
+              aria-label="Descartar el aviso"
+              className="shrink-0 opacity-60 hover:opacity-100"
+            >
+              <X className="size-[15px]" aria-hidden />
+            </Link>
+          </div>
+        )}
+
+        {/* Los tres canales comparten el catálogo de motivos: el mismo problema
+            se redacta igual, llegue por el callback de Facebook, el de
+            Instagram o el Embedded Signup de WhatsApp. */}
+        {(meta === "error" ||
+          instagram === "error" ||
+          whatsapp === "error") && (
           <div className="flex items-start gap-3 rounded-lg border border-destructive-soft-border bg-destructive-soft px-3.5 py-3 text-destructive-soft-foreground">
             <TriangleAlert
               className="mt-0.5 size-[15px] shrink-0"
@@ -154,7 +195,7 @@ export default async function ConnectionsPage({
 
 // B1: qué va a pasar al conectar la primera cuenta, y el flujo en tres pasos.
 // Una tarjeta por canal: cada uno tiene su propio diálogo de autorización en
-// Meta, así que son dos caminos y no dos variantes del mismo botón.
+// Meta, así que son tres caminos y no tres variantes del mismo botón.
 function EmptyState() {
   return (
     <>
@@ -191,6 +232,28 @@ function EmptyState() {
         <ConnectInstagramButton />
       </section>
 
+      <section className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-[22px] shadow-[var(--shadow-sm)] sm:flex-row sm:items-center">
+        <span
+          className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[var(--primary-tint)] text-primary"
+          aria-hidden
+        >
+          {/* `MessageCircle` y no un logo: el icono acompaña a `Link2`
+              (Facebook) y `AtSign` (Instagram), que son metáforas del canal y
+              no marcas. La burbuja es la de mensajería, que es lo que WhatsApp
+              es acá. */}
+          <MessageCircle className="size-5" />
+        </span>
+        <div className="flex-1">
+          <h2 className="font-heading text-base font-semibold">WhatsApp</h2>
+          <p className="mt-1 text-[13.5px] text-muted-foreground">
+            Conecta un número de WhatsApp Business para recibir y responder
+            mensajes. Sirve tanto un número nuevo como uno que ya usas en la app
+            de WhatsApp Business.
+          </p>
+        </div>
+        <ConnectWhatsAppButton />
+      </section>
+
       <section className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-border-strong bg-card p-10 text-center">
         <div className="max-w-[460px]">
           <h3 className="font-heading text-[19px] font-semibold tracking-[-0.02em]">
@@ -212,9 +275,11 @@ function EmptyState() {
   )
 }
 
-// El cupo del plan cuenta solo páginas de Facebook: Instagram queda fuera del
-// límite por ahora, así que el contador lo dice en vez de llamarlas «páginas» a
-// secas y dejar al usuario buscando por qué su cuenta de IG no suma.
+// El cupo del plan cuenta páginas de Facebook y números de WhatsApp —los dos
+// canales de mensajería, que son los que miden cuota (`countActivePages` en
+// `lib/pages/page-registry.ts`)—; Instagram queda fuera del límite por ahora.
+// El contador lo enumera en vez de decir «cuentas» a secas y dejar al usuario
+// buscando por qué su cuenta de IG no suma.
 function PageQuota({ quota }: { quota: PageQuotaView }) {
   if (!quota) {
     return (
@@ -226,7 +291,8 @@ function PageQuota({ quota }: { quota: PageQuotaView }) {
 
   return (
     <p className="font-mono text-[11px] text-muted-foreground">
-      {quota.activePageCount} de {quota.maxPages} páginas de Facebook
+      {quota.activePageCount} de {quota.maxPages} páginas de Facebook y números
+      de WhatsApp
     </p>
   )
 }
@@ -263,6 +329,10 @@ function toPageView(
     metaPageId: page.metaPageId,
     name: page.name,
     username: page.username,
+    phoneE164: page.phoneE164,
+    // Solo el booleano: el PIN se descifra en una acción aparte, cuando el
+    // cliente lo pide, y no viaja en el render de la pantalla.
+    hasGeneratedWhatsappPin: page.hasGeneratedWhatsappPin,
     status: page.status,
     tokenStatus: page.tokenStatus,
     tokenError: page.tokenError,

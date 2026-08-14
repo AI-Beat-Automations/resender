@@ -20,6 +20,9 @@ export type ConversationListItem = {
     metaPageId: string
     name: string
     username: string | null
+    // Solo WhatsApp: en ese canal `metaPageId` es el `phone_number_id`, que no
+    // se parece al teléfono, y la etiqueta de la cuenta necesita el número.
+    phoneE164: string | null
   }
   latestMessage: {
     text: string
@@ -53,6 +56,7 @@ type ConversationListRow = {
   meta_page_id: string
   page_name: string
   page_username: string | null
+  page_phone_e164: string | null
   latest_text: string | null
   latest_direction: MessageDirection | null
   latest_status: MessageStatus | null
@@ -87,6 +91,7 @@ export async function listConversationReadModel(input: {
       p.meta_page_id,
       p.name as page_name,
       p.username as page_username,
+      p.whatsapp_phone_e164 as page_phone_e164,
       latest.text as latest_text,
       latest.direction as latest_direction,
       latest.status as latest_status,
@@ -150,6 +155,7 @@ function mapConversationListItem(
       metaPageId: row.meta_page_id,
       name: row.page_name,
       username: row.page_username,
+      phoneE164: row.page_phone_e164 ?? null,
     },
     latestMessage:
       row.latest_text &&

@@ -1,4 +1,6 @@
-const GRAPH = "https://graph.facebook.com/v23.0"
+import { META_GRAPH_VERSION } from "@/lib/meta-graph"
+
+const GRAPH = `https://graph.facebook.com/${META_GRAPH_VERSION}`
 
 export type MetaSendResult = {
   ok: boolean

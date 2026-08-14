@@ -12,5 +12,9 @@ META_VERIFY_TOKEN=development-only
 INSTAGRAM_APP_ID=development-only
 INSTAGRAM_APP_SECRET=development-only
 INSTAGRAM_VERIFY_TOKEN=development-only
+# WhatsApp Cloud API lives in the same Meta App as Messenger, so its webhook
+# signature is verified with META_APP_SECRET. Only the challenge verify token
+# is its own, because each webhook is registered separately in the Meta panel.
+WHATSAPP_VERIFY_TOKEN=development-only
 STRIPE_SECRET_KEY=rk_test_development-only
 STRIPE_WEBHOOK_SECRET=whsec_development-only

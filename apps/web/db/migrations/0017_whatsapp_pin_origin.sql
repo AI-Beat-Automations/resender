@@ -1,0 +1,32 @@
+-- migration 0017: de quién es el PIN que guardamos en la 0016
+--
+-- La 0016 dice que el PIN «es dato del cliente que custodiamos, no un secreto
+-- nuestro, y por eso además de guardarlo hay que poder devolvérselo». Para
+-- devolvérselo hay que saber **cuál** devolver, y la columna cifrada no lo dice:
+-- un PIN que generamos nosotros y uno que escribió el cliente tras un 133005 se
+-- ven exactamente igual una vez cifrados.
+--
+-- La diferencia no es cosmética. Solo el primero es un secreto que existe
+-- únicamente en nuestra base: le activamos la verificación en dos pasos a un
+-- número que no la tenía, Meta no vuelve a mostrar ese PIN, y si el cliente
+-- borra su cuenta se queda con la 2FA puesta y sin la llave. El segundo ya lo
+-- conoce —lo escribió él—, y enseñárselo en la tarjeta de Conexiones sería ruido
+-- que además invita a preguntarse por qué lo tenemos.
+--
+-- Ninguna columna existente sirve de proxy: `onboarding_mode` distingue el flujo
+-- (standard/coexistence), no el origen del PIN, y `whatsapp_pin_encrypted is not
+-- null` es cierto en los dos casos. Hace falta un bit y este es el bit.
+--
+-- Nullable y sin default, como el resto de las columnas de canal de la 0015 y de
+-- la 0016: Messenger e Instagram no tienen PIN, y `null` significa «no consta»,
+-- que la aplicación trata como «no se lo enseñes» (`coalesce(..., false)`).
+-- Fallar hacia no enseñarlo es el lado correcto: enseñar de más un PIN ajeno es
+-- peor que callar uno propio, que además se recupera reconectando.
+--
+-- **Va en una migración nueva y no dentro de la 0016** aunque las dos sean del
+-- mismo slice sin publicar: el runner (`scripts/migrate.mjs`) lleva la cuenta
+-- por nombre de archivo, así que editar una 0016 ya aplicada en cualquier
+-- entorno la dejaría marcada como hecha y esta columna no aparecería nunca.
+
+alter table connected_pages
+  add column if not exists whatsapp_pin_generated boolean;

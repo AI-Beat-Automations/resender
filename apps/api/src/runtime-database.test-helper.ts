@@ -12,7 +12,17 @@ type StoredInbound = {
   id: string
   pageId: string
   providerMessageId: string
+  // La 0015 reparte el dedupe de WhatsApp en dos índices parciales por
+  // dirección: el mismo wamid puede existir una vez como entrante y otra como
+  // saliente. Messenger e Instagram solo persisten entrantes por esta vía.
+  direction: "inbound" | "outbound"
   text: string
+}
+
+type StoredContactSync = {
+  pageId: string
+  phoneNumber: string
+  action: "add" | "remove"
 }
 
 type StoredComment = {
@@ -27,6 +37,11 @@ export class RuntimeDatabase {
   readonly messages: StoredInbound[] = []
   readonly comments: StoredComment[] = []
   readonly jobs: JobRecord[] = []
+  readonly contactSyncs: StoredContactSync[] = []
+  // Estado de entrega por `meta_message_id`. Vive aparte de `messages` porque
+  // lo escribe un callback distinto y así se puede afirmar sobre la
+  // monotonicidad sin tocar la fila del mensaje.
+  readonly deliveryStatuses = new Map<string, string>()
   inboundInsertStatements = 0
   subscriptionWrites = 0
   usage = 0
@@ -143,9 +158,83 @@ export class RuntimeDatabase {
     ) {
       return [{ message_count: this.usage }]
     }
+    // Antes de la rama de `with conversation as`: el CTE de WhatsApp empieza
+    // igual que el de `ingestInbound` y solo se distingue por las tablas que
+    // únicamente él escribe. Indexar sus binds junto a los de Messenger sería
+    // el error de siempre, así que va en su propio ejecutor.
+    if (statement.includes("insert into whatsapp_media_jobs")) {
+      this.inboundInsertStatements += 1
+      return this.executeWhatsappCte(values)
+    }
     if (statement.includes("with conversation as")) {
       this.inboundInsertStatements += 1
       return this.executeInboundCte(values)
+    }
+    // Antes de la relectura de Messenger, que la contiene como substring: la de
+    // WhatsApp usa `left join` —un histórico se persiste sin job— y acota por
+    // dirección con un bind en vez del literal 'inbound'.
+    if (statement.includes("left join external_webhook_jobs j on j.message_id")) {
+      const direction = stringValue(values[2])
+      const message = this.messages.find(
+        (candidate) =>
+          candidate.pageId === values[0] &&
+          candidate.providerMessageId === values[1] &&
+          candidate.direction === direction
+      )
+      if (!message) return []
+      const job = this.jobs.find(
+        (candidate) => candidate.messageId === message.id
+      )
+      return [
+        {
+          message_id: message.id,
+          job_id: job?.id ?? null,
+          job_status: job?.status ?? null,
+          job_attempt_count: job?.attemptCount ?? null,
+          job_recover_after: job?.recoverAfter ?? null,
+        },
+      ]
+    }
+    // `applyWhatsappStatus`. El rank de estados se repite acá porque el punto
+    // de la prueba de integración es justamente que un `sent` rezagado no pise
+    // un `read` ya escrito.
+    if (
+      statement.includes("with target as") &&
+      statement.includes("update messages")
+    ) {
+      const message = this.messages.find(
+        (candidate) =>
+          candidate.pageId === values[0] &&
+          candidate.providerMessageId === values[1]
+      )
+      // Un wamid que no es nuestro no devuelve fila y no es un error.
+      if (!message) return []
+      const current = this.deliveryStatuses.get(message.providerMessageId)
+      const next = stringValue(values[2])
+      const applied = statusRank(next) > statusRank(current)
+      if (applied) this.deliveryStatuses.set(message.providerMessageId, next)
+      return [
+        {
+          message_id: message.id,
+          current_status: current ?? null,
+          applied_status: applied ? next : null,
+        },
+      ]
+    }
+    // `applyWhatsappContactSync`. No crea conversaciones: el sync trae la agenda
+    // entera del teléfono y materializarla serían cientos de hilos vacíos.
+    if (
+      statement.includes("update conversations") &&
+      statement.includes("contact_synced_at")
+    ) {
+      this.contactSyncs.push({
+        pageId: stringValue(values[3]),
+        phoneNumber: stringValue(values[4]),
+        action: values[0] === true ? "remove" : "add",
+      })
+      // Sin tabla de conversaciones en el fake, se responde lo que responde la
+      // base cuando el contacto sí tiene hilo: una fila tocada.
+      return [{ id: "conversation" }]
     }
     if (
       statement.includes("join external_webhook_jobs") &&
@@ -216,7 +305,7 @@ export class RuntimeDatabase {
   }
 
   private executeInboundCte(values: unknown[]): Row[] {
-    const providerMessageId = stringValue(values[8])
+    const providerMessageId = stringValue(values[9])
     // This is the transport fake's equivalent of the database uniqueness
     // constraint. Whether the repository performs its follow-up lookup and
     // Queue handoff remains production behavior under test.
@@ -232,18 +321,19 @@ export class RuntimeDatabase {
     const index = this.messages.length + 1
     const messageId = uuidFor(index)
     const jobId = uuidFor(index + 100)
-    const deliveryEnabled = values[25] === true
+    const deliveryEnabled = values[26] === true
     const status: JobRecord["status"] =
       deliveryEnabled && this.page.webhookUrl ? "pending" : "failed_permanent"
     this.messages.push({
       id: messageId,
       pageId: this.page.id,
       providerMessageId,
-      text: stringValue(values[7]),
+      direction: "inbound",
+      text: stringValue(values[8]),
     })
     this.jobs.push({
       id: jobId,
-      eventId: stringValue(values[10]),
+      eventId: stringValue(values[11]),
       tenantId: this.page.tenantId,
       messageId,
       commentId: null,
@@ -253,25 +343,93 @@ export class RuntimeDatabase {
       username: this.page.username,
       webhookUrl: this.page.webhookUrl,
       payload: {
-        id: stringValue(values[10]),
+        id: stringValue(values[11]),
         type: "message.received",
       },
       status,
       attemptCount: 0,
-      recoverAfter: dateValue(values[30]),
+      recoverAfter: dateValue(values[31]),
       signingSecretEncrypted: this.page.webhookSigningSecretEncrypted,
     })
     // El CTE real trae un where sobre periodStart is not null: sin
     // período no hay contador que incrementar, que es exactamente el caso de
     // Instagram.
-    if (values[32] !== null && values[32] !== undefined) this.usage += 1
+    if (values[33] !== null && values[33] !== undefined) this.usage += 1
     return [
       {
         message_id: messageId,
         job_id: jobId,
         job_status: status,
         job_attempt_count: 0,
-        job_recover_after: dateValue(values[30]),
+        job_recover_after: dateValue(values[31]),
+      },
+    ]
+  }
+
+  // El CTE de la 0015. Los binds están en otras posiciones que los de
+  // `executeInboundCte` —trae adjuntos, dirección y origen— y por eso se indexan
+  // aparte en vez de ampliar aquél.
+  private executeWhatsappCte(values: unknown[]): Row[] {
+    const providerMessageId = stringValue(values[18])
+    const direction = values[9] === "outbound" ? "outbound" : "inbound"
+    if (
+      this.messages.some(
+        (message) =>
+          message.pageId === this.page.id &&
+          message.providerMessageId === providerMessageId &&
+          message.direction === direction
+      )
+    ) {
+      return []
+    }
+    const historical = values[15] === true
+    const index = this.messages.length + 1
+    const messageId = uuidFor(index)
+    const jobId = uuidFor(index + 100)
+    const deliveryEnabled = values[51] === true
+    const status: JobRecord["status"] =
+      deliveryEnabled && this.page.webhookUrl ? "pending" : "failed_permanent"
+    this.messages.push({
+      id: messageId,
+      pageId: this.page.id,
+      providerMessageId,
+      direction,
+      text: typeof values[12] === "string" ? values[12] : "",
+    })
+    // `where not historical` en el CTE del job: importar el historial no genera
+    // entrega, así que no hay job que encolar y el servicio lo lee por
+    // `jobId: null`.
+    if (!historical) {
+      this.jobs.push({
+        id: jobId,
+        eventId: stringValue(values[24]),
+        tenantId: this.page.tenantId,
+        messageId,
+        commentId: null,
+        connectionId: this.page.id,
+        channel: this.page.channel,
+        providerPageId: this.page.providerPageId,
+        username: this.page.username,
+        webhookUrl: this.page.webhookUrl,
+        payload: { id: stringValue(values[24]), type: "message.received" },
+        status,
+        attemptCount: 0,
+        recoverAfter: dateValue(values[56]),
+        signingSecretEncrypted: this.page.webhookSigningSecretEncrypted,
+      })
+    }
+    // Mismo guard doble que el CTE real: sin período no hay contador, y el
+    // historial no consume cuota aunque el período venga informado.
+    if (values[59] !== null && values[59] !== undefined && !historical) {
+      this.usage += 1
+    }
+    return [
+      {
+        message_id: messageId,
+        job_id: historical ? null : jobId,
+        job_status: historical ? null : status,
+        job_attempt_count: historical ? null : 0,
+        job_recover_after: historical ? null : dateValue(values[56]),
       },
     ]
   }
@@ -330,6 +488,22 @@ export class RuntimeDatabase {
   }
 }
 
+// El mismo orden que el `array_position` del repositorio: 'failed' y 'deleted'
+// van por encima porque son terminales, y el estado ausente vale 0 para que el
+// primer callback siempre entre.
+const DELIVERY_STATUS_RANK = [
+  "accepted",
+  "sent",
+  "delivered",
+  "read",
+  "failed",
+  "deleted",
+]
+
+function statusRank(value: string | undefined): number {
+  return value ? DELIVERY_STATUS_RANK.indexOf(value) + 1 : 0
+}
+
 function uuidFor(value: number): string {
   return `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`
 }
@@ -348,6 +522,14 @@ function pageRow(page: PageRecord): Row {
     webhook_url: page.webhookUrl,
     page_access_token_encrypted: page.pageAccessTokenEncrypted,
     webhook_signing_secret_encrypted: page.webhookSigningSecretEncrypted,
+    // Columnas de la 0015. El `select` real todavía no las pide, así que
+    // llegarían como undefined y `mapPage` las leería como null; informarlas
+    // acá deja el fake describiendo la fila que la tabla sí tiene.
+    waba_id: page.wabaId,
+    whatsapp_phone_e164: page.phoneE164,
+    onboarding_mode: page.onboardingMode,
+    coexistence_status: page.coexistenceStatus,
+    history_sync_status: page.historySyncStatus,
     token_expires_at: page.tokenExpiresAt,
     connected_at: page.connectedAt,
     updated_at: page.updatedAt,
