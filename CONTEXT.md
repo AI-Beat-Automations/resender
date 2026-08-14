@@ -19,6 +19,7 @@ En el MVP, el registro con email y password deja entrar al usuario inmediatament
 Existio un gate de lanzamiento: el registro estaba abierto pero el acceso al producto cerrado por una bandera `users.waitlisted`, con aprobacion manual por SQL. **Ese gate esta apagado** (migracion `0011_disable_access_gate.sql`: `default false` + `update users set waitlisted = false`). Toda cuenta nueva entra directo al producto y el unico filtro que queda es el [Gate de suscripcion].
 La columna `users.waitlisted` y `lib/auth/waitlist.ts` siguen en el codigo a proposito: `isUserWaitlisted` es fail-closed y vive en el hot path de `POST /api/meta/send`, asi que con el default en `false` queda inerte y se remueve en una entrega aparte. La pantalla autenticada `/waitlist` se borro; esa ruta ahora es la [Lista de espera].
 Decision en `docs/adr/0007-public-waitlist-and-access-gate-shutdown.md`.
+No confundir con el [Permiso de Instagram]: aquel gate era del producto entero y esta apagado; el permiso de Instagram es por canal, esta vivo y se opera igual —por SQL, sin pantalla—.
 
 ### Lista de espera
 Lista publica de captacion, sin relacion con el gate anterior. Su unico proposito es guardar el correo de alguien que hoy no puede comprar —porque solo existe Messenger— para avisarle cuando salgan Instagram o WhatsApp. Esta pensada para repartir en conferencias y contactos cara a cara, ademas de la landing.
@@ -94,6 +95,20 @@ Si una página ya conectada pertenece al mismo tenant y se vuelve a autorizar en
 ### Desconexión de páginas
 Desconectar una página elimina o desactiva la conexión para futuros envíos y recepciones, pero conserva el historial de conversaciones y mensajes como bitácora.
 La baja del webhook en Meta se despacha **por canal**: una cuenta de Instagram se da de baja contra `graph.instagram.com` y no contra el Graph de Facebook. Mandar el token de Instagram al endpoint de Facebook no da un error claro, da un `400` que se registra como "Meta no confirmó" y deja la cuenta recibiendo eventos.
+
+### Permiso de Instagram
+El canal Instagram esta cerrado por cuenta detras de la bandera `users.instagram_enabled`: `true` es acceso, `false` no. Se opera **por SQL** (`update users set instagram_enabled = true where email = '...'`), no hay pantalla de administracion y nadie se anota en ninguna parte. **No** es una lista de espera: no confundir con el [Gate de acceso (apagado)] ni con la [Lista de espera] publica.
+Existe porque Instagram esta implementado pero todavia no tiene el Advanced Access de Meta, asi que el canal solo sirve para cuentas propias o de prueba.
+El permiso apaga el canal **entero y en el acto**, no solo la puerta de entrada: sin el no se conecta, no se envia, no se responden comentarios y los entrantes se descartan sin persistir, incluida una cuenta que ya estaba conectada. Se lee vivo contra la base en cada request, nunca del JWT, y es fail-closed. Vive en `lib/auth/channel-access.ts`, no en `lib/auth/waitlist.ts`, que esta marcado para borrarse.
+La migracion `0015` habilita a **todas las cuentas que existian**, igual que hizo la `0004`: el permiso no filtra a ningun cliente actual y solo aplica a los registros posteriores.
+Decision en `docs/adr/0010-permiso-de-instagram-por-cuenta.md`.
+
+### Instagram sin permiso
+Lo que ve y recibe un tenant sin el [Permiso de Instagram]:
+- **Conexiones**: si no tiene ninguna cuenta de Instagram conectada, el canal **no se renderiza** —ni el boton de la cabecera ni la tarjeta del estado vacio—. Si la tiene (le revocaron el permiso), la tarjeta deja de decir "activa" y muestra **sin acceso**. La regla es: no se ofrece lo que no se puede dar, pero no se esconde lo que ya tenias.
+- **Inbox**: no cambia. El historial de Instagram ya recibido se sigue viendo; simplemente no entra nada nuevo.
+- **API**: `403` con el codigo de contrato `channel_not_enabled`, generico a proposito porque WhatsApp va a necesitar el mismo. El `message` si nombra el canal.
+- **Webhook entrante**: se responde `200` a Meta, no se persiste ni se reenvia nada, y queda `reason: "channel_not_enabled"` en la bitacora. El mensaje de esa persona se pierde a proposito. Quitar el permiso **no** desuscribe la cuenta en Meta: los eventos siguen llegando y se descartan uno por uno.
 
 ### Conexión de Instagram
 Instagram se conecta con **Instagram API con Instagram Login** (`graph.instagram.com`), no con la variante que cuelga de una Página de Facebook: el negocio inicia sesión con su cuenta profesional y no necesita tener ni vincular una Página.

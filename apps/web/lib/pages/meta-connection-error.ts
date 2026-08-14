@@ -44,6 +44,13 @@ export function formatMetaConnectionError(reason?: string | null): string {
   // problemas distintos: el intercambio falla por credenciales o redirect_uri
   // mal cargados, el perfil por permisos que el usuario no concedió, y la
   // suscripción por el webhook sin configurar en la app de Meta.
+  // El rebote del gate de canal (ADR 0010). No es un fallo de Meta ni del
+  // usuario: la cuenta no tiene el permiso, y sin decirlo la pantalla mostraría
+  // el motivo crudo justo cuando la explicación es lo único que sirve.
+  if (reason === "instagram_not_enabled") {
+    return `${PREFIX}: el canal de Instagram no está habilitado para tu cuenta.`
+  }
+
   if (reason === "instagram_exchange_failed") {
     return `${PREFIX}: Instagram no completó el intercambio de credenciales. Vuelve a intentarlo.`
   }

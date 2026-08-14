@@ -5,6 +5,10 @@ export const ERROR_CODES = [
   "invalid_api_key",
   "account_waitlisted",
   "subscription_required",
+  // Un canal apagado para esa cuenta. Nace genérico y no `instagram_not_enabled`
+  // porque el mismo bloqueo espera a WhatsApp (ADR 0010); el canal lo nombra el
+  // `message`, no el código.
+  "channel_not_enabled",
   "page_limit_exceeded",
   "plan_unavailable",
   "quota_exceeded",

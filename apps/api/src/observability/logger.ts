@@ -44,6 +44,7 @@ export type LogReason =
   // ingesta
   | "account_not_connected"
   | "no_active_subscription"
+  | "channel_not_enabled"
   | "already_ingested"
   | "self_authored_comment"
   | "own_published_comment"

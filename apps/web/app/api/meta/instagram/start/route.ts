@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 
 import { auth } from "@/auth"
+import { resolveInstagramAccess } from "@/lib/auth/channel-access"
 import { resolveProductAccess } from "@/lib/auth/waitlist"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
 import { log, type LogReason } from "@/lib/observability/logger"
@@ -50,6 +51,16 @@ export async function GET(request: NextRequest) {
 
   if (!(await hasActiveSubscription(session.user.id))) {
     return gate("no_active_subscription", "/billing")
+  }
+
+  // Último gate y no el primero: quien no tiene sesión o no paga tiene que ver
+  // ese motivo, no «Instagram no está habilitado». Cortar acá también evita
+  // sembrar la cookie de `state` de un OAuth que no va a poder terminar.
+  if (!(await resolveInstagramAccess(session.user.id))) {
+    return gate(
+      "channel_not_enabled",
+      "/connections?instagram=error&reason=instagram_not_enabled"
+    )
   }
 
   log({

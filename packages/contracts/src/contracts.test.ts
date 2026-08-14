@@ -87,6 +87,12 @@ describe("public contracts", () => {
     expect(
       ErrorEnvelopeSchema.safeParse({
         ...envelope,
+        error: { ...envelope.error, code: "channel_not_enabled" },
+      }).success
+    ).toBe(true)
+    expect(
+      ErrorEnvelopeSchema.safeParse({
+        ...envelope,
         error: { ...envelope.error, code: "invented_error" },
       }).success
     ).toBe(false)

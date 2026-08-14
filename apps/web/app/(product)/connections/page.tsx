@@ -8,7 +8,9 @@ import {
   type ConnectedPageView,
 } from "@/features/connections/ui/connected-page-card"
 import { auth } from "@/auth"
+import { resolveInstagramAccess } from "@/lib/auth/channel-access"
 import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
+import { offersChannel } from "@/lib/pages/channel-display"
 import { formatMetaConnectionError } from "@/lib/pages/meta-connection-error"
 import { listTenantPages } from "@/lib/pages/page-registry"
 
@@ -43,6 +45,12 @@ export default async function ConnectionsPage({
   const tenantId = session?.user?.id ?? null
   const tenantPages = tenantId ? await listTenantPages(tenantId) : []
   const quota = tenantId ? await resolvePageQuota(tenantId) : null
+  // Permiso de Instagram del tenant (ADR 0010). Sin sesión no hay a quién
+  // preguntarle, así que se cierra.
+  const instagramAccess = tenantId
+    ? await resolveInstagramAccess(tenantId)
+    : false
+  const offersInstagram = offersChannel("instagram", instagramAccess)
 
   const sortedPages = [...tenantPages].sort(
     (left, right) => cardRank(left) - cardRank(right)
@@ -71,7 +79,7 @@ export default async function ConnectionsPage({
         {tenantPages.length > 0 && (
           <div className="flex shrink-0 flex-wrap gap-2.5">
             <ConnectFacebookButton />
-            <ConnectInstagramButton />
+            {offersInstagram && <ConnectInstagramButton />}
           </div>
         )}
       </header>
@@ -129,7 +137,7 @@ export default async function ConnectionsPage({
         )}
 
         {tenantPages.length === 0 ? (
-          <EmptyState />
+          <EmptyState offersInstagram={offersInstagram} />
         ) : (
           <>
             <div className="mt-0.5 flex flex-wrap items-baseline justify-between gap-2">
@@ -141,7 +149,7 @@ export default async function ConnectionsPage({
             {sortedPages.map((page) => (
               <ConnectedPageCard
                 key={page.id}
-                page={toPageView(page)}
+                page={toPageView(page, instagramAccess)}
                 showWebhookHint={page.id === firstActiveId}
               />
             ))}
@@ -155,7 +163,9 @@ export default async function ConnectionsPage({
 // B1: qué va a pasar al conectar la primera cuenta, y el flujo en tres pasos.
 // Una tarjeta por canal: cada uno tiene su propio diálogo de autorización en
 // Meta, así que son dos caminos y no dos variantes del mismo botón.
-function EmptyState() {
+// Sin permiso, Instagram no aparece acá: es la pantalla que ve una cuenta
+// nueva, que es justo la población que nace sin el canal (ADR 0010).
+function EmptyState({ offersInstagram }: { offersInstagram: boolean }) {
   return (
     <>
       <section className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-[22px] shadow-[var(--shadow-sm)] sm:flex-row sm:items-center">
@@ -174,22 +184,24 @@ function EmptyState() {
         <ConnectFacebookButton />
       </section>
 
-      <section className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-[22px] shadow-[var(--shadow-sm)] sm:flex-row sm:items-center">
-        <span
-          className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[var(--primary-tint)] text-primary"
-          aria-hidden
-        >
-          <AtSign className="size-5" />
-        </span>
-        <div className="flex-1">
-          <h2 className="font-heading text-base font-semibold">Instagram</h2>
-          <p className="mt-1 text-[13.5px] text-muted-foreground">
-            Autoriza tu cuenta profesional para recibir mensajes directos y
-            comentarios. No necesitas una página de Facebook.
-          </p>
-        </div>
-        <ConnectInstagramButton />
-      </section>
+      {offersInstagram && (
+        <section className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-[22px] shadow-[var(--shadow-sm)] sm:flex-row sm:items-center">
+          <span
+            className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[var(--primary-tint)] text-primary"
+            aria-hidden
+          >
+            <AtSign className="size-5" />
+          </span>
+          <div className="flex-1">
+            <h2 className="font-heading text-base font-semibold">Instagram</h2>
+            <p className="mt-1 text-[13.5px] text-muted-foreground">
+              Autoriza tu cuenta profesional para recibir mensajes directos y
+              comentarios. No necesitas una página de Facebook.
+            </p>
+          </div>
+          <ConnectInstagramButton />
+        </section>
+      )}
 
       <section className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-border-strong bg-card p-10 text-center">
         <div className="max-w-[460px]">
@@ -255,11 +267,13 @@ async function resolvePageQuota(tenantId: string): Promise<PageQuotaView> {
 }
 
 function toPageView(
-  page: Awaited<ReturnType<typeof listTenantPages>>[number]
+  page: Awaited<ReturnType<typeof listTenantPages>>[number],
+  instagramAccess: boolean
 ): ConnectedPageView {
   return {
     id: page.id,
     channel: page.channel,
+    instagramAccess,
     metaPageId: page.metaPageId,
     name: page.name,
     username: page.username,

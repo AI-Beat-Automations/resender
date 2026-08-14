@@ -192,6 +192,15 @@ export class ApiService {
     return { user, subscription }
   }
 
+  // Permiso del canal Instagram (ADR 0010). Va aparte de `requireProductAccess`
+  // porque ese gate también sirve a Messenger, y la lectura es viva contra la
+  // base y nunca del JWT: quitar el permiso tiene que valer en el request
+  // siguiente sin obligar a nadie a volver a autenticarse.
+  async requireInstagramAccess(tenantId: string): Promise<void> {
+    const user = await this.repository.getUserById(tenantId)
+    if (!user?.instagramEnabled) throw channelNotEnabled("Instagram")
+  }
+
   async getMe(tenantId: string): Promise<MeDto> {
     const { subscription } = await this.requireProductAccess(tenantId)
     if (!isCanonicalPlanLookupKey(subscription.priceLookupKey)) {
@@ -344,11 +353,15 @@ export class ApiService {
       })
     }
     const page = await this.requirePage(input.tenantId, input.message.pageId)
-    // El esquema tope en 2000 caracteres, que es el techo de Messenger.
-    // Instagram corta antes y en otra unidad, y recién acá se sabe a qué canal
-    // apunta el `pageId`.
-    if (page.channel === "instagram")
+    // Recién acá se sabe a qué canal apunta el `pageId`, y por eso las dos
+    // comprobaciones propias de Instagram cuelgan de la fila de la cuenta:
+    // el permiso de canal —una consulta más que Messenger no paga— y el largo,
+    // que el esquema no puede cortar porque su tope de 2000 caracteres es el de
+    // Messenger e Instagram corta antes y en otra unidad.
+    if (page.channel === "instagram") {
+      await this.requireInstagramAccess(input.tenantId)
       assertInstagramTextFits(input.message.text)
+    }
     const conversation = input.message.conversationId
       ? await this.repository.getConversationRecord(
           input.tenantId,
@@ -777,6 +790,10 @@ export class ApiService {
     input: ConnectInstagramAccountInput
   ): Promise<PageDto> {
     const { user } = await this.requireProductAccess(actor.userId)
+    // El permiso se comprueba con la fila que el gate de producto ya trajo, y
+    // antes del intercambio: el `code` de OAuth se quema al usarlo una vez, así
+    // que rebotar más adelante dejaría al usuario sin poder reintentar.
+    if (!user.instagramEnabled) throw channelNotEnabled("Instagram")
     validateReturnUrl(input.redirectUri)
 
     const token = await this.providerOperation("Instagram", () =>
@@ -1384,15 +1401,27 @@ export class ApiService {
     await this.verifyInstagramSignature(raw, signature)
     const parsed = parseWebhookJson(raw)
     const accessByTenant = new Map<string, boolean>()
+    // Caché aparte de la del gate de producto: el permiso de canal no vive
+    // dentro de `hasProductAccess` porque ese helper lo comparte Messenger.
+    const channelByTenant = new Map<string, boolean>()
 
-    const messages = await this.ingestInstagramMessages(parsed, accessByTenant)
-    const comments = await this.ingestInstagramComments(parsed, accessByTenant)
+    const messages = await this.ingestInstagramMessages(
+      parsed,
+      accessByTenant,
+      channelByTenant
+    )
+    const comments = await this.ingestInstagramComments(
+      parsed,
+      accessByTenant,
+      channelByTenant
+    )
     return { accepted: messages + comments }
   }
 
   private async ingestInstagramMessages(
     parsed: unknown,
-    accessByTenant: Map<string, boolean>
+    accessByTenant: Map<string, boolean>,
+    channelByTenant: Map<string, boolean>
   ): Promise<number> {
     let accepted = 0
     for (const event of extractInstagramDirectMessages(parsed)) {
@@ -1418,6 +1447,17 @@ export class ApiService {
           action: "inbound_ingest",
           outcome: "dropped",
           reason: "no_active_subscription",
+          ...accountFields(page),
+          subject: "message",
+        })
+        continue
+      }
+      if (!(await this.hasInstagramAccess(page.tenantId, channelByTenant))) {
+        log({
+          entrypoint: "fetch",
+          action: "inbound_ingest",
+          outcome: "dropped",
+          reason: "channel_not_enabled",
           ...accountFields(page),
           subject: "message",
         })
@@ -1466,7 +1506,8 @@ export class ApiService {
 
   private async ingestInstagramComments(
     parsed: unknown,
-    accessByTenant: Map<string, boolean>
+    accessByTenant: Map<string, boolean>,
+    channelByTenant: Map<string, boolean>
   ): Promise<number> {
     let accepted = 0
     for (const event of extractInstagramComments(parsed)) {
@@ -1536,6 +1577,18 @@ export class ApiService {
           action: "inbound_ingest",
           outcome: "dropped",
           reason: "no_active_subscription",
+          ...accountFields(page),
+          subject: "comment",
+          providerId: event.providerCommentId,
+        })
+        continue
+      }
+      if (!(await this.hasInstagramAccess(page.tenantId, channelByTenant))) {
+        log({
+          entrypoint: "fetch",
+          action: "inbound_ingest",
+          outcome: "dropped",
+          reason: "channel_not_enabled",
           ...accountFields(page),
           subject: "comment",
           providerId: event.providerCommentId,
@@ -1687,6 +1740,22 @@ export class ApiService {
       Boolean(user) &&
       user?.waitlisted === false &&
       isActiveSubscription(subscription)
+    cache.set(tenantId, allowed)
+    return allowed
+  }
+
+  // El permiso del canal en la ingesta (ADR 0010). Un entrante de un tenant sin
+  // permiso se descarta sin persistir ni reenviar, y a Meta se le sigue
+  // contestando `200`: reintentarlo daría el mismo resultado y un webhook que no
+  // responde rápido Meta lo desactiva.
+  private async hasInstagramAccess(
+    tenantId: string,
+    cache: Map<string, boolean>
+  ): Promise<boolean> {
+    const cached = cache.get(tenantId)
+    if (cached !== undefined) return cached
+    const user = await this.repository.getUserById(tenantId)
+    const allowed = user?.instagramEnabled === true
     cache.set(tenantId, allowed)
     return allowed
   }
@@ -1848,6 +1917,16 @@ function idempotencyConflict(
         ? "A request with this idempotency key is still in progress."
         : "The idempotency key was already used for another request.",
     status: 409,
+  })
+}
+
+// El código es genérico y el mensaje nombra el canal: el bloqueo no es de la
+// cuenta entera sino de un canal, y el Facebook del mismo tenant sigue andando.
+function channelNotEnabled(channel: string): ContractError {
+  return new ContractError({
+    code: "channel_not_enabled",
+    message: `The ${channel} channel is not enabled for this account.`,
+    status: 403,
   })
 }
 

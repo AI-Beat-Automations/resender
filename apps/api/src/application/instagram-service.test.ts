@@ -9,7 +9,9 @@ import type {
   UserRecord,
 } from "../infrastructure/db/repository"
 import { encryptSecret, hmacHex } from "../infrastructure/crypto/secrets"
+import type { MetaClient } from "../infrastructure/meta/client"
 import type { InstagramClient } from "../infrastructure/meta/instagram-client"
+import { createApp } from "../http/app"
 import { ApiService } from "./service"
 
 const CREATED_AT = new Date("2026-07-29T18:00:00.000Z")
@@ -436,13 +438,202 @@ describe("connecting an Instagram account", () => {
       )
     ).rejects.toMatchObject({ code: "provider_rejected", status: 422 })
   })
+
+  // El `code` de OAuth se quema al usarlo una sola vez: rebotar después dejaría
+  // al usuario sin poder reintentar, aunque le devolvieran el permiso.
+  it("refuses a tenant without the channel permission without burning the OAuth code", async () => {
+    const exchangeAuthorizationCode = vi.fn()
+    const connect = vi.fn()
+    const service = instagramService(
+      {
+        getUserById: async () => user({ instagramEnabled: false }),
+        connectInstagramAccount: connect,
+      },
+      { exchangeAuthorizationCode }
+    )
+
+    await expect(
+      service.connectInstagramAccount(
+        { userId: TENANT },
+        { code: "AQB123", redirectUri: "https://app.example/callback" }
+      )
+    ).rejects.toMatchObject({ code: "channel_not_enabled", status: 403 })
+    expect(exchangeAuthorizationCode).not.toHaveBeenCalled()
+    expect(connect).not.toHaveBeenCalled()
+  })
+})
+
+// El permiso vive en `users.instagram_enabled` y se lee vivo contra la base
+// (ADR 0010): apaga el canal entero, no solo la puerta de entrada, y no toca a
+// Messenger.
+describe("the Instagram channel permission", () => {
+  it("refuses a DM to an Instagram account without the permission", async () => {
+    const sendText = vi.fn()
+    const reserveOutbound = vi.fn()
+    const service = instagramService(
+      {
+        getUserById: async () => user({ instagramEnabled: false }),
+        reserveOutbound,
+      },
+      { sendText }
+    )
+
+    await expect(
+      service.sendMessage({
+        tenantId: TENANT,
+        idempotencyKey: "idem-1",
+        message: {
+          pageId: PAGE_ID,
+          recipientId: "9876543210",
+          type: "text",
+          text: "hola",
+        },
+      })
+    ).rejects.toMatchObject({ code: "channel_not_enabled", status: 403 })
+    expect(reserveOutbound).not.toHaveBeenCalled()
+    expect(sendText).not.toHaveBeenCalled()
+  })
+
+  // La contracara, que es la user story del ticket: el permiso apagado no le
+  // hace nada a Messenger, y su envío ni siquiera paga la consulta del permiso.
+  it("leaves a Messenger DM untouched, without an extra query", async () => {
+    const getUserById = vi.fn(async () => user({ instagramEnabled: false }))
+    const sendText = vi.fn(async () => ({
+      ok: true as const,
+      messageId: "mid-1",
+      response: null,
+    }))
+    const service = instagramService(
+      {
+        getUserById,
+        getPage: async () => page({ channel: "messenger", username: null }),
+        getSubscription: async () => openBillingPeriod(),
+      },
+      {},
+      { sendText }
+    )
+
+    await expect(
+      service.sendMessage({
+        tenantId: TENANT,
+        idempotencyKey: "idem-1",
+        message: {
+          pageId: PAGE_ID,
+          recipientId: "9876543210",
+          type: "text",
+          text: "hola",
+        },
+      })
+    ).resolves.toMatchObject({ created: true })
+    expect(sendText).toHaveBeenCalledTimes(1)
+    expect(getUserById).not.toHaveBeenCalled()
+  })
+
+  // Las respuestas a comentarios están cerradas por el middleware de
+  // `/v1/comments/*`, así que la prueba entra por HTTP: llamar al método del
+  // servicio a secas no pasaría por el gate.
+  it.each([
+    ["public reply", "replies", "replyToComment"],
+    ["private reply", "private-replies", "sendPrivateReply"],
+  ] as const)("closes the %s route", async (_name, segment, providerCall) => {
+    const info = vi.spyOn(console, "log").mockImplementation(() => undefined)
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined)
+    const call = vi.fn()
+    const service = instagramService(
+      { getUserById: async () => user({ instagramEnabled: false }) },
+      { [providerCall]: call } as Partial<InstagramClient>
+    )
+
+    const response = await createApp({ serviceFactory: () => service }).request(
+      `https://api.resender.dev/v1/comments/${COMMENT_ID}/${segment}`,
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer pk_live_test-secret",
+          "content-type": "application/json",
+          "idempotency-key": "idem-1",
+        },
+        body: JSON.stringify({ text: "gracias!" }),
+      },
+      {
+        API_RATE_LIMITER: { limit: async () => ({ success: true }) },
+      } as unknown as Env
+    )
+
+    expect(response.status).toBe(403)
+    expect(await response.json()).toMatchObject({
+      error: { code: "channel_not_enabled" },
+    })
+    expect(call).not.toHaveBeenCalled()
+    info.mockRestore()
+    warn.mockRestore()
+  })
+
+  it.each([
+    ["DM", "ingestInbound"],
+    ["comment", "ingestInboundComment"],
+  ] as const)(
+    "discards an inbound %s without persisting it",
+    async (kind, persist) => {
+      const call = vi.fn()
+      const service = instagramService({
+        getUserById: async () => user({ instagramEnabled: false }),
+        [persist]: call,
+      } as Partial<SqlRepository>)
+      const queueSend = service.env.WEBHOOK_DELIVERIES
+        .send as unknown as ReturnType<typeof vi.fn>
+
+      await expect(
+        ingest(
+          service,
+          kind === "DM" ? directMessagePayload() : commentPayload()
+        )
+      ).resolves.toEqual({ accepted: 0 })
+      expect(call).not.toHaveBeenCalled()
+      expect(queueSend).not.toHaveBeenCalled()
+    }
+  )
+
+  // Un mismo POST de Meta trae varios eventos del mismo tenant, y el permiso se
+  // cachea por lote aparte del gate de producto: dos lecturas, no una por evento.
+  it("reads the account row once per payload", async () => {
+    const getUserById = vi.fn(async () => user())
+    const service = instagramService({ getUserById })
+
+    await ingest(service, {
+      object: "instagram",
+      entry: [
+        {
+          id: IG_ACCOUNT,
+          time: 1_769_000_000,
+          messaging: [
+            {
+              sender: { id: "igsid-1" },
+              timestamp: 1_769_000_000_000,
+              message: { mid: "mid-1", text: "un DM" },
+            },
+          ],
+          field: "comments",
+          value: {
+            id: "ig-comment-1",
+            from: { id: "9876543210", username: "un_seguidor" },
+            text: "un comentario",
+            media: { id: "media-1" },
+          },
+        },
+      ],
+    })
+
+    expect(getUserById).toHaveBeenCalledTimes(2)
+  })
 })
 
 // --- andamiaje --------------------------------------------------------------
 
 function instagramService(
   repositoryMethods: Partial<SqlRepository>,
-  instagramMethods: Partial<InstagramClient> = {}
+  instagramMethods: Partial<InstagramClient> = {},
+  metaMethods: Partial<MetaClient> = {}
 ): ApiService {
   const service = new ApiService(
     {
@@ -464,6 +655,16 @@ function instagramService(
         getActivePageByProviderId: async () => page(),
         getUserById: async () => user(),
         getSubscription: async () => subscription(),
+        getApiKeyByHash: async (secretHash: string) => ({
+          id: "key_1",
+          tenantId: TENANT,
+          secretHash,
+          status: "active",
+          waitlisted: false,
+        }),
+        touchApiKey: async () => true,
+        countActivePages: async () => 1,
+        getUsage: async () => 0,
         getPage: async () => page(),
         getComment: async () => sourceComment(),
         isOwnPublishedComment: async () => false,
@@ -505,6 +706,7 @@ function instagramService(
         }),
         ...instagramMethods,
       } as unknown as InstagramClient,
+      meta: metaMethods as MetaClient,
       now: () => CREATED_AT,
     }
   )
@@ -636,17 +838,21 @@ function message(overrides: Partial<MessageRecord> = {}): MessageRecord {
   }
 }
 
-function user(): UserRecord {
+function user(overrides: Partial<UserRecord> = {}): UserRecord {
   return {
     id: TENANT,
     email: "tenant@example.com",
     passwordHash: "hash",
     waitlisted: false,
+    instagramEnabled: true,
     createdAt: CREATED_AT,
+    ...overrides,
   }
 }
 
-function subscription(): SubscriptionRecord {
+function subscription(
+  overrides: Partial<SubscriptionRecord> = {}
+): SubscriptionRecord {
   return {
     tenantId: TENANT,
     stripeSubscriptionId: "sub_1",
@@ -656,7 +862,20 @@ function subscription(): SubscriptionRecord {
     currentPeriodEnd: new Date("2026-08-01T00:00:00.000Z"),
     cancelAtPeriodEnd: false,
     lastStripeEventAt: CREATED_AT,
+    ...overrides,
   }
+}
+
+// Instagram está fuera de cuota y por eso el resto del archivo nunca resuelve el
+// entitlement, que se evalúa contra el reloj de pared: un período de fechas
+// fijas ya venció y devuelve `plan_unavailable`. Solo el envío por Messenger lo
+// necesita abierto.
+const DAY_MS = 24 * 60 * 60 * 1000
+function openBillingPeriod(): SubscriptionRecord {
+  return subscription({
+    currentPeriodStart: new Date(Date.now() - DAY_MS),
+    currentPeriodEnd: new Date(Date.now() + DAY_MS),
+  })
 }
 
 function inboundResult() {

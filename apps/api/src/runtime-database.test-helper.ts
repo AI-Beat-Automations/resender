@@ -360,6 +360,7 @@ function userRow(user: UserRecord): Row {
     email: user.email,
     password_hash: user.passwordHash,
     waitlisted: user.waitlisted,
+    instagram_enabled: user.instagramEnabled,
     created_at: user.createdAt,
   }
 }

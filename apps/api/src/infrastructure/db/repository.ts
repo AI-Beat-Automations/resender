@@ -26,6 +26,13 @@ export type UserRecord = {
   email: string
   passwordHash: string
   waitlisted: boolean
+  // Permiso del canal Instagram para ese tenant (ADR 0010). Viaja en la misma
+  // fila que ya se lee para el gate de producto, así que `connectInstagramAccount`
+  // lo comprueba sin una consulta extra. Los otros dos puntos —el envío y las
+  // rutas de comentarios— sí releen: el middleware `/v1/*` descarta el `user`
+  // que trae `requireProductAccess`, y pasarlo por el contexto para ahorrar esa
+  // lectura es una optimización que esta entrega no hace.
+  instagramEnabled: boolean
   createdAt: Date
 }
 
@@ -181,7 +188,7 @@ export class SqlRepository {
 
   async getUserById(id: string): Promise<UserRecord | null> {
     const rows = await this.sql`
-      select id, email, password_hash, waitlisted, created_at
+      select id, email, password_hash, waitlisted, instagram_enabled, created_at
       from users
       where id = ${id}
       limit 1
@@ -191,7 +198,7 @@ export class SqlRepository {
 
   async getUserByEmail(email: string): Promise<UserRecord | null> {
     const rows = await this.sql`
-      select id, email, password_hash, waitlisted, created_at
+      select id, email, password_hash, waitlisted, instagram_enabled, created_at
       from users
       where email = ${email}
       limit 1
@@ -206,7 +213,7 @@ export class SqlRepository {
     const rows = await this.sql`
       insert into users (email, password_hash)
       values (${input.email}, ${input.passwordHash})
-      returning id, email, password_hash, waitlisted, created_at
+      returning id, email, password_hash, waitlisted, instagram_enabled, created_at
     `
     const row = rows[0]
     if (!row) throw new Error("user insert failed")
@@ -1866,6 +1873,7 @@ function mapUser(row: Record<string, unknown>): UserRecord {
     email: text(row.email),
     passwordHash: text(row.password_hash),
     waitlisted: row.waitlisted === true,
+    instagramEnabled: row.instagram_enabled === true,
     createdAt: date(row.created_at),
   }
 }

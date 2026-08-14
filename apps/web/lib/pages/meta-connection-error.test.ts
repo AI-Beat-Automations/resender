@@ -77,6 +77,15 @@ describe("formatMetaConnectionError", () => {
     ).toContain("la cuenta de Instagram 999")
   })
 
+  // El gate de canal (ADR 0010) rebota por la misma vía que los fallos de Meta,
+  // así que necesita su propia redacción: sin ella la pantalla mostraría
+  // `instagram_not_enabled` crudo, que no le dice nada al que lo lee.
+  it("explains that the Instagram channel is not enabled for the account", () => {
+    expect(formatMetaConnectionError("instagram_not_enabled")).toBe(
+      "No se pudo conectar: el canal de Instagram no está habilitado para tu cuenta."
+    )
+  })
+
   it("falls back to the raw reason and to the bare message without one", () => {
     expect(formatMetaConnectionError("something_odd")).toBe(
       "No se pudo conectar: something_odd."
@@ -97,6 +106,7 @@ describe("formatMetaConnectionError", () => {
       "instagram_profile_failed",
       "instagram_subscription_failed",
       "instagram_account_owned:1",
+      "instagram_not_enabled",
       "unknown",
     ]
 
