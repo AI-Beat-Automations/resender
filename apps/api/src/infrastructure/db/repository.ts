@@ -1084,10 +1084,36 @@ export class SqlRepository {
           inserted_message.id,
           ${input.page.webhookUrl},
           ${input.payloadVersion},
+          -- REGLA: **todo bind dentro de un jsonb_build_object lleva cast
+          -- explícito.** Es la única posición de toda esta base de código donde
+          -- Postgres se niega a inferir el tipo de un parámetro, y por eso vale
+          -- la pena escribirla una vez acá y referenciarla desde las otras dos
+          -- sentencias que arman sobres (comentarios de Instagram y mensajes de
+          -- WhatsApp).
+          --
+          -- El motivo es la declaración de la función: variadic "any". Para un
+          -- argumento "any" no hay tipo de destino del que deducir nada. Un
+          -- literal sin tipo Postgres lo resuelve a text; un parámetro, no
+          -- —tendría que adivinarlo— y aborta al **preparar** la consulta con
+          -- "could not determine data type of parameter $N". Al preparar, no al
+          -- ejecutar: la sentencia entera muere antes de tocar una sola fila, o
+          -- sea que no falla un mensaje raro, falla el canal completo desde el
+          -- primer webhook.
+          --
+          -- Todo lo demás sí se infiere y no necesita cast (comprobado
+          -- ejecutándolo, no de memoria): un bind en un insert ... select toma
+          -- el tipo de la columna destino incluso a través de un CTE, un
+          -- "not $n" se resuelve a boolean, un case con todas las ramas sin
+          -- tipo se resuelve a text, y una comparación contra una columna toma
+          -- el tipo de la columna.
+          --
+          -- Un doble de sql **no puede cazar esto**: captura el texto y los
+          -- valores, y no infiere tipos. Por eso la red que lo cubre está en
+          -- test/postgres/, ejecutando el SQL real contra Postgres (PGlite).
           jsonb_build_object(
-            'id', ${input.eventId},
+            'id', ${input.eventId}::text,
             'type', 'message.received',
-            'createdAt', ${input.createdAt.toISOString()},
+            'createdAt', ${input.createdAt.toISOString()}::text,
             'data', jsonb_build_object(
               -- channel y username van también en Messenger (username null
               -- ahí). Un tenant con los dos canales apuntando al mismo webhook
@@ -1095,16 +1121,16 @@ export class SqlRepository {
               -- uniforme se consume más fácil que una que cambia según el
               -- canal. Es aditivo, así que no rompe a los consumidores.
               'page', jsonb_build_object(
-                'id', ${input.page.id},
-                'channel', ${input.page.channel},
-                'providerPageId', ${input.page.providerPageId},
-                'name', ${input.page.name},
-                'username', ${input.page.username}
+                'id', ${input.page.id}::text,
+                'channel', ${input.page.channel}::text,
+                'providerPageId', ${input.page.providerPageId}::text,
+                'name', ${input.page.name}::text,
+                'username', ${input.page.username}::text
               ),
               'conversation', jsonb_build_object(
                 'id', inserted_message.conversation_id,
                 'contact', jsonb_build_object(
-                  'id', ${input.contactId},
+                  'id', ${input.contactId}::text,
                   'name', (select contact_name from conversation)
                 )
               ),
@@ -1113,24 +1139,28 @@ export class SqlRepository {
                 'direction', 'inbound',
                 'status', 'received',
                 'type', 'text',
-                'text', ${input.text},
+                'text', ${input.text}::text,
                 'provider', jsonb_build_object(
                   'name', 'meta',
-                  'messageId', ${input.providerMessageId}
+                  'messageId', ${input.providerMessageId}::text
                 ),
-                'createdAt', ${input.createdAt.toISOString()}
+                'createdAt', ${input.createdAt.toISOString()}::text
               )
             )
           ),
           case
-            when not ${input.deliveryEnabled}
+            when not ${input.deliveryEnabled}::boolean
               or ${input.page.webhookUrl}::text is null
               then 'failed_permanent'
             else 'pending'
           end,
+          -- Los casts de estas dos ramas no arreglan nada roto (un not $n es
+          -- boolean y un case de puros literales sin tipo es text): fijan el
+          -- tipo por escrito para que agregar mañana una rama ya tipada no
+          -- cambie en silencio a qué se coacciona el bind de la razón.
           case
-            when not ${input.deliveryEnabled}
-              then ${input.deliveryBlockedReason}
+            when not ${input.deliveryEnabled}::boolean
+              then ${input.deliveryBlockedReason}::text
             when ${input.page.webhookUrl}::text is null
               then 'webhook URL is not configured'
             else null
@@ -1256,44 +1286,47 @@ export class SqlRepository {
           inserted_comment.id,
           ${input.page.webhookUrl},
           ${input.payloadVersion},
+          -- Cast obligatorio en cada bind: ver la regla completa en el sobre de
+          -- ingestInbound. jsonb_build_object es variadic "any" y un parámetro
+          -- sin cast rompe la sentencia entera al preparar.
           jsonb_build_object(
-            'id', ${input.eventId},
+            'id', ${input.eventId}::text,
             'type', 'comment.received',
-            'createdAt', ${input.createdAt.toISOString()},
+            'createdAt', ${input.createdAt.toISOString()}::text,
             'data', jsonb_build_object(
               'page', jsonb_build_object(
-                'id', ${input.page.id},
-                'channel', ${input.page.channel},
-                'providerPageId', ${input.page.providerPageId},
-                'name', ${input.page.name},
-                'username', ${input.page.username}
+                'id', ${input.page.id}::text,
+                'channel', ${input.page.channel}::text,
+                'providerPageId', ${input.page.providerPageId}::text,
+                'name', ${input.page.name}::text,
+                'username', ${input.page.username}::text
               ),
               'comment', jsonb_build_object(
                 'id', inserted_comment.id,
-                'providerCommentId', ${input.providerCommentId},
-                'parentCommentId', ${input.parentCommentId},
-                'mediaId', ${input.mediaId},
-                'mediaProductType', ${input.mediaProductType},
+                'providerCommentId', ${input.providerCommentId}::text,
+                'parentCommentId', ${input.parentCommentId}::text,
+                'mediaId', ${input.mediaId}::text,
+                'mediaProductType', ${input.mediaProductType}::text,
                 'from', jsonb_build_object(
-                  'providerUserId', ${input.fromProviderUserId},
-                  'username', ${input.fromUsername}
+                  'providerUserId', ${input.fromProviderUserId}::text,
+                  'username', ${input.fromUsername}::text
                 ),
                 'direction', 'inbound',
                 'status', 'received',
-                'text', ${input.text},
-                'createdAt', ${input.createdAt.toISOString()}
+                'text', ${input.text}::text,
+                'createdAt', ${input.createdAt.toISOString()}::text
               )
             )
           ),
           case
-            when not ${input.deliveryEnabled}
+            when not ${input.deliveryEnabled}::boolean
               or ${input.page.webhookUrl}::text is null
               then 'failed_permanent'
             else 'pending'
           end,
           case
-            when not ${input.deliveryEnabled}
-              then ${input.deliveryBlockedReason}
+            when not ${input.deliveryEnabled}::boolean
+              then ${input.deliveryBlockedReason}::text
             when ${input.page.webhookUrl}::text is null
               then 'webhook URL is not configured'
             else null
@@ -1520,42 +1553,52 @@ export class SqlRepository {
           inserted_message.id,
           ${input.page.webhookUrl},
           ${input.payloadVersion},
+          -- **Este sobre es el que rompió el canal en producción**: el bind del
+          -- eventId de acá abajo era el $29 del "could not determine data type
+          -- of parameter $29" que devolvía 500 a todo webhook entrante de
+          -- WhatsApp. Cast obligatorio en cada bind; la regla completa está
+          -- escrita en el sobre de ingestInbound.
+          --
+          -- Y el cast no es solo tipado: **elige la forma del JSON**. ::text
+          -- produce "false" donde ::boolean produce false, así que cada uno de
+          -- abajo es el tipo que el contrato público promete para esa llave
+          -- (historical es booleano, content es un objeto, el resto texto).
           jsonb_build_object(
-            'id', ${input.eventId},
+            'id', ${input.eventId}::text,
             'type', 'message.received',
-            'createdAt', ${event.createdAt.toISOString()},
+            'createdAt', ${event.createdAt.toISOString()}::text,
             'data', jsonb_build_object(
               -- El sobre no cambia: hay consumidores contra {page,
               -- conversation, message} y lo nuevo entra como llaves
               -- adicionales, que ningún cliente razonable rompe.
               'page', jsonb_build_object(
-                'id', ${input.page.id},
-                'channel', ${input.page.channel},
-                'providerPageId', ${input.page.providerPageId},
-                'name', ${input.page.name},
-                'username', ${input.page.username},
+                'id', ${input.page.id}::text,
+                'channel', ${input.page.channel}::text,
+                'providerPageId', ${input.page.providerPageId}::text,
+                'name', ${input.page.name}::text,
+                'username', ${input.page.username}::text,
                 -- Identidad propia de WhatsApp. phoneNumberId repite
                 -- providerPageId porque para este canal son el mismo dato
                 -- (0015 reusa meta_page_id para el phone_number_id), pero el
                 -- consumidor no tiene por qué saberlo: con el nombre del canal
                 -- delante, la integración se escribe sin adivinar.
-                'wabaId', ${input.page.wabaId},
-                'phoneNumberId', ${input.page.providerPageId},
-                'onboardingMode', ${input.page.onboardingMode}
+                'wabaId', ${input.page.wabaId}::text,
+                'phoneNumberId', ${input.page.providerPageId}::text,
+                'onboardingMode', ${input.page.onboardingMode}::text
               ),
               'conversation', jsonb_build_object(
                 'id', inserted_message.conversation_id,
                 'contact', jsonb_build_object(
-                  'id', ${event.contactId},
+                  'id', ${event.contactId}::text,
                   'name', (select contact_name from conversation)
                 )
               ),
               'message', jsonb_build_object(
                 'id', inserted_message.id,
-                'direction', ${event.direction},
-                'status', ${status},
-                'type', ${event.type},
-                'text', ${event.text},
+                'direction', ${event.direction}::text,
+                'status', ${status}::text,
+                'type', ${event.type}::text,
+                'text', ${event.text}::text,
                 -- Sin content una ubicación llegaría sin coordenadas y un
                 -- order sin importe: text es null en todos los tipos que no
                 -- llevan texto propio.
@@ -1583,32 +1626,34 @@ export class SqlRepository {
                   ),
                   '[]'::jsonb
                 ),
-                'origin', ${event.origin},
+                'origin', ${event.origin}::text,
                 'historical', ${event.historical}::boolean,
-                'deliveryStatus', ${event.deliveryStatus},
+                'deliveryStatus', ${event.deliveryStatus}::text,
                 'replyTo', case
                   when ${event.replyToProviderMessageId}::text is null then null
                   else jsonb_build_object(
-                    'providerMessageId', ${event.replyToProviderMessageId}
+                    'providerMessageId', ${event.replyToProviderMessageId}::text
                   )
                 end,
                 'provider', jsonb_build_object(
                   'name', 'meta',
-                  'messageId', ${event.providerMessageId}
+                  'messageId', ${event.providerMessageId}::text
                 ),
-                'createdAt', ${event.createdAt.toISOString()}
+                'createdAt', ${event.createdAt.toISOString()}::text
               )
             )
           ),
           case
-            when not ${input.deliveryEnabled}
+            when not ${input.deliveryEnabled}::boolean
               or ${input.page.webhookUrl}::text is null
               then 'failed_permanent'
             else 'pending'
           end,
+          -- Mismos casts defensivos que en ingestInbound: acá no arreglan nada
+          -- roto, dejan el tipo por escrito.
           case
-            when not ${input.deliveryEnabled}
-              then ${input.deliveryBlockedReason}
+            when not ${input.deliveryEnabled}::boolean
+              then ${input.deliveryBlockedReason}::text
             when ${input.page.webhookUrl}::text is null
               then 'webhook URL is not configured'
             else null

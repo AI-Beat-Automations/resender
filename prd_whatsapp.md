@@ -72,7 +72,13 @@ Una revisión adversarial ejecutó el SQL real contra PGlite (no los fakes) y en
 4. **Bloqueante del slice de envío — `completeOutbound` no escribe `origin`, y su `returning` proyecta columnas viejas** (el DTO del 201 recién creado difiere del que devuelve `GET /v1/messages/{id}`). Un saliente de la API queda con `origin = NULL`, fuera de los dos índices parciales de `messages`, así que un echo de Coexistence del mismo mensaje crea una fila duplicada. Ampliar el índice exige migración; decidirlo al implementar el envío.
 5. **Antes de producción multi-tenant — el lote grande no converge.** El límite de 1 MB permite recibir hasta 1000 updates, pero el bucle que los consume es secuencial: un round-trip a Neon y un `send` a la cola por evento. Meta cortaría por timeout y reintentaría el mismo cuerpo. Hace falta batching (`sendBatch` y escritura agrupada) antes de que el volumen lo justifique.
 
-Nota metodológica que vale para todo el repo: **ningún test de `repository.test.ts` ejecuta SQL** — `capturingSql` captura el texto y los binds, y el ranking de estados está reimplementado en JavaScript. Por eso los problemas 1, 2 y 4 conviven con la suite en verde. Cuando el SQL sea la parte delicada de un cambio, hay que ejecutarlo contra PGlite como se hizo en esta revisión.
+Nota metodológica que vale para todo el repo: **ningún test de `repository.test.ts` ejecuta SQL** — `capturingSql` captura el texto y los binds, y el ranking de estados está reimplementado en JavaScript. Por eso los problemas 1, 2 y 4 conviven con la suite en verde. Cuando el SQL sea la parte delicada de un cambio, hay que ejecutarlo contra PGlite.
+
+**Actualización (14 de agosto de 2026): eso ya no es todo lo que hay.** Un webhook real de WhatsApp devolvía 500 con `could not determine data type of parameter $29` —el `event_id` dentro del `jsonb_build_object` del sobre— y la misma omisión estaba en los sobres de Messenger (`$16`) y de comentarios de Instagram (`$15`): un bind sin cast en un argumento `variadic "any"` no se puede tipar y la sentencia muere al *preparar*, sin tocar una fila. Arreglado con casts explícitos, y cubierto desde ahora por un proyecto de vitest nuevo que corre en Node contra PGlite dentro de `npm run test:run`:
+
+- `apps/api/test/postgres/whatsapp-ingest.test.ts`: la ingesta entera (texto, adjunto, echo, histórico, sistema, reintento, status y contact sync) ejecutada contra Postgres real.
+- `apps/api/test/postgres/statements-prepare.test.ts`: le pide a Postgres que **prepare las 121 sentencias etiquetadas** de `apps/api/src` y `apps/web/lib`. Contra el árbol anterior cazaba los tres sobres rotos a la vez.
+- `apps/web/lib/pages/page-registry.postgres.test.ts`: el onboarding de WhatsApp (conectar, reconectar, propiedad, cupo por WABA, PIN) contra Postgres real.
 
 ### Pendiente (orden sugerido)
 

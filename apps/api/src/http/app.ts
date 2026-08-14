@@ -818,6 +818,7 @@ export function createApp(
   })
   app.onError((error, context) => {
     const requestId = context.get("requestId") || crypto.randomUUID()
+    const unexpected = !(error instanceof ContractError)
     const contract =
       error instanceof ContractError
         ? error
@@ -826,6 +827,18 @@ export function createApp(
             message: "An unexpected error occurred.",
             status: 500,
           })
+    // El cliente recibe un mensaje genérico a propósito, pero la bitácora sí
+    // se queda con el original: sin esto un 500 es indiagnosticable, porque el
+    // `ContractError` que lo sustituye no conserva ni el mensaje ni el sitio.
+    // El stack va recortado —basta el marco que nombra el archivo— y `log`
+    // pasa `errorMessage` por el scrubber antes de emitirlo.
+    const detail = unexpected
+      ? error instanceof Error
+        ? [error.message, ...(error.stack?.split("\n").slice(1, 4) ?? [])].join(
+            " | "
+          )
+        : String(error)
+      : undefined
     log({
       entrypoint: "fetch",
       action: "request",
@@ -840,6 +853,7 @@ export function createApp(
       status: contract.status,
       durationMs: Date.now() - (context.get("startedAt") || Date.now()),
       errorCode: contract.code,
+      ...(detail ? { errorMessage: detail } : {}),
     })
     return context.json(
       {
