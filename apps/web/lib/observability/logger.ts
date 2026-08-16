@@ -90,6 +90,7 @@ export type LogReason =
   // gates de las rutas salientes
   | "unauthorized"
   | "waitlisted"
+  | "channel_not_enabled" // ADR 0010: el tenant no tiene permiso para ese canal
   | "plan_restricted"
   | "invalid_request"
   | "idempotent_replay"

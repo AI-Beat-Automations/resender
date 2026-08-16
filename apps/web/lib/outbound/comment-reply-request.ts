@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server"
 
 import { authenticateApiKey } from "@/lib/api-keys/api-keys"
+import { resolveInstagramAccess } from "@/lib/auth/channel-access"
 import { isUserWaitlisted } from "@/lib/auth/waitlist"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
 import {
@@ -92,6 +93,20 @@ export async function authenticateCommentReplyRequest(
         { status: 403 }
       ),
       reason: "no_active_subscription",
+    }
+  }
+
+  // Las dos rutas que comparten este módulo —respuesta pública y privada— son
+  // de Instagram y de nada más, así que el permiso de canal se cierra una vez
+  // acá en vez de repetirse en cada una.
+  if (!(await resolveInstagramAccess(apiKey.tenantId))) {
+    return {
+      ok: false,
+      response: Response.json(
+        { error: "instagram channel is not enabled" },
+        { status: 403 }
+      ),
+      reason: "channel_not_enabled",
     }
   }
 

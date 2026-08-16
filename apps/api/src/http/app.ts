@@ -456,6 +456,16 @@ export function createApp(
     await next()
   })
 
+  // El recurso `comments` solo existe para Instagram, así que el permiso de
+  // canal (ADR 0010) se comprueba una vez acá y no dentro de
+  // `requireProductAccess`, que también atiende a Messenger. Un solo sitio cubre
+  // las cinco rutas y las que se agreguen después. El comodín también matchea
+  // `/v1/comments` sin barra final.
+  app.use("/v1/comments/*", async (context, next) => {
+    await context.get("service").requireInstagramAccess(context.get("tenantId"))
+    await next()
+  })
+
   app.get("/healthz", (context) =>
     context.json({ status: "ok", service: "api" }, 200)
   )

@@ -23,6 +23,10 @@ import {
 } from "@workspace/ui/components/dialog"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
+import {
+  CONNECTION_STATUS_BADGE,
+  resolveConnectionStatus,
+} from "@/lib/pages/channel-display"
 
 // Tarjeta de página conectada (spec B2 + galería de estados B3). Las fechas
 // llegan ya formateadas desde el server component: el `Date` crudo no cruza el
@@ -30,6 +34,9 @@ import { Label } from "@workspace/ui/components/label"
 export type ConnectedPageView = {
   id: string
   channel: "messenger" | "instagram"
+  // Permiso de Instagram del tenant (ADR 0010). Viaja en cada tarjeta porque el
+  // estado que muestra depende de él; en las de Messenger no aplica.
+  instagramAccess: boolean
   metaPageId: string
   name: string
   username: string | null
@@ -62,6 +69,11 @@ export function ConnectedPageCard({
   // activa puede tener el token rechazado. En una desconectada el token ya no
   // dice nada útil —no recibe tráfico—, así que ahí no se muestra.
   const tokenInvalid = active && page.tokenStatus === "invalid"
+  // El tercer eje (ADR 0010): la cuenta puede estar activa y con el token
+  // válido, y aun así no tener el canal habilitado.
+  const status = resolveConnectionStatus(page)
+  const statusBadge = CONNECTION_STATUS_BADGE[status]
+  const noAccess = status === "no-access"
   const instagram = page.channel === "instagram"
   // Cada canal se reconecta por su propio diálogo de Meta.
   const reconnectHref = instagram
@@ -87,11 +99,10 @@ export function ConnectedPageCard({
             <Badge variant="outline">
               {instagram ? "Instagram" : "Messenger"}
             </Badge>
-            {/* Los dos badges conviven en lugar de pisarse: «activa» describe
-                el tráfico, «token inválido» describe el permiso. */}
-            <Badge variant={active ? "success" : "ghost"}>
-              {active ? "activa" : "desconectada"}
-            </Badge>
+            {/* Los dos badges conviven en lugar de pisarse: este describe el
+                tráfico —«sin acceso» es tráfico cortado por el permiso del
+                canal—, y el de al lado describe el token. */}
+            <Badge variant={statusBadge.variant}>{statusBadge.label}</Badge>
             {tokenInvalid && (
               <Badge variant="destructive">token inválido</Badge>
             )}
@@ -123,6 +134,25 @@ export function ConnectedPageCard({
           </Button>
         )}
       </div>
+
+      {/* La cuenta se sigue viendo —es suya, y su historial también—, pero acá
+          se dice por qué está muda. Va antes que el aviso del token: si los dos
+          coinciden, reconectar no devuelve el canal. */}
+      {noAccess && (
+        <div className="mt-4 flex items-start gap-3 rounded-lg border border-warning-soft-border bg-warning-soft p-3.5 text-warning-soft-foreground">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <p className="text-[13.5px] font-medium">
+              El canal de Instagram no está habilitado para tu cuenta.
+            </p>
+            <p className="mt-1 text-[13px]/[1.55]">
+              La cuenta sigue conectada y su historial disponible, pero no
+              recibe mensajes ni comentarios nuevos y no puede responder.
+              Escríbenos a info@resender.dev para habilitarlo.
+            </p>
+          </div>
+        </div>
+      )}
 
       {tokenInvalid && (
         <div className="mt-4 flex flex-col gap-3 rounded-lg border border-destructive-soft-border bg-destructive-soft p-3.5 text-destructive-soft-foreground sm:flex-row sm:items-center">

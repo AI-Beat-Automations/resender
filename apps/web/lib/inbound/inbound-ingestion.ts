@@ -1,3 +1,4 @@
+import { resolveInstagramAccess } from "@/lib/auth/channel-access"
 import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
 import {
   countsTowardQuota,
@@ -65,6 +66,35 @@ const CHANNEL_IS_METERED: Record<PageChannel, boolean> = {
   instagram: false,
 }
 
+// El permiso por cuenta (ADR 0010) es de Instagram y de nadie más: Messenger no
+// tiene bandera y su ingesta no cambia en absoluto. Va como tabla y no como un
+// `channel === "instagram"` por lo mismo que la de arriba: cuando entre WhatsApp
+// —bloqueado por Meta por la misma razón— el tipo obliga a decidir.
+const CHANNEL_NEEDS_PERMISSION: Record<PageChannel, boolean> = {
+  messenger: false,
+  instagram: true,
+}
+
+// Memo del permiso por tenant **dentro del lote**: un POST de Meta trae varios
+// eventos de la misma cuenta y la lectura es viva contra la base, así que sin
+// esto sería una consulta por evento.
+//
+// La ausencia se pregunta con `undefined` y no con `?? null` como el memo de
+// entitlements: acá el valor cacheado puede ser `false`, y un memo que confunde
+// «todavía no pregunté» con «pregunté y no tiene permiso» consulta de más hoy y
+// se equivoca de lado el día que alguien lo invierta.
+async function resolveCachedInstagramAccess(
+  cache: Map<string, boolean>,
+  tenantId: string
+): Promise<boolean> {
+  const cached = cache.get(tenantId)
+  if (cached !== undefined) return cached
+
+  const enabled = await resolveInstagramAccess(tenantId)
+  cache.set(tenantId, enabled)
+  return enabled
+}
+
 // Entrada del webhook de Messenger.
 export async function ingestMetaWebhookPayload(
   body: unknown,
@@ -112,6 +142,11 @@ async function ingestInboundEvents(
   // Un payload de Meta puede traer varios eventos del mismo tenant; el
   // entitlement se resuelve una sola vez por tenant y por payload.
   const entitlements = new Map<string, TenantEntitlement>()
+  // Un memo por función y no uno compartido con los comentarios:
+  // `ingestInstagramWebhookPayload` corre las dos ingestas con `Promise.all`, y
+  // compartirlo obligaría a pasarlo por parámetro —tocando la firma que también
+  // sirve a Messenger— para ahorrar, en el peor caso, una lectura por payload.
+  const instagramAccess = new Map<string, boolean>()
   const metered = CHANNEL_IS_METERED[channel]
 
   for (const event of incoming) {
@@ -144,6 +179,27 @@ async function ingestInboundEvents(
         action: "inbound_ingest",
         outcome: "dropped",
         reason: "no_active_subscription",
+        requestId,
+        ...accountFields(page),
+        subject: "message",
+      })
+      continue
+    }
+
+    // Permiso por cuenta del canal (ADR 0010): el tenant revocado deja de
+    // recibir en el acto y su DM se descarta sin persistir ni reenviar, igual
+    // que sin suscripción. Solo puede pasar por revocación —el gate del OAuth
+    // impide conectar sin permiso—, y por eso va después del portón que sí se
+    // cruza todos los días.
+    if (
+      CHANNEL_NEEDS_PERMISSION[channel] &&
+      !(await resolveCachedInstagramAccess(instagramAccess, page.tenantId))
+    ) {
+      log({
+        entrypoint: "route",
+        action: "inbound_ingest",
+        outcome: "dropped",
+        reason: "channel_not_enabled",
         requestId,
         ...accountFields(page),
         subject: "message",
@@ -306,6 +362,9 @@ async function ingestInstagramComments(
 ): Promise<IngestedInbound[]> {
   const incoming = extractInstagramComments(body)
   const ingested: IngestedInbound[] = []
+  // Mismo memo por lote que en los DMs, y propio de esta función por la razón
+  // que está explicada allá.
+  const instagramAccess = new Map<string, boolean>()
 
   for (const event of incoming) {
     const page = await getActivePageByMetaPageId(event.metaPageId, "instagram")
@@ -388,6 +447,24 @@ async function ingestInstagramComments(
         action: "inbound_ingest",
         outcome: "dropped",
         reason: "no_active_subscription",
+        requestId,
+        ...accountFields(page),
+        subject: "comment",
+        providerId: event.igCommentId,
+      })
+      continue
+    }
+
+    // Permiso por cuenta del canal (ADR 0010), igual que en los DMs: el
+    // comentario del tenant revocado se descarta sin persistir ni reenviar. Va
+    // después de los tres filtros anti-bucle a propósito: un comentario nuestro
+    // que vuelve tiene que seguir contándose como eco y no como revocación.
+    if (!(await resolveCachedInstagramAccess(instagramAccess, page.tenantId))) {
+      log({
+        entrypoint: "route",
+        action: "inbound_ingest",
+        outcome: "dropped",
+        reason: "channel_not_enabled",
         requestId,
         ...accountFields(page),
         subject: "comment",

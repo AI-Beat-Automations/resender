@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server"
 
 import { authenticateApiKey } from "@/lib/api-keys/api-keys"
+import { resolveInstagramAccess } from "@/lib/auth/channel-access"
 import { isUserWaitlisted } from "@/lib/auth/waitlist"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
 import {
@@ -97,6 +98,20 @@ export async function POST(request: NextRequest) {
     return trace.drop(
       "no_active_subscription",
       Response.json({ error: "no active subscription" }, { status: 403 })
+    )
+  }
+
+  // Va antes del replay idempotente: un envío guardado de cuando el canal
+  // estaba habilitado no puede seguir contestando 200 después de que se
+  // revocó el permiso. El mensaje nombra el canal porque la misma API key
+  // sirve para Messenger, que sí puede estar abierto.
+  if (!(await resolveInstagramAccess(apiKey.tenantId))) {
+    return trace.drop(
+      "channel_not_enabled",
+      Response.json(
+        { error: "instagram channel is not enabled" },
+        { status: 403 }
+      )
     )
   }
 

@@ -245,4 +245,60 @@ describe("OpenAPI document", () => {
       warn.mockRestore()
     }
   )
+
+  // Gemelo del anterior para el permiso de canal (ADR 0010). No es una fila más
+  // de esa tabla a propósito: el gate **no** vive dentro de
+  // `requireProductAccess` —ahí bloquearía también a Messenger—, así que
+  // mockearlo no probaría el camino real. Recorrer las rutas registradas y no
+  // una lista escrita a mano es lo que garantiza que una ruta de comentarios
+  // nueva no nazca sin permiso.
+  it("applies the Instagram channel gate to every registered comments route", async () => {
+    const info = vi.spyOn(console, "log").mockImplementation(() => undefined)
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined)
+    const requireInstagramAccess = vi.fn(async () => {
+      throw new ContractError({
+        code: "channel_not_enabled",
+        message: "The Instagram channel is not enabled for this account.",
+        status: 403,
+      })
+    })
+    const app = createApp({
+      serviceFactory: () =>
+        ({
+          authenticateApiKey: async () => ({
+            tenantId: "6b402566-9e1d-4739-bb61-81ac615a5469",
+            apiKeyId: "key_1",
+          }),
+          requireProductAccess: async () => ({ user: {}, subscription: {} }),
+          requireInstagramAccess,
+        }) as unknown as ApiService,
+    })
+    const commentRoutes = getRegisteredPublicV1Routes(app).filter(
+      (registered) => registered.split(" ")[1]?.startsWith("/v1/comments")
+    )
+    expect(commentRoutes).toHaveLength(5)
+
+    for (const registered of commentRoutes) {
+      const [method, path] = registered.split(" ")
+      const response = await app.request(
+        `http://localhost${path?.replace(
+          "{commentId}",
+          "1f0c9b2e-6d2a-4a5f-9f43-2f9a4b6d0c11"
+        )}`,
+        { method },
+        {
+          API_RATE_LIMITER: {
+            limit: async () => ({ success: true }),
+          },
+        } as unknown as Env
+      )
+      expect(response.status, registered).toBe(403)
+      expect(await response.json(), registered).toMatchObject({
+        error: { code: "channel_not_enabled" },
+      })
+    }
+    expect(requireInstagramAccess).toHaveBeenCalledTimes(commentRoutes.length)
+    info.mockRestore()
+    warn.mockRestore()
+  })
 })

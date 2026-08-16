@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const mocks = vi.hoisted(() => ({
   getActivePageByMetaPageId: vi.fn(),
   hasActiveSubscription: vi.fn(),
+  resolveInstagramAccess: vi.fn(),
   getTenantEntitlement: vi.fn(),
   incrementUsage: vi.fn(),
   upsertConversation: vi.fn(),
@@ -20,6 +21,10 @@ vi.mock("@/lib/pages/page-registry", () => ({
 
 vi.mock("@/lib/billing/subscription", () => ({
   hasActiveSubscription: mocks.hasActiveSubscription,
+}))
+
+vi.mock("@/lib/auth/channel-access", () => ({
+  resolveInstagramAccess: mocks.resolveInstagramAccess,
 }))
 
 vi.mock("@/lib/billing/entitlement-status", () => ({
@@ -125,6 +130,7 @@ describe("ingesta de entrantes por canal", () => {
   beforeEach(() => {
     for (const mock of Object.values(mocks)) mock.mockReset()
     mocks.hasActiveSubscription.mockResolvedValue(true)
+    mocks.resolveInstagramAccess.mockResolvedValue(true)
     mocks.getTenantEntitlement.mockResolvedValue(unrestricted)
     mocks.upsertConversation.mockResolvedValue({
       id: "conversation-1",
@@ -196,6 +202,7 @@ describe("Instagram fuera de cuota", () => {
   beforeEach(() => {
     for (const mock of Object.values(mocks)) mock.mockReset()
     mocks.hasActiveSubscription.mockResolvedValue(true)
+    mocks.resolveInstagramAccess.mockResolvedValue(true)
     mocks.getTenantEntitlement.mockResolvedValue(unrestricted)
     mocks.upsertConversation.mockResolvedValue({ id: "conversation-1" })
     mocks.insertInboundMessage.mockResolvedValue({
@@ -267,6 +274,7 @@ describe("Messenger sigue medido", () => {
   beforeEach(() => {
     for (const mock of Object.values(mocks)) mock.mockReset()
     mocks.hasActiveSubscription.mockResolvedValue(true)
+    mocks.resolveInstagramAccess.mockResolvedValue(true)
     mocks.upsertConversation.mockResolvedValue({ id: "conversation-1" })
     mocks.insertInboundMessage.mockResolvedValue({
       message: { id: "message-1", tenantId: "tenant-1" },
@@ -336,6 +344,7 @@ describe("ingesta de comentarios de Instagram", () => {
   beforeEach(() => {
     for (const mock of Object.values(mocks)) mock.mockReset()
     mocks.hasActiveSubscription.mockResolvedValue(true)
+    mocks.resolveInstagramAccess.mockResolvedValue(true)
     mocks.getActivePageByMetaPageId.mockResolvedValue(instagramPage())
     mocks.isOwnPublishedComment.mockResolvedValue(false)
     mocks.insertInboundComment.mockResolvedValue({
@@ -526,6 +535,111 @@ describe("ingesta de comentarios de Instagram", () => {
   })
 })
 
+// ADR 0010: el permiso por cuenta apaga el canal entero para el tenant
+// revocado. No se persiste, no se reenvía, y Meta igual se lleva su 200.
+describe("permiso de Instagram por cuenta", () => {
+  const expectNotEnabled = (subject: "message" | "comment") =>
+    expect(mocks.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "inbound_ingest",
+        outcome: "dropped",
+        reason: "channel_not_enabled",
+        subject,
+      })
+    )
+
+  beforeEach(() => {
+    for (const mock of Object.values(mocks)) mock.mockReset()
+    mocks.hasActiveSubscription.mockResolvedValue(true)
+    mocks.resolveInstagramAccess.mockResolvedValue(true)
+    mocks.isOwnPublishedComment.mockResolvedValue(false)
+    mocks.getActivePageByMetaPageId.mockResolvedValue(instagramPage())
+    mocks.upsertConversation.mockResolvedValue({ id: "conversation-1" })
+    mocks.insertInboundMessage.mockResolvedValue({
+      message: { id: "message-1", tenantId: "tenant-1" },
+      inserted: true,
+    })
+    mocks.insertInboundComment.mockResolvedValue({
+      comment: comment(),
+      inserted: true,
+    })
+  })
+
+  it("descarta el DM del tenant sin permiso sin persistir ni reenviar", async () => {
+    mocks.resolveInstagramAccess.mockResolvedValue(false)
+
+    await expect(
+      ingestInstagramWebhookPayload(
+        instagramPayload({ mid: "mid-1", text: "hola" })
+      )
+    ).resolves.toEqual([])
+    expect(mocks.insertInboundMessage).not.toHaveBeenCalled()
+    expect(mocks.pushInboundEvent).not.toHaveBeenCalled()
+    expectNotEnabled("message")
+  })
+
+  it("descarta el comentario del tenant sin permiso sin persistir ni reenviar", async () => {
+    mocks.resolveInstagramAccess.mockResolvedValue(false)
+
+    await expect(
+      ingestInstagramWebhookPayload(
+        commentPayload({
+          id: "ig-comment-1",
+          from: { id: "9876543210", username: "un_seguidor" },
+          text: "hola",
+          media: { id: "media-1" },
+        })
+      )
+    ).resolves.toEqual([])
+    expect(mocks.insertInboundComment).not.toHaveBeenCalled()
+    expect(mocks.pushInboundEvent).not.toHaveBeenCalled()
+    expectNotEnabled("comment")
+  })
+
+  // El permiso es de **un** canal: el Facebook del mismo tenant sigue andando.
+  it("no toca la ingesta de Messenger aunque el tenant no tenga el permiso", async () => {
+    mocks.resolveInstagramAccess.mockResolvedValue(false)
+    mocks.getTenantEntitlement.mockResolvedValue(unrestricted)
+    mocks.getActivePageByMetaPageId.mockResolvedValue(page())
+
+    const [ingested] = await ingestMetaWebhookPayload(messengerPayload())
+    await ingested!.pushJob()
+
+    expect(mocks.insertInboundMessage).toHaveBeenCalledTimes(1)
+    expect(mocks.pushInboundEvent).toHaveBeenCalledTimes(1)
+    // Ni siquiera se pregunta: Messenger no tiene bandera que consultar.
+    expect(mocks.resolveInstagramAccess).not.toHaveBeenCalled()
+  })
+
+  // La lectura es viva contra la base, así que un sobre con varios eventos de
+  // la misma cuenta no puede pagar una consulta por evento.
+  it("resuelve el permiso una sola vez por tenant dentro del lote", async () => {
+    await ingestInstagramWebhookPayload({
+      object: "instagram",
+      entry: [
+        {
+          id: IG_ACCOUNT,
+          messaging: [
+            {
+              sender: { id: "igsid-1" },
+              timestamp: 1_769_000_000_000,
+              message: { mid: "mid-1", text: "hola" },
+            },
+            {
+              sender: { id: "igsid-2" },
+              timestamp: 1_769_000_000_001,
+              message: { mid: "mid-2", text: "otra" },
+            },
+          ],
+        },
+      ],
+    })
+
+    expect(mocks.insertInboundMessage).toHaveBeenCalledTimes(2)
+    expect(mocks.resolveInstagramAccess).toHaveBeenCalledTimes(1)
+  })
+})
+
 // El bloque que hace cumplir la regla del módulo: **ningún camino puede
 // terminar en silencio**. No son tests de logging — son el test de que no se
 // agregó un `continue` sin motivo.
@@ -551,6 +665,7 @@ describe("ningún evento se descarta en silencio", () => {
   beforeEach(() => {
     for (const mock of Object.values(mocks)) mock.mockReset()
     mocks.hasActiveSubscription.mockResolvedValue(true)
+    mocks.resolveInstagramAccess.mockResolvedValue(true)
     mocks.isOwnPublishedComment.mockResolvedValue(false)
     mocks.getActivePageByMetaPageId.mockResolvedValue(instagramPage())
     mocks.upsertConversation.mockResolvedValue({
@@ -579,6 +694,10 @@ describe("ningún evento se descarta en silencio", () => {
     [
       "no hay suscripción activa",
       () => mocks.hasActiveSubscription.mockResolvedValue(false),
+    ],
+    [
+      "el tenant no tiene el permiso de Instagram",
+      () => mocks.resolveInstagramAccess.mockResolvedValue(false),
     ],
     [
       "es un duplicado",

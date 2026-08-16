@@ -75,6 +75,7 @@ describe("Worker runtime entrypoints", () => {
         email: "user@example.com",
         passwordHash: "hash",
         waitlisted,
+        instagramEnabled: true,
         createdAt: new Date("2026-07-01T00:00:00.000Z"),
       })
       vi.spyOn(SqlRepository.prototype, "getSubscription").mockResolvedValue({
@@ -606,6 +607,7 @@ function mockActiveTenant(): void {
     email: "person@example.com",
     passwordHash: "hash",
     waitlisted: false,
+    instagramEnabled: true,
     createdAt: new Date("2026-07-01T00:00:00.000Z"),
   })
   vi.spyOn(SqlRepository.prototype, "getSubscription").mockResolvedValue({
@@ -657,6 +659,7 @@ function runtimeUser() {
     email: "person@example.com",
     passwordHash: "hash",
     waitlisted: false,
+    instagramEnabled: true,
     createdAt: new Date("2026-07-01T00:00:00.000Z"),
   }
 }

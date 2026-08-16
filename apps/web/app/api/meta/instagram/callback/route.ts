@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 
 import { auth } from "@/auth"
+import { resolveInstagramAccess } from "@/lib/auth/channel-access"
 import { resolveProductAccess } from "@/lib/auth/waitlist"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
 import {
@@ -100,7 +101,12 @@ export async function GET(request: NextRequest) {
     log({
       entrypoint: "route",
       action: "oauth_callback",
-      outcome: logReason === "user_cancelled" ? "dropped" : "failed",
+      // Un gate cerrado es un descarte, igual que una cancelación: nada se
+      // rompió y no tiene que aparecer entre los fallos que sí hay que mirar.
+      outcome:
+        logReason === "user_cancelled" || logReason === "channel_not_enabled"
+          ? "dropped"
+          : "failed",
       reason: logReason,
       channel: "instagram",
       route: "/api/meta/instagram/callback",
@@ -114,6 +120,16 @@ export async function GET(request: NextRequest) {
   // detalle pero es texto de Meta en inglés: nos quedamos con el código, que es
   // lo que el catálogo de mensajes sabe traducir.
   if (error) return fail(error, "user_cancelled")
+
+  // Antes de tocar el `code`: quien perdió el permiso entre /start y el
+  // callback trae una autorización válida de Meta, y canjearla guardaría una
+  // cuenta que el canal no puede atender. Va por `fail` y no por `gate` para
+  // que se limpie la cookie de `state` del intento que queda trunco, y después
+  // de mirar `error` para que una cancelación no se registre como revocación.
+  if (!(await resolveInstagramAccess(session.user.id))) {
+    return fail("instagram_not_enabled", "channel_not_enabled")
+  }
+
   if (!code) return fail("missing_code", "missing_code")
 
   // CSRF: el state del query debe coincidir con la cookie que sembró /start.

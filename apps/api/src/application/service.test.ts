@@ -150,6 +150,31 @@ describe("product access gates", () => {
     })
     expect(metaCall).not.toHaveBeenCalled()
   })
+
+  // El permiso de canal es un gate aparte a propósito: metido dentro del gate de
+  // producto apagaría también Messenger, que no tiene nada que ver.
+  it("keeps the Instagram permission out of the product gate", async () => {
+    const service = serviceWithRepository({
+      getUserById: async () => user({ instagramEnabled: false }),
+      getSubscription: async () => subscription(),
+    })
+
+    await expect(
+      service.requireProductAccess("tenant_1")
+    ).resolves.toMatchObject({ user: { instagramEnabled: false } })
+    await expect(
+      service.requireInstagramAccess("tenant_1")
+    ).rejects.toMatchObject({ code: "channel_not_enabled", status: 403 })
+  })
+
+  // Fail-closed: sin fila no hay permiso que leer.
+  it("denies the Instagram channel when the account row is gone", async () => {
+    const service = serviceWithRepository({ getUserById: async () => null })
+
+    await expect(
+      service.requireInstagramAccess("tenant_1")
+    ).rejects.toMatchObject({ code: "channel_not_enabled", status: 403 })
+  })
 })
 
 describe("inbound Meta ingestion", () => {
@@ -170,6 +195,30 @@ describe("inbound Meta ingestion", () => {
     await expect(invokeInbound(service)).resolves.toEqual({ accepted: 0 })
     expect(ingestInbound).not.toHaveBeenCalled()
     expect(queueSend).not.toHaveBeenCalled()
+  })
+
+  // Un permiso de canal apagado no le hace nada al otro canal: el webhook de
+  // Facebook ingesta igual.
+  it("ingests a Messenger event for a tenant whose Instagram channel is off", async () => {
+    const ingestInbound = vi.fn(async () => ({
+      inserted: true,
+      messageId: MESSAGE_ID,
+      jobId: JOB_ID,
+      jobStatus: "pending" as const,
+      jobAttemptCount: 0,
+      jobRecoverAfter: new Date("2026-07-29T18:02:00.000Z"),
+    }))
+    const queueSend = vi.fn()
+    const service = inboundService(
+      {
+        getUserById: async () => user({ instagramEnabled: false }),
+        ingestInbound,
+      },
+      queueSend
+    )
+
+    await expect(invokeInbound(service)).resolves.toEqual({ accepted: 1 })
+    expect(queueSend).toHaveBeenCalledTimes(1)
   })
 
   it.each([
@@ -606,6 +655,7 @@ function user(overrides: Partial<UserRecord> = {}): UserRecord {
     email: "user@example.com",
     passwordHash: "hash",
     waitlisted: false,
+    instagramEnabled: true,
     createdAt: CREATED_AT,
     ...overrides,
   }
