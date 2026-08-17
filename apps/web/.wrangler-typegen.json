@@ -1,0 +1,48 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "web",
+  "compatibility_date": "2026-07-01",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "workers_dev": false,
+  "preview_urls": false,
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "services": [
+    {
+      "binding": "BACKEND",
+      "service": "api",
+      "entrypoint": "WebAppApi"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  },
+  "routes": [
+    {
+      "pattern": "resender.dev",
+      "custom_domain": true
+    }
+  ],
+  "env": {
+    "staging": {
+      "name": "web-staging",
+      "routes": [
+        {
+          "pattern": "staging.resender.dev",
+          "custom_domain": true
+        }
+      ],
+      "services": [
+        {
+          "binding": "BACKEND",
+          "service": "api-staging",
+          "entrypoint": "WebAppApi"
+        }
+      ]
+    }
+  }
+}

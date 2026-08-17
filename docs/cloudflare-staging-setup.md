@@ -19,6 +19,7 @@ desarrollo. Se despliega solo desde la rama `staging`.
 | Workflow     | `.github/workflows/deploy.yml` | `.github/workflows/deploy-staging.yml` |
 | Rate limiter | ns `1003`                      | ns `1004`                              |
 | Stripe       | live                           | test                                   |
+| App de Meta  | `Resender`                     | `Resender (Staging)`, misma portfolio  |
 
 > **Orden importante:** los pasos 1–4 deben estar hechos **antes de mergear el
 > PR**. El job `preview` de CI ahora sube versiones contra `web-staging`, así
@@ -63,7 +64,7 @@ Va a fallar en runtime por falta de secretos — está bien, el objetivo es que
 
 ## Paso 3 — Secretos del Worker de staging
 
-Los secretos **no se heredan** entre ambientes: hay que cargar los ocho de
+Los secretos **no se heredan** entre ambientes: hay que cargar los once de
 nuevo con `--env staging`. Cada comando pide el valor por stdin.
 
 Usa `versions secret put` y no `secret put`. En `web-staging` el job `preview`
@@ -81,16 +82,24 @@ npx wrangler versions secret put DATABASE_URL --env staging          # string PO
 npx wrangler versions secret put AUTH_SECRET --env staging           # openssl rand -base64 32 (uno NUEVO, no el de prod)
 npx wrangler versions secret put TOKEN_ENCRYPTION_KEY --env staging  # openssl rand -hex 32 (uno NUEVO)
 npx wrangler versions secret put APP_URL --env staging               # https://staging.resender.dev
-npx wrangler versions secret put META_APP_SECRET --env staging       # app de Meta de desarrollo
-npx wrangler versions secret put META_VERIFY_TOKEN --env staging     # el que registres en el paso 7
+npx wrangler versions secret put META_APP_SECRET --env staging       # app de Meta de staging
+npx wrangler versions secret put META_VERIFY_TOKEN --env staging     # el que registres en el paso 7.1
+npx wrangler versions secret put INSTAGRAM_APP_ID --env staging      # Instagram App ID (≠ app id de Meta), paso 7.2
+npx wrangler versions secret put INSTAGRAM_APP_SECRET --env staging  # Instagram App Secret, firma el webhook de IG
+npx wrangler versions secret put INSTAGRAM_VERIFY_TOKEN --env staging # el que registres en el paso 7.2
 npx wrangler versions secret put STRIPE_SECRET_KEY --env staging     # sk_test_...
 npx wrangler versions secret put STRIPE_WEBHOOK_SECRET --env staging # whsec_... del paso 8
 
-# Promueve la versión que ya tiene los ocho secretos.
+# Promueve la versión que ya tiene los once secretos.
 npx wrangler versions deploy --env staging
 ```
 
-Verifica con `npx wrangler versions secret list --env staging` (deben salir los 8).
+Verifica con `npx wrangler versions secret list --env staging` (deben salir los 11).
+
+> `INSTAGRAM_APP_ID` va como secreto y no como variable pública: con Instagram
+> Login el diálogo se arma en el servidor (`lib/instagram.ts`), a diferencia de
+> Login for Business, donde el app id se inlinea en el bundle. Por eso no tiene
+> par `NEXT_PUBLIC_*_STAGING` en el paso 4.
 
 En producción sigue valiendo `wrangler secret put` a secas: nada sube versiones
 sin desplegar contra `web`.
@@ -159,21 +168,135 @@ producción. Access lo resuelve de raíz: ningún crawler pasa del login.
 
 > Excepción: si vas a probar los webhooks de Meta o Stripe contra staging
 > (pasos 7–8), esas rutas necesitan bypass. Agrega una policy previa de tipo
-> **Bypass** con _Everyone_ para los paths `/api/meta/webhook` y
-> `/api/stripe/webhook`; ambos ya validan firma HMAC por su cuenta.
+> **Bypass** con _Everyone_ para los paths `/api/meta/webhook`,
+> `/api/meta/instagram/webhook` y `/api/stripe/webhook`; los tres validan firma
+> HMAC por su cuenta.
+>
+> El de Instagram es fácil de olvidar y falla de forma confusa: Access responde
+> un redirect al login antes de que la request llegue al Worker, así que Meta ve
+> una verificación fallida al registrar el webhook y en `wrangler tail` no
+> aparece absolutamente nada.
 
 ---
 
-## Paso 7 — Webhook de Meta (app de desarrollo)
+## Paso 7 — App de Meta de staging
 
-Usa una app de Meta distinta de la productiva; compartirla haría que un mismo
-mensaje entrante llegue a las dos bases.
+Una app de Meta **hermana** de la productiva, no una _test app_ derivada de
+ella. Las test apps viven siempre en modo desarrollo, no pueden pasar App
+Review y por lo tanto nunca obtienen Advanced Access propio; además el producto
+Instagram con Instagram Login necesita generar su propio Instagram App ID, que
+una test app no expone. Compartir la app productiva tampoco es opción: el
+callback del webhook es único por app y por producto, así que un mismo mensaje
+entrante terminaría en las dos bases.
 
-1. <https://developers.facebook.com> → app de desarrollo → **Messenger** →
-   **Webhooks** → _Edit Callback URL_.
+Créala dentro del **mismo Business Portfolio** que la de producción. La
+verificación de negocio es del portfolio y no de la app, así que la de staging
+la hereda sin volver a mandar documentación. Lo que no se hereda es el App
+Review: staging se queda en modo desarrollo con Standard Access, y eso alcanza
+porque solo se prueba con cuentas que tengan rol en la app (paso 7.4).
+
+Ponle un nombre visiblemente distinto —`Resender (Staging)`—: es el que sale en
+el diálogo de OAuth, y es lo que evita que alguien conecte una cuenta real al
+entorno equivocado.
+
+### 7.0 Crear la app
+
+> Si `NEXT_PUBLIC_META_APP_ID` de `.env.staging` ya existe en _My Apps_, saltea
+> este punto y sigue en 7.1.
+
+Antes de empezar, abre la app de producción en otra pestaña: lo que se replica
+es su configuración, y adivinarla cuesta más que copiarla. Anota el tipo de
+app, los casos de uso activos, la categoría y los permisos de su configuración
+de Login for Business.
+
+1. <https://developers.facebook.com/apps/creation/>.
+2. **Detalles de la app**: nombre `Resender (Staging)` y correo de contacto.
+3. **Casos de uso**: los mismos que producción. Para este proyecto son dos —el
+   de mensajería de páginas y **Administrar mensajes y contenido en Instagram**
+   (_Manage messaging & content on Instagram_), que es el que habilita el
+   producto Instagram con Instagram Login. Los incompatibles aparecen en gris.
+4. **Portafolio comercial**: el **mismo verificado que producción**. Es el punto
+   que hace que staging herede la verificación de negocio; conectarlo después
+   es posible pero más engorroso.
+5. **Requisitos** → **Resumen** → _Ir al panel_.
+6. **Configuración** → **Básica**:
+   - _Dominios de la app_: `staging.resender.dev`
+   - _URL de la política de privacidad_: `https://resender.dev/privacy`
+   - _URL de eliminación de datos_: `https://resender.dev/data-deletion`
+
+   Las dos últimas apuntan a producción a propósito: staging queda detrás de
+   Cloudflare Access (paso 6) y Meta no puede alcanzar una URL que le pide
+   login.
+7. Deja la app en **modo desarrollo**. No pidas App Review para staging: con
+   Standard Access y cuentas con rol (7.4) alcanza, y un review de más es un
+   trámite que hay que sostener en el tiempo.
+
+### 7.1 Configuración de Login for Business
+
+El `config_id` **pertenece a la app**: uno de producción usado con el
+`client_id` de staging hace fallar el diálogo. Hay que crear uno propio.
+
+1. App de staging → **Facebook Login for Business** → **Configuraciones** →
+   _Crear configuración_.
+2. Marca los mismos permisos que la configuración de producción. Los que el
+   código necesita sí o sí: `pages_show_list` (`/me/accounts`),
+   `pages_messaging` (envío) y `pages_manage_metadata` (`subscribed_apps`).
+3. Copia el id resultante a `NEXT_PUBLIC_META_CONFIG_ID_STAGING` (paso 4).
+
+### 7.2 Webhook de Messenger
+
+1. App de staging → **Messenger** → **Webhooks** → _Edit Callback URL_.
 2. **Callback URL**: `https://staging.resender.dev/api/meta/webhook`
 3. **Verify token**: el valor exacto del `META_VERIFY_TOKEN --env staging`.
-4. Suscribe los campos **messages** y **messaging_postbacks**.
+4. Suscribe **messages**, **messaging_postbacks** y
+   **messaging_policy_enforcement** — los tres de
+   `META_WEBHOOK_SUBSCRIBED_FIELDS` en `lib/meta.ts`.
+
+### 7.3 Producto Instagram
+
+Instagram trae credenciales propias dentro de la misma app, y su App Secret es
+el que firma el webhook de IG. Confundirlo con `META_APP_SECRET` es el error de
+configuración más común de esta integración; por eso son rutas y secretos
+separados (ver el comentario de cabecera en `app/api/meta/instagram/webhook`).
+
+1. App de staging → **Instagram** → _Configuración de la API con Instagram
+   Login_.
+2. Copia **Instagram App ID** e **Instagram App Secret** → `INSTAGRAM_APP_ID` e
+   `INSTAGRAM_APP_SECRET` del paso 3.
+3. **URI de redireccionamiento de OAuth válidas**:
+   `https://staging.resender.dev/api/meta/instagram/callback`
+4. **Webhooks** → **Callback URL**:
+   `https://staging.resender.dev/api/meta/instagram/webhook`, con un verify
+   token nuevo (`openssl rand -hex 16`) que va a `INSTAGRAM_VERIFY_TOKEN`.
+5. Suscribe **messages** y **comments** — los de
+   `INSTAGRAM_WEBHOOK_SUBSCRIBED_FIELDS`. `message_echoes` no, a propósito.
+
+### 7.4 Cuentas de prueba con rol en la app
+
+En modo desarrollo solo funcionan las cuentas que tengan rol. Usa cuentas de QA
+dedicadas, nunca las de un cliente: una cuenta de IG puede autorizar varias
+apps a la vez, y el mismo DM llegaría a staging y a producción.
+
+1. App de staging → **Roles de la app** → **Roles**.
+2. Agrega la cuenta de Instagram de pruebas como _Instagram Tester_.
+3. Acepta la invitación desde esa cuenta, en la app de Instagram →
+   _Configuración_ → _Aplicaciones y sitios web_ → _Invitaciones de tester_.
+4. Para Messenger, la página de pruebas tiene que ser administrada por un
+   usuario con rol de admin, developer o tester en la app.
+
+### 7.5 Usar la app de staging también en local
+
+Mientras no exista una tercera app, local comparte la de staging. Dos cosas se
+comportan distinto:
+
+- **OAuth: convive sin problema.** Agrega la URL del túnel como segunda URI de
+  redirección válida en 7.1 y 7.3. Cuál se usa lo decide `APP_URL`, y el mismo
+  valor va al diálogo y al intercambio. Instagram Login exige HTTPS, así que
+  `http://localhost:3000` no sirve para ese flujo: hace falta un túnel.
+- **Webhook: no convive.** El callback es uno solo por producto. Apuntarlo al
+  túnel deja a `staging.resender.dev` sin recibir eventos hasta que lo
+  devuelvas. Usa un hostname de túnel fijo para que sea alternar entre dos
+  valores guardados y no pegar una URL nueva cada vez.
 
 ---
 
@@ -210,7 +333,14 @@ deploy, y luego los smoke tests sobre `https://staging.resender.dev`:
 - [ ] La landing carga y PostHog reporta al proyecto de staging, no al real.
 - [ ] `stripe trigger checkout.session.completed --api-key sk_test_...` marca
       200 en el endpoint de test.
-- [ ] Mensaje real a la página de la app de desarrollo → aparece en `/messages`.
+- [ ] Conectar una página desde la UI abre el diálogo sin error de
+      configuración (valida que el `config_id` sea el de la app de staging y no
+      el de producción).
+- [ ] Mensaje real a la página de la app de staging → aparece en `/inbox`.
+- [ ] DM y comentario a la cuenta de Instagram de pruebas → aparecen en
+      `/inbox`. Si no llegan, `wrangler tail` distingue el caso: un
+      `webhook_verify` con `verify_token_mismatch` es el token del panel, y un
+      `webhook_receive` con `dropped` por firma es el App Secret cambiado.
 - [ ] `npx wrangler tail --env staging` no muestra errores.
 
 ---
