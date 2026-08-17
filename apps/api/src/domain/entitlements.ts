@@ -79,7 +79,7 @@ export function entitlementHttpError(blockCode: EntitlementBlockCode): {
     return {
       status: 403,
       message:
-        "The account has more active Pages than its plan allows. Disconnect Pages to resume sending.",
+        "The account has more active connections than its plan allows. Disconnect connections to resume sending.",
     }
   }
   return {

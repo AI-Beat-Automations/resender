@@ -3,7 +3,11 @@ import { NextResponse, type NextRequest } from "next/server"
 import { auth } from "@/auth"
 import { resolveInstagramAccess } from "@/lib/auth/channel-access"
 import { resolveProductAccess } from "@/lib/auth/waitlist"
-import { hasActiveSubscription } from "@/lib/billing/subscription"
+import { resolvePlanLimits } from "@/lib/billing/entitlements"
+import {
+  getSubscriptionByTenantId,
+  hasActiveSubscription,
+} from "@/lib/billing/subscription"
 import {
   assertSecretEncryptionConfigured,
   SecretEncryptionConfigError,
@@ -25,6 +29,8 @@ import {
 import { instagramAccountOwnedReason } from "@/lib/pages/meta-connection-error"
 import {
   connectInstagramAccount,
+  countActivePages,
+  getActivePageByMetaPageId,
   PageOwnershipError,
 } from "@/lib/pages/page-registry"
 import { posthog } from "@/lib/posthog"
@@ -140,6 +146,34 @@ export async function GET(request: NextRequest) {
     return fail("state_mismatch", "state_mismatch", { level: "warn" })
   }
 
+  // Cupo del plan (ADR 0011), en el mismo lugar y por el mismo motivo que el
+  // gate de canal de arriba: el `code` se quema al usarse una vez, y rebotar
+  // después dejaría al usuario sin poder reintentar. Instagram ocupa slot igual
+  // que una Página, así que este es el camino por el que se rompería el
+  // invariante si no estuviera.
+  //
+  // **Por qué el rebote no ocurre acá.** Reconectar una cuenta que ya está
+  // `active` para este tenant es idempotente y no consume slot nuevo
+  // ([Reconexión de páginas]), pero cuál es la cuenta de IG solo se sabe
+  // después del intercambio: `exchangeCodeForInstagramToken` no devuelve el IG
+  // user id y ningún paso anterior lo expone —el `state` es un nonce de CSRF y
+  // el diálogo no lo manda—. Rebotar acá con `activePageCount >= maxPages`
+  // rompería el caso del que está en el tope y solo quiere reconectar lo que ya
+  // tiene. Así que acá se resuelve el número (y se rebota si el plan no se
+  // puede resolver, que sí es independiente de la cuenta) y la decisión se toma
+  // abajo, sabiendo el IG id. El costo de esa demora es un `code` quemado en el
+  // único caso que igual iba a rebotar: el que está al tope y conecta una
+  // cuenta nueva.
+  const subscription = await getSubscriptionByTenantId(session.user.id)
+  const limits = resolvePlanLimits(subscription?.priceLookupKey ?? null)
+  if (!limits) {
+    return fail("configuration_failed", "configuration_failed", {
+      errorMessage: "plan limits could not be resolved",
+    })
+  }
+  const atPageLimit =
+    (await countActivePages(session.user.id)) >= limits.maxPages
+
   let step: "exchange" | "profile" | "subscribe" | "persist" = "exchange"
   try {
     assertSecretEncryptionConfigured()
@@ -148,6 +182,30 @@ export async function GET(request: NextRequest) {
 
     step = "profile"
     const profile = await fetchInstagramProfile(token.accessToken)
+
+    // Con el IG id en la mano: sin cupo libre solo pasa la reconexión de una
+    // cuenta que ya está activa para este tenant. Comparar el `tenantId` es lo
+    // que impide que la cuenta ajena abra la puerta.
+    // La cuenta de otro tenant rebota por propiedad y no por cupo: decirle
+    // "liberá un slot" a quien intenta conectar una cuenta que no es suya lo
+    // manda a desconectar conexiones para nada, porque después va a rebotar
+    // igual con `PageOwnershipError` (ADR 0004).
+    if (atPageLimit) {
+      const existing = await getActivePageByMetaPageId(
+        profile.igUserId,
+        "instagram"
+      )
+      if (existing && existing.tenantId !== session.user.id) {
+        return fail(
+          instagramAccountOwnedReason(profile.igUserId),
+          "account_owned_by_other_tenant",
+          { errorMessage: `accountId=${profile.igUserId}` }
+        )
+      }
+      if (!existing) {
+        return fail("instagram_page_limit_reached", "page_limit_reached")
+      }
+    }
 
     step = "subscribe"
     await subscribeInstagramWebhook(token.accessToken)

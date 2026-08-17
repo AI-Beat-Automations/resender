@@ -13,7 +13,7 @@ export type EntitlementBlockCode =
 export type EntitlementBlock = {
   code: EntitlementBlockCode
   // Status HTTP del contrato de la API pública (ADR 0003): 402 se arregla
-  // pagando, 403 se arregla desconectando páginas.
+  // pagando, 403 se arregla desconectando conexiones.
   status: 402 | 403
   message: string
 }
@@ -131,7 +131,10 @@ export function evaluateEntitlement(
       block: {
         code: "page_limit_exceeded",
         status: 403,
-        message: `Your plan allows ${limits.maxPages} connected Pages and you have ${activePageCount}. Disconnect Pages in Connections to resume sending.`,
+        // El código `page_limit_exceeded` es contrato público y se queda; el
+        // texto habla de conexiones porque el cupo cuenta todas, sin mirar el
+        // canal (ADR 0011). Código y texto no coinciden a sabiendas.
+        message: `Your plan allows ${limits.maxPages} connections and you have ${activePageCount}. Disconnect connections in Connections to resume sending.`,
       },
       notice: { ...notice, level: "restricted" },
     }

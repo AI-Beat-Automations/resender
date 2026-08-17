@@ -106,7 +106,7 @@ export default async function SelectPagesPage() {
       <section className="rounded-2xl border border-border bg-card p-[22px] shadow-[var(--shadow-sm)]">
         <h2 className="font-heading text-base font-semibold">Tu plan</h2>
         <p className="mt-1 text-[13.5px] text-muted-foreground">
-          Tienes {view.activePageCount} de {view.maxPages} páginas conectadas.{" "}
+          Tienes {view.activePageCount} de {view.maxPages} conexiones.{" "}
           {formatPageAllowance(view)}
         </p>
       </section>

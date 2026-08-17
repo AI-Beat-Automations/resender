@@ -379,7 +379,7 @@ describe("Worker runtime entrypoints", () => {
     expect(withFacebookVerifyToken.status).toBe(403)
   })
 
-  it("ingests an Instagram DM and a comment from one payload, out of quota and deduplicated", async () => {
+  it("ingests an Instagram DM and a comment from one payload, metered and deduplicated", async () => {
     const database = instagramRuntimeDatabase()
     vi.spyOn(sqlTransport, "create").mockReturnValue(database.sql)
     const queueSend = vi
@@ -416,8 +416,9 @@ describe("Worker runtime entrypoints", () => {
     expect(database.messages).toHaveLength(1)
     expect(database.comments).toHaveLength(1)
     expect(database.jobs).toHaveLength(2)
-    // Instagram está fuera de cuota: ni el DM ni el comentario cuentan.
-    expect(database.usage).toBe(0)
+    // Instagram está dentro de facturación (ADR 0011): el DM y el comentario
+    // suman una unidad cada uno.
+    expect(database.usage).toBe(2)
 
     // Meta reintenta el mismo webhook: el dedupe por índice impide la segunda
     // fila en las dos ramas. El handoff a la cola sí se repite, y es
@@ -429,6 +430,9 @@ describe("Worker runtime entrypoints", () => {
     expect(database.comments).toHaveLength(1)
     expect(database.jobs).toHaveLength(2)
     expect(queueSend).toHaveBeenCalledTimes(4)
+    // El reintento no cobra dos veces: el `usage_increment` de cada CTE cuelga
+    // de la fila insertada, así que sin fila nueva no hay unidad nueva.
+    expect(database.usage).toBe(2)
 
     // El job del comentario viaja sin `messageId`: exigirlo, como antes de la
     // 0013, lo habría descartado en silencio.

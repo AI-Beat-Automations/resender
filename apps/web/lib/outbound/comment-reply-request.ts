@@ -38,10 +38,11 @@ export type AuthResult =
 
 // Autenticación y gates, en el mismo orden que `/api/meta/instagram/send`.
 //
-// Acá tampoco va el gate de entitlement: Instagram está fuera de cuota y fuera
-// del cupo de páginas por ahora, así que no hay período que resolver ni
-// contador que consultar. El gate de suscripción activa, que sí aplica, está.
-// Cuando Instagram entre en la facturación, este es el punto donde vuelve.
+// El gate de entitlement (ADR 0003) no vive acá aunque las dos rutas lo tengan:
+// va **después** del replay idempotente, y el replay lo resuelve cada ruta en
+// su propia tabla. Subirlo hasta acá adelantaría el 402/403 al reintento con la
+// misma `Idempotency-Key`, que no llama a Meta ni inserta y tiene que seguir
+// devolviendo el resultado almacenado.
 export async function authenticateCommentReplyRequest(
   request: NextRequest
 ): Promise<AuthResult> {

@@ -224,9 +224,10 @@ function EmptyState({ offersInstagram }: { offersInstagram: boolean }) {
   )
 }
 
-// El cupo del plan cuenta solo páginas de Facebook: Instagram queda fuera del
-// límite por ahora, así que el contador lo dice en vez de llamarlas «páginas» a
-// secas y dejar al usuario buscando por qué su cuenta de IG no suma.
+// El cupo del plan cuenta **conexiones**, sin mirar el canal (ADR 0011): una
+// cuenta de Instagram ocupa slot igual que una Página de Facebook. El contador
+// dice «conexiones» y no «páginas» justamente para que nadie busque por qué su
+// cuenta de IG no suma —lo hace—.
 function PageQuota({ quota }: { quota: PageQuotaView }) {
   if (!quota) {
     return (
@@ -238,7 +239,7 @@ function PageQuota({ quota }: { quota: PageQuotaView }) {
 
   return (
     <p className="font-mono text-[11px] text-muted-foreground">
-      {quota.activePageCount} de {quota.maxPages} páginas de Facebook
+      {quota.activePageCount} de {quota.maxPages} conexiones
     </p>
   )
 }

@@ -53,23 +53,18 @@ export type IngestedInboundMessage = IngestedInbound & {
 const RESTRICTED_SKIP_REASON =
   "account is restricted: quota exhausted or too many connected Pages"
 
-// Instagram está **fuera de cuota y fuera del cupo de páginas** por ahora: sus
-// entrantes no suman al contador del período ni se frenan cuando el tenant
-// quedó restringido por su consumo de Messenger. El gate de suscripción activa
-// sí aplica, y por eso está arriba y fuera de esta tabla.
+// **Todos los canales se miden** (ADR 0011). La tabla `CHANNEL_IS_METERED` que
+// vivía acá declaraba a Instagram fuera de cuota y fuera del cupo, y con ella
+// desaparece la rama `entitlement === null`: un entrante de Instagram —DM o
+// comentario— suma al contador del período y deja de reenviarse cuando el
+// tenant quedó [Cuenta restringida], exactamente igual que uno de Messenger.
+// No queda tabla porque una con todos los valores en `true` no decide nada;
+// el día que un canal deje de medirse, vuelve.
 //
-// La consecuencia práctica es que en Instagram ni siquiera se resuelve el
-// entitlement: sin contador que incrementar ni restricción que consultar, esa
-// lectura sería una ida a la base por evento sin nada que decidir.
-const CHANNEL_IS_METERED: Record<PageChannel, boolean> = {
-  messenger: true,
-  instagram: false,
-}
-
 // El permiso por cuenta (ADR 0010) es de Instagram y de nadie más: Messenger no
 // tiene bandera y su ingesta no cambia en absoluto. Va como tabla y no como un
-// `channel === "instagram"` por lo mismo que la de arriba: cuando entre WhatsApp
-// —bloqueado por Meta por la misma razón— el tipo obliga a decidir.
+// `channel === "instagram"` para que, cuando entre WhatsApp —bloqueado por Meta
+// por la misma razón—, el tipo obligue a decidir.
 const CHANNEL_NEEDS_PERMISSION: Record<PageChannel, boolean> = {
   messenger: false,
   instagram: true,
@@ -93,6 +88,22 @@ async function resolveCachedInstagramAccess(
   const enabled = await resolveInstagramAccess(tenantId)
   cache.set(tenantId, enabled)
   return enabled
+}
+
+// Mismo memo por lote para el entitlement: un POST de Meta trae varios eventos
+// del mismo tenant y resolverlo es una lectura contra la base. Vive como
+// función y no inline desde que los comentarios también lo resuelven (ADR
+// 0011), para que las dos ingestas memoicen igual y no se separen.
+async function resolveCachedEntitlement(
+  cache: Map<string, TenantEntitlement>,
+  tenantId: string
+): Promise<TenantEntitlement> {
+  const cached = cache.get(tenantId)
+  if (cached) return cached
+
+  const entitlement = await getTenantEntitlement(tenantId)
+  cache.set(tenantId, entitlement)
+  return entitlement
 }
 
 // Entrada del webhook de Messenger.
@@ -147,7 +158,6 @@ async function ingestInboundEvents(
   // compartirlo obligaría a pasarlo por parámetro —tocando la firma que también
   // sirve a Messenger— para ahorrar, en el peor caso, una lectura por payload.
   const instagramAccess = new Map<string, boolean>()
-  const metered = CHANNEL_IS_METERED[channel]
 
   for (const event of incoming) {
     // El canal viene del webhook que recibió el evento, no del payload: sin él,
@@ -207,14 +217,10 @@ async function ingestInboundEvents(
       continue
     }
 
-    let entitlement: TenantEntitlement | null = null
-    if (metered) {
-      entitlement = entitlements.get(page.tenantId) ?? null
-      if (!entitlement) {
-        entitlement = await getTenantEntitlement(page.tenantId)
-        entitlements.set(page.tenantId, entitlement)
-      }
-    }
+    const entitlement = await resolveCachedEntitlement(
+      entitlements,
+      page.tenantId
+    )
 
     const conversation = await upsertConversation({
       tenantId: page.tenantId,
@@ -270,8 +276,9 @@ async function ingestInboundEvents(
     // El entrante persistido consume cuota aunque la cuenta esté restringida o
     // la página no tenga `webhookUrl`: lo que se cobra es recibir y persistir,
     // no entregar. Best-effort — el contador nunca puede romper la ingesta.
-    // En un canal sin medir no hay entitlement resuelto y no se cuenta nada.
-    const periodStart = entitlement?.periodStart
+    // Sin período resuelto no hay ventana contra la cual contar (fail-closed
+    // del módulo puro), y ahí el entrante entra igual pero no suma.
+    const periodStart = entitlement.periodStart
     if (
       periodStart &&
       countsTowardQuota({ kind: "inbound", persisted: true })
@@ -318,10 +325,7 @@ async function ingestInboundEvents(
     // la request ya terminó y no hay de dónde volver a sacarlo.
     const deliveryContext = { requestId, ...accountFields(page), ...logSubject }
     let pushJob: InboundPushJob
-    // `entitlement` es null en un canal sin medir, y ahí la restricción por
-    // consumo no aplica: el tenant que agotó su cuota de Messenger sigue
-    // recibiendo sus DMs de Instagram.
-    if (entitlement && !shouldPushInbound(entitlement)) {
+    if (!shouldPushInbound(entitlement)) {
       // Cuenta restringida (ADR 0003): el mensaje ya quedó persistido y
       // contabilizado, pero deja de reenviarse al webhook del cliente.
       pushJob = () =>
@@ -354,17 +358,20 @@ async function ingestInboundEvents(
 // `instagram_comments`, que es otra tabla porque un comentario cuelga de una
 // publicación y se anida (migración 0013).
 //
-// No lleva medición por la misma razón que los DMs de Instagram: el canal está
-// fuera de cuota por ahora.
+// Lleva medición como los DMs (ADR 0011) y sin asteriscos: un comentario
+// entrante persistido suma 1 al contador del período y deja de reenviarse
+// cuando el tenant está restringido. La consecuencia comercial está dicha en la
+// ADR: un post con muchos comentarios puede quemar la cuota de un mes.
 async function ingestInstagramComments(
   body: unknown,
   requestId: string
 ): Promise<IngestedInbound[]> {
   const incoming = extractInstagramComments(body)
   const ingested: IngestedInbound[] = []
-  // Mismo memo por lote que en los DMs, y propio de esta función por la razón
-  // que está explicada allá.
+  // Mismos memos por lote que en los DMs, y propios de esta función por la
+  // razón que está explicada allá.
   const instagramAccess = new Map<string, boolean>()
+  const entitlements = new Map<string, TenantEntitlement>()
 
   for (const event of incoming) {
     const page = await getActivePageByMetaPageId(event.metaPageId, "instagram")
@@ -473,6 +480,11 @@ async function ingestInstagramComments(
       continue
     }
 
+    const entitlement = await resolveCachedEntitlement(
+      entitlements,
+      page.tenantId
+    )
+
     const { comment, inserted } = await insertInboundComment({
       tenantId: page.tenantId,
       connectedPageId: page.id,
@@ -517,6 +529,29 @@ async function ingestInstagramComments(
       textLength: event.text.length,
     })
 
+    // Un comentario entrante persistido cuenta igual que un DM (ADR 0011), con
+    // la misma regla y el mismo best-effort: el contador nunca puede romper la
+    // ingesta de algo que Meta ya nos entregó.
+    const periodStart = entitlement.periodStart
+    if (
+      periodStart &&
+      countsTowardQuota({ kind: "inbound", persisted: true })
+    ) {
+      try {
+        await incrementUsage(page.tenantId, periodStart)
+      } catch (error) {
+        log({
+          entrypoint: "route",
+          action: "usage_increment",
+          outcome: "failed",
+          reason: "usage_counter_failed",
+          requestId,
+          ...accountFields(page),
+          errorMessage: describeError(error),
+        })
+      }
+    }
+
     if (posthog) {
       posthog.capture({
         distinctId: page.tenantId,
@@ -537,11 +572,22 @@ async function ingestInstagramComments(
     const webhookUrl = page.webhookUrl
     const context = { requestId, ...accountFields(page), ...logSubject }
 
-    ingested.push({
-      pushJob: webhookUrl
+    // Cuenta restringida (ADR 0003, extendida a Instagram por la 0011): el
+    // comentario ya quedó persistido y contabilizado, pero deja de reenviarse
+    // al webhook del cliente. Gana sobre el `webhookUrl` por lo mismo que en
+    // los DMs: la restricción es del tenant, no de la conexión.
+    const pushJob: InboundPushJob = !shouldPushInbound(entitlement)
+      ? () =>
+          recordSkippedDelivery(subject, {
+            reason: RESTRICTED_SKIP_REASON,
+            logReason: "account_restricted",
+            context,
+          })
+      : webhookUrl
         ? () => pushInboundEvent({ subject, webhookUrl, payload, context })
-        : () => recordSkippedDelivery(subject, { context }),
-    })
+        : () => recordSkippedDelivery(subject, { context })
+
+    ingested.push({ pushJob })
   }
 
   return ingested

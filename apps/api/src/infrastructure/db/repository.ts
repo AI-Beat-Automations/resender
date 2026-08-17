@@ -341,16 +341,20 @@ export class SqlRepository {
     return number(rowValue(rows[0], "message_count"), 0)
   }
 
-  // Cuenta **solo Messenger**. Instagram está fuera del cupo de páginas por
-  // ahora, y el filtro va en la consulta porque este número alimenta a la vez el
-  // entitlement y la pantalla de selección: si contara las cuentas de Instagram,
-  // un tenant se quedaría sin poder conectar Páginas por un cupo que no gastó.
+  // Cuenta **todas** las conexiones activas del tenant, sin mirar el canal: una
+  // Página de Facebook y una cuenta de Instagram son dos conexiones y ocupan dos
+  // slots. El filtro por `channel = 'messenger'` que había acá dejaba a Instagram
+  // invisible en los tres lugares donde se muestra el cupo y en el entitlement
+  // que alimenta este mismo número
+  // (`docs/adr/0011-cupo-por-conexion-e-instagram-en-facturacion.md`).
+  //
+  // Lo único que no cuenta es lo desconectado: desconectar sigue siendo un
+  // `UPDATE` de `status` y una fila no `active` no ocupa cupo.
   async countActivePages(tenantId: string): Promise<number> {
     const rows = await this.sql`
       select count(*)::int as count
       from connected_pages
       where tenant_id = ${tenantId}
-        and channel = 'messenger'
         and status = 'active'
     `
     return number(rowValue(rows[0], "count"), 0)
@@ -1125,7 +1129,11 @@ export class SqlRepository {
   // así que insertar el comentario y crear su job de entrega tienen que viajar
   // juntos o el comentario queda persistido y nunca se reenvía.
   //
-  // No lleva `usage_increment`: Instagram está fuera de cuota por ahora.
+  // Lleva `usage_increment` como `ingestInbound`: un comentario entrante
+  // persistido suma una unidad igual que un DM, sin excepción por canal
+  // (`docs/adr/0011-cupo-por-conexion-e-instagram-en-facturacion.md`). Suma solo
+  // cuando la fila se insertó de verdad, así el reintento de Meta sobre el mismo
+  // comentario no cobra dos veces.
   async ingestInboundComment(input: {
     page: PageRecord
     providerCommentId: string
@@ -1138,6 +1146,7 @@ export class SqlRepository {
     eventId: string
     createdAt: Date
     payloadVersion: number
+    periodStart: Date | null
     deliveryEnabled: boolean
     deliveryBlockedReason: string | null
     recoverAfter: Date
@@ -1225,6 +1234,18 @@ export class SqlRepository {
           where instagram_comment_id is not null
         do nothing
         returning id, instagram_comment_id, status, attempt_count
+      ),
+      usage_increment as (
+        insert into usage_counters (
+          tenant_id, period_start, message_count
+        )
+        select ${input.page.tenantId}, ${input.periodStart}, 1
+        from inserted_comment
+        where ${input.periodStart}::timestamptz is not null
+        on conflict (tenant_id, period_start) do update set
+          message_count = usage_counters.message_count + 1,
+          updated_at = now()
+        returning tenant_id
       )
       select
         inserted_comment.id as comment_id,
@@ -1374,25 +1395,43 @@ export class SqlRepository {
     error: string | null
     providerResponse: unknown
     createdAt: Date
+    // Igual que en `completeOutbound`: viene en null cuando no hay que cobrar
+    // —el envío que Meta rechazó— y con el período del tenant cuando sí.
+    periodStart: Date | null
   }): Promise<CommentRecord> {
     const providerResponse = JSON.stringify(input.providerResponse ?? null)
     const rows = await this.sql`
-      insert into instagram_comments (
-        tenant_id, connected_page_id, ig_comment_id, parent_ig_comment_id,
-        media_id, media_product_type, from_ig_id, from_username, direction,
-        status, text, idempotency_key, error, provider_response, created_at
+      with inserted as (
+        insert into instagram_comments (
+          tenant_id, connected_page_id, ig_comment_id, parent_ig_comment_id,
+          media_id, media_product_type, from_ig_id, from_username, direction,
+          status, text, idempotency_key, error, provider_response, created_at
+        )
+        values (
+          ${input.tenantId}, ${input.pageId}, ${input.providerCommentId},
+          ${input.parentCommentId}, ${input.mediaId}, ${input.mediaProductType},
+          ${input.fromProviderUserId}, ${input.fromUsername}, 'outbound',
+          ${input.status}, ${input.text}, ${input.idempotencyKey},
+          ${input.error}, ${providerResponse}::jsonb, ${input.createdAt}
+        )
+        returning id, tenant_id, connected_page_id, ig_comment_id,
+          parent_ig_comment_id, media_id, media_product_type, from_ig_id,
+          from_username, direction, status, text, error, idempotency_key,
+          created_at
+      ),
+      usage_increment as (
+        insert into usage_counters (
+          tenant_id, period_start, message_count
+        )
+        select ${input.tenantId}, ${input.periodStart}, 1
+        from inserted
+        where ${input.periodStart}::timestamptz is not null
+        on conflict (tenant_id, period_start) do update set
+          message_count = usage_counters.message_count + 1,
+          updated_at = now()
+        returning tenant_id
       )
-      values (
-        ${input.tenantId}, ${input.pageId}, ${input.providerCommentId},
-        ${input.parentCommentId}, ${input.mediaId}, ${input.mediaProductType},
-        ${input.fromProviderUserId}, ${input.fromUsername}, 'outbound',
-        ${input.status}, ${input.text}, ${input.idempotencyKey}, ${input.error},
-        ${providerResponse}::jsonb, ${input.createdAt}
-      )
-      returning id, tenant_id, connected_page_id, ig_comment_id,
-        parent_ig_comment_id, media_id, media_product_type, from_ig_id,
-        from_username, direction, status, text, error, idempotency_key,
-        created_at
+      select * from inserted
     `
     const row = rows[0]
     if (!row) throw new Error("outbound comment insert failed")

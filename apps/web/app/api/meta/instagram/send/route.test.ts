@@ -2,11 +2,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   authenticateApiKey: vi.fn(),
+  getTenantEntitlement: vi.fn(),
   hasActiveSubscription: vi.fn(),
   isUserWaitlisted: vi.fn(),
   log: vi.fn(),
   resolveInstagramAccess: vi.fn(),
   sendInstagramTextMessage: vi.fn(),
+}))
+
+vi.mock("@/lib/billing/entitlement-status", () => ({
+  getTenantEntitlement: mocks.getTenantEntitlement,
 }))
 
 vi.mock("@/lib/api-keys/api-keys", () => ({
@@ -64,6 +69,32 @@ describe("POST /api/meta/instagram/send", () => {
     mocks.isUserWaitlisted.mockResolvedValue(false)
     mocks.hasActiveSubscription.mockResolvedValue(true)
     mocks.resolveInstagramAccess.mockResolvedValue(true)
+    mocks.getTenantEntitlement.mockResolvedValue({
+      block: null,
+      periodStart: new Date("2026-08-01"),
+    })
+  })
+
+  // ADR 0011: Instagram entra a facturación, así que la cuenta restringida
+  // tampoco envía por acá. Antes esta ruta no tenía gate de entitlement.
+  it("blocks a restricted tenant before calling Meta", async () => {
+    mocks.getTenantEntitlement.mockResolvedValue({
+      block: {
+        code: "quota_exceeded",
+        status: 402,
+        message: "sin cuota",
+      },
+      periodStart: new Date("2026-08-01"),
+    })
+
+    const response = await POST(sendRequest())
+
+    expect(response.status).toBe(402)
+    await expect(response.json()).resolves.toEqual({
+      error: "quota_exceeded",
+      message: "sin cuota",
+    })
+    expect(mocks.sendInstagramTextMessage).not.toHaveBeenCalled()
   })
 
   // El gate de la ADR 0010: sin permiso de canal, la request muere en el worker

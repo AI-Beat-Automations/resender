@@ -27,7 +27,7 @@ export type QuotaNoticeView = {
 function restrictedMessage(notice: QuotaNoticeView): string {
   switch (notice.blockCode) {
     case "page_limit_exceeded":
-      return `Tu plan permite ${formatCount(notice.maxPages)} páginas conectadas y tienes ${formatCount(notice.activePageCount)}. Desconecta páginas para volver a enviar.`
+      return `Tu plan permite ${formatCount(notice.maxPages)} conexiones y tienes ${formatCount(notice.activePageCount)}. Desconecta conexiones para volver a enviar.`
     case "quota_exceeded":
       return `Agotaste los ${formatCount(notice.limit)} mensajes de tu plan en este período de facturación. Sube de plan para volver a enviar.`
     case "plan_unavailable":

@@ -129,7 +129,7 @@ describe("page selection classification", () => {
     expect(result).toMatchObject({ code: "page_limit_exceeded" })
     if (!result.ok) {
       expect(result.message).toBe(
-        "Tu plan permite 2 páginas conectadas y ya tienes 0 activas: puedes añadir 2 páginas más. Desmarca las que sobren o desconecta una página para liberar cupo."
+        "Tu plan permite 2 conexiones y ya tienes 0 activas: puedes añadir 2 páginas más. Desmarca las que sobren o desconecta una página para liberar cupo."
       )
     }
   })
@@ -181,7 +181,7 @@ describe("page selection copy", () => {
     expect(result.ok).toBe(false)
     if (!result.ok) {
       expect(result.message).toBe(
-        "Tu plan permite 2 páginas conectadas y ya tienes 2 activas: no te queda cupo. Desconecta una página para liberar cupo y conectar otra."
+        "Tu plan permite 2 conexiones y ya tienes 2 activas: no te queda cupo. Desconecta una página para liberar cupo y conectar otra."
       )
       expect(result.message).not.toMatch(/Conexiones/)
     }

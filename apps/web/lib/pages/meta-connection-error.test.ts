@@ -86,6 +86,14 @@ describe("formatMetaConnectionError", () => {
     )
   })
 
+  // El rebote por cupo del callback (ADR 0011). Habla de conexiones porque el
+  // slot ocupado puede ser una Página de Facebook y no una cuenta de Instagram.
+  it("explains that the plan has no free connection slot left", () => {
+    expect(formatMetaConnectionError("instagram_page_limit_reached")).toBe(
+      "No se pudo conectar: el cupo de conexiones de tu plan está completo. Desconecta una conexión en Conexiones para liberar cupo."
+    )
+  })
+
   it("falls back to the raw reason and to the bare message without one", () => {
     expect(formatMetaConnectionError("something_odd")).toBe(
       "No se pudo conectar: something_odd."
@@ -107,6 +115,7 @@ describe("formatMetaConnectionError", () => {
       "instagram_subscription_failed",
       "instagram_account_owned:1",
       "instagram_not_enabled",
+      "instagram_page_limit_reached",
       "unknown",
     ]
 

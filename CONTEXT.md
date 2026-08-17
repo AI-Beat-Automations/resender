@@ -79,8 +79,12 @@ La unicidad es por `(channel, meta_page_id)`, no global: un mismo id repetido en
 Una página de Facebook conectada pertenece a un solo tenant y no hay transferencia automática de ownership. La regla vale igual para una cuenta de Instagram, y se evalúa **dentro de cada canal**: una cuenta de Instagram homónima de una página de Facebook no bloquea nada.
 El ownership se evalúa **página por página**, no sobre la lista completa que devuelve Meta. Que una página ya esté tomada por otro tenant no invalida las demás: si Arturo conectó A y B, y Felipe —que también las administra— quiere conectar C y D, Felipe puede hacerlo. A y B le aparecen en la lista deshabilitadas, con un cartel de que ya están conectadas en otra cuenta. Se muestran en vez de ocultarse para que el usuario entienda por qué le falta una página que sí administra. Decisión en `docs/adr/0004-page-selection-and-per-page-ownership.md`.
 
+### Conexión
+Lo que ocupa un slot del plan: **una fila `active` de `connected_pages`, sea del canal que sea**. Una página de Facebook es una conexión; una cuenta de Instagram es otra; un número de WhatsApp será otra. Dos conexiones del mismo negocio ocupan dos slots: no hay agrupación por negocio, a propósito (`docs/adr/0011-cupo-por-conexion-e-instagram-en-facturacion.md`).
+En pantalla se dice **conexiones**, nunca "páginas de Facebook". En el código todavía se llama `page`: `connected_pages`, `maxPages`, `countActivePages`, `page_limit_exceeded`, `/v1/pages`. Es deuda declarada en la ADR 0011, no un segundo concepto.
+
 ### Páginas conectadas por tenant
-Cada tenant puede conectar múltiples páginas de Facebook, hasta el límite de su plan (ver [Límites por plan]). El límite cuenta solo las páginas `active` **del canal `messenger`**: las desconectadas no ocupan cupo, pero reconectar una estando en el tope se bloquea igual que conectar una nueva. Las cuentas de Instagram no ocupan cupo (ver [Instagram fuera de facturacion]), y por eso el contador de la UI dice "N de M **páginas de Facebook**" y no "páginas" a secas.
+Cada tenant puede conectar múltiples páginas de Facebook, hasta el límite de su plan (ver [Límites por plan]). El límite cuenta **todas** las [Conexión]es `active`, sin mirar el canal: las desconectadas no ocupan cupo, pero reconectar una estando en el tope se bloquea igual que conectar una nueva. Conectar una cuenta de Instagram valida cupo **antes** del intercambio de OAuth, porque el `code` de Meta se quema al usarlo una vez.
 Resender ya no conecta automáticamente todas las páginas que Meta devuelve. Ver [Selección de páginas].
 La conexión sigue siendo all-or-nothing **sobre el subconjunto seleccionado**: antes de persistir, Resender verifica que el servidor pueda cifrar tokens y que las páginas sean conectables por ownership local, y exige que Meta confirme la suscripción al webhook de cada página elegida. Si alguna suscripción falla, no se guarda ninguna.
 
@@ -150,10 +154,10 @@ Se validan antes de llamar a Meta y el `400` dice el número exacto, porque el r
 Resender traduce el sobre de error de Graph a un mensaje accionable. Hay **tres catálogos** —Messenger, DM de Instagram y comentario de Instagram— y no uno solo: los códigos coinciden pero lo que el usuario tiene que hacer es distinto, y ese es el punto entero de traducir un error. Un `10` es la ventana de 24 h en un DM y un permiso faltante en una respuesta pública, que no tiene ventana; un `190` es "revocaron permisos, reconectá la Página" en Messenger y "el token venció solo, reconectá la cuenta" en Instagram.
 Los tres motivos que no dependen de qué se estaba enviando —token vencido, rate limit, bloqueo por política— viven una sola vez y se comparten, para que no se separen con el tiempo.
 
-### Instagram fuera de facturacion
-Por ahora Instagram **no consume [Mensaje contabilizado] ni ocupa cupo de páginas**. Sus entrantes no incrementan el contador del período y no se frenan cuando el tenant queda [Cuenta restringida] por su consumo de Messenger; sus salientes tampoco suman.
-El [Gate de suscripcion] **sí aplica**: sin suscripción activa no se conecta, no se envía y los entrantes se descartan sin persistir, igual que en Messenger.
-Es una decisión provisional —los planes publicados hablan de páginas de Facebook— y el punto exacto donde vuelve el entitlement está marcado con un comentario en cada ruta de envío de Instagram.
+### Instagram dentro de facturacion
+Instagram está **dentro de facturación, completo**: ocupa cupo como cualquier [Conexión], sus entrantes y salientes suman [Mensaje contabilizado], y se frena cuando el tenant queda [Cuenta restringida]. No hay excepción por canal (`docs/adr/0011-cupo-por-conexion-e-instagram-en-facturacion.md`).
+Los **comentarios** reciben el mismo trato que un DM: un comentario entrante persistido suma 1 y una respuesta que Meta acepta suma 1, sea pública o [Respuesta a un comentario] privada. Consecuencia asumida: un post con muchos comentarios puede consumir buena parte de la cuota del período, y el negocio no eligió recibirlos.
+El [Gate de suscripcion] **sí aplica** y sigue siendo otra cosa: sin suscripción activa no se conecta, no se envía y los entrantes se descartan sin persistir. [Cuenta restringida] sí persiste.
 
 ### Entrega de entrantes al sistema externo
 El MVP usa `push`: tras persistir un mensaje entrante, Resender lo reenvía de forma no bloqueante al sistema externo del tenant.
@@ -260,7 +264,7 @@ El plan **Business $60** fue eliminado: su price esta archivado en Stripe y nunc
 La diferenciacion funcional entre planes ya no es binaria: cada plan trae una cuota de mensajes y un limite de paginas. Ver [Límites por plan]. Decisiones en `docs/adr/0002-stripe-checkout-subscriptions.md` y `docs/adr/0003-plan-entitlements-usage-quota.md`.
 
 ### Límites por plan
-| Plan | Precio | Mensajes por período | Páginas |
+| Plan | Precio | Mensajes por período | Conexiones |
 |---|---|---|---|
 | `starter_monthly` | $15 | 50.000 | 2 |
 | `pro_monthly` | $25 | 100.000 | 5 |
@@ -271,7 +275,7 @@ El límite se resuelve desde `subscriptions.price_lookup_key` contra un mapa en 
 La cuota mide **ambas direcciones**: cada [Inbound message] persistido suma 1, y cada reply que Meta acepta (`status: 'sent'`) suma 1. Una conversación de ida y vuelta consume 2 unidades, así que los 50.000 del Starter son ~25.000 intercambios; los números publicados se mantienen sabiendo esto.
 **No** consumen cuota: un envío que Meta rechaza (`status: 'failed'`) —el cliente no paga por un page token vencido nuestro ni por la ventana de 24h de Messenger— ni un replay idempotente, que no llama a Meta ni inserta mensaje nuevo.
 Los entrantes **cuentan aunque no se entreguen**: si el tenant está restringido o la página no tiene `webhookUrl`, el mensaje se persiste igual y consume cuota. Lo que la cuota cubre es recibir y persistir, no entregar.
-La cuota mide **solo el canal `messenger`**: ver [Instagram fuera de facturacion].
+La cuota mide **todos los canales**, incluidos los DMs y comentarios de Instagram: ver [Instagram dentro de facturacion].
 
 ### Período de cuota
 La ventana es el **período de facturación de Stripe**, no el mes calendario: el contador se resetea cuando cierra el ciclo que el cliente pagó, para no regalar una cuota completa a quien paga el día 28. Requiere `subscriptions.current_period_start`, que la migración `0005` no incluía. Sin período conocido no hay envío (fail-closed).
@@ -282,15 +286,15 @@ El **upgrade se aplica inmediato**: sube el techo y **conserva el consumo** del 
 El **downgrade se difiere** al cierre del período: quien pagó el mes lo usa completo, mismo criterio que `cancel_at_period_end`. El Customer Portal de Stripe debe configurarse para diferirlo; por defecto Stripe lo aplica inmediato con prorrateo.
 
 ### Cuenta restringida
-Estado degradado con dos causas: **cuota agotada** o **exceso de páginas** tras un downgrade (bajar a Starter con 5 páginas conectadas).
-En ambos casos el comportamiento es el mismo: los entrantes se siguen persistiendo en la bitácora, dejan de reenviarse al webhook del cliente, y el envío queda bloqueado **para todas las páginas** del tenant, no solo las excedentes. No desconectamos páginas nosotros: desconectar es siempre acción del usuario.
-Se levanta al resolverse la causa: nuevo período de facturación, o el usuario desconecta páginas hasta quedar dentro de su límite.
+Estado degradado con dos causas: **cuota agotada** o **exceso de conexiones** tras un downgrade (bajar a Starter con 5 [Conexión]es activas). Como conectar valida cupo, el downgrade es la **única** vía de entrada al segundo caso.
+En ambos casos el comportamiento es el mismo: los entrantes se siguen persistiendo en la bitácora, dejan de reenviarse al webhook del cliente, y el envío queda bloqueado **para todas las conexiones** del tenant —de cualquier canal—, no solo las excedentes. No desconectamos nada nosotros: desconectar es siempre acción del usuario, aunque eso deje al tenant apagado por completo mientras decide.
+Se levanta al resolverse la causa: nuevo período de facturación, o el usuario desconecta conexiones hasta quedar dentro de su límite.
 Se distingue del [Gate de suscripcion], que sí descarta los entrantes sin persistir.
 
 ### Errores de límite en la API
 Dos códigos distintos, porque la acción del cliente es distinta:
 - `402 Payment Required` + `quota_exceeded` — se arregla subiendo de plan.
-- `403 Forbidden` + `page_limit_exceeded` — se arregla desconectando páginas.
+- `403 Forbidden` + `page_limit_exceeded` — se arregla desconectando conexiones. El código conserva el nombre viejo aunque ya no sean páginas; el `message` sí habla de conexiones (deuda declarada en la ADR 0011).
 - `403 Forbidden` + `plan_unavailable` — fail-closed cuando no se puede resolver el plan (`price_lookup_key` desconocido) o el [Período de cuota]. No es una causa de negocio sino una inconsistencia de datos: se arregla del lado de Resender, y el `message` manda a soporte.
 
 Cada uno con `message` legible. Se suman al contrato de errores `snake_case` de `prd_api_separation.md`. Se descartó `429`, que comunica velocidad y no cuota comprada.
