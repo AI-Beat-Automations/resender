@@ -125,6 +125,32 @@ describe("POST /api/meta/instagram/send", () => {
     expect(mocks.sendInstagramTextMessage).not.toHaveBeenCalled()
   })
 
+  // Los adjuntos son solo de Messenger por ahora: un body de adjunto válido
+  // muere con código estable después del parser y Graph no ve nada.
+  it("rejects attachments with a stable code before calling Meta", async () => {
+    const response = await POST(
+      new Request("https://resender.test/api/meta/instagram/send", {
+        method: "POST",
+        headers: { authorization: "Bearer rk_test" },
+        body: JSON.stringify({
+          pageId: "ig-1",
+          recipientId: "igsid-1",
+          attachment: {
+            type: "image",
+            url: "https://cdn.example.com/foto.png",
+          },
+        }),
+      }) as unknown as NextRequest
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({
+      code: "attachment_unsupported_channel",
+      error: "attachments are not supported on Instagram yet",
+    })
+    expect(mocks.sendInstagramTextMessage).not.toHaveBeenCalled()
+  })
+
   // Fail closed y en el orden canónico: el permiso de canal ni se consulta si
   // antes falta la suscripción, para que el cliente vea la causa de más arriba.
   it("reports the subscription before the channel permission", async () => {

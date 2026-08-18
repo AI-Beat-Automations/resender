@@ -135,6 +135,7 @@ async function callGraph(input: {
         ? null
         : (metaError ?? `Meta returned HTTP ${response.status}`),
       reason: response.ok ? null : input.explain(data),
+      code: null,
     }
   } catch (error) {
     return {
@@ -143,6 +144,7 @@ async function callGraph(input: {
       data: null,
       error: error instanceof Error ? error.message : "Meta request failed",
       reason: input.networkReason,
+      code: null,
     }
   }
 }

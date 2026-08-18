@@ -235,6 +235,17 @@ async function ingestInboundEvents(
       contactId: event.senderId,
       text: event.text,
       metaMessageId: event.metaMessageId,
+      // El adjunto viaja tal como lo normalizó el parser; el merge del `title`
+      // dentro del jsonb lo hace `insertInboundMessage`, y el split inverso lo
+      // hace `buildInboundPushPayload` — un solo mapeo, en un solo lugar.
+      attachment: event.attachment
+        ? {
+            type: event.attachment.type,
+            url: event.attachment.url,
+            title: event.attachment.title,
+            details: event.attachment.details,
+          }
+        : null,
       createdAt: event.timestamp,
     })
 
@@ -269,8 +280,18 @@ async function ingestInboundEvents(
       ...accountFields(page),
       ...logSubject,
       // El texto no se loguea nunca; el largo alcanza para distinguir «llegó
-      // vacío» de «llegó» sin guardar lo que dijo nadie.
+      // vacío» de «llegó» sin guardar lo que dijo nadie. Del adjunto se loguea
+      // solo el tipo —nunca la URL, que apunta a contenido del usuario— y el
+      // conteo de descartados cuando el contacto mandó varios de una vez.
       textLength: event.text.length,
+      ...(event.attachment
+        ? {
+            attachmentType: event.attachment.type,
+            ...(event.attachment.details.droppedCount
+              ? { droppedCount: event.attachment.details.droppedCount }
+              : {}),
+          }
+        : {}),
     })
 
     // El entrante persistido consume cuota aunque la cuenta esté restringida o

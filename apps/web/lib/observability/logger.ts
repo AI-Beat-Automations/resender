@@ -131,6 +131,12 @@ type SubjectFields = {
   providerId?: string // `mid` de Meta o `ig_comment_id`
   contactId?: string // PSID / IGSID de quien escribió
   textLength?: number
+  // Adjunto entrante (migración 0016). Solo el tipo, nunca la URL: la URL la
+  // firma el CDN de Meta y apunta a contenido del usuario, que por la regla de
+  // este módulo no se loguea. `droppedCount` cuenta los adjuntos extra que se
+  // descartaron cuando el contacto mandó varios de una vez.
+  attachmentType?: string
+  droppedCount?: number
 }
 
 type ContextFields = {
