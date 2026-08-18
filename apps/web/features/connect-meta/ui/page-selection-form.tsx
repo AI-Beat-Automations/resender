@@ -126,9 +126,7 @@ export function PageSelectionForm({ view }: { view: PageSelectionView }) {
         <p className="rounded-lg bg-surface-sunken px-3.5 py-3 text-[13px] text-muted-foreground">
           {view.remainingSlots === 0
             ? formatPageAllowance(view)
-            : `Ya marcaste las ${view.remainingSlots} ${
-                view.remainingSlots === 1 ? "página" : "páginas"
-              } que te permite tu plan (${view.maxPages} en total). Desmarca una para elegir otra, o desconecta una página para liberar cupo.`}
+            : `Ya marcaste las ${view.remainingSlots} que te permite tu plan (${view.maxPages} conexiones en total). Desmarca una para elegir otra, o desconecta una para liberar cupo.`}
         </p>
       )}
 

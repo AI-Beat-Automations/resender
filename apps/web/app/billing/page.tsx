@@ -95,7 +95,7 @@ export default async function BillingPage() {
                   <p className="mt-2 text-[13.5px] text-muted-foreground">
                     {numberFormat.format(plan.limits.messagesPerPeriod)}{" "}
                     mensajes · {plan.limits.maxPages}{" "}
-                    {plan.limits.maxPages === 1 ? "página" : "páginas"}
+                    {plan.limits.maxPages === 1 ? "conexión" : "conexiones"}
                   </p>
                 </div>
                 <form

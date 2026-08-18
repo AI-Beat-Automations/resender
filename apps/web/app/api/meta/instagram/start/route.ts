@@ -15,8 +15,10 @@ import {
 // apunta acá.
 //
 // Mismos gates que `/api/meta/start` y en el mismo orden: sesión → acceso →
-// suscripción activa. Instagram queda fuera de cuota y del cupo de páginas,
-// pero el bloqueo por suscripción sí aplica, así que este portón no cambia.
+// suscripción activa. El cupo **no** se mira acá aunque una cuenta de Instagram
+// ya ocupe slot (ADR 0011): el chequeo vive en el callback, pegado al
+// intercambio del `code`, que es el único punto donde se sabe si la cuenta que
+// el usuario eligió es nueva o una reconexión de una que ya tiene activa.
 export const runtime = "nodejs"
 
 export async function GET(request: NextRequest) {

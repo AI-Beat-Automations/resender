@@ -150,21 +150,25 @@ export async function connectAuthorizedPages(
   )
 }
 
-// Cupo del plan: cuenta solo las páginas `active` (desconectar es un UPDATE,
-// no un DELETE, y las desconectadas no ocupan cupo).
+// Cupo del plan: cuenta las conexiones `active` (desconectar es un UPDATE, no
+// un DELETE, y las desconectadas no ocupan cupo).
 //
-// **Solo Messenger.** Instagram queda fuera del cupo de páginas por ahora, así
-// que conectar una cuenta de IG no puede consumir un slot del plan ni empujar a
-// un tenant a `page_limit_exceeded`. El filtro va acá y no en el llamador
-// porque este es el número que alimenta a la vez el entitlement (`ADR 0003`) y
-// la pantalla de selección.
+// **Sin ramas por canal** (ADR 0011). El modelo de negocio es por recurso
+// conectado: una cuenta de Instagram ocupa un slot igual que una Página de
+// Facebook, y una Página y la cuenta de IG del mismo negocio son dos
+// conexiones. El filtro por canal que vivía acá hacía invisible a Instagram en
+// los tres lugares donde el cupo se muestra. La consulta va sin ramas acá y no
+// en el llamador porque este es el número que alimenta a la vez el entitlement
+// (`ADR 0003`) y la pantalla de selección.
+//
+// El nombre sigue diciendo «pages» y ya no significa Páginas: es deuda
+// declarada en la ADR 0011, no descuido.
 export async function countActivePages(tenantId: string): Promise<number> {
   const sql = getSql()
   const [row] = await sql<{ count: number }[]>`
     select count(*)::int as count
     from connected_pages
     where tenant_id = ${tenantId}
-      and channel = 'messenger'
       and status = 'active'
   `
 

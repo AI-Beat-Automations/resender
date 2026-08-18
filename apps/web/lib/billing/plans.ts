@@ -9,7 +9,9 @@ export type PlanLookupKey = (typeof PLAN_LOOKUP_KEYS)[number]
 
 // Límites por plan (ADR 0003). `messagesPerPeriod` cuenta ambas direcciones:
 // un entrante persistido suma 1 y una respuesta aceptada por Meta suma 1.
-// `maxPages` cuenta solo las páginas en estado `active`.
+// `maxPages` es el cupo de **conexiones** en estado `active`, sin mirar el
+// canal (ADR 0011): una cuenta de Instagram ocupa un slot igual que una Página.
+// El nombre se queda como está: el rename a `maxConnections` es deuda declarada.
 export type PlanLimits = {
   messagesPerPeriod: number
   maxPages: number

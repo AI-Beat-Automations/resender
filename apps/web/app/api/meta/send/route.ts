@@ -108,8 +108,8 @@ export async function POST(request: NextRequest) {
   }
 
   // Tercer gate en serie (ADR 0003): con la cuota del período agotada o con
-  // más páginas conectadas de las que permite el plan, la cuenta queda
-  // restringida y no envía por ninguna de sus páginas.
+  // más conexiones de las que permite el plan, la cuenta queda restringida y
+  // no envía por ninguna de sus conexiones, de cualquier canal (ADR 0011).
   const { block, periodStart } = await getTenantEntitlement(apiKey.tenantId)
   // Un período sin resolver siempre viene acompañado de `block` (el módulo
   // puro es fail-closed); comprobar ambos es lo que estrecha el tipo de

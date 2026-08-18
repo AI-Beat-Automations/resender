@@ -89,7 +89,7 @@ export function SubscriptionPanel({
             </span>
           </SettingsDataRow>
         ) : null}
-        <SettingsDataRow label="páginas" labelWidth={92}>
+        <SettingsDataRow label="conexiones" labelWidth={92}>
           {/* Contador, no barra: una barra para «2 de 5» es ruido
               (ADR 0005). */}
           <span className="font-mono text-[12.5px]">

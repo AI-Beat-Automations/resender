@@ -127,7 +127,11 @@ export function validatePageSelection(input: {
 
   if (newPages.length > input.view.remainingSlots) {
     const { maxPages, activePageCount, remainingSlots } = input.view
-    const plan = `Tu plan permite ${maxPages} páginas conectadas y ya tienes ${activePageCount} activas`
+    // El cupo se dice en **conexiones** (ADR 0011): cuenta todas, y las
+    // `activePageCount` de este tenant pueden incluir cuentas de Instagram que
+    // esta pantalla ni siquiera lista. Lo que se añade acá sí son páginas, y
+    // por eso el resto de la frase las sigue nombrando así.
+    const plan = `Tu plan permite ${maxPages} conexiones y ya tienes ${activePageCount} activas`
 
     return {
       ok: false,

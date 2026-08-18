@@ -261,9 +261,8 @@ export class RuntimeDatabase {
       recoverAfter: dateValue(values[30]),
       signingSecretEncrypted: this.page.webhookSigningSecretEncrypted,
     })
-    // El CTE real trae un where sobre periodStart is not null: sin
-    // período no hay contador que incrementar, que es exactamente el caso de
-    // Instagram.
+    // El CTE real trae un where sobre periodStart is not null: sin período no
+    // hay contador que incrementar.
     if (values[32] !== null && values[32] !== undefined) this.usage += 1
     return [
       {
@@ -318,7 +317,9 @@ export class RuntimeDatabase {
       recoverAfter: dateValue(values[34]),
       signingSecretEncrypted: this.page.webhookSigningSecretEncrypted,
     })
-    // Sin `usage`: Instagram está fuera de cuota.
+    // Un comentario entrante suma como un DM entrante (ADR 0011), con el mismo
+    // where sobre el período.
+    if (values[36] !== null && values[36] !== undefined) this.usage += 1
     return [
       {
         comment_id: commentId,

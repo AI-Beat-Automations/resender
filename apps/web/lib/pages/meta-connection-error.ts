@@ -51,6 +51,13 @@ export function formatMetaConnectionError(reason?: string | null): string {
     return `${PREFIX}: el canal de Instagram no está habilitado para tu cuenta.`
   }
 
+  // El rebote por cupo del callback de Instagram (ADR 0011). Habla de
+  // **conexiones** y no de páginas porque el cupo cuenta las dos cosas: quien
+  // lee esto puede tener el slot ocupado por una Página de Facebook.
+  if (reason === "instagram_page_limit_reached") {
+    return `${PREFIX}: el cupo de conexiones de tu plan está completo. Desconecta una conexión en Conexiones para liberar cupo.`
+  }
+
   if (reason === "instagram_exchange_failed") {
     return `${PREFIX}: Instagram no completó el intercambio de credenciales. Vuelve a intentarlo.`
   }

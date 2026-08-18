@@ -546,6 +546,12 @@ export class ApiService {
       return { comment: commentDto(replay), replayed: true, created: false }
     }
 
+    // Una respuesta a un comentario es un saliente más y se mide como tal
+    // (ADR 0011): entitlement después del replay y corte por [Cuenta
+    // restringida] antes de llamar a Meta.
+    const entitlement = await this.entitlement(input.tenantId)
+    this.assertCanMessage(entitlement)
+
     const { page, source } = await this.requireCommentTarget(
       input.tenantId,
       input.commentId
@@ -588,6 +594,8 @@ export class ApiService {
       error: result.ok ? null : result.message,
       providerResponse: result.response,
       createdAt: this.now(),
+      // Solo suma la respuesta que Meta aceptó, igual que un DM saliente.
+      periodStart: result.ok ? entitlement.periodStart : null,
     })
     if (result.ok) {
       return { comment: commentDto(persisted), replayed: false, created: true }
@@ -618,6 +626,13 @@ export class ApiService {
     if (replay) {
       return { message: messageDto(replay), replayed: true, created: false }
     }
+
+    // Igual que un DM de Messenger (`sendMessage`): el entitlement se resuelve
+    // después del replay —repetir una respuesta ya enviada no cobra dos veces— y
+    // corta acá si el tenant está restringido. Instagram dejó de ser la
+    // excepción (ADR 0011).
+    const entitlement = await this.entitlement(input.tenantId)
+    this.assertCanMessage(entitlement)
 
     const { page, source } = await this.requireCommentTarget(
       input.tenantId,
@@ -704,8 +719,10 @@ export class ApiService {
       error: result.ok ? null : result.message,
       providerResponse: result.response,
       createdAt: this.now(),
-      // Instagram no consume cuota: sin período no hay contador que incrementar.
-      periodStart: null,
+      // Una respuesta privada suma una unidad como cualquier saliente, y solo si
+      // Meta la aceptó: el período viene del entitlement del tenant
+      // (`docs/adr/0011-cupo-por-conexion-e-instagram-en-facturacion.md`).
+      periodStart: result.ok ? entitlement.periodStart : null,
       // Lo que convierte este DM en una respuesta privada auditable. Se guarda
       // también cuando Meta rechazó: el intento fallido no consumió la única
       // respuesta disponible —por eso el chequeo de arriba solo mira los
@@ -795,6 +812,20 @@ export class ApiService {
     // que rebotar más adelante dejaría al usuario sin poder reintentar.
     if (!user.instagramEnabled) throw channelNotEnabled("Instagram")
     validateReturnUrl(input.redirectUri)
+    // El cupo se mide acá por el mismo motivo, y cuenta conexiones de cualquier
+    // canal: una cuenta de Instagram ocupa un slot igual que una Página
+    // (`docs/adr/0011-cupo-por-conexion-e-instagram-en-facturacion.md`).
+    const entitlement = await this.entitlement(user.id)
+    if (!entitlement.limits) throw planError("plan_unavailable")
+    // Reconectar una cuenta que ya está activa no consume slot nuevo, igual que
+    // el `alreadyActive` de `connectMetaPages`. La diferencia es que acá el IG ID
+    // no existe todavía: la request trae un `code` y nada más, y la identidad de
+    // la cuenta recién la devuelve `getProfile`, después del intercambio. Por eso
+    // el chequeo se parte en dos: en el tope se rebota antes de gastar el `code`
+    // **solo si** el intercambio confirma que es una cuenta nueva. Estar al tope
+    // es el caso raro; en el común no se llega a la segunda mitad.
+    const atCapacity =
+      entitlement.activePageCount >= entitlement.limits.maxPages
 
     const token = await this.providerOperation("Instagram", () =>
       this.instagram.exchangeAuthorizationCode({
@@ -805,6 +836,18 @@ export class ApiService {
     const profile = await this.providerOperation("Instagram", () =>
       this.instagram.getProfile(token.accessToken)
     )
+    if (atCapacity) {
+      const active = await this.repository.getActivePageByProviderId(
+        profile.providerAccountId,
+        "instagram"
+      )
+      // Una cuenta que ya es de otro tenant no es un problema de cupo, y decir
+      // que lo es manda al usuario a desconectar conexiones para nada: por más
+      // slots que libere, la cuenta sigue sin ser suya. El error de propiedad
+      // gana, con el mismo texto que devuelve el upsert más abajo (ADR 0004).
+      if (active && active.tenantId !== user.id) throw instagramAccountOwned()
+      if (!active) throw planError("page_limit_exceeded")
+    }
     await this.providerOperation("Instagram", () =>
       this.instagram.subscribeAccount(token.accessToken)
     )
@@ -824,12 +867,7 @@ export class ApiService {
     // eso solo pasa si la cuenta ya es de otro tenant. Una cuenta pertenece a
     // uno solo, sin transferencia automática (ADR 0004).
     if (!page) {
-      throw new ContractError({
-        code: "provider_rejected",
-        message:
-          "This Instagram account is already connected to another Resender account.",
-        status: 422,
-      })
+      throw instagramAccountOwned()
     }
     return pageDto(page)
   }
@@ -1404,16 +1442,21 @@ export class ApiService {
     // Caché aparte de la del gate de producto: el permiso de canal no vive
     // dentro de `hasProductAccess` porque ese helper lo comparte Messenger.
     const channelByTenant = new Map<string, boolean>()
+    // Compartida entre DMs y comentarios: los dos consumen la misma cuota, así
+    // que un payload con las dos cosas resuelve el entitlement una sola vez.
+    const entitlementByTenant = new Map<string, Entitlement>()
 
     const messages = await this.ingestInstagramMessages(
       parsed,
       accessByTenant,
-      channelByTenant
+      channelByTenant,
+      entitlementByTenant
     )
     const comments = await this.ingestInstagramComments(
       parsed,
       accessByTenant,
-      channelByTenant
+      channelByTenant,
+      entitlementByTenant
     )
     return { accepted: messages + comments }
   }
@@ -1421,7 +1464,8 @@ export class ApiService {
   private async ingestInstagramMessages(
     parsed: unknown,
     accessByTenant: Map<string, boolean>,
-    channelByTenant: Map<string, boolean>
+    channelByTenant: Map<string, boolean>,
+    entitlementByTenant: Map<string, Entitlement>
   ): Promise<number> {
     let accepted = 0
     for (const event of extractInstagramDirectMessages(parsed)) {
@@ -1463,6 +1507,15 @@ export class ApiService {
         })
         continue
       }
+      // Un DM de Instagram se mide como uno de Messenger (ADR 0011): entra a la
+      // cuota y lo frena la [Cuenta restringida]. El entitlement se memoiza por
+      // payload igual que en la ingesta de Messenger, para no pagar una lectura
+      // por evento en la ruta caliente del webhook.
+      let entitlement = entitlementByTenant.get(page.tenantId)
+      if (!entitlement) {
+        entitlement = await this.entitlement(page.tenantId)
+        entitlementByTenant.set(page.tenantId, entitlement)
+      }
 
       const eventId = await this.eventId(
         `${event.providerAccountId}:${event.providerMessageId}`
@@ -1475,14 +1528,11 @@ export class ApiService {
         eventId,
         createdAt: event.createdAt,
         payloadVersion: WEBHOOK_PAYLOAD_VERSION,
-        // Instagram está **fuera de cuota** por ahora: sin período no hay
-        // contador que incrementar, y por eso tampoco se resuelve el
-        // entitlement — sería una ida a la base por evento sin nada que decidir.
-        periodStart: null,
-        // La contracara: la restricción por consumo tampoco lo frena. Un tenant
-        // que agotó su cuota de Messenger sigue recibiendo sus DMs de Instagram.
-        deliveryEnabled: true,
-        deliveryBlockedReason: null,
+        periodStart: entitlement.periodStart,
+        deliveryEnabled: entitlement.blockCode === null,
+        deliveryBlockedReason: entitlement.blockCode
+          ? `account is restricted: ${entitlement.blockCode}`
+          : null,
         recoverAfter: this.recoverAfter(),
       })
       log({
@@ -1507,7 +1557,8 @@ export class ApiService {
   private async ingestInstagramComments(
     parsed: unknown,
     accessByTenant: Map<string, boolean>,
-    channelByTenant: Map<string, boolean>
+    channelByTenant: Map<string, boolean>,
+    entitlementByTenant: Map<string, Entitlement>
   ): Promise<number> {
     let accepted = 0
     for (const event of extractInstagramComments(parsed)) {
@@ -1595,6 +1646,14 @@ export class ApiService {
         })
         continue
       }
+      // Un comentario entrante cuenta como un mensaje entrante, con la misma
+      // regla y sin excepción por canal (ADR 0011): suma una unidad al
+      // persistirse y no se reenvía si el tenant está restringido.
+      let entitlement = entitlementByTenant.get(page.tenantId)
+      if (!entitlement) {
+        entitlement = await this.entitlement(page.tenantId)
+        entitlementByTenant.set(page.tenantId, entitlement)
+      }
 
       const eventId = await this.eventId(
         `${event.providerAccountId}:comment:${event.providerCommentId}`
@@ -1611,8 +1670,11 @@ export class ApiService {
         eventId,
         createdAt: event.createdAt,
         payloadVersion: WEBHOOK_PAYLOAD_VERSION,
-        deliveryEnabled: true,
-        deliveryBlockedReason: null,
+        periodStart: entitlement.periodStart,
+        deliveryEnabled: entitlement.blockCode === null,
+        deliveryBlockedReason: entitlement.blockCode
+          ? `account is restricted: ${entitlement.blockCode}`
+          : null,
         recoverAfter: this.recoverAfter(),
       })
       log({
@@ -1927,6 +1989,19 @@ function channelNotEnabled(channel: string): ContractError {
     code: "channel_not_enabled",
     message: `The ${channel} channel is not enabled for this account.`,
     status: 403,
+  })
+}
+
+// Una cuenta de Instagram pertenece a un solo tenant y no hay transferencia
+// automática (ADR 0004). Se tira desde dos lados —el chequeo previo cuando el
+// tenant está al tope y el upsert que no devuelve fila— y el usuario tiene que
+// leer lo mismo en los dos.
+function instagramAccountOwned(): ContractError {
+  return new ContractError({
+    code: "provider_rejected",
+    message:
+      "This Instagram account is already connected to another Resender account.",
+    status: 422,
   })
 }
 

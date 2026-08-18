@@ -198,7 +198,10 @@ describe("ingesta de entrantes por canal", () => {
   })
 })
 
-describe("Instagram fuera de cuota", () => {
+// ADR 0011: Instagram entra a facturación completo. Sus entrantes suman al
+// contador del período y dejan de reenviarse cuando el tenant está restringido,
+// exactamente igual que los de Messenger.
+describe("Instagram dentro de facturación", () => {
   beforeEach(() => {
     for (const mock of Object.values(mocks)) mock.mockReset()
     mocks.hasActiveSubscription.mockResolvedValue(true)
@@ -214,20 +217,44 @@ describe("Instagram fuera de cuota", () => {
     )
   })
 
-  // Sin contador que incrementar ni restricción que consultar, resolver el
-  // entitlement sería una ida a la base por evento sin nada que decidir.
-  it("no cuenta el DM ni resuelve el entitlement", async () => {
+  it("cuenta el DM contra la cuota del período", async () => {
     await ingestInstagramWebhookPayload(
       instagramPayload({ mid: "mid-1", text: "hola" })
     )
 
-    expect(mocks.incrementUsage).not.toHaveBeenCalled()
-    expect(mocks.getTenantEntitlement).not.toHaveBeenCalled()
+    expect(mocks.incrementUsage).toHaveBeenCalledWith(
+      "tenant-1",
+      unrestricted.periodStart
+    )
   })
 
-  // La contracara de no consumir cuota: tampoco la restricción por consumo lo
-  // frena. Un tenant que agotó su cuota de Messenger sigue recibiendo sus DMs.
-  it("reenvía igual con el tenant restringido por su consumo de Messenger", async () => {
+  // Un comentario entrante persistido cuenta igual que un DM, sin excepción:
+  // es la mitad de la regla que la ADR 0011 escribió sin asteriscos.
+  it("cuenta el comentario entrante contra la cuota del período", async () => {
+    mocks.isOwnPublishedComment.mockResolvedValue(false)
+    mocks.insertInboundComment.mockResolvedValue({
+      comment: comment(),
+      inserted: true,
+    })
+
+    await ingestInstagramWebhookPayload(
+      commentPayload({
+        id: "ig-comment-1",
+        from: { id: "9876543210", username: "un_seguidor" },
+        text: "qué bueno",
+        media: { id: "media-1" },
+      })
+    )
+
+    expect(mocks.incrementUsage).toHaveBeenCalledWith(
+      "tenant-1",
+      unrestricted.periodStart
+    )
+  })
+
+  // [Cuenta restringida] corta Instagram igual que Messenger: el DM se
+  // persiste y se contabiliza, pero deja de reenviarse al webhook.
+  it("deja de reenviar el DM con el tenant restringido, pero persiste igual", async () => {
     mocks.getTenantEntitlement.mockResolvedValue(restricted)
 
     const [ingested] = await ingestInstagramWebhookPayload(
@@ -235,8 +262,68 @@ describe("Instagram fuera de cuota", () => {
     )
     await ingested!.pushJob()
 
-    expect(mocks.pushInboundEvent).toHaveBeenCalledTimes(1)
-    expect(mocks.recordSkippedDelivery).not.toHaveBeenCalled()
+    expect(mocks.insertInboundMessage).toHaveBeenCalledTimes(1)
+    expect(mocks.recordSkippedDelivery).toHaveBeenCalledWith(
+      { kind: "message", id: "message-1" },
+      expect.objectContaining({ logReason: "account_restricted" })
+    )
+    expect(mocks.pushInboundEvent).not.toHaveBeenCalled()
+  })
+
+  it("deja de reenviar el comentario con el tenant restringido, pero persiste igual", async () => {
+    mocks.getTenantEntitlement.mockResolvedValue(restricted)
+    mocks.isOwnPublishedComment.mockResolvedValue(false)
+    mocks.insertInboundComment.mockResolvedValue({
+      comment: comment(),
+      inserted: true,
+    })
+
+    const [ingested] = await ingestInstagramWebhookPayload(
+      commentPayload({
+        id: "ig-comment-1",
+        from: { id: "9876543210", username: "un_seguidor" },
+        text: "qué bueno",
+        media: { id: "media-1" },
+      })
+    )
+    await ingested!.pushJob()
+
+    expect(mocks.insertInboundComment).toHaveBeenCalledTimes(1)
+    expect(mocks.recordSkippedDelivery).toHaveBeenCalledWith(
+      { kind: "comment", id: "comment-row" },
+      expect.objectContaining({
+        reason:
+          "account is restricted: quota exhausted or too many connected Pages",
+        logReason: "account_restricted",
+      })
+    )
+    expect(mocks.pushInboundEvent).not.toHaveBeenCalled()
+  })
+
+  // Los dos gates que están **antes** de la medición siguen ganando: el
+  // entrante del tenant sin suscripción o sin permiso de canal no se persiste
+  // ni se cuenta, esté restringido o no.
+  it("el gate de suscripción y el permiso de canal ganan sobre la restricción", async () => {
+    mocks.getTenantEntitlement.mockResolvedValue(restricted)
+    mocks.hasActiveSubscription.mockResolvedValue(false)
+
+    await expect(
+      ingestInstagramWebhookPayload(
+        instagramPayload({ mid: "mid-1", text: "hola" })
+      )
+    ).resolves.toEqual([])
+
+    mocks.hasActiveSubscription.mockResolvedValue(true)
+    mocks.resolveInstagramAccess.mockResolvedValue(false)
+
+    await expect(
+      ingestInstagramWebhookPayload(
+        instagramPayload({ mid: "mid-2", text: "hola" })
+      )
+    ).resolves.toEqual([])
+
+    expect(mocks.insertInboundMessage).not.toHaveBeenCalled()
+    expect(mocks.incrementUsage).not.toHaveBeenCalled()
   })
 
   it("registra el salto cuando la cuenta de Instagram no tiene webhookUrl", async () => {
@@ -345,6 +432,7 @@ describe("ingesta de comentarios de Instagram", () => {
     for (const mock of Object.values(mocks)) mock.mockReset()
     mocks.hasActiveSubscription.mockResolvedValue(true)
     mocks.resolveInstagramAccess.mockResolvedValue(true)
+    mocks.getTenantEntitlement.mockResolvedValue(unrestricted)
     mocks.getActivePageByMetaPageId.mockResolvedValue(instagramPage())
     mocks.isOwnPublishedComment.mockResolvedValue(false)
     mocks.insertInboundComment.mockResolvedValue({
@@ -552,6 +640,7 @@ describe("permiso de Instagram por cuenta", () => {
     for (const mock of Object.values(mocks)) mock.mockReset()
     mocks.hasActiveSubscription.mockResolvedValue(true)
     mocks.resolveInstagramAccess.mockResolvedValue(true)
+    mocks.getTenantEntitlement.mockResolvedValue(unrestricted)
     mocks.isOwnPublishedComment.mockResolvedValue(false)
     mocks.getActivePageByMetaPageId.mockResolvedValue(instagramPage())
     mocks.upsertConversation.mockResolvedValue({ id: "conversation-1" })
@@ -666,6 +755,7 @@ describe("ningún evento se descarta en silencio", () => {
     for (const mock of Object.values(mocks)) mock.mockReset()
     mocks.hasActiveSubscription.mockResolvedValue(true)
     mocks.resolveInstagramAccess.mockResolvedValue(true)
+    mocks.getTenantEntitlement.mockResolvedValue(unrestricted)
     mocks.isOwnPublishedComment.mockResolvedValue(false)
     mocks.getActivePageByMetaPageId.mockResolvedValue(instagramPage())
     mocks.upsertConversation.mockResolvedValue({

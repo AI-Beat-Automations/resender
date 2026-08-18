@@ -167,6 +167,9 @@ describe("connectSelectedPagesAction", () => {
     })
   })
 
+  // El cupo que devuelve `countActivePages` cuenta **todas** las conexiones
+  // activas del tenant, no solo las Páginas (ADR 0011): esa 1 activa puede ser
+  // una cuenta de Instagram que esta pantalla ni siquiera lista.
   it("rejects a selection that exceeds the remaining slots of the plan", async () => {
     mocks.countActivePages.mockResolvedValue(1)
 
@@ -176,7 +179,7 @@ describe("connectSelectedPagesAction", () => {
     )
 
     expect(result.error).toBe(
-      "Tu plan permite 2 páginas conectadas y ya tienes 1 activas: puedes añadir 1 página más. Desmarca las que sobren o desconecta una página para liberar cupo."
+      "Tu plan permite 2 conexiones y ya tienes 1 activas: puedes añadir 1 página más. Desmarca las que sobren o desconecta una página para liberar cupo."
     )
     expect(mocks.subscribePagesToWebhook).not.toHaveBeenCalled()
     expect(mocks.connectAuthorizedPages).not.toHaveBeenCalled()

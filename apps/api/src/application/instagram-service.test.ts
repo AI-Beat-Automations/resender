@@ -65,9 +65,9 @@ describe("Instagram inbound ingestion", () => {
     )
   })
 
-  // Instagram está fuera de cuota: sin período no hay contador que incrementar,
-  // y la restricción por consumo de Messenger tampoco lo frena.
-  it("ingests a DM without a billing period and without blocking delivery", async () => {
+  // Instagram está dentro de facturación (ADR 0011): el entrante se mide contra
+  // el período del tenant, igual que uno de Messenger.
+  it("ingests a DM against the tenant's billing period", async () => {
     const ingestInbound = vi.fn(async () => inboundResult())
     const getUsage = vi.fn(async () => 0)
     const service = instagramService({ ingestInbound, getUsage })
@@ -77,13 +77,33 @@ describe("Instagram inbound ingestion", () => {
     })
     expect(ingestInbound).toHaveBeenCalledWith(
       expect.objectContaining({
-        periodStart: null,
+        periodStart: PERIOD_START,
         deliveryEnabled: true,
         deliveryBlockedReason: null,
       })
     )
-    // Sin contador que incrementar, el entitlement ni se resuelve.
-    expect(getUsage).not.toHaveBeenCalled()
+    expect(getUsage).toHaveBeenCalled()
+  })
+
+  // La contracara de la misma regla: [Cuenta restringida] frena Instagram igual
+  // que Messenger. El entrante se persiste, pero no se reenvía al webhook.
+  it("persists a DM without delivery when the tenant is restricted", async () => {
+    const ingestInbound = vi.fn(async () => inboundResult())
+    const service = instagramService({
+      ingestInbound,
+      // Cuota agotada: 50.000 es el tope de `starter_monthly`.
+      getUsage: async () => 50_000,
+    })
+
+    await expect(ingest(service, directMessagePayload())).resolves.toEqual({
+      accepted: 1,
+    })
+    expect(ingestInbound).toHaveBeenCalledWith(
+      expect.objectContaining({
+        deliveryEnabled: false,
+        deliveryBlockedReason: "account is restricted: quota_exceeded",
+      })
+    )
   })
 
   it("discards events for a tenant without product access, before persisting", async () => {
@@ -314,10 +334,58 @@ describe("private replies to comments", () => {
         // El destinatario sale del comentario guardado, no del cuerpo.
         contactId: "9876543210",
         sourceCommentId: "ig-comment-1",
-        // Instagram no consume cuota.
-        periodStart: null,
+        // Una respuesta privada aceptada suma como cualquier saliente.
+        periodStart: PERIOD_START,
       })
     )
+  })
+
+  // [Cuenta restringida] frena Instagram igual que Messenger (ADR 0011), y
+  // corta antes de gastar la única respuesta privada que permite el comentario.
+  it("refuses to send from a restricted tenant, before calling Meta", async () => {
+    const sendPrivateReply = vi.fn()
+    const service = instagramService(
+      { getUsage: async () => 50_000 },
+      { sendPrivateReply }
+    )
+
+    await expect(
+      service.sendPrivateReply({
+        tenantId: TENANT,
+        commentId: COMMENT_ID,
+        idempotencyKey: "idem-1",
+        reply: { text: "te escribo por privado" },
+      })
+    ).rejects.toMatchObject({ code: "quota_exceeded", status: 402 })
+    expect(sendPrivateReply).not.toHaveBeenCalled()
+  })
+
+  // El período vencido es la otra forma de quedarse sin entitlement, y no la
+  // cubre la cuota: la suscripción sigue `active`, pero su período ya cerró y
+  // no hay contador contra el cual medir. Instagram lo trata como Messenger
+  // desde la ADR 0011, así que también corta antes de llamar a Meta.
+  it("refuses to send when the billing period already ended, before calling Meta", async () => {
+    const sendPrivateReply = vi.fn()
+    const service = instagramService(
+      {
+        getSubscription: async () =>
+          subscription({
+            currentPeriodStart: new Date(Date.now() - 40 * DAY_MS),
+            currentPeriodEnd: new Date(Date.now() - DAY_MS),
+          }),
+      },
+      { sendPrivateReply }
+    )
+
+    await expect(
+      service.sendPrivateReply({
+        tenantId: TENANT,
+        commentId: COMMENT_ID,
+        idempotencyKey: "idem-1",
+        reply: { text: "te escribo por privado" },
+      })
+    ).rejects.toMatchObject({ code: "plan_unavailable", status: 403 })
+    expect(sendPrivateReply).not.toHaveBeenCalled()
   })
 
   // Meta lo rechaza con un 100/2534025 que junta cuatro causas y no dice cuál
@@ -461,6 +529,178 @@ describe("connecting an Instagram account", () => {
     expect(exchangeAuthorizationCode).not.toHaveBeenCalled()
     expect(connect).not.toHaveBeenCalled()
   })
+
+  // El `redirectUri` llega del cliente y se valida antes de gastar nada: el
+  // `code` de OAuth se quema al usarlo, y el entitlement es una ida a la base.
+  // Fuera de localhost tiene que ser HTTPS.
+  it("refuses an invalid redirect URI without burning the OAuth code", async () => {
+    const exchangeAuthorizationCode = vi.fn()
+    // La lectura del plan: el gate de producto ya leyó la suscripción antes de
+    // llegar acá, así que lo que fija el orden es el conteo de conexiones.
+    const countActivePages = vi.fn(async () => 1)
+    const connect = vi.fn()
+    const service = instagramService(
+      { countActivePages, connectInstagramAccount: connect },
+      { exchangeAuthorizationCode }
+    )
+
+    await expect(
+      service.connectInstagramAccount(
+        { userId: TENANT },
+        { code: "AQB123", redirectUri: "http://evil.example" }
+      )
+    ).rejects.toMatchObject({ code: "validation_error", status: 400 })
+    expect(exchangeAuthorizationCode).not.toHaveBeenCalled()
+    expect(countActivePages).not.toHaveBeenCalled()
+    expect(connect).not.toHaveBeenCalled()
+  })
+
+  // Una cuenta de Instagram ocupa un slot como cualquier conexión (ADR 0011).
+  // El rebote llega antes de suscribir y antes de persistir; el intercambio sí
+  // corre, porque el IG ID que distingue «cuenta nueva» de «reconexión» no
+  // existe hasta que `getProfile` lo devuelve.
+  it("refuses a new account when the plan's connection limit is full", async () => {
+    const connect = vi.fn()
+    const subscribeAccount = vi.fn()
+    const service = instagramService(
+      {
+        // Starter: 2 conexiones activas es el tope.
+        countActivePages: async () => 2,
+        // Ninguna conexión activa con ese IG ID: es una cuenta nueva.
+        getActivePageByProviderId: async () => null,
+        connectInstagramAccount: connect,
+      },
+      {
+        exchangeAuthorizationCode: async () => ({
+          accessToken: "ig-token",
+          expiresAt: null,
+        }),
+        getProfile: async () => ({
+          providerAccountId: IG_ACCOUNT,
+          username: "cuenta_resender",
+          name: "Cuenta",
+        }),
+        subscribeAccount,
+      }
+    )
+
+    await expect(
+      service.connectInstagramAccount(
+        { userId: TENANT },
+        { code: "AQB123", redirectUri: "https://app.example/callback" }
+      )
+    ).rejects.toMatchObject({ code: "page_limit_exceeded", status: 403 })
+    expect(subscribeAccount).not.toHaveBeenCalled()
+    expect(connect).not.toHaveBeenCalled()
+  })
+
+  // Estar al tope y que la cuenta sea de otro tenant son dos problemas, y el que
+  // manda es el de propiedad: decir "tu plan está lleno" manda al usuario a
+  // desconectar conexiones para nada, porque la cuenta sigue sin ser suya
+  // (ADR 0004).
+  it("reports ownership, not the plan limit, for another tenant's account at the cap", async () => {
+    const connect = vi.fn()
+    const subscribeAccount = vi.fn()
+    const service = instagramService(
+      {
+        countActivePages: async () => 2,
+        getActivePageByProviderId: async () =>
+          page({ tenantId: "0f4a1f1e-4b7c-4a3e-9c2f-9a1d3b5c7e90" }),
+        connectInstagramAccount: connect,
+      },
+      {
+        exchangeAuthorizationCode: async () => ({
+          accessToken: "ig-token",
+          expiresAt: null,
+        }),
+        getProfile: async () => ({
+          providerAccountId: IG_ACCOUNT,
+          username: "cuenta_resender",
+          name: "Cuenta",
+        }),
+        subscribeAccount,
+      }
+    )
+
+    const error = await service
+      .connectInstagramAccount(
+        { userId: TENANT },
+        { code: "AQB123", redirectUri: "https://app.example/callback" }
+      )
+      .catch((thrown: unknown) => thrown)
+
+    expect(error).toMatchObject({ code: "provider_rejected", status: 422 })
+    expect(error).not.toMatchObject({ code: "page_limit_exceeded" })
+    expect(subscribeAccount).not.toHaveBeenCalled()
+    expect(connect).not.toHaveBeenCalled()
+  })
+
+  it("connects when the plan still has room", async () => {
+    const connect = vi.fn(async () => page())
+    const getActivePageByProviderId = vi.fn(async () => null)
+    const service = instagramService(
+      {
+        countActivePages: async () => 1,
+        getActivePageByProviderId,
+        connectInstagramAccount: connect,
+      },
+      {
+        exchangeAuthorizationCode: async () => ({
+          accessToken: "ig-token",
+          expiresAt: null,
+        }),
+        getProfile: async () => ({
+          providerAccountId: IG_ACCOUNT,
+          username: "cuenta_resender",
+          name: "Cuenta",
+        }),
+        subscribeAccount: async () => undefined,
+      }
+    )
+
+    await expect(
+      service.connectInstagramAccount(
+        { userId: TENANT },
+        { code: "AQB123", redirectUri: "https://app.example/callback" }
+      )
+    ).resolves.toMatchObject({ channel: "instagram" })
+    expect(connect).toHaveBeenCalled()
+    // Bajo el tope no hace falta preguntar de quién es la cuenta.
+    expect(getActivePageByProviderId).not.toHaveBeenCalled()
+  })
+
+  // Reconectar es idempotente: la cuenta ya está contada en el cupo, así que
+  // estar en el tope es justamente lo que se espera y no puede rebotar.
+  it("reconnects an account that is already active for the tenant at the limit", async () => {
+    const connect = vi.fn(async () => page())
+    const service = instagramService(
+      {
+        countActivePages: async () => 2,
+        getActivePageByProviderId: async () => page(),
+        connectInstagramAccount: connect,
+      },
+      {
+        exchangeAuthorizationCode: async () => ({
+          accessToken: "ig-token",
+          expiresAt: null,
+        }),
+        getProfile: async () => ({
+          providerAccountId: IG_ACCOUNT,
+          username: "cuenta_resender",
+          name: "Cuenta",
+        }),
+        subscribeAccount: async () => undefined,
+      }
+    )
+
+    await expect(
+      service.connectInstagramAccount(
+        { userId: TENANT },
+        { code: "AQB123", redirectUri: "https://app.example/callback" }
+      )
+    ).resolves.toMatchObject({ channel: "instagram" })
+    expect(connect).toHaveBeenCalled()
+  })
 })
 
 // El permiso vive en `users.instagram_enabled` y se lee vivo contra la base
@@ -507,7 +747,7 @@ describe("the Instagram channel permission", () => {
       {
         getUserById,
         getPage: async () => page({ channel: "messenger", username: null }),
-        getSubscription: async () => openBillingPeriod(),
+        getSubscription: async () => subscription(),
       },
       {},
       { sendText }
@@ -850,6 +1090,13 @@ function user(overrides: Partial<UserRecord> = {}): UserRecord {
   }
 }
 
+// Desde la ADR 0011 Instagram está dentro de facturación y casi todo el archivo
+// resuelve el entitlement, que se evalúa contra el reloj de pared: un período de
+// fechas fijas ya venció y devolvería `plan_unavailable`. Por eso el default es
+// un período abierto alrededor de ahora.
+const DAY_MS = 24 * 60 * 60 * 1000
+const PERIOD_START = new Date(Date.now() - DAY_MS)
+const PERIOD_END = new Date(Date.now() + DAY_MS)
 function subscription(
   overrides: Partial<SubscriptionRecord> = {}
 ): SubscriptionRecord {
@@ -858,24 +1105,12 @@ function subscription(
     stripeSubscriptionId: "sub_1",
     status: "active",
     priceLookupKey: "starter_monthly",
-    currentPeriodStart: new Date("2026-07-01T00:00:00.000Z"),
-    currentPeriodEnd: new Date("2026-08-01T00:00:00.000Z"),
+    currentPeriodStart: PERIOD_START,
+    currentPeriodEnd: PERIOD_END,
     cancelAtPeriodEnd: false,
     lastStripeEventAt: CREATED_AT,
     ...overrides,
   }
-}
-
-// Instagram está fuera de cuota y por eso el resto del archivo nunca resuelve el
-// entitlement, que se evalúa contra el reloj de pared: un período de fechas
-// fijas ya venció y devuelve `plan_unavailable`. Solo el envío por Messenger lo
-// necesita abierto.
-const DAY_MS = 24 * 60 * 60 * 1000
-function openBillingPeriod(): SubscriptionRecord {
-  return subscription({
-    currentPeriodStart: new Date(Date.now() - DAY_MS),
-    currentPeriodEnd: new Date(Date.now() + DAY_MS),
-  })
 }
 
 function inboundResult() {
