@@ -11,7 +11,16 @@ import type {
 import { normalizeWebhookUrl } from "@/lib/pages/webhook-url"
 import { log, type LogReason } from "@/lib/observability/logger"
 import { posthog } from "@/lib/posthog"
-import type { InboundEventType } from "./inbound-event"
+import type {
+  AttachmentDetails,
+  InboundAttachment,
+  InboundAttachmentType,
+  InboundEventType,
+} from "./inbound-event"
+
+// Re-exportados junto a `InboundPushPayload`: el consumidor del payload tipa
+// el adjunto desde acá sin tener que conocer el módulo interno de eventos.
+export type { AttachmentDetails, InboundAttachment } from "./inbound-event"
 
 // Sujeto de la entrega. `external_webhook_deliveries` acepta desde la migración
 // 0013 un mensaje **o** un comentario, con un check de que sea exactamente uno;
@@ -48,6 +57,10 @@ export type InboundPushPayload = {
     direction: "inbound"
     status: "received"
     text: string
+    // Siempre presente, null explícito cuando el mensaje no trajo adjunto: el
+    // consumidor no tiene que adivinar si la clave falta o si no hubo adjunto.
+    // Aditivo: `text` sigue siendo string (`""` cuando no hubo texto).
+    attachment: InboundAttachment | null
     createdAt: string
   }
 }
@@ -81,8 +94,30 @@ export function buildInboundPushPayload(input: {
       direction: "inbound",
       status: "received",
       text: input.message.text,
+      attachment: attachmentFromRecord(input.message),
       createdAt: input.message.createdAt.toISOString(),
     },
+  }
+}
+
+// Reconstruye el adjunto desde la fila persistida. Es el split inverso EXACTO
+// del merge que hace `insertInboundMessage` —que guarda `details` más la clave
+// `title` en `attachment_meta`—, para que lo que se guarda y lo que se pushea
+// sean el mismo objeto: un solo mapeo, sin segunda fuente de verdad.
+function attachmentFromRecord(
+  message: MessageRecord
+): InboundAttachment | null {
+  if (!message.attachmentType) return null
+
+  const meta = message.attachmentMeta ?? {}
+  const { title, ...details } = meta
+  return {
+    // El check `messages_attachment_type_check` (0016) garantiza que lo
+    // guardado está en el catálogo; el cast solo se lo recuerda al compilador.
+    type: message.attachmentType as InboundAttachmentType,
+    url: message.attachmentUrl,
+    title: typeof title === "string" ? title : null,
+    details: details as AttachmentDetails,
   }
 }
 

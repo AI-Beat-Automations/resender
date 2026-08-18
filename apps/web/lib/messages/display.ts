@@ -3,6 +3,10 @@ import {
   formatLogTimestamp,
   formatMessageMeta,
 } from "@/lib/inbox/log-format"
+import {
+  type AttachmentDisplay,
+  toAttachmentDisplay,
+} from "@/lib/inbox/message-media"
 import type { PageChannel } from "@/lib/pages/page-registry"
 
 import type { ConversationListItem, ThreadMessage } from "./read-model"
@@ -41,7 +45,10 @@ export type ThreadMessageView = {
   id: string
   outbound: boolean
   failed: boolean
+  /** Puede ser `""`: un mensaje solo-adjunto no trae texto. */
   text: string
+  /** Qué pintar por el adjunto (preview o fila); null si el mensaje no trae. */
+  attachment: AttachmentDisplay | null
   /** `outbound · 14:02:11 · sent`, con `· respuesta a comentario` si lo es. */
   meta: string
   /** El saliente es la respuesta privada a un comentario de Instagram. */
@@ -107,7 +114,14 @@ export function formatConversationContent(
 ) {
   if (!latestMessage) return NO_MESSAGES_CONTENT
   const prefix = latestMessage.direction === "outbound" ? "Tú: " : ""
-  return `${prefix}${latestMessage.text}`
+  // Un mensaje solo-adjunto llega con texto vacío: el renglón muestra el type
+  // entre corchetes (`[image]`) en su lugar. Con texto, el renglón no cambia
+  // — el adjunto se descubre al abrir el hilo.
+  const body =
+    latestMessage.text === "" && latestMessage.attachmentType
+      ? `[${latestMessage.attachmentType}]`
+      : latestMessage.text
+  return `${prefix}${body}`
 }
 
 export function toConversationRowView(
@@ -160,6 +174,15 @@ export function toThreadMessageViews(
       outbound: message.direction === "outbound",
       failed,
       text: message.text,
+      // El adjunto se resuelve acá y no en el componente: la regla de preview
+      // vs fila vive en `message-media.ts`, que sí corre bajo Vitest.
+      attachment: message.attachmentType
+        ? toAttachmentDisplay({
+            type: message.attachmentType,
+            url: message.attachmentUrl,
+            meta: message.attachmentMeta,
+          })
+        : null,
       meta: fromComment
         ? `${formatMessageMeta(message)} · respuesta a comentario`
         : formatMessageMeta(message),

@@ -1,3 +1,5 @@
+import type { OutboundAttachment } from "./send-request"
+
 const GRAPH = "https://graph.facebook.com/v23.0"
 
 export type MetaSendResult = {
@@ -5,18 +7,33 @@ export type MetaSendResult = {
   status: number
   data: unknown
   // `error`: mensaje crudo de Meta; `reason`: traducción accionable (o null
-  // si el error no está en el catálogo de casos conocidos).
+  // si el error no está en el catálogo de casos conocidos); `code`: código
+  // estable para la API cuando el fallo de Meta es de adjunto — null en todo
+  // lo demás, incluidos el éxito y el catch de red.
   error: string | null
   reason: string | null
+  code: string | null
 }
 
-export async function sendMetaTextMessage(input: {
+export async function sendMetaMessage(input: {
   pageId: string
   pageAccessToken: string
   recipientId: string
-  text: string
+  message: { text: string } | { attachment: OutboundAttachment }
 }): Promise<MetaSendResult> {
   try {
+    // Graph acepta `{ text }` o `{ attachment: { type, payload: { url } } }`:
+    // Meta descarga el archivo desde la URL, nosotros nunca subimos bytes.
+    const message =
+      "text" in input.message
+        ? { text: input.message.text }
+        : {
+            attachment: {
+              type: input.message.attachment.type,
+              payload: { url: input.message.attachment.url },
+            },
+          }
+
     const response = await fetch(
       `${GRAPH}/${input.pageId}/messages?access_token=${encodeURIComponent(input.pageAccessToken)}`,
       {
@@ -26,13 +43,16 @@ export async function sendMetaTextMessage(input: {
         body: JSON.stringify({
           recipient: { id: input.recipientId },
           messaging_type: "RESPONSE",
-          message: { text: input.text },
+          message,
         }),
       }
     )
 
     const data = await response.json().catch(() => null)
     const metaError = extractMetaErrorMessage(data)
+    // `reason` y `code` salen de la misma consulta al catálogo para que no
+    // puedan desincronizarse.
+    const described = response.ok ? null : describeMetaError(data)
     return {
       ok: response.ok,
       status: response.status,
@@ -40,7 +60,8 @@ export async function sendMetaTextMessage(input: {
       error: response.ok
         ? null
         : (metaError ?? `Meta returned HTTP ${response.status}`),
-      reason: response.ok ? null : explainMetaError(data),
+      reason: described?.message ?? null,
+      code: described?.code ?? null,
     }
   } catch (error) {
     return {
@@ -50,40 +71,92 @@ export async function sendMetaTextMessage(input: {
       error: error instanceof Error ? error.message : "Meta request failed",
       reason:
         "Could not reach Meta's Send API (network error or timeout). Retry shortly.",
+      code: null,
     }
   }
 }
 
-// Traduce los errores más comunes del Send API a un motivo accionable.
+// Traduce los errores más comunes del Send API a un motivo accionable y, para
+// los fallos de adjunto, a un código estable que la API puede exponer.
 // Referencia: https://developers.facebook.com/docs/messenger-platform/error-codes
-export function explainMetaError(data: unknown): string | null {
+export function describeMetaError(
+  data: unknown
+): { code: string | null; message: string } | null {
   const code = extractMetaErrorCode(data)
   if (code === null) return null
   const subcode = extractMetaErrorSubcode(data)
 
   if (code === 190) {
-    return "The Page access token expired or was revoked. Reconnect the Page in Resender."
+    return {
+      code: null,
+      message:
+        "The Page access token expired or was revoked. Reconnect the Page in Resender.",
+    }
   }
   if (code === 10 && subcode === 2018278) {
-    return "Messenger's 24-hour window is closed: this contact hasn't messaged the Page in the last 24 hours, so Meta rejects new messages until they write again."
+    return {
+      code: null,
+      message:
+        "Messenger's 24-hour window is closed: this contact hasn't messaged the Page in the last 24 hours, so Meta rejects new messages until they write again.",
+    }
   }
   if (code === 10) {
-    return "Meta permission error: the app or Page is missing the pages_messaging permission for this send."
+    return {
+      code: null,
+      message:
+        "Meta permission error: the app or Page is missing the pages_messaging permission for this send.",
+    }
   }
   if (code === 551) {
-    return "This person isn't available: they may have blocked the Page, deleted the conversation, or deactivated their account."
+    return {
+      code: null,
+      message:
+        "This person isn't available: they may have blocked the Page, deleted the conversation, or deactivated their account.",
+    }
+  }
+  // Los dos `100` van juntos: con subcode 2018047 Meta no pudo descargar el
+  // adjunto, con 2018001 el PSID no es de esta Page. Un `100` genérico sin
+  // subcode sigue sin traducirse: este catálogo lo comparten los envíos de
+  // texto y traducir de más mentiría en esos casos.
+  if (code === 100 && subcode === 2018047) {
+    return {
+      code: "attachment_fetch_failed",
+      message:
+        "Meta couldn't download the attachment from its URL. Make sure the URL is publicly reachable over https, without auth and without broken redirects.",
+    }
   }
   if (code === 100 && subcode === 2018001) {
-    return "No matching user found: the recipient ID (PSID) doesn't belong to this Page."
+    return {
+      code: null,
+      message:
+        "No matching user found: the recipient ID (PSID) doesn't belong to this Page.",
+    }
+  }
+  if (code === 546) {
+    return {
+      code: "attachment_format_rejected",
+      message:
+        "Messenger rejected the attachment's file format. Retry with a format supported for this attachment.type.",
+    }
   }
   if (code === 4 || code === 17 || code === 32 || code === 613) {
-    return "Meta rate limit reached for this app or Page. Retry later."
+    return {
+      code: null,
+      message: "Meta rate limit reached for this app or Page. Retry later.",
+    }
   }
   if (code === 368) {
-    return "The Page is temporarily blocked from sending messages due to a policy violation on Meta's side."
+    return {
+      code: null,
+      message:
+        "The Page is temporarily blocked from sending messages due to a policy violation on Meta's side.",
+    }
   }
   return null
 }
+
+export const explainMetaError = (data: unknown) =>
+  describeMetaError(data)?.message ?? null
 
 export function extractMetaMessageId(data: unknown) {
   if (!data || typeof data !== "object") return null

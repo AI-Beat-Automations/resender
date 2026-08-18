@@ -19,7 +19,7 @@ import {
 import {
   extractMetaMessageId,
   isMetaExpiredTokenError,
-  sendMetaTextMessage,
+  sendMetaMessage,
 } from "@/lib/outbound/meta-send"
 import {
   getBearerToken,
@@ -32,8 +32,8 @@ import {
 } from "@/lib/observability/outbound-log"
 import { posthog } from "@/lib/posthog"
 
-// Envía una respuesta al contacto.
-// Body: { pageId, recipientId, reply, conversationId? }.
+// Envía una respuesta al contacto: texto o un adjunto por URL, nunca ambos.
+// Body: { pageId, recipientId, conversationId? } + { reply } | { attachment }.
 // Header opcional `Idempotency-Key`: si se repite, se devuelve el resultado
 // almacenado sin reenviar a Meta.
 // El page access token se resuelve en el servidor por pageId (no viaja en el curl).
@@ -149,9 +149,17 @@ export async function POST(request: NextRequest) {
 
   const input = parseOutboundSendInput(body)
   if (!input.ok) {
+    // `code` es aditivo: solo los errores nuevos del parser (los de adjunto)
+    // lo traen; los 400 viejos siguen siendo prosa sola para no cambiarles el
+    // contrato a los clientes existentes.
     return trace.drop(
       "invalid_request",
-      Response.json({ error: input.error }, { status: 400 })
+      Response.json(
+        { ...(input.code ? { code: input.code } : {}), error: input.error },
+        { status: 400 }
+      ),
+      // Un 4xx de salida loguea su código estable, cuando lo tiene.
+      { ...(input.code ? { errorCode: input.code } : {}) }
     )
   }
 
@@ -212,11 +220,16 @@ export async function POST(request: NextRequest) {
   }
 
   const sentAt = new Date()
-  const metaResult = await sendMetaTextMessage({
+  // La unión discriminada del parser garantiza exactamente uno de los dos:
+  // texto o adjunto. Con adjunto Meta descarga el archivo desde la URL;
+  // nosotros nunca subimos bytes.
+  const metaResult = await sendMetaMessage({
     pageId: input.value.pageId,
     pageAccessToken: connectedPage.pageAccessToken,
     recipientId: input.value.recipientId,
-    text: input.value.reply,
+    message: input.value.attachment
+      ? { attachment: input.value.attachment }
+      : { text: input.value.reply },
   })
 
   if (!metaResult.ok && isMetaExpiredTokenError(metaResult.data)) {
@@ -251,7 +264,10 @@ export async function POST(request: NextRequest) {
       conversationId: conversation.id,
       connectedPageId: connectedPage.page.id,
       contactId: input.value.recipientId,
-      text: input.value.reply,
+      // Para un adjunto no hay texto: se persiste "" y el contenido queda en
+      // attachment_type/attachment_url.
+      text: input.value.reply ?? "",
+      attachment: input.value.attachment,
       status: metaResult.ok ? "sent" : "failed",
       metaMessageId: extractMetaMessageId(metaResult.data),
       idempotencyKey,
@@ -286,7 +302,11 @@ export async function POST(request: NextRequest) {
     subjectId: message.id,
     providerId: extractMetaMessageId(metaResult.data) ?? undefined,
     contactId: input.value.recipientId,
-    textLength: input.value.reply.length,
+    // Del adjunto se loguea solo el tipo, nunca la URL: puede ser firmada y
+    // llevar credenciales en la query. Del texto, el largo, como siempre.
+    ...(input.value.attachment
+      ? { attachmentType: input.value.attachment.type }
+      : { textLength: input.value.reply.length }),
     status: metaResult.status,
     durationMs: Date.now() - sentAt.getTime(),
   }
@@ -296,6 +316,9 @@ export async function POST(request: NextRequest) {
     trace.failed("meta_rejected", {
       ...traceFields,
       errorMessage: metaResult.reason ?? metaResult.error ?? undefined,
+      // El código estable de los fallos de adjunto (546 / 100+2018047); el
+      // resto del catálogo sigue sin código, como hasta ahora.
+      ...(metaResult.code ? { errorCode: metaResult.code } : {}),
     })
   }
 
@@ -339,9 +362,14 @@ export async function POST(request: NextRequest) {
 
   return Response.json(
     {
+      // `code` es aditivo y solo aparece en los fallos de adjunto que Meta
+      // distingue; los demás rechazos conservan el body de siempre.
       ...(metaResult.ok
         ? {}
-        : { error: metaResult.reason ?? metaResult.error }),
+        : {
+            ...(metaResult.code ? { code: metaResult.code } : {}),
+            error: metaResult.reason ?? metaResult.error,
+          }),
       meta: metaResult.data,
       resender: {
         conversationId: conversation.id,

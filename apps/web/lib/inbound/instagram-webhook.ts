@@ -59,8 +59,9 @@ export function extractInstagramDirectMessages(body: unknown): InboundEvent[] {
       if (message.is_deleted === true) continue
 
       const text = message.text
-      // Solo texto en el MVP. Un DM con adjunto y sin texto (una foto, una
-      // respuesta a una historia) se descarta acá, igual que en Messenger.
+      // Solo texto en este parser. Un DM con adjunto y sin texto (una foto,
+      // una respuesta a una historia) se descarta acá. Messenger ya los
+      // acepta (issue #46); habilitarlos en Instagram queda para otro issue.
       if (typeof text !== "string" || text.trim().length === 0) continue
 
       events.push({
@@ -74,6 +75,8 @@ export function extractInstagramDirectMessages(body: unknown): InboundEvent[] {
         senderId:
           typeof event.sender?.id === "string" ? event.sender.id : "unknown",
         text: text.trim(),
+        // Siempre null mientras este parser descarte los adjuntos (ver arriba).
+        attachment: null,
         metaMessageId: typeof message.mid === "string" ? message.mid : null,
         postbackPayload: null,
         timestamp: normalizeTimestamp(event.timestamp),

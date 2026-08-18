@@ -174,9 +174,36 @@ export async function POST(request: NextRequest) {
 
   const input = parseOutboundSendInput(body)
   if (!input.ok) {
+    // `code` es aditivo: solo los errores nuevos del parser (los de adjunto)
+    // lo traen; los 400 viejos siguen siendo prosa sola para no cambiarles el
+    // contrato a los clientes existentes. Es el mismo parser que Messenger,
+    // con los mismos códigos.
     return trace.drop(
       "invalid_request",
-      Response.json({ error: input.error }, { status: 400 })
+      Response.json(
+        { ...(input.code ? { code: input.code } : {}), error: input.error },
+        { status: 400 }
+      ),
+      // Un 4xx de salida loguea su código estable, cuando lo tiene.
+      { ...(input.code ? { errorCode: input.code } : {}) }
+    )
+  }
+
+  // Los adjuntos son solo de Messenger por ahora: acá se cortan antes de
+  // tocar Graph, con un código estable para que el cliente distinga «canal
+  // equivocado» de «body roto». Este return es además el que estrecha la
+  // unión del parser: de acá en adelante `reply` es string, no null.
+  if (input.value.attachment) {
+    return trace.drop(
+      "invalid_request",
+      Response.json(
+        {
+          code: "attachment_unsupported_channel",
+          error: "attachments are not supported on Instagram yet",
+        },
+        { status: 400 }
+      ),
+      { errorCode: "attachment_unsupported_channel" }
     )
   }
 

@@ -32,6 +32,7 @@ function conversation(
       direction: "inbound",
       status: "received",
       createdAt: new Date(2026, 6, 27, 14, 2),
+      attachmentType: null,
     },
     ...overrides,
   }
@@ -45,6 +46,9 @@ function message(overrides: Partial<ThreadMessage> = {}): ThreadMessage {
     text: "Hola, ¿tienen turno para hoy?",
     error: null,
     instagramSourceCommentId: null,
+    attachmentType: null,
+    attachmentUrl: null,
+    attachmentMeta: null,
     createdAt: new Date(2026, 6, 27, 14, 1, 29),
     ...overrides,
   }
@@ -155,6 +159,7 @@ describe("toConversationRowView", () => {
           direction: "outbound",
           status: "failed",
           createdAt: new Date(2026, 6, 26, 19, 12),
+          attachmentType: null,
         },
         lastMessageAt: new Date(2026, 6, 26, 19, 12),
       }),
@@ -175,6 +180,58 @@ describe("toConversationRowView", () => {
     expect(row.content).toBe(NO_MESSAGES_CONTENT)
     expect(row.hasMessages).toBe(false)
     expect(row.failed).toBe(false)
+  })
+
+  it("muestra el type entre corchetes cuando el último mensaje es solo adjunto", () => {
+    const row = toConversationRowView(
+      conversation({
+        latestMessage: {
+          text: "",
+          direction: "inbound",
+          status: "received",
+          createdAt: new Date(2026, 6, 27, 14, 2),
+          attachmentType: "image",
+        },
+      }),
+      NOW
+    )
+
+    expect(row.content).toBe("[image]")
+    expect(row.hasMessages).toBe(true)
+  })
+
+  it("conserva el prefijo «Tú: » en el saliente solo adjunto", () => {
+    const row = toConversationRowView(
+      conversation({
+        latestMessage: {
+          text: "",
+          direction: "outbound",
+          status: "sent",
+          createdAt: new Date(2026, 6, 27, 14, 2),
+          attachmentType: "file",
+        },
+      }),
+      NOW
+    )
+
+    expect(row.content).toBe("Tú: [file]")
+  })
+
+  it("no cambia el renglón cuando el último mensaje trae texto además del adjunto", () => {
+    const row = toConversationRowView(
+      conversation({
+        latestMessage: {
+          text: "Mirá la foto",
+          direction: "inbound",
+          status: "received",
+          createdAt: new Date(2026, 6, 27, 14, 2),
+          attachmentType: "image",
+        },
+      }),
+      NOW
+    )
+
+    expect(row.content).toBe("Mirá la foto")
   })
 })
 
@@ -252,5 +309,46 @@ describe("toThreadMessageViews", () => {
     )
     expect(plain?.fromComment).toBe(false)
     expect(plain?.meta).toBe("outbound · 14:03:00 · sent")
+  })
+
+  it("resuelve el adjunto del mensaje sin tocar el texto", () => {
+    // Texto + adjunto: la vista lleva los dos; el componente decide cómo
+    // apilarlos, acá solo se comprueba que ninguno pisa al otro.
+    const [withBoth] = toThreadMessageViews([
+      message({
+        text: "Mirá la foto",
+        attachmentType: "image",
+        attachmentUrl: "https://cdn.fbsbx.com/v/foto?oh=abc",
+      }),
+    ])
+
+    expect(withBoth?.text).toBe("Mirá la foto")
+    expect(withBoth?.attachment).toEqual({
+      kind: "image",
+      url: "https://cdn.fbsbx.com/v/foto?oh=abc",
+    })
+  })
+
+  it("deja el texto vacío y el adjunto poblado en el mensaje solo-adjunto", () => {
+    const [onlyAttachment] = toThreadMessageViews([
+      message({
+        text: "",
+        attachmentType: "appointment_booking",
+        attachmentMeta: { booking: { bookingId: "bk-778" } },
+      }),
+    ])
+
+    expect(onlyAttachment?.text).toBe("")
+    expect(onlyAttachment?.attachment).toEqual({
+      kind: "row",
+      label: "appointment_booking · bk-778",
+      url: null,
+    })
+  })
+
+  it("no arma adjunto cuando el mensaje no trae", () => {
+    const [plainText] = toThreadMessageViews([message()])
+
+    expect(plainText?.attachment).toBeNull()
   })
 })

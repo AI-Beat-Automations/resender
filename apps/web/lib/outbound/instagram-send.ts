@@ -61,6 +61,7 @@ export async function sendInstagramTextMessage(input: {
         ? null
         : (metaError ?? `Meta returned HTTP ${response.status}`),
       reason: response.ok ? null : explainInstagramError(data),
+      code: null,
     }
   } catch (error) {
     return {
@@ -70,6 +71,7 @@ export async function sendInstagramTextMessage(input: {
       error: error instanceof Error ? error.message : "Meta request failed",
       reason:
         "Could not reach Instagram's messaging API (network error or timeout). Retry shortly.",
+      code: null,
     }
   }
 }

@@ -34,6 +34,7 @@ describe("parser de mensajes directos de Instagram", () => {
       metaPageId: IG_ACCOUNT,
       senderId: CONTACT,
       text: "hola",
+      attachment: null,
       metaMessageId: "mid-1",
       postbackPayload: null,
       timestamp: new Date(1_769_000_000_000),

@@ -28,6 +28,13 @@ export type MessageRecord = {
   // uno normal, y lo que permite auditar el límite de una sola respuesta
   // privada por comentario (migración 0013).
   instagramSourceCommentId: string | null
+  // Adjunto del mensaje (migración 0016). Las tres van juntas o el tipo va
+  // solo: la URL es efímera (la firma el CDN de Meta) y puede faltar en tipos
+  // sin payload descargable (`appointment_booking`, `template`), y el meta
+  // guarda los detalles que varían por tipo más el `title` cuando lo hubo.
+  attachmentType: string | null
+  attachmentUrl: string | null
+  attachmentMeta: Record<string, unknown> | null
   error: string | null
   providerResponse: unknown | null
   createdAt: Date
@@ -54,6 +61,9 @@ type MessageRow = {
   meta_message_id: string | null
   idempotency_key: string | null
   instagram_source_comment_id: string | null
+  attachment_type: string | null
+  attachment_url: string | null
+  attachment_meta: unknown | null
   error: string | null
   provider_response: unknown | null
   created_at: Date
@@ -97,9 +107,31 @@ export async function insertInboundMessage(input: {
   contactId: string
   text: string
   metaMessageId: string | null
+  // Adjunto ya normalizado por el parser. `details` puede ser `{}` y se guarda
+  // como `{}` —no como null—: que el jsonb exista dice "hubo adjunto y no tenía
+  // detalles", que no es lo mismo que "no hubo adjunto".
+  attachment?: {
+    type: string
+    url: string | null
+    title: string | null
+    details: Record<string, unknown>
+  } | null
   createdAt: Date
 }) {
   const sql = getSql()
+
+  const attachment = input.attachment ?? null
+  // El `title` viaja adentro del jsonb y no en columna propia: solo lo traen
+  // unos pocos tipos (reel, post, fallback) y `buildInboundPushPayload` hace el
+  // split inverso exacto al armar el payload, así que lo guardado y lo pusheado
+  // son el mismo objeto. Solo se agrega la clave cuando hubo título.
+  const attachmentMeta = attachment
+    ? JSON.stringify(
+        attachment.title
+          ? { ...attachment.details, title: attachment.title }
+          : attachment.details
+      )
+    : null
 
   const [row] = await sql<MessageRow[]>`
     insert into messages (
@@ -111,6 +143,9 @@ export async function insertInboundMessage(input: {
       status,
       text,
       meta_message_id,
+      attachment_type,
+      attachment_url,
+      attachment_meta,
       created_at
     )
     values (
@@ -122,6 +157,9 @@ export async function insertInboundMessage(input: {
       'received',
       ${input.text},
       ${input.metaMessageId},
+      ${attachment ? attachment.type : null},
+      ${attachment ? attachment.url : null},
+      ${attachmentMeta}::jsonb,
       ${input.createdAt}
     )
     on conflict (connected_page_id, meta_message_id)
@@ -129,7 +167,8 @@ export async function insertInboundMessage(input: {
     do nothing
     returning id, tenant_id, conversation_id, connected_page_id, contact_id,
       direction, status, text, meta_message_id, idempotency_key,
-      instagram_source_comment_id, error, provider_response, created_at
+      instagram_source_comment_id, attachment_type, attachment_url,
+      attachment_meta, error, provider_response, created_at
   `
 
   if (row) return { message: mapMessage(row), inserted: true }
@@ -138,7 +177,8 @@ export async function insertInboundMessage(input: {
     const [existing] = await sql<MessageRow[]>`
       select id, tenant_id, conversation_id, connected_page_id, contact_id,
         direction, status, text, meta_message_id, idempotency_key,
-        instagram_source_comment_id, error, provider_response, created_at
+        instagram_source_comment_id, attachment_type, attachment_url,
+        attachment_meta, error, provider_response, created_at
       from messages
       where connected_page_id = ${input.connectedPageId}
         and meta_message_id = ${input.metaMessageId}
@@ -179,6 +219,10 @@ export async function insertOutboundMessage(input: {
   // Solo lo informa la ruta de respuesta privada a un comentario; en un DM
   // normal va null y la columna queda vacía, que es lo que la distingue.
   instagramSourceCommentId?: string | null
+  // Adjunto saliente: solo tipo y URL, porque el que envía siempre tiene URL
+  // (es lo que manda a Meta) y no hay `details` que guardar — `attachment_meta`
+  // queda null a propósito.
+  attachment?: { type: string; url: string } | null
   error: string | null
   providerResponse: unknown
   createdAt: Date
@@ -203,6 +247,8 @@ export async function insertOutboundMessage(input: {
       meta_message_id,
       idempotency_key,
       instagram_source_comment_id,
+      attachment_type,
+      attachment_url,
       error,
       provider_response,
       created_at
@@ -218,13 +264,16 @@ export async function insertOutboundMessage(input: {
       ${input.metaMessageId},
       ${input.idempotencyKey},
       ${input.instagramSourceCommentId ?? null},
+      ${input.attachment?.type ?? null},
+      ${input.attachment?.url ?? null},
       ${input.error},
       ${providerResponse}::jsonb,
       ${input.createdAt}
     )
     returning id, tenant_id, conversation_id, connected_page_id, contact_id,
       direction, status, text, meta_message_id, idempotency_key,
-      instagram_source_comment_id, error, provider_response, created_at
+      instagram_source_comment_id, attachment_type, attachment_url,
+      attachment_meta, error, provider_response, created_at
   `
 
   const touchConversation = sql`
@@ -252,7 +301,8 @@ export async function getOutboundMessageByIdempotencyKey(
   const [row] = await sql<MessageRow[]>`
     select id, tenant_id, conversation_id, connected_page_id, contact_id,
       direction, status, text, meta_message_id, idempotency_key,
-      instagram_source_comment_id, error, provider_response, created_at
+      instagram_source_comment_id, attachment_type, attachment_url,
+      attachment_meta, error, provider_response, created_at
     from messages
     where tenant_id = ${tenantId}
       and idempotency_key = ${idempotencyKey}
@@ -279,7 +329,8 @@ export async function getPrivateReplyForComment(input: {
   const [row] = await sql<MessageRow[]>`
     select id, tenant_id, conversation_id, connected_page_id, contact_id,
       direction, status, text, meta_message_id, idempotency_key,
-      instagram_source_comment_id, error, provider_response, created_at
+      instagram_source_comment_id, attachment_type, attachment_url,
+      attachment_meta, error, provider_response, created_at
     from messages
     where tenant_id = ${input.tenantId}
       and instagram_source_comment_id = ${input.igCommentId}
@@ -311,10 +362,18 @@ function mapMessage(row: MessageRow): MessageRecord {
     contactId: row.contact_id,
     direction: row.direction,
     status: row.status,
-    text: row.text,
+    text: row.text ?? "",
     metaMessageId: row.meta_message_id,
     idempotencyKey: row.idempotency_key,
     instagramSourceCommentId: row.instagram_source_comment_id,
+    attachmentType: row.attachment_type,
+    attachmentUrl: row.attachment_url,
+    // El driver ya deserializa el jsonb; el cast solo fija la forma que el
+    // resto del código espera (claves string, valores desconocidos).
+    attachmentMeta: (row.attachment_meta ?? null) as Record<
+      string,
+      unknown
+    > | null,
     error: row.error,
     providerResponse: row.provider_response,
     createdAt: row.created_at,

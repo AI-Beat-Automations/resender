@@ -2,6 +2,7 @@ import { Eye, Inbox, TriangleAlert } from "lucide-react"
 
 import { ChannelBadge } from "@/features/inbox/ui/channel-badge"
 import { EmptyPane } from "@/features/inbox/ui/empty-pane"
+import type { AttachmentDisplay } from "@/lib/inbox/message-media"
 import type { ThreadMessageView } from "@/lib/messages/display"
 import type { PageChannel } from "@/lib/pages/page-registry"
 import { Badge } from "@workspace/ui/components/badge"
@@ -104,7 +105,15 @@ function MessageBubble({ message }: { message: ThreadMessageView }) {
                 : "border-bubble-in-border bg-bubble-in text-bubble-in-foreground"
           )}
         >
-          {message.text}
+          {/* El adjunto va dentro de la misma burbuja, sin cambiar color ni
+              dirección (CONTEXT.md, «Semantica visual de Inbox»); si además
+              hay texto, se ven los dos, adjunto arriba como en Messenger. */}
+          {message.attachment ? (
+            <div className={cn(message.text !== "" && "mb-2")}>
+              <BubbleAttachment attachment={message.attachment} />
+            </div>
+          ) : null}
+          {message.text !== "" ? message.text : null}
         </div>
         <p
           className={cn(
@@ -138,4 +147,52 @@ function MessageBubble({ message }: { message: ThreadMessageView }) {
       </article>
     </>
   )
+}
+
+// Qué se pinta ya viene decidido por `toAttachmentDisplay` (testeable en
+// Vitest); acá solo se traduce cada `kind` a markup. La URL apunta directo al
+// CDN de Meta —Resender no proxifica ni valida—, así que si la firma venció
+// el preview se rompe: costo asumido de no hospedar los archivos.
+function BubbleAttachment({ attachment }: { attachment: AttachmentDisplay }) {
+  switch (attachment.kind) {
+    case "image":
+      return (
+        // La URL es de un dominio remoto arbitrario del CDN de Meta:
+        // next/image exigiría declarar cada host y no hay optimizador que
+        // valga para URLs firmadas que expiran — <img> nativa a propósito.
+        // eslint-disable-next-line @next/next/no-img-element -- CDN remoto arbitrario, sin optimizador
+        <img
+          src={attachment.url}
+          alt="Adjunto de imagen"
+          className="max-h-72 max-w-full rounded-[12px]"
+        />
+      )
+    case "video":
+      return (
+        <video
+          controls
+          src={attachment.url}
+          className="max-h-72 max-w-full rounded-[12px]"
+        />
+      )
+    case "audio":
+      return <audio controls src={attachment.url} className="max-w-full" />
+    case "row":
+      return (
+        <p className="font-mono text-[12px]">
+          {attachment.url ? (
+            <a
+              href={attachment.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-2"
+            >
+              {attachment.label}
+            </a>
+          ) : (
+            attachment.label
+          )}
+        </p>
+      )
+  }
 }

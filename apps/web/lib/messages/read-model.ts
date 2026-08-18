@@ -26,6 +26,9 @@ export type ConversationListItem = {
     direction: MessageDirection
     status: MessageStatus
     createdAt: Date
+    // Solo el type: el renglón de la lista lo muestra entre corchetes cuando
+    // el mensaje no trae texto; la URL y el meta solo importan en el hilo.
+    attachmentType: string | null
   } | null
 }
 
@@ -38,6 +41,11 @@ export type ThreadMessage = {
   // Informado solo en la respuesta privada a un comentario de Instagram: es un
   // DM como cualquier otro y esta columna es lo único que lo distingue.
   instagramSourceCommentId: string | null
+  // Adjunto tal como se persistió (migración de #46): el mapeo a preview o
+  // fila lo hace `toAttachmentDisplay`, no el read model.
+  attachmentType: string | null
+  attachmentUrl: string | null
+  attachmentMeta: Record<string, unknown> | null
   createdAt: Date
 }
 
@@ -57,15 +65,21 @@ type ConversationListRow = {
   latest_direction: MessageDirection | null
   latest_status: MessageStatus | null
   latest_created_at: Date | null
+  latest_attachment_type: string | null
 }
 
 type ThreadMessageRow = {
   id: string
   direction: MessageDirection
   status: MessageStatus
-  text: string
+  // Nullable en DB desde que un mensaje puede ser solo adjunto; el read model
+  // lo normaliza a `""` para no propagar el null a las vistas.
+  text: string | null
   error: string | null
   instagram_source_comment_id: string | null
+  attachment_type: string | null
+  attachment_url: string | null
+  attachment_meta: unknown
   created_at: Date
 }
 
@@ -90,11 +104,12 @@ export async function listConversationReadModel(input: {
       latest.text as latest_text,
       latest.direction as latest_direction,
       latest.status as latest_status,
-      latest.created_at as latest_created_at
+      latest.created_at as latest_created_at,
+      latest.attachment_type as latest_attachment_type
     from conversations c
     join connected_pages p on p.id = c.connected_page_id
     left join lateral (
-      select text, direction, status, created_at
+      select text, direction, status, created_at, attachment_type
       from messages m
       where m.conversation_id = c.id
         and m.tenant_id = c.tenant_id
@@ -116,7 +131,8 @@ export async function listThreadMessages(input: {
   const sql = getSql()
   const rows = await sql<ThreadMessageRow[]>`
     select id, direction, status, text, error,
-           instagram_source_comment_id, created_at
+           instagram_source_comment_id,
+           attachment_type, attachment_url, attachment_meta, created_at
     from messages
     where tenant_id = ${input.tenantId}
       and conversation_id = ${input.conversationId}
@@ -127,9 +143,14 @@ export async function listThreadMessages(input: {
     id: row.id,
     direction: row.direction,
     status: row.status,
-    text: row.text,
+    // Un mensaje solo-adjunto puede venir con text null: se normaliza a ""
+    // para que las vistas sigan tratando `text` como string a secas.
+    text: row.text ?? "",
     error: row.error,
     instagramSourceCommentId: row.instagram_source_comment_id,
+    attachmentType: row.attachment_type,
+    attachmentUrl: row.attachment_url,
+    attachmentMeta: asJsonObject(row.attachment_meta),
     createdAt: row.created_at,
   }))
 }
@@ -151,17 +172,33 @@ function mapConversationListItem(
       name: row.page_name,
       username: row.page_username,
     },
+    // Ojo: el guard ya no incluye `latest_text` — un mensaje solo-adjunto
+    // viene con texto vacío o null y sigue siendo el último mensaje real.
     latestMessage:
-      row.latest_text &&
-      row.latest_direction &&
-      row.latest_status &&
-      row.latest_created_at
+      row.latest_direction && row.latest_status && row.latest_created_at
         ? {
-            text: row.latest_text,
+            text: row.latest_text ?? "",
             direction: row.latest_direction,
             status: row.latest_status,
             createdAt: row.latest_created_at,
+            attachmentType: row.latest_attachment_type,
           }
         : null,
   }
+}
+
+// jsonb llega ya parseado con el driver HTTP de Neon, pero otros drivers (o
+// un fixture) pueden entregarlo como string: el cast defensivo evita que un
+// metadato raro rompa el hilo entero — un meta ilegible se pinta como nada.
+function asJsonObject(value: unknown): Record<string, unknown> | null {
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value)
+    } catch {
+      return null
+    }
+  }
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null
 }
