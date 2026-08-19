@@ -8,10 +8,10 @@ import { SiteBackground } from "@/components/site-background"
 export const metadata: Metadata = {
   title: "Privacy Policy",
   description:
-    "How Resender, operated by AI Beat, handles account and Messenger data.",
+    "How Resender, operated by Lorna Suriano Hernandez, handles account and Messenger data.",
 }
 
-const LAST_UPDATED = "August 3, 2026"
+const LAST_UPDATED = "August 19, 2026"
 const CONTACT_EMAIL = "info@resender.dev"
 
 export default function PrivacyPage() {
@@ -32,41 +32,48 @@ export default function PrivacyPage() {
         <div className="grid gap-8 text-sm leading-7 text-muted-foreground">
           <Section title="Who we are">
             <p>
-              Resender is a Messenger gateway and durable message log operated by{" "}
-              <strong className="text-foreground">AI Beat</strong> (&ldquo;we&rdquo;,
-              &ldquo;us&rdquo;). Resender is the product; AI Beat is the company
-              responsible for it. AI Beat operates from Mexico. This policy
-              explains what data we handle, how we use it, who we share it with,
-              and how to have it deleted.
+              Resender is a Messenger gateway and durable message log operated
+              by{" "}
+              <strong className="text-foreground">
+                Lorna Suriano Hernandez
+              </strong>{" "}
+              (&ldquo;we&rdquo;, &ldquo;us&rdquo;). Resender is the product;
+              Lorna Suriano Hernandez is the company responsible for it. Lorna
+              Suriano Hernandez operates from Argentina. This policy explains
+              what data we handle, how we use it, who we share it with, and how
+              to have it deleted.
             </p>
           </Section>
 
           <Section title="Our role: controller and processor">
-            <p>
-              We handle two classes of data with two different roles:
-            </p>
-            <ul className="ml-5 mt-2 list-disc space-y-1">
+            <p>We handle two classes of data with two different roles:</p>
+            <ul className="mt-2 ml-5 list-disc space-y-1">
               <li>
                 <strong className="text-foreground">Account data</strong> of our
-                customers (the businesses that sign up for Resender, &ldquo;tenants&rdquo;):
-                AI Beat is the data controller (responsable).
+                customers (the businesses that sign up for Resender,
+                &ldquo;tenants&rdquo;): Lorna Suriano Hernandez is the data
+                controller (responsable).
               </li>
               <li>
-                <strong className="text-foreground">Messenger end-user data</strong> —
-                the messages people send to a customer&rsquo;s connected Facebook
-                Page: AI Beat acts as a processor (encargado) on behalf of that
-                customer, who is the controller of those conversations.
+                <strong className="text-foreground">
+                  Messenger end-user data
+                </strong>{" "}
+                — the messages people send to a customer&rsquo;s connected
+                Facebook Page: Lorna Suriano Hernandez acts as a processor
+                (encargado) on behalf of that customer, who is the controller of
+                those conversations.
               </li>
             </ul>
           </Section>
 
           <Section title="Data we handle">
             <p className="font-medium text-foreground">Account data</p>
-            <ul className="ml-5 mt-1 list-disc space-y-1">
+            <ul className="mt-1 ml-5 list-disc space-y-1">
               <li>Your email address and a hashed password.</li>
               <li>
-                Connected Facebook Pages: page name and id, the Page access token
-                (stored encrypted), and an optional webhook URL you configure.
+                Connected Facebook Pages: page name and id, the Page access
+                token (stored encrypted), and an optional webhook URL you
+                configure.
               </li>
               <li>
                 API keys you create for external integrations: stored only as a
@@ -77,12 +84,14 @@ export default function PrivacyPage() {
             <p className="mt-4 font-medium text-foreground">
               Messenger end-user data
             </p>
-            <ul className="ml-5 mt-1 list-disc space-y-1">
-              <li>The contact&rsquo;s page-scoped id (PSID) and optional name.</li>
+            <ul className="mt-1 ml-5 list-disc space-y-1">
+              <li>
+                The contact&rsquo;s page-scoped id (PSID) and optional name.
+              </li>
               <li>
                 Message content, direction (inbound/outbound) and status, the
-                Meta message id, the provider response, and delivery metadata for
-                messages we forward to your external system.
+                Meta message id, the provider response, and delivery metadata
+                for messages we forward to your external system.
               </li>
             </ul>
             {/* Categoría nueva (ADR 0007): el correo de la lista de espera es
@@ -91,7 +100,7 @@ export default function PrivacyPage() {
                 El texto dice lo mismo que el checkbox de consentimiento del
                 diccionario, que es lo que se versiona en `consent_version`. */}
             <p className="mt-4 font-medium text-foreground">Waitlist data</p>
-            <ul className="ml-5 mt-1 list-disc space-y-1">
+            <ul className="mt-1 ml-5 list-disc space-y-1">
               <li>
                 The email address you leave on our waitlist, and how you heard
                 about Resender (the option you pick, plus the short free-text
@@ -116,39 +125,40 @@ export default function PrivacyPage() {
 
           <Section title="How we use data">
             <p>
-              We use account data and Messenger data only to operate the service:
-              to receive and store incoming messages, forward them to the
-              customer&rsquo;s configured external system, send outgoing replies
-              through Meta, authenticate API access, and keep the message log
-              available to the customer. Waitlist data is the one exception: it
-              belongs to people who are not customers, and we use it solely to
-              send them product updates, as described above. We do not sell data
-              and we do not use it for advertising.
+              We use account data and Messenger data only to operate the
+              service: to receive and store incoming messages, forward them to
+              the customer&rsquo;s configured external system, send outgoing
+              replies through Meta, authenticate API access, and keep the
+              message log available to the customer. Waitlist data is the one
+              exception: it belongs to people who are not customers, and we use
+              it solely to send them product updates, as described above. We do
+              not sell data and we do not use it for advertising.
             </p>
           </Section>
 
           <Section title="How we protect it">
             <p>
-              Page access tokens are encrypted at rest. API key secrets are stored
-              as hashes, never in clear text. Authentication uses a single
-              functional session cookie.
+              Page access tokens are encrypted at rest. API key secrets are
+              stored as hashes, never in clear text. Authentication uses a
+              single functional session cookie.
             </p>
           </Section>
 
           <Section title="Where data is stored and who processes it">
             <p>
               Resender is hosted on Vercel, with a PostgreSQL database on Neon.
-              Data is stored in the United States. AI Beat operates from Mexico.
+              Data is stored in the United States. Lorna Suriano Hernandez
+              operates from Argentina.
             </p>
             <p className="mt-2">Our sub-processors are:</p>
-            <ul className="ml-5 mt-1 list-disc space-y-1">
+            <ul className="mt-1 ml-5 list-disc space-y-1">
               <li>
                 <strong className="text-foreground">Meta Platforms</strong> —
                 message delivery through the Messenger Platform.
               </li>
               <li>
-                <strong className="text-foreground">Vercel</strong> — application
-                hosting.
+                <strong className="text-foreground">Vercel</strong> —
+                application hosting.
               </li>
               <li>
                 <strong className="text-foreground">Neon</strong> — managed
@@ -159,27 +169,29 @@ export default function PrivacyPage() {
 
           <Section title="Cookies and tracking">
             <p>
-              We use no analytics and no third-party trackers. The only cookie is
-              the functional session cookie used to keep you signed in. Fonts are
-              self-hosted, so loading the site makes no third-party font request.
+              We use no analytics and no third-party trackers. The only cookie
+              is the functional session cookie used to keep you signed in. Fonts
+              are self-hosted, so loading the site makes no third-party font
+              request.
             </p>
           </Section>
 
           <Section title="Data retention">
             <p>
-              We keep your data while your account is active. Disconnecting a Page
-              stops future message traffic but preserves the existing conversation
-              history as a log. Deleting your account removes everything (see
-              below).
+              We keep your data while your account is active. Disconnecting a
+              Page stops future message traffic but preserves the existing
+              conversation history as a log. Deleting your account removes
+              everything (see below).
             </p>
           </Section>
 
           <Section title="Your rights">
             <p>
-              You can request access to, correction of, or deletion of your data,
-              and opt out of further processing. To exercise these rights, use the
-              self-serve <strong className="text-foreground">Delete account</strong>{" "}
-              option in Settings, or email us at{" "}
+              You can request access to, correction of, or deletion of your
+              data, and opt out of further processing. To exercise these rights,
+              use the self-serve{" "}
+              <strong className="text-foreground">Delete account</strong> option
+              in Settings, or email us at{" "}
               <a
                 href={`mailto:${CONTACT_EMAIL}`}
                 className="font-medium text-foreground underline-offset-4 hover:underline"
@@ -199,17 +211,17 @@ export default function PrivacyPage() {
               >
                 Data Deletion Instructions
               </Link>
-              . In short: log in, go to Settings and choose Delete account for an
-              immediate, permanent deletion of your account and all associated
-              data; or email {CONTACT_EMAIL} and we will delete it within 30 days.
-              Backups are purged within 30 days.
+              . In short: log in, go to Settings and choose Delete account for
+              an immediate, permanent deletion of your account and all
+              associated data; or email {CONTACT_EMAIL} and we will delete it
+              within 30 days. Backups are purged within 30 days.
             </p>
           </Section>
 
           <Section title="Changes to this policy">
             <p>
-              We may update this policy. The &ldquo;Last updated&rdquo; date above
-              reflects the latest version.
+              We may update this policy. The &ldquo;Last updated&rdquo; date
+              above reflects the latest version.
             </p>
           </Section>
 

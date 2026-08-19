@@ -227,16 +227,16 @@ Para Meta App Review, Resender usa una cuenta de revision preconfigurada en luga
 La Page de revision es la pagina de Facebook conectada dentro de la cuenta de revision. Los mensajes no llegan al usuario de Resender directamente: llegan a esta Page, Resender los persiste en la bitacora y los reenvia al sistema externo configurado. El revisor debe poder enviar un DM a esta Page y ver en Resender que aparece la conversacion, junto con la respuesta enviada de vuelta por Messenger.
 
 ### Usuario Messenger de prueba
-El Usuario Messenger de prueba es una cuenta de Facebook controlada por AI Beat/Resender que se usa para grabar el screencast y enviar DMs a la Page de revision mientras la app esta en modo Development o pendiente de aprobacion. Esta cuenta debe tener el rol/relacion necesaria en Meta para que sus mensajes lleguen al webhook antes de que `pages_messaging` este aprobado en Live. No se comparten credenciales personales de Facebook/Messenger con Meta; al revisor se le entrega la cuenta de revision de Resender y pasos claros.
+El Usuario Messenger de prueba es una cuenta de Facebook controlada por Lorna Suriano Hernandez/Resender que se usa para grabar el screencast y enviar DMs a la Page de revision mientras la app esta en modo Development o pendiente de aprobacion. Esta cuenta debe tener el rol/relacion necesaria en Meta para que sus mensajes lleguen al webhook antes de que `pages_messaging` este aprobado en Live. No se comparten credenciales personales de Facebook/Messenger con Meta; al revisor se le entrega la cuenta de revision de Resender y pasos claros.
 
 ### Automatizacion demo
 La automatizacion demo es el sistema externo conectado al `webhookUrl` de la Page de revision. Su objetivo no es cambiar el modelo de producto ni convertir Resender en bot, sino demostrar durante App Review que el flujo completo de `pages_messaging` funciona: DM entrante, persistencia, push externo, respuesta por `/api/meta/send` y recepcion del mensaje en Messenger.
 
 ### Identidad legal
-La entidad que opera Resender es **AI Beat**. `Resender` es el nombre del producto; `AI Beat` es la empresa responsable que figura en los documentos legales (politica de privacidad, terminos).
+La entidad que opera Resender es **Lorna Suriano Hernandez**, con sede en Argentina. `Resender` es el nombre del producto; `Lorna Suriano Hernandez` es la entidad responsable que figura en los documentos legales (politica de privacidad, terminos).
 
 ### Responsable y Encargado (roles de privacidad)
-Resender trata dos clases de datos con roles distintos. Para los datos de la cuenta/`tenant` (los clientes de Resender), **AI Beat es el responsable**. Para los mensajes de usuarios de Messenger que escriben a las paginas de los tenants, **AI Beat actua como encargado/procesador en nombre del tenant**, que es el responsable de esas conversaciones. Este reparto determina que las obligaciones de cara al end-user recaen sobre el tenant, no sobre AI Beat.
+Resender trata dos clases de datos con roles distintos. Para los datos de la cuenta/`tenant` (los clientes de Resender), **Lorna Suriano Hernandez es el responsable**. Para los mensajes de usuarios de Messenger que escriben a las paginas de los tenants, **Lorna Suriano Hernandez actua como encargado/procesador en nombre del tenant**, que es el responsable de esas conversaciones. Este reparto determina que las obligaciones de cara al end-user recaen sobre el tenant, no sobre Lorna Suriano Hernandez.
 
 ### Postura de cumplimiento
 La politica de privacidad adopta una linea base pragmatica para clientes de USA y Latinoamerica: lenguaje claro, derechos genericos del titular (acceso, correccion, eliminacion, opt-out) sin comprometerse con un regimen especifico (GDPR/LGPD). Queda "GDPR-ready" para anadir secciones si en el futuro entran clientes europeos.

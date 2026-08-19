@@ -499,7 +499,7 @@ export const en: Dict = {
 
   llms: {
     summary:
-      "The relay API for Facebook messages. Connect your Page, point your webhook and reply with a POST — no visual builders, no features you'll never use. A developer-first alternative to ManyChat, from $15/mo. Operated by AI Beat.",
+      "The relay API for Facebook messages. Connect your Page, point your webhook and reply with a POST — no visual builders, no features you'll never use. A developer-first alternative to ManyChat, from $15/mo. Operated by Lorna Suriano Hernandez.",
     context: [
       "Resender solves one specific problem: receiving the messages sent to a Facebook Page (Messenger) on your own server, and replying to them via API. The logic runs wherever you want it — n8n, Make, Zapier, an AI agent or your own backend — and Resender only handles the transport to and from Facebook.",
       "How it works: you connect your Page with Facebook Login, set an HTTPS URL per Page, every incoming message arrives at that endpoint as JSON, and you reply with a POST to Resender's outbound API. The Messenger permissions are already approved, so you don't go through an app review of your own.",
@@ -546,7 +546,8 @@ export const en: Dict = {
       },
       terms: {
         label: "Terms of service",
-        detail: "Terms for using Resender, operated by AI Beat. Spanish only.",
+        detail:
+          "Terms for using Resender, operated by Lorna Suriano Hernandez. Spanish only.",
       },
       dataDeletion: {
         label: "Data deletion",

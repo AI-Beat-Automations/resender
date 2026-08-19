@@ -91,7 +91,9 @@ export function SiteFooter({ lang }: { lang: Locale }) {
                       <a
                         href={link.href}
                         className="transition-colors hover:text-background"
-                        target={link.href.startsWith("http") ? "_blank" : undefined}
+                        target={
+                          link.href.startsWith("http") ? "_blank" : undefined
+                        }
                         rel={
                           link.href.startsWith("http")
                             ? "noreferrer noopener"
@@ -118,7 +120,7 @@ export function SiteFooter({ lang }: { lang: Locale }) {
         </div>
 
         <div className="mt-10 border-t border-background/20 pt-6 text-sm text-background/70">
-          <p>© {new Date().getFullYear()} AI Beat · Resender</p>
+          <p>© {new Date().getFullYear()} Lorna Suriano Hernandez · Resender</p>
         </div>
       </div>
     </footer>
