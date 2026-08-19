@@ -9,8 +9,8 @@ export const SITE_URL =
 
 export const SITE_NAME = "Resender"
 
-// Empresa que opera Resender (coincide con lo declarado en /privacy y /terms).
-export const SITE_LEGAL_NAME = "AI Beat"
+// Entidad que opera Resender (coincide con lo declarado en /privacy y /terms).
+export const SITE_LEGAL_NAME = "Lorna Suriano Hernandez"
 
 export const SITE_CONTACT_EMAIL = "info@resender.dev"
 export const SITE_CONTACT_EMAIL_HREF = `mailto:${SITE_CONTACT_EMAIL}`
@@ -25,7 +25,7 @@ export const DOCS_URL = "https://docs.resender.dev/"
 // enseña a Google a desconfiar de la señal. Se sube A MANO cuando el copy cambia
 // de verdad. La consumen el sitemap y el encabezado de /llms-full.txt, así que
 // las dos declaran lo mismo.
-export const STATIC_CONTENT_UPDATED_AT = "2026-08-03"
+export const STATIC_CONTENT_UPDATED_AT = "2026-08-19"
 
 // Invitación de Discord. Si alguna vez vuelve a ser null, el footer oculta la
 // entrada en lugar de dejar un link muerto en todas las páginas del sitio.

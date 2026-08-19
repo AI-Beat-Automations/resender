@@ -415,7 +415,7 @@ Messages muestra:
 
 Trabajo administrativo en paralelo desde el inicio:
 
-1. Business Portfolio de AI Beat con 2FA y Business Verification.
+1. Business Portfolio de Lorna Suriano Hernandez con 2FA y Business Verification.
 2. Dominio `resender.dev` y correo corporativo verificables.
 3. Meta App tipo Business propiedad del portfolio; producto WhatsApp agregado.
 4. WABA y número propios de prueba.

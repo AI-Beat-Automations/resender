@@ -7,10 +7,11 @@ import { SiteBackground } from "@/components/site-background"
 
 export const metadata: Metadata = {
   title: "Data Deletion Instructions",
-  description: "How to delete your data from Resender, operated by AI Beat.",
+  description:
+    "How to delete your data from Resender, operated by Lorna Suriano Hernandez.",
 }
 
-const LAST_UPDATED = "June 18, 2026"
+const LAST_UPDATED = "August 19, 2026"
 const CONTACT_EMAIL = "info@resender.dev"
 
 export default function DataDeletionPage() {
@@ -31,8 +32,8 @@ export default function DataDeletionPage() {
         <div className="grid gap-8 text-sm leading-7 text-muted-foreground">
           <section>
             <p>
-              Resender is operated by AI Beat. There are two ways to delete the
-              data Resender holds about you.
+              Resender is operated by Lorna Suriano Hernandez. There are two
+              ways to delete the data Resender holds about you.
             </p>
           </section>
 
@@ -46,7 +47,8 @@ export default function DataDeletionPage() {
                 Go to <strong className="text-foreground">Settings</strong>.
               </li>
               <li>
-                In the <strong className="text-foreground">Delete account</strong>{" "}
+                In the{" "}
+                <strong className="text-foreground">Delete account</strong>{" "}
                 section, retype your account email to confirm and press the
                 button.
               </li>
@@ -93,8 +95,8 @@ export default function DataDeletionPage() {
               Timing
             </h2>
             <p>
-              Deletion takes effect immediately in production. Backups are purged
-              within 30 days.
+              Deletion takes effect immediately in production. Backups are
+              purged within 30 days.
             </p>
           </section>
 
@@ -103,9 +105,9 @@ export default function DataDeletionPage() {
               If you messaged a business on Messenger
             </h2>
             <p>
-              If you sent messages to a Facebook Page that uses Resender and want
-              that conversation removed, contact the business that operates the
-              Page (they control those conversations), or email us at{" "}
+              If you sent messages to a Facebook Page that uses Resender and
+              want that conversation removed, contact the business that operates
+              the Page (they control those conversations), or email us at{" "}
               <a
                 href={`mailto:${CONTACT_EMAIL}`}
                 className="font-medium text-foreground underline-offset-4 hover:underline"

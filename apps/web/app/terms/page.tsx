@@ -8,10 +8,10 @@ import { SiteBackground } from "@/components/site-background"
 export const metadata: Metadata = {
   title: "Terms of Service",
   description:
-    "Terms for businesses using Resender, operated by AI Beat.",
+    "Terms for businesses using Resender, operated by Lorna Suriano Hernandez.",
 }
 
-const LAST_UPDATED = "June 20, 2026"
+const LAST_UPDATED = "August 19, 2026"
 const CONTACT_EMAIL = "info@resender.dev"
 
 export default function TermsPage() {
@@ -32,19 +32,22 @@ export default function TermsPage() {
         <div className="grid gap-8 text-sm leading-7 text-muted-foreground">
           <Section title="Who we are">
             <p>
-              Resender is a Messenger gateway and durable message log operated by{" "}
-              <strong className="text-foreground">AI Beat</strong> (&ldquo;we&rdquo;,
-              &ldquo;us&rdquo;). These terms apply to businesses and operators
-              that create or use a Resender account.
+              Resender is a Messenger gateway and durable message log operated
+              by{" "}
+              <strong className="text-foreground">
+                Lorna Suriano Hernandez
+              </strong>{" "}
+              (&ldquo;we&rdquo;, &ldquo;us&rdquo;). These terms apply to
+              businesses and operators that create or use a Resender account.
             </p>
           </Section>
 
           <Section title="What Resender does">
             <p>
-              Resender helps businesses connect Facebook Pages, receive Messenger
-              webhooks, store conversation history, forward inbound messages to a
-              configured external automation, and send replies through Resender&apos;s
-              authenticated API.
+              Resender helps businesses connect Facebook Pages, receive
+              Messenger webhooks, store conversation history, forward inbound
+              messages to a configured external automation, and send replies
+              through Resender&apos;s authenticated API.
             </p>
           </Section>
 
@@ -60,18 +63,20 @@ export default function TermsPage() {
 
           <Section title="Meta platform rules">
             <p>
-              You must comply with Meta&apos;s Platform Terms, Messenger Platform
-              policies, Community Standards, and any other rules that apply to
-              your Facebook Page or Messenger conversations. You may not use
-              Resender to bypass Meta policies, rate limits, review requirements,
-              messaging windows, or user consent requirements.
+              You must comply with Meta&apos;s Platform Terms, Messenger
+              Platform policies, Community Standards, and any other rules that
+              apply to your Facebook Page or Messenger conversations. You may
+              not use Resender to bypass Meta policies, rate limits, review
+              requirements, messaging windows, or user consent requirements.
             </p>
           </Section>
 
           <Section title="Acceptable use">
             <p>You may not use Resender to:</p>
-            <ul className="ml-5 mt-2 list-disc space-y-1">
-              <li>Send spam, deceptive messages, phishing, or unwanted outreach.</li>
+            <ul className="mt-2 ml-5 list-disc space-y-1">
+              <li>
+                Send spam, deceptive messages, phishing, or unwanted outreach.
+              </li>
               <li>
                 Harass, threaten, discriminate against, or exploit any person or
                 group.
@@ -96,11 +101,11 @@ export default function TermsPage() {
 
           <Section title="External automations">
             <p>
-              Resender forwards inbound messages to the webhook URL you configure.
-              You are responsible for the security, availability, behavior, and
-              legal compliance of that external system. Resender may record
-              delivery attempts and errors, but it does not control your external
-              automation.
+              Resender forwards inbound messages to the webhook URL you
+              configure. You are responsible for the security, availability,
+              behavior, and legal compliance of that external system. Resender
+              may record delivery attempts and errors, but it does not control
+              your external automation.
             </p>
           </Section>
 
@@ -136,9 +141,9 @@ export default function TermsPage() {
           <Section title="Suspension and termination">
             <p>
               We may suspend or terminate access if we reasonably believe an
-              account is violating these terms, Meta policies, applicable law, or
-              the security and integrity of Resender. You may delete your account
-              from Settings or request deletion by email.
+              account is violating these terms, Meta policies, applicable law,
+              or the security and integrity of Resender. You may delete your
+              account from Settings or request deletion by email.
             </p>
           </Section>
 
@@ -146,15 +151,15 @@ export default function TermsPage() {
             <p>
               Resender is provided as an online service and may be unavailable
               during maintenance, outages, provider incidents, or events outside
-              our control. We do not guarantee uninterrupted delivery of messages
-              to external automations or third-party platforms.
+              our control. We do not guarantee uninterrupted delivery of
+              messages to external automations or third-party platforms.
             </p>
           </Section>
 
           <Section title="Changes">
             <p>
-              We may update these terms from time to time. The &ldquo;Last updated&rdquo;
-              date above reflects the latest version.
+              We may update these terms from time to time. The &ldquo;Last
+              updated&rdquo; date above reflects the latest version.
             </p>
           </Section>
 

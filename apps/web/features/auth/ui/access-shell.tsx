@@ -41,7 +41,9 @@ export function AccessShell({
         {children}
       </main>
       <footer className="flex flex-wrap items-center justify-center gap-3.5 px-10 pb-7 font-mono text-[11px] text-[var(--text-subtle)]">
-        <span>© {new Date().getFullYear()} AI Beat · Resender</span>
+        <span>
+          © {new Date().getFullYear()} Lorna Suriano Hernandez · Resender
+        </span>
         <span aria-hidden>·</span>
         <Link href="/privacy" className="underline-offset-4 hover:underline">
           {t.privacy}
