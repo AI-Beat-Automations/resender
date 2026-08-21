@@ -21,7 +21,10 @@
 // el paso siguiente.
 import { default as nextHandler } from "./.open-next/worker.js"
 
-import { log } from "./lib/observability/logger"
+import {
+  consumeWebhookQueue,
+  recoverWebhookJobs,
+} from "./lib/inbound/webhook-delivery"
 
 type WebWorker = {
   fetch(
@@ -30,7 +33,7 @@ type WebWorker = {
     ctx: WorkerExecutionContext,
   ): Promise<Response>
   queue(
-    batch: MessageBatch<WebhookDeliveryMessage>,
+    batch: MessageBatch<unknown>,
     env: CloudflareEnv,
     ctx: WorkerExecutionContext,
   ): Promise<void>
@@ -48,40 +51,18 @@ const worker: WebWorker = {
   // cada request del producto para servir a dos handlers que no lo necesitan.
   fetch: nextHandler.fetch,
 
+  // Atiende la cola principal y su DLQ: el mismo consumidor, que se comporta
+  // distinto según `batch.queue`. En la principal entrega; en la DLQ solo marca
+  // el job `dead` y nunca llama al webhook del cliente.
   async queue(batch) {
-    // Hoy **nada** encola: el binding y los consumidores se declaran en este
-    // paso para validar que Cloudflare acepta la config, pero el productor no
-    // existe todavía. Por eso cada mensaje se reintenta en lugar de aceptarse:
-    // aceptar un mensaje que no se procesó lo borra en silencio, y el silencio
-    // es justo el modo de falla que este proyecto no se puede permitir en el
-    // camino de entrega.
-    for (const message of batch.messages) {
-      log({
-        entrypoint: "queue",
-        action: "queue_consume",
-        outcome: "retry",
-        reason: "not_implemented",
-        level: "error",
-        attempt: message.attempts,
-      })
-      message.retry()
-    }
+    await consumeWebhookQueue(batch)
   },
 
-  async scheduled() {
-    // La recuperación por cron reclama los jobs cuyo plazo durable venció —los
-    // que quedaron `pending`/`processing` porque el Worker se cayó entre encolar
-    // y entregar—. Sin productor no hay jobs que reclamar, así que por ahora
-    // solo deja constancia de que el trigger está vivo: si esta línea no aparece
-    // cada 5 minutos en producción, el cron no quedó configurado y hay que
-    // saberlo antes de depender de él.
-    log({
-      entrypoint: "scheduled",
-      action: "delivery_recover",
-      outcome: "skipped",
-      reason: "not_implemented",
-      count: 0,
-    })
+  // Reclama los jobs cuyo plazo durable venció: los que quedaron
+  // `pending`/`processing` porque el Worker murió entre encolar y entregar. Es
+  // la red debajo de la cola, no un segundo camino de entrega.
+  async scheduled(_controller, env) {
+    await recoverWebhookJobs(env)
   },
 }
 

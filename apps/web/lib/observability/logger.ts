@@ -69,6 +69,10 @@ export type LogOutcome =
   | "skipped" // se persistió, pero no se reenvía
   | "retry"
   | "failed"
+  // Terminal y sin vuelta: la cola agotó sus reintentos y el job pasó por la
+  // DLQ. Se separa de `failed` porque `failed` todavía puede tener intentos por
+  // delante y `dead` no: es la línea que busca el runbook de la DLQ.
+  | "dead"
 
 // Catálogo cerrado de motivos. Es la lista completa de razones por las que algo
 // puede no pasar, en un solo archivo y de una sola lectura: se puede leer entera
@@ -94,12 +98,11 @@ export type LogReason =
   | "http_error"
   | "network_error"
   | "max_attempts_exhausted"
-  // Temporal, y solo mientras dure el paso 1a: los handlers `queue`/`scheduled`
-  // existen pero todavía no tienen lógica. Hoy **nada** produce a la cola, así
-  // que esta línea no debería aparecer nunca; si aparece, el mensaje se reintenta
-  // en vez de descartarse y este motivo es la señal de que algo empezó a
-  // encolar antes de tiempo. Se borra en el 1b, junto con los handlers vacíos.
-  | "not_implemented"
+  // cola y recuperación
+  | "job_already_terminal" // el job ya estaba cerrado: no se entrega dos veces
+  | "invalid_queue_payload" // el cuerpo del mensaje no trae un `jobId`
+  | "queue_retries_exhausted" // llegó a la DLQ: el job queda `dead`
+  | "dlq_persist_failed"
   // salida hacia Meta
   | "meta_rejected"
   | "page_not_connected"
@@ -159,6 +162,13 @@ type SubjectFields = {
 
 type ContextFields = {
   requestId?: string
+  // El job de `external_webhook_jobs`. Es la clave con la que el runbook de la
+  // DLQ cruza el log con la bitácora de intentos.
+  jobId?: string
+  // El id del mensaje **de la cola de Cloudflare**, que no es el id de un
+  // mensaje de Resender. Van con nombres distintos justamente porque antes los
+  // dos viajaban bajo la misma clave.
+  queueMessageId?: string
   route?: string
   status?: number
   attempt?: number
@@ -199,6 +209,7 @@ const LEVEL_BY_OUTCOME: Record<LogOutcome, LogLevel> = {
   skipped: "info",
   retry: "warn",
   failed: "error",
+  dead: "error",
 }
 
 // Segunda línea de defensa detrás del tipo: si un secreto se cuela dentro del
