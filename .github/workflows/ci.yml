@@ -8,20 +8,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # `main` solo se toca desde `staging`. Sin esta barrera el flujo se salta
-  # solo: GitHub propone `main` como base por defecto en cada PR nuevo, así que
-  # un feature branch acabaría en producción sin haber pasado por
+  # `main` solo se toca desde `dev`. Sin esta barrera el flujo se salta solo:
+  # GitHub propone `main` como base por defecto en cada PR nuevo, así que un
+  # feature branch acabaría en producción sin haber pasado por
   # staging.resender.dev — que es justo el paso que el entorno existe para dar.
+  #
+  # Y eso es exactamente lo que viene pasando: entre el 10-ago y el 21-ago cinco
+  # PRs (#40, #43, #45, #55, #57) fueron feature -> `main` directo, con este job
+  # ya existiendo. El job falla, pero **no está configurado como required status
+  # check** en la protección de rama de `main`, así que el botón de merge sigue
+  # disponible y la barrera es decorativa. Arreglarlo es un cambio en
+  # Settings -> Branches de GitHub, no en este archivo.
   branch-flow:
     if: github.event.pull_request.base.ref == 'main'
     runs-on: ubuntu-latest
     steps:
-      - name: Solo `staging` puede mergear a `main`
-        if: github.event.pull_request.head.ref != 'staging'
+      - name: Solo `dev` puede mergear a `main`
+        if: github.event.pull_request.head.ref != 'dev'
         run: |
           echo "::error::Este PR va de '${{ github.event.pull_request.head.ref }}' a 'main'."
-          echo "::error::El flujo es: feature -> staging (se despliega a staging.resender.dev) -> main."
-          echo "::error::Cambia la base del PR a 'staging'."
+          echo "::error::El flujo es: feature -> dev (se despliega a staging.resender.dev) -> main."
+          echo "::error::Cambia la base del PR a 'dev'."
           exit 1
 
   ci:
@@ -65,7 +72,7 @@ jobs:
   #
   # No imprime una preview URL: `preview_urls` está en false (ver
   # apps/web/wrangler.jsonc) para no publicar un host indexable por deploy.
-  # Para ver el cambio corriendo están `wrangler dev` y la rama `staging`.
+  # Para ver el cambio corriendo están `wrangler dev` y la rama `dev`.
   #
   # Efecto secundario: deja a `web-staging` con una versión más nueva que la
   # desplegada, y en ese estado wrangler rechaza `secret put` ("the latest

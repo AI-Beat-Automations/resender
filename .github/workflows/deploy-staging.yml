@@ -2,7 +2,12 @@ name: Deploy staging
 
 on:
   push:
-    branches: [staging]
+    # `dev` reemplaza a `staging` como rama de integración. La rama `staging`
+    # quedó parada el 10-ago en el PR #39 —22 commits atrás de `main` y sin un
+    # solo commit propio—, así que ponerla al día era un fast-forward que
+    # arrastraba seis migraciones de una vez. En vez de eso se sale limpio desde
+    # `main` con `dev`, y `staging` queda muerta hasta que se borre.
+    branches: [dev]
   workflow_dispatch:
 
 concurrency:
