@@ -19,7 +19,17 @@ type LogLevel = "info" | "warn" | "error"
 // los puntos de entrada que tiene Next: un route handler, una server action, o
 // una tarea diferida con `after()` —que corre **después** de haber respondido y
 // es, justamente, donde vive el reenvío al webhook del tenant—.
-export type LogEntrypoint = "route" | "action" | "after"
+// `queue` y `scheduled` son los dos puntos de entrada que agrega `worker.ts`:
+// el consumidor de `webhook-deliveries` (y de su DLQ) y el cron de recuperación.
+// No son rutas de Next —no hay request ni sesión detrás—, así que se nombran
+// aparte: filtrar por `entrypoint=queue` es «todo lo que pasó entregando», sin
+// mezclar con lo que pasó recibiendo.
+export type LogEntrypoint =
+  | "route"
+  | "action"
+  | "after"
+  | "queue"
+  | "scheduled"
 
 // Verbos, unión cerrada, uno por punto de entrada real. Que sea cerrada es lo
 // que hace que «mostrame todo lo que pasó con la cuenta X» sea un filtro por
@@ -30,6 +40,8 @@ export type LogAction =
   | "webhook_receive" // POST: firma, parseo y recuento del sobre
   | "inbound_ingest" // un evento del sobre: mensaje o comentario
   | "webhook_delivery" // reenvío al webhook del tenant
+  | "queue_consume" // un mensaje de `webhook-deliveries` o de su DLQ
+  | "delivery_recover" // cron: reclama jobs cuyo plazo durable ya venció
   // salida hacia Meta
   | "outbound_send" // DM (Messenger o Instagram)
   | "comment_reply" // respuesta pública debajo del comentario
@@ -82,6 +94,12 @@ export type LogReason =
   | "http_error"
   | "network_error"
   | "max_attempts_exhausted"
+  // Temporal, y solo mientras dure el paso 1a: los handlers `queue`/`scheduled`
+  // existen pero todavía no tienen lógica. Hoy **nada** produce a la cola, así
+  // que esta línea no debería aparecer nunca; si aparece, el mensaje se reintenta
+  // en vez de descartarse y este motivo es la señal de que algo empezó a
+  // encolar antes de tiempo. Se borra en el 1b, junto con los handlers vacíos.
+  | "not_implemented"
   // salida hacia Meta
   | "meta_rejected"
   | "page_not_connected"

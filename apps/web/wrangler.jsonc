@@ -1,7 +1,10 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "web",
-  "main": ".open-next/worker.js",
+  // NO apunta a `.open-next/worker.js`: ese bundle solo exporta `fetch` y este
+  // Worker necesita además `queue` y `scheduled`. `worker.ts` lo reexporta y
+  // agrega los dos handlers al lado (patrón de custom worker de OpenNext).
+  "main": "worker.ts",
   "compatibility_date": "2026-07-01",
   "compatibility_flags": ["nodejs_compat"],
   // Ambos en false a propósito: con `workers_dev: true` el sitio entero
@@ -16,6 +19,42 @@
     "binding": "ASSETS",
   },
   "vars": { "ENVIRONMENT": "production" },
+  // Entrega durable al webhook del tenant. Las colas ya existen en la cuenta
+  // (`docs/api-cloudflare-manual-runbook.md`), creadas cuando esto vivía en el
+  // Worker `api`; acá se rebindean al Worker que sí está desplegado.
+  "queues": {
+    "producers": [
+      {
+        "binding": "WEBHOOK_DELIVERIES",
+        "queue": "webhook-deliveries",
+      },
+    ],
+    "consumers": [
+      {
+        "queue": "webhook-deliveries",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5,
+        "max_retries": 5,
+        "dead_letter_queue": "webhook-deliveries-dlq",
+      },
+      {
+        // La DLQ tiene consumidor propio y reintentos distintos de cero a
+        // propósito: no llama al webhook del cliente, solo marca el job `dead`.
+        // Si esa escritura a la base falla, el mensaje tiene que volver, no
+        // desaparecer. Ver `docs/api-dlq-runbook.md`.
+        "queue": "webhook-deliveries-dlq",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5,
+        "max_retries": 5,
+      },
+    ],
+  },
+  // Recuperación: reclama los jobs cuyo plazo durable venció, es decir los que
+  // quedaron `pending`/`processing` porque el Worker murió entre encolar y
+  // entregar. Es la red debajo de la cola, no un segundo camino de entrega.
+  "triggers": {
+    "crons": ["*/5 * * * *"],
+  },
   "observability": {
     "enabled": true,
     // Explícito aunque 1 ya sea el valor por defecto: el muestreo por cabecera
@@ -52,7 +91,7 @@
   "env": {
     // Worker separado `web-staging`, mismo código y distinto estado: branch de
     // Neon propia, llaves de test de Stripe y app de Meta de desarrollo. Se
-    // despliega desde la rama `staging` (.github/workflows/deploy-staging.yml).
+    // despliega desde la rama `dev` (.github/workflows/deploy-staging.yml).
     //
     // Sobre la herencia: `main`, `compatibility_date`, `compatibility_flags`,
     // `assets`, `observability`, `workers_dev` y `preview_urls` SÍ se heredan
@@ -66,6 +105,43 @@
       // hostname debe quedar detrás de Cloudflare Access (ver el checklist) —
       // si no, Google indexa una copia entera del sitio.
       "routes": [{ "pattern": "staging.resender.dev", "custom_domain": true }],
+      // Faltaba, y wrangler lo venía avisando: `vars` no se hereda, así que
+      // `web-staging` corría sin `ENVIRONMENT` y `logger.ts` lo resolvía como
+      // `development` (`process.env.ENVIRONMENT ?? "development"`). Filtrar
+      // `$.environment = "staging"` no devolvía nada, que es exactamente lo que
+      // hace falta para verificar la cola y el cron acá.
+      "vars": { "ENVIRONMENT": "staging" },
+      // Colas propias. Compartirlas con producción haría que un job de prueba
+      // saliera hacia el webhook real de un cliente que paga.
+      "queues": {
+        "producers": [
+          {
+            "binding": "WEBHOOK_DELIVERIES",
+            "queue": "webhook-deliveries-staging",
+          },
+        ],
+        "consumers": [
+          {
+            "queue": "webhook-deliveries-staging",
+            "max_batch_size": 10,
+            "max_batch_timeout": 5,
+            "max_retries": 5,
+            "dead_letter_queue": "webhook-deliveries-staging-dlq",
+          },
+          {
+            "queue": "webhook-deliveries-staging-dlq",
+            "max_batch_size": 10,
+            "max_batch_timeout": 5,
+            "max_retries": 5,
+          },
+        ],
+      },
+      // Explícito aunque `triggers` sea heredable: staging es donde se verifica
+      // que el cron corre, y depender de la herencia para eso deja la
+      // verificación apoyada en un detalle de wrangler en vez de en el archivo.
+      "triggers": {
+        "crons": ["*/5 * * * *"],
+      },
       // Contador propio: compartir `namespace_id` con producción haría que el
       // tráfico de pruebas consumiera la cuota de los visitantes reales.
       // 1001/1002 los usa `apps/api` y 1003 es `web` de producción.
