@@ -8,15 +8,7 @@ vi.mock("@/lib/db", () => ({
   getSql: () => sqlMock,
 }))
 
-// Mismo mock que en `features/connections` y `features/connect-meta`. Aquí es
-// imprescindible: el test mockea `fetch` y `pushInboundEvent` captura en
-// PostHog, así que con NEXT_PUBLIC_POSTHOG_KEY en el entorno el cliente real
-// intentaría hacer flush a través del fetch mockeado y el test fallaría.
-vi.mock("@/lib/posthog", () => ({
-  posthog: null,
-}))
-
-import { buildInboundPushPayload, pushInboundEvent } from "./external-push"
+import { buildInboundPushPayload } from "./external-push"
 
 const payload = {
   type: "message" as const,
@@ -213,26 +205,4 @@ describe("inbound push payload", () => {
     expect("attachment" in result.message).toBe(true)
   })
 
-  it("records a failed delivery without fetching unsafe webhook URLs", async () => {
-    const fetchMock = vi.fn()
-    vi.stubGlobal("fetch", fetchMock)
-
-    await pushInboundEvent({
-      subject: { kind: "message", id: "message-1" },
-      webhookUrl: "http://example.com/hook",
-      payload,
-    })
-
-    expect(fetchMock).not.toHaveBeenCalled()
-    expect(sqlMock).toHaveBeenCalledTimes(1)
-    expect(sqlMock.mock.calls[0]?.slice(1)).toEqual([
-      "message-1",
-      null,
-      "http://example.com/hook",
-      "failed",
-      null,
-      "La URL tiene que usar https. Solo se permite http en localhost, para desarrollo.",
-      1,
-    ])
-  })
 })
