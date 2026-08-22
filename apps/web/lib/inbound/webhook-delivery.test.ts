@@ -17,6 +17,12 @@ vi.mock("@opennextjs/cloudflare", () => ({
   getCloudflareContext: () => ({ env: { WEBHOOK_DELIVERIES: { send: sendMock } } }),
 }))
 
+import { encryptSecret } from "@/lib/crypto/encryption"
+import {
+  generateWebhookSigningSecret,
+  verifyWebhookSignature,
+} from "@/lib/pages/webhook-signing"
+
 import {
   classifyDeliveryResponse,
   consumeWebhookQueue,
@@ -65,6 +71,7 @@ const jobRow = {
   channel: "messenger",
   meta_page_id: "meta-page",
   username: null,
+  webhook_signing_secret_encrypted: null,
 }
 
 function queueMessage(body: unknown) {
@@ -224,6 +231,51 @@ describe("deliverJob", () => {
     expect(fetchMock).toHaveBeenCalledOnce()
     expect(fetchMock.mock.calls[0]?.[0]).toBe("https://example.com/hook")
     expect(transactionMock).toHaveBeenCalledOnce()
+  })
+
+  it("firma el push cuando la conexión tiene secreto", async () => {
+    process.env.TOKEN_ENCRYPTION_KEY = "0".repeat(64)
+    const secret = generateWebhookSigningSecret()
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 200 }))
+    sqlMock
+      .mockResolvedValueOnce([{ id: "job-1" }])
+      .mockResolvedValueOnce([
+        { ...jobRow, webhook_signing_secret_encrypted: encryptSecret(secret) },
+      ])
+
+    await deliverJob({ jobId: "job-1", fetcher: fetchMock })
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit
+    const headers = init.headers as Record<string, string>
+    expect(headers["resender-event-id"]).toBe("evt_message1")
+    // Lo que importa no es que la cabecera exista, sino que el receptor pueda
+    // verificarla con el secreto que se le mostró una sola vez.
+    expect(
+      verifyWebhookSignature({
+        secret,
+        eventId: "evt_message1",
+        timestamp: Number(headers["resender-timestamp"]),
+        body: String(init.body),
+        signature: headers["resender-signature"]!,
+      })
+    ).toBe(true)
+  })
+
+  // Las conexiones anteriores a la firma siguen recibiendo lo mismo que recibían.
+  // Dejar de entregarles por un secreto que nunca se les pidió sería romperles el
+  // producto para mejorarles la seguridad.
+  it("entrega sin firmar cuando la conexión no tiene secreto", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 200 }))
+    sqlMock
+      .mockResolvedValueOnce([{ id: "job-1" }])
+      .mockResolvedValueOnce([jobRow])
+
+    const result = await deliverJob({ jobId: "job-1", fetcher: fetchMock })
+
+    const headers = (fetchMock.mock.calls[0]?.[1] as RequestInit)
+      .headers as Record<string, string>
+    expect(headers["resender-signature"]).toBeUndefined()
+    expect(result).toEqual({ disposition: "ack" })
   })
 
   it("pide reintento con el retardo del intento actual ante un 503", async () => {
