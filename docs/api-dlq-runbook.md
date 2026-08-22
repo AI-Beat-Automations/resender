@@ -1,4 +1,8 @@
-# API webhook DLQ runbook
+# Webhook DLQ runbook
+
+Worker: `web` (`apps/web/worker.ts`, handler `queue`). El comportamiento que
+describe este runbook se portó tal cual desde el Worker `api`, que ya no existe
+(ADR 0012); las colas y las tablas son las mismas.
 
 Queue: `webhook-deliveries-dlq` (production) or
 `webhook-deliveries-staging-dlq` (staging).
