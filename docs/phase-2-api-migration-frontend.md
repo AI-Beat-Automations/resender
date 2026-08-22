@@ -1,5 +1,11 @@
 # Fase 2 — API migration/frontend
 
+> **Superado por [ADR 0012](./adr/0012-un-solo-worker-next-sin-api-separada.md)
+> (21-ago-2026).** La separación no se hizo: `apps/api` se borró sin haberse
+> desplegado nunca, y la entrega durable que diseñaba este plan vive ahora en el
+> Worker `web`. Este documento queda como histórico de por qué se intentó y qué
+> se rescató. El diseño completo está en el tag `arquitectura/api-worker-phase-1`.
+
 ## Estado del documento
 
 - **Objetivo:** migrar el Worker Next `web` para que consuma el backend mediante RPC y deje de ser dueño de DB, integraciones y API pública.

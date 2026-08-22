@@ -44,9 +44,7 @@ jobs:
       - run: npm ci
 
       - name: Lint, typecheck, test, build
-        run: |
-          npm --workspace api run cf-typegen:check
-          npx turbo lint typecheck test:run build
+        run: npx turbo lint typecheck test:run build
         env:
           # Valores dummy solo para que `next build` no falle en CI.
           # Los reales viven como secretos del Worker (wrangler secret).

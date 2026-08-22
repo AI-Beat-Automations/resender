@@ -71,7 +71,7 @@ Run database migrations manually after setting `DATABASE_URL`:
 npm --workspace web run db:migrate
 ```
 
-Migrations are shared: `apps/api` reads the same database. `0013_instagram_channel.sql`
+Migrations live in `apps/web/db/migrations` and run before every deploy. `0013_instagram_channel.sql`
 replaces the global unique on `connected_pages.meta_page_id` with `(channel, meta_page_id)`
 and makes the delivery tables accept a message **or** a comment, so both workers must be
 deployed together with it — an `on conflict` or `join` pinned to the old constraints fails
