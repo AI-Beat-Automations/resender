@@ -3,6 +3,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { getSql } from "@/lib/db"
 import type { PageChannel } from "@/lib/pages/page-registry"
 import { normalizeWebhookUrl } from "@/lib/pages/webhook-url"
+import { signedWebhookHeaders } from "@/lib/pages/webhook-signing"
 import { accountFields, describeError, log } from "@/lib/observability/logger"
 import { posthog } from "@/lib/posthog"
 
@@ -230,6 +231,9 @@ type JobRecord = {
   status: "pending" | "processing" | "succeeded" | "failed_permanent" | "dead"
   attemptCount: number
   recoverAfter: Date
+  // Nullable a propósito: las conexiones anteriores a la firma no tienen
+  // secreto, y su push sigue saliendo sin firmar en vez de dejar de entregarse.
+  signingSecretEncrypted: string | null
 }
 
 // Los dos joins son `left` y la cuenta sale del que venga informado. Con un join
@@ -241,7 +245,8 @@ async function getJob(jobId: string): Promise<JobRecord | null> {
     select j.id, j.event_id, j.tenant_id, j.message_id,
       j.instagram_comment_id, j.webhook_url, j.payload, j.status,
       j.attempt_count, j.recover_after,
-      p.id as connected_page_id, p.channel, p.meta_page_id, p.username
+      p.id as connected_page_id, p.channel, p.meta_page_id, p.username,
+      p.webhook_signing_secret_encrypted
     from external_webhook_jobs j
     left join messages m on m.id = j.message_id
     left join instagram_comments c on c.id = j.instagram_comment_id
@@ -447,15 +452,25 @@ export async function deliverJob(input: {
   let outcome: DeliveryOutcome
   try {
     if (!claimed.webhookUrl) throw new Error("webhookUrl not configured")
+    const body = JSON.stringify(claimed.payload)
     const response = await (input.fetcher ?? fetch)(claimed.webhookUrl, {
       method: "POST",
-      // Mismas cabeceras que hoy, a propósito: este paso cambia **cuándo** y
-      // **cuántas veces** se entrega, no qué recibe el tenant. La firma
-      // (`resender-signature` y `resender-event-id`) es el paso siguiente, y va
-      // junto con la generación y rotación del secreto, que hoy no existe en
-      // `web` — la columna `webhook_signing_secret_encrypted` está vacía.
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(claimed.payload),
+      headers: {
+        "Content-Type": "application/json",
+        // Las tres cabeceras de firma son **aditivas** y solo salen si la
+        // conexión tiene secreto. Una conexión anterior a la firma sigue
+        // recibiendo exactamente lo que recibía; dejar de entregarle porque le
+        // falta un secreto que nunca se le pidió sería romperle el producto para
+        // mejorarle la seguridad.
+        ...(claimed.signingSecretEncrypted
+          ? signedWebhookHeaders({
+              encryptedSecret: claimed.signingSecretEncrypted,
+              eventId: claimed.eventId,
+              body,
+            })
+          : {}),
+      },
+      body,
       signal: AbortSignal.timeout(WEBHOOK_DELIVERY_TIMEOUT_MS),
     })
     outcome = classifyDeliveryResponse(response.status)
@@ -669,24 +684,30 @@ async function captureDeliveryFailed(
   await posthog.flush()
 }
 
+// `== null` cubre null **y** undefined a propósito. Con `=== null`, una columna
+// ausente —una fila vieja, un `select` al que le falta un campo— se convertía en
+// el string `"undefined"`, que es truthy: el secreto de firma inexistente pasaba
+// a `decryptSecret` y reventaba la entrega en vez de salir sin firmar.
+function nullableText(value: unknown): string | null {
+  return value == null ? null : String(value)
+}
+
 function mapJob(row: Record<string, unknown>): JobRecord {
   return {
     id: String(row.id),
     eventId: String(row.event_id),
     tenantId: String(row.tenant_id),
-    messageId: row.message_id === null ? null : String(row.message_id),
-    commentId:
-      row.instagram_comment_id === null
-        ? null
-        : String(row.instagram_comment_id),
+    messageId: nullableText(row.message_id),
+    commentId: nullableText(row.instagram_comment_id),
     connectionId: String(row.connected_page_id),
     channel: row.channel as PageChannel,
     metaPageId: String(row.meta_page_id),
-    username: row.username === null ? null : String(row.username),
-    webhookUrl: row.webhook_url === null ? null : String(row.webhook_url),
+    username: nullableText(row.username),
+    webhookUrl: nullableText(row.webhook_url),
     payload: row.payload,
     status: row.status as JobRecord["status"],
     attemptCount: Number(row.attempt_count),
     recoverAfter: new Date(String(row.recover_after)),
+    signingSecretEncrypted: nullableText(row.webhook_signing_secret_encrypted),
   }
 }

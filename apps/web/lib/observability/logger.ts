@@ -54,6 +54,7 @@ export type LogAction =
   | "webhook_subscribe"
   | "webhook_unsubscribe"
   | "webhook_url_save"
+  | "webhook_secret_rotate" // el tenant pidió un secreto de firma nuevo
   // efectos de borde que hoy solo dejan un `console.error` suelto
   | "label_resolve" // @handle del contacto y permalink de la publicación
   | "token_exchange"

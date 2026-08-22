@@ -6,7 +6,9 @@ import { auth } from "@/auth"
 import {
   disconnectPage,
   getActivePageWithTokenByConnectionId,
+  ensureWebhookSigningSecret,
   InvalidWebhookUrlError,
+  rotateWebhookSigningSecret,
   updatePageWebhookUrl,
 } from "@/lib/pages/page-registry"
 import { unsubscribeChannelWebhook } from "@/lib/pages/channel-webhook"
@@ -20,6 +22,10 @@ import { posthog } from "@/lib/posthog"
 export type ConnectionActionState = {
   error?: string
   message?: string
+  // El secreto de firma en claro, y **solo** en la respuesta de la acción que lo
+  // generó. No se guarda en estado de servidor ni vuelve a leerse: en la base
+  // está cifrado y no hay forma de recuperarlo, solo de rotarlo otra vez.
+  revealedSecret?: string
 }
 
 export async function saveWebhookUrlAction(
@@ -64,8 +70,21 @@ export async function saveWebhookUrlAction(
       await posthog.flush()
     }
 
+    // Una conexión que estrena `webhookUrl` estrena secreto: así el primer
+    // evento ya sale firmado sin que el usuario tenga que enterarse de que la
+    // firma existe. Si ya tenía uno, no se toca — rotarlo al guardar la URL
+    // invalidaría el que el receptor tiene configurado.
+    const secret = updated.webhookUrl
+      ? await ensureWebhookSigningSecret(session.user.id, connectionId)
+      : null
+
     revalidatePath("/connections")
-    return { message: "Webhook actualizado." }
+    return secret
+      ? {
+          message: "Webhook actualizado. Copia el secreto de firma:",
+          revealedSecret: secret,
+        }
+      : { message: "Webhook actualizado." }
   } catch (error) {
     // `normalizeWebhookUrl` (lib/pages/webhook-url.ts) ya devuelve su mensaje en
     // español y solo lo consume esta pantalla, así que se propaga tal cual:
@@ -158,4 +177,39 @@ export async function disconnectPageAction(
 
   revalidatePath("/connections")
   return { message: "Página desconectada. El historial se conserva." }
+}
+
+// Rotar es la única forma de volver a ver un secreto, y por eso invalida el
+// anterior: el push firmado con el nuevo deja de validar contra el que el
+// receptor tenía. Es una acción destructiva y la UI lo dice antes.
+export async function rotateWebhookSecretAction(
+  _state: ConnectionActionState,
+  formData: FormData
+): Promise<ConnectionActionState> {
+  const session = await auth()
+  if (!session?.user?.id) return { error: "No has iniciado sesión." }
+
+  const connectionId = formData.get("connectionId")
+  if (typeof connectionId !== "string" || !connectionId) {
+    return { error: "Página inválida." }
+  }
+
+  const secret = await rotateWebhookSigningSecret(session.user.id, connectionId)
+  if (!secret) return { error: "No encontramos esa página." }
+
+  log({
+    entrypoint: "action",
+    action: "webhook_secret_rotate",
+    outcome: "ok",
+    tenantId: session.user.id,
+    connectionId,
+    // El secreto no se loguea, obviamente. Que la línea exista es lo que
+    // permite responder «¿cuándo dejó de validar mi firma?» sin adivinar.
+  })
+
+  revalidatePath("/connections")
+  return {
+    message: "Secreto rotado. Cópialo ahora: no vuelve a mostrarse.",
+    revealedSecret: secret,
+  }
 }

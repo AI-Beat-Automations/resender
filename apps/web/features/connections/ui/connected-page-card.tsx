@@ -2,10 +2,17 @@
 
 import Link from "next/link"
 import { useActionState } from "react"
-import { Check, LoaderCircle, TriangleAlert, Unplug } from "lucide-react"
+import {
+  Check,
+  KeyRound,
+  LoaderCircle,
+  TriangleAlert,
+  Unplug,
+} from "lucide-react"
 
 import {
   disconnectPageAction,
+  rotateWebhookSecretAction,
   saveWebhookUrlAction,
   type ConnectionActionState,
 } from "@/features/connections/actions"
@@ -44,6 +51,8 @@ export type ConnectedPageView = {
   tokenStatus: "valid" | "invalid"
   tokenError: string | null
   webhookUrl: string | null
+  // Booleano, nunca el secreto: esto cruza al cliente.
+  hasSigningSecret: boolean
   connectedAt: string
   connectedAtLabel: string
   tokenErrorAt: string | null
@@ -64,6 +73,15 @@ export function ConnectedPageCard({
     ConnectionActionState,
     FormData
   >(saveWebhookUrlAction, {})
+  const [rotateState, rotateAction, rotatePending] = useActionState<
+    ConnectionActionState,
+    FormData
+  >(rotateWebhookSecretAction, {})
+
+  // El secreto se muestra una sola vez, venga de haber guardado la URL (que lo
+  // genera si faltaba) o de una rotación explícita. No se guarda en ningún lado:
+  // si el usuario recarga, se fue.
+  const revealedSecret = rotateState.revealedSecret ?? saveState.revealedSecret
   const active = page.status === "active"
   // `status` y `token_status` son ejes independientes (ADR 0005): una página
   // activa puede tener el token rechazado. En una desconectada el token ya no
@@ -195,6 +213,7 @@ export function ConnectedPageCard({
       )}
 
       {active ? (
+        <>
         <form action={saveAction} className="mt-4 grid gap-2">
           <input type="hidden" name="connectionId" value={page.id} />
           <Label htmlFor={`webhook-${page.id}`}>Webhook URL</Label>
@@ -230,6 +249,57 @@ export function ConnectedPageCard({
             </p>
           ) : null}
         </form>
+
+        {/* Firma del push. Va debajo de la URL porque solo tiene sentido cuando
+            hay una: el secreto firma lo que se manda a ese destino. */}
+        <div className="mt-3.5 grid gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Label className="flex items-center gap-1.5">
+              <KeyRound className="size-3.5" aria-hidden />
+              Secreto de firma
+            </Label>
+            <form action={rotateAction}>
+              <input type="hidden" name="connectionId" value={page.id} />
+              <Button
+                type="submit"
+                variant="outline"
+                size="sm"
+                disabled={rotatePending}
+              >
+                {rotatePending && (
+                  <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+                )}
+                {rotatePending
+                  ? "Rotando…"
+                  : page.hasSigningSecret
+                    ? "Rotar"
+                    : "Generar"}
+              </Button>
+            </form>
+          </div>
+
+          {revealedSecret ? (
+            <div className="grid gap-1.5 rounded-lg border border-[var(--warning-border,var(--border))] bg-surface-sunken px-3.5 py-3">
+              <p className="text-[12.5px] font-medium">
+                Cópialo ahora: no vuelve a mostrarse.
+              </p>
+              <code className="block overflow-x-auto rounded bg-background px-2.5 py-2 font-mono text-[12.5px] select-all">
+                {revealedSecret}
+              </code>
+            </div>
+          ) : rotateState.error ? (
+            <p className="text-[12.5px] text-[var(--danger-text)]">
+              {rotateState.error}
+            </p>
+          ) : (
+            <p className="text-[12.5px] text-muted-foreground">
+              {page.hasSigningSecret
+                ? "Cada POST lleva las cabeceras resender-signature, resender-event-id y resender-timestamp. Rotar invalida el secreto anterior."
+                : "Todavía sin firma: el receptor no puede verificar que el POST venga de Resender."}
+            </p>
+          )}
+        </div>
+        </>
       ) : (
         // Desconectar es un UPDATE, no un DELETE: conviene decirlo donde el
         // usuario duda de si perdió algo.

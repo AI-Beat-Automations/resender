@@ -260,6 +260,7 @@ describe("migración 0016: adjuntos en messages", () => {
         tokenErrorAt: null,
         tokenExpiresAt: null,
         webhookUrl: null,
+    hasSigningSecret: false,
         connectedAt: new Date(),
         disconnectedAt: null,
         createdAt: new Date(),
