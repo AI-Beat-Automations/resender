@@ -4,6 +4,10 @@ import { getSql } from "@/lib/db"
 
 import type { PageOwnershipRow } from "./page-selection"
 import { normalizeWebhookUrl } from "./webhook-url"
+import {
+  encryptWebhookSigningSecret,
+  generateWebhookSigningSecret,
+} from "./webhook-signing"
 
 export type PageStatus = "active" | "disconnected"
 export type PageTokenStatus = "valid" | "invalid"
@@ -32,6 +36,9 @@ export type ConnectedPageRecord = {
   // días y esta es la fecha que mira el refresh.
   tokenExpiresAt: Date | null
   webhookUrl: string | null
+  // Solo si existe, nunca el valor: el secreto cifrado no tiene por qué salir
+  // de la base, y menos cruzar el límite serializable hacia el cliente.
+  hasSigningSecret: boolean
   connectedAt: Date
   disconnectedAt: Date | null
   createdAt: Date
@@ -51,6 +58,7 @@ type ConnectedPageRow = {
   token_error_at: Date | null
   token_expires_at: Date | null
   webhook_url: string | null
+  has_signing_secret?: boolean
   connected_at: Date
   disconnected_at: Date | null
   created_at: Date
@@ -121,7 +129,9 @@ export async function connectAuthorizedPages(
             where id = ${existing.id} and tenant_id = ${tenantId}
             returning id, tenant_id, channel, meta_page_id, name, username,
               status, token_status, token_error, token_error_at,
-              token_expires_at, webhook_url, connected_at, disconnected_at,
+              token_expires_at, webhook_url,
+              (webhook_signing_secret_encrypted is not null) as has_signing_secret,
+              connected_at, disconnected_at,
               created_at, updated_at
           `
         : sql`
@@ -138,7 +148,9 @@ export async function connectAuthorizedPages(
             )
             returning id, tenant_id, channel, meta_page_id, name, username,
               status, token_status, token_error, token_error_at,
-              token_expires_at, webhook_url, connected_at, disconnected_at,
+              token_expires_at, webhook_url,
+              (webhook_signing_secret_encrypted is not null) as has_signing_secret,
+              connected_at, disconnected_at,
               created_at, updated_at
           `
     )
@@ -209,6 +221,7 @@ export async function listTenantPages(tenantId: string) {
   const rows = await sql<ConnectedPageRow[]>`
     select id, tenant_id, channel, meta_page_id, name, username, status,
       token_status, token_error, token_error_at, token_expires_at, webhook_url,
+      (webhook_signing_secret_encrypted is not null) as has_signing_secret,
       connected_at, disconnected_at, created_at, updated_at
     from connected_pages
     where tenant_id = ${tenantId}
@@ -233,10 +246,53 @@ export async function updatePageWebhookUrl(
     where id = ${connectionId} and tenant_id = ${tenantId} and status = 'active'
     returning id, tenant_id, channel, meta_page_id, name, username, status,
       token_status, token_error, token_error_at, token_expires_at, webhook_url,
+      (webhook_signing_secret_encrypted is not null) as has_signing_secret,
       connected_at, disconnected_at, created_at, updated_at
   `
 
   return row ? mapConnectedPage(row) : null
+}
+
+// Rota el secreto de firma y devuelve el valor en claro **una sola vez**: en la
+// base solo queda cifrado, así que si el usuario no lo copia acá no hay forma de
+// recuperarlo, solo de rotarlo otra vez. Mismo criterio que las API keys.
+export async function rotateWebhookSigningSecret(
+  tenantId: string,
+  connectionId: string
+): Promise<string | null> {
+  const secret = generateWebhookSigningSecret()
+  const sql = getSql()
+  const rows = await sql`
+    update connected_pages
+    set webhook_signing_secret_encrypted = ${encryptWebhookSigningSecret(secret)},
+      webhook_signing_secret_rotated_at = now(),
+      updated_at = now()
+    where id = ${connectionId} and tenant_id = ${tenantId} and status = 'active'
+    returning id
+  `
+  return rows[0] ? secret : null
+}
+
+// Solo si falta. Se llama al guardar la `webhookUrl` para que una conexión nueva
+// quede firmada desde el primer evento sin que el usuario tenga que saber que la
+// firma existe. Rotar cuando ya hay uno invalidaría el que el receptor tiene
+// configurado, que es justo lo que no debe pasar al tocar la URL.
+export async function ensureWebhookSigningSecret(
+  tenantId: string,
+  connectionId: string
+): Promise<string | null> {
+  const secret = generateWebhookSigningSecret()
+  const sql = getSql()
+  const rows = await sql`
+    update connected_pages
+    set webhook_signing_secret_encrypted = ${encryptWebhookSigningSecret(secret)},
+      webhook_signing_secret_rotated_at = now(),
+      updated_at = now()
+    where id = ${connectionId} and tenant_id = ${tenantId} and status = 'active'
+      and webhook_signing_secret_encrypted is null
+    returning id
+  `
+  return rows[0] ? secret : null
 }
 
 export async function disconnectPage(tenantId: string, connectionId: string) {
@@ -249,6 +305,7 @@ export async function disconnectPage(tenantId: string, connectionId: string) {
     where id = ${connectionId} and tenant_id = ${tenantId}
     returning id, tenant_id, channel, meta_page_id, name, username, status,
       token_status, token_error, token_error_at, token_expires_at, webhook_url,
+      (webhook_signing_secret_encrypted is not null) as has_signing_secret,
       connected_at, disconnected_at, created_at, updated_at
   `
 
@@ -287,6 +344,7 @@ export async function getActivePageWithTokenForTenant(
   const [row] = await sql<ConnectedPageWithTokenRow[]>`
     select id, tenant_id, channel, meta_page_id, name, username, status,
       token_status, token_error, token_error_at, token_expires_at, webhook_url,
+      (webhook_signing_secret_encrypted is not null) as has_signing_secret,
       connected_at, disconnected_at, created_at, updated_at,
       page_access_token_encrypted
     from connected_pages
@@ -313,6 +371,7 @@ export async function getActivePageWithTokenByConnectionId(
   const [row] = await sql<ConnectedPageWithTokenRow[]>`
     select id, tenant_id, channel, meta_page_id, name, username, status,
       token_status, token_error, token_error_at, token_expires_at, webhook_url,
+      (webhook_signing_secret_encrypted is not null) as has_signing_secret,
       connected_at, disconnected_at, created_at, updated_at,
       page_access_token_encrypted
     from connected_pages
@@ -338,6 +397,7 @@ export async function getActivePageByMetaPageId(
   const [row] = await sql<ConnectedPageRow[]>`
     select id, tenant_id, channel, meta_page_id, name, username, status,
       token_status, token_error, token_error_at, token_expires_at, webhook_url,
+      (webhook_signing_secret_encrypted is not null) as has_signing_secret,
       connected_at, disconnected_at, created_at, updated_at
     from connected_pages
     where channel = ${channel}
@@ -452,6 +512,7 @@ export async function markPageTokenInvalid(input: {
       and status = 'active'
     returning id, tenant_id, channel, meta_page_id, name, username, status,
       token_status, token_error, token_error_at, token_expires_at, webhook_url,
+      (webhook_signing_secret_encrypted is not null) as has_signing_secret,
       connected_at, disconnected_at, created_at, updated_at
   `
 
@@ -472,6 +533,7 @@ function mapConnectedPage(row: ConnectedPageRow): ConnectedPageRecord {
     tokenErrorAt: row.token_error_at,
     tokenExpiresAt: row.token_expires_at,
     webhookUrl: row.webhook_url,
+    hasSigningSecret: row.has_signing_secret === true,
     connectedAt: row.connected_at,
     disconnectedAt: row.disconnected_at,
     createdAt: row.created_at,

@@ -9,6 +9,7 @@
     "stripe:preflight": "node scripts/stripe-preflight.mjs",
     "waitlist:export": "node scripts/waitlist-export.mjs",
     "build": "next build",
+    "check:bundle": "node scripts/check-bundle-size.mjs",
     "start": "next start",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",

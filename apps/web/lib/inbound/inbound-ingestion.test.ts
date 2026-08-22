@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   insertInboundMessage: vi.fn(),
   insertInboundComment: vi.fn(),
   isOwnPublishedComment: vi.fn(),
-  pushInboundEvent: vi.fn(),
+  enqueueDelivery: vi.fn(),
   recordSkippedDelivery: vi.fn(),
   log: vi.fn(),
 }))
@@ -43,8 +43,11 @@ vi.mock("@/lib/messages/message-log", () => ({
 vi.mock("./external-push", () => ({
   buildInboundPushPayload: () => ({ payload: true }),
   buildInboundCommentPayload: () => ({ payload: true }),
-  pushInboundEvent: mocks.pushInboundEvent,
   recordSkippedDelivery: mocks.recordSkippedDelivery,
+}))
+
+vi.mock("./webhook-delivery", () => ({
+  enqueueDelivery: mocks.enqueueDelivery,
 }))
 
 vi.mock("@/lib/comments/comment-log", () => ({
@@ -267,7 +270,7 @@ describe("Instagram dentro de facturación", () => {
       { kind: "message", id: "message-1" },
       expect.objectContaining({ logReason: "account_restricted" })
     )
-    expect(mocks.pushInboundEvent).not.toHaveBeenCalled()
+    expect(mocks.enqueueDelivery).not.toHaveBeenCalled()
   })
 
   it("deja de reenviar el comentario con el tenant restringido, pero persiste igual", async () => {
@@ -297,7 +300,7 @@ describe("Instagram dentro de facturación", () => {
         logReason: "account_restricted",
       })
     )
-    expect(mocks.pushInboundEvent).not.toHaveBeenCalled()
+    expect(mocks.enqueueDelivery).not.toHaveBeenCalled()
   })
 
   // Los dos gates que están **antes** de la medición siguen ganando: el
@@ -340,7 +343,7 @@ describe("Instagram dentro de facturación", () => {
       { kind: "message", id: "message-1" },
       expect.objectContaining({ context: expect.anything() })
     )
-    expect(mocks.pushInboundEvent).not.toHaveBeenCalled()
+    expect(mocks.enqueueDelivery).not.toHaveBeenCalled()
   })
 
   it("no reenvía dos veces el mismo mid: el dedupe corta antes del push", async () => {
@@ -396,7 +399,7 @@ describe("Messenger sigue medido", () => {
         logReason: "account_restricted",
       })
     )
-    expect(mocks.pushInboundEvent).not.toHaveBeenCalled()
+    expect(mocks.enqueueDelivery).not.toHaveBeenCalled()
   })
 })
 
@@ -464,7 +467,7 @@ describe("ingesta de comentarios de Instagram", () => {
     )
 
     await ingested[0]!.pushJob()
-    expect(mocks.pushInboundEvent).toHaveBeenCalledWith(
+    expect(mocks.enqueueDelivery).toHaveBeenCalledWith(
       expect.objectContaining({
         subject: { kind: "comment", id: "comment-row" },
       })
@@ -663,7 +666,7 @@ describe("permiso de Instagram por cuenta", () => {
       )
     ).resolves.toEqual([])
     expect(mocks.insertInboundMessage).not.toHaveBeenCalled()
-    expect(mocks.pushInboundEvent).not.toHaveBeenCalled()
+    expect(mocks.enqueueDelivery).not.toHaveBeenCalled()
     expectNotEnabled("message")
   })
 
@@ -681,7 +684,7 @@ describe("permiso de Instagram por cuenta", () => {
       )
     ).resolves.toEqual([])
     expect(mocks.insertInboundComment).not.toHaveBeenCalled()
-    expect(mocks.pushInboundEvent).not.toHaveBeenCalled()
+    expect(mocks.enqueueDelivery).not.toHaveBeenCalled()
     expectNotEnabled("comment")
   })
 
@@ -695,7 +698,7 @@ describe("permiso de Instagram por cuenta", () => {
     await ingested!.pushJob()
 
     expect(mocks.insertInboundMessage).toHaveBeenCalledTimes(1)
-    expect(mocks.pushInboundEvent).toHaveBeenCalledTimes(1)
+    expect(mocks.enqueueDelivery).toHaveBeenCalledTimes(1)
     // Ni siquiera se pregunta: Messenger no tiene bandera que consultar.
     expect(mocks.resolveInstagramAccess).not.toHaveBeenCalled()
   })

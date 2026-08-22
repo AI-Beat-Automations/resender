@@ -109,7 +109,7 @@ npx wrangler tail --config apps/web/wrangler.jsonc --format json \
   | jq -c '.logs[]?.message[0]? | select(.requestId=="<uuid>")'
 
 # el worker api
-npx wrangler tail --config apps/api/wrangler.jsonc --format json \
+npx wrangler tail --config apps/web/wrangler.jsonc --format json \
   | jq -c '.logs[]?.message[0]?'
 ```
 

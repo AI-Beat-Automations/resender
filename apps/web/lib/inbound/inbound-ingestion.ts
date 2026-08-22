@@ -26,9 +26,12 @@ import {
 import {
   buildInboundCommentPayload,
   buildInboundPushPayload,
-  pushInboundEvent,
   recordSkippedDelivery,
 } from "./external-push"
+// La entrega dejó de ocurrir acá: `enqueueDelivery` escribe el job y encola. El
+// reenvío en sí pasa en el consumidor de la cola (`worker.ts`), fuera del techo
+// de 30 s de `after()`.
+import { enqueueDelivery } from "./webhook-delivery"
 import type { InboundEvent } from "./inbound-event"
 import { extractInstagramComments } from "./instagram-comments"
 import { extractInstagramDirectMessages } from "./instagram-webhook"
@@ -357,7 +360,7 @@ async function ingestInboundEvents(
         })
     } else if (webhookUrl) {
       pushJob = () =>
-        pushInboundEvent({
+        enqueueDelivery({
           subject,
           webhookUrl,
           payload,
@@ -605,7 +608,7 @@ async function ingestInstagramComments(
             context,
           })
       : webhookUrl
-        ? () => pushInboundEvent({ subject, webhookUrl, payload, context })
+        ? () => enqueueDelivery({ subject, webhookUrl, payload, context })
         : () => recordSkippedDelivery(subject, { context })
 
     ingested.push({ pushJob })

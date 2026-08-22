@@ -282,6 +282,7 @@ function toPageView(
     tokenStatus: page.tokenStatus,
     tokenError: page.tokenError,
     webhookUrl: page.webhookUrl,
+    hasSigningSecret: page.hasSigningSecret,
     connectedAt: page.connectedAt.toISOString(),
     connectedAtLabel: dateTimeFormat.format(page.connectedAt),
     tokenErrorAt: page.tokenErrorAt?.toISOString() ?? null,

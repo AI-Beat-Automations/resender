@@ -1,3 +1,9 @@
+> **Obsoleto — [ADR 0012](./adr/0012-un-solo-worker-next-sin-api-separada.md).**
+> Describe el Worker `api`, que se borró del repo y de la cuenta de Cloudflare.
+> Las colas que crea (`webhook-deliveries*`) siguen en uso, pero ahora las
+> produce y consume el Worker `web`. Se conserva por los comandos de creación de
+> recursos, que siguen siendo los correctos.
+
 # API Worker: manual Cloudflare runbook
 
 Status: phase 1 implementation only. None of the commands in this runbook were

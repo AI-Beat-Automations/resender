@@ -45,7 +45,7 @@ La columna `unsubscribed_at` existe desde el inicio aunque no haya canal de corr
 - Ambas leen su copy del diccionario, incluidas las siete etiquetas de `heard_from` y el texto de consentimiento. `/waitlist` sale de `PRIVATE_PATHS` en `app/robots.ts` y entra al sitemap.
 
 ### Proteccion del formulario publico
-Es la primera escritura anonima a base de datos del repo: todo lo demas exige sesion, API key opaca o firma HMAC. Tres capas: validacion de formato de correo, campo trampa (honeypot) oculto, y rate limit por IP con el binding nativo `ratelimits` de Cloudflare en el worker de `web`, mismo patron que ya corre en `apps/api`. Cloudflare Turnstile queda descartado por ahora —suma un paso que puede fallarle a un usuario real justo cuando esta delante en un evento— y se agrega si aparece basura real.
+Es la primera escritura anonima a base de datos del repo: todo lo demas exige sesion, API key opaca o firma HMAC. Tres capas: validacion de formato de correo, campo trampa (honeypot) oculto, y rate limit por IP con el binding nativo `ratelimits` de Cloudflare en el worker de `web`. Cloudflare Turnstile queda descartado por ahora —suma un paso que puede fallarle a un usuario real justo cuando esta delante en un evento— y se agrega si aparece basura real.
 
 ### API Token
 La integración externa (N8N/IA) no reutiliza la sesión web. Se autentica con una API key opaca separada emitida por Resender para el tenant.
@@ -122,7 +122,7 @@ El token de larga duración de Instagram vence a los ~60 días y se guarda su `t
 
 ### Webhook de Instagram
 Instagram tiene **ruta y secreto propios**, separados de los de Messenger: `INSTAGRAM_APP_SECRET` no es `META_APP_SECRET`. Compartir la ruta obligaría a adivinar con cuál secreto verificar cada payload. Cada webhook se registra por separado en el panel de Meta, con su propio verify token, suscrito a los campos `messages` y `comments`.
-Rutas: `/api/meta/instagram/webhook` en `apps/web` y `/webhooks/meta/instagram` en `apps/api`. El resto —verificación HMAC sobre el body crudo, dedupe por índice único, resolución cuenta→tenant, gates, bitácora de entregas y política de reintentos— es el mismo que el de Messenger.
+Ruta: `/api/meta/instagram/webhook`. El resto —verificación HMAC sobre el body crudo, dedupe por índice único, resolución cuenta→tenant, gates, bitácora de entregas y política de reintentos— es el mismo que el de Messenger.
 
 ### DM de Instagram
 Los mensajes directos de Instagram usan las mismas tablas `conversations` y `messages` que Messenger; el canal se deriva de la cuenta conectada. El contacto se identifica por su **IGSID**, igual que el PSID en Messenger.
@@ -167,14 +167,21 @@ La `webhookUrl` debe usar HTTPS para destinos reales; HTTP queda reservado a des
 El payload reenviado al sistema externo incluye contexto minimo pero rico de `tenant`, `page`, `conversation` y `message`.
 Un tenant recibe **mensajes y comentarios en el mismo endpoint**, así que el payload abre con un discriminador `type: "message" | "comment"`; el segundo trae `comment` en lugar de `conversation` + `message`. Y `page` lleva siempre `channel` y `username` —`username` va `null` en Messenger—, porque un tenant con los dos canales apuntando al mismo webhook necesita distinguir de cuál vino el evento y una forma uniforme se consume más fácil que una que cambia según el canal. Un [Inbound message] puede traer un [Adjunto] en `message.attachment` (singular, forma fija: `type`, `url`, `title` y un objeto `details` con lo específico del tipo — `stickerId`, `reelVideoId`, `postId`, la reserva, el producto, `rawType` cuando el tipo es `unknown`, `droppedCount` si se descartó un adjunto extra). `message.text` sigue siendo string —vacío si no hubo texto— para no romper consumidores. Los campos nuevos son **aditivos**: no rompen a los consumidores existentes.
 
+### Firma del push
+Cada POST al webhook del tenant lleva tres cabeceras: `resender-event-id`, `resender-timestamp` (epoch en segundos) y `resender-signature` (`v1=<hex>`). La firma es `HMAC-SHA256(secreto, "<eventId>.<timestamp>.<cuerpo crudo>")`.
+Se firma el **eventId y el timestamp además del cuerpo**, no el cuerpo solo: sin el eventId, una firma válida sirve para reenviar otro cuerpo identico como si fuera un evento nuevo; sin el timestamp, una firma capturada vale para siempre. El receptor debe rechazar un timestamp fuera de una ventana de ~5 minutos y comparar la firma en tiempo constante.
+El secreto es por **conexión**, no por tenant: se genera solo al guardar por primera vez una `webhookUrl`, y se muestra **una sola vez**. En base se guarda cifrado con `TOKEN_ENCRYPTION_KEY`, así que no hay forma de recuperarlo — solo de rotarlo desde `Connections`, lo que invalida el anterior.
+Las conexiones anteriores a la firma siguen recibiendo el push **sin firmar** hasta que alguien pulse `Generar`. Dejar de entregarles por un secreto que nunca se les pidió seria romperles el producto para mejorarles la seguridad. La UI dice cuáles están sin firma.
+El `eventId` es determinista y sale del uuid del sujeto, así que el mismo evento reingerido produce el mismo id: sirve para deduplicar del lado del receptor.
+
 ### API externa de salida
 La API externa de salida usa API key opaca por header `Authorization: Bearer ...`.
 `POST /api/meta/send` recibe `pageId`, `recipientId`, y exactamente uno de `reply` (texto) o un [Adjunto de salida]. Puede recibir `conversationId` opcional para facilitar persistencia y auditoria del mensaje saliente.
 Si `conversationId` viene informado, debe coincidir con `pageId` y `recipientId`; si no coincide, la request se rechaza con `400`.
 Los mensajes salientes se persisten tanto en exito como en fallo, usando `status` para distinguir el resultado del envio.
-Instagram no agrega un campo `channel` al endpoint de Messenger: usa **rutas propias**, que son las de Facebook con `/instagram` insertado. En `apps/web`: `POST /api/meta/instagram/send` (DM, mismo body que Messenger, donde `pageId` es el IG id de la cuenta), `POST /api/meta/instagram/comments/reply` (respuesta pública) y `POST /api/meta/instagram/comments/private-reply` (DM al que comentó). En `apps/api`: `POST /v1/comments/{commentId}/replies` y `POST /v1/comments/{commentId}/private-replies`, donde `{commentId}` sí es el uuid de Resender porque el resto de la API v1 se direcciona por uuid propio.
+Instagram no agrega un campo `channel` al endpoint de Messenger: usa **rutas propias**, que son las de Facebook con `/instagram` insertado. En `apps/web`: `POST /api/meta/instagram/send` (DM, mismo body que Messenger, donde `pageId` es el IG id de la cuenta), `POST /api/meta/instagram/comments/reply` (respuesta pública) y `POST /api/meta/instagram/comments/private-reply` (DM al que comentó).
 El body de un DM de Instagram es el mismo que el de Messenger, pero un [Adjunto de salida] se rechaza: ese canal todavía no los acepta.
-Las tres rutas de salida de Instagram comparten la API key del tenant, el header `Idempotency-Key` y la persistencia en éxito y en fallo. En `apps/api`, las respuestas a comentarios **comparten cubeta de rate limit** con el envío de mensajes: son la misma clase de operación —salir hacia Graph por cada evento entrante— y con cubetas separadas un tenant podría duplicar su presión sobre Meta sin tocar su límite.
+Las tres rutas de salida de Instagram comparten la API key del tenant, el header `Idempotency-Key` y la persistencia en éxito y en fallo.
 
 ### Adjunto
 Un archivo o tarjeta que viaja en un mensaje. En **salida** solo existen cuatro tipos por URL (`image`, `video`, `audio`, `file`): ver [Adjunto de salida]. En **entrada**, solo Messenger y en este alcance, se acepta el catálogo de Meta: `image`, `audio`, `video`, `file`, `sticker`, `reel`, `ig_reel`, `post`, `ig_post`, `fallback`, `appointment_booking`, `template`, o `unknown` si llega un tipo nuevo. El push al tenant lo entrega como un solo `message.attachment` de forma fija; si Meta manda el sticker duplicado (`image` + `sticker` hasta agosto 2026) se conserva el `sticker`.

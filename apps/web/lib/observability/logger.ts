@@ -19,7 +19,17 @@ type LogLevel = "info" | "warn" | "error"
 // los puntos de entrada que tiene Next: un route handler, una server action, o
 // una tarea diferida con `after()` —que corre **después** de haber respondido y
 // es, justamente, donde vive el reenvío al webhook del tenant—.
-export type LogEntrypoint = "route" | "action" | "after"
+// `queue` y `scheduled` son los dos puntos de entrada que agrega `worker.ts`:
+// el consumidor de `webhook-deliveries` (y de su DLQ) y el cron de recuperación.
+// No son rutas de Next —no hay request ni sesión detrás—, así que se nombran
+// aparte: filtrar por `entrypoint=queue` es «todo lo que pasó entregando», sin
+// mezclar con lo que pasó recibiendo.
+export type LogEntrypoint =
+  | "route"
+  | "action"
+  | "after"
+  | "queue"
+  | "scheduled"
 
 // Verbos, unión cerrada, uno por punto de entrada real. Que sea cerrada es lo
 // que hace que «mostrame todo lo que pasó con la cuenta X» sea un filtro por
@@ -30,6 +40,8 @@ export type LogAction =
   | "webhook_receive" // POST: firma, parseo y recuento del sobre
   | "inbound_ingest" // un evento del sobre: mensaje o comentario
   | "webhook_delivery" // reenvío al webhook del tenant
+  | "queue_consume" // un mensaje de `webhook-deliveries` o de su DLQ
+  | "delivery_recover" // cron: reclama jobs cuyo plazo durable ya venció
   // salida hacia Meta
   | "outbound_send" // DM (Messenger o Instagram)
   | "comment_reply" // respuesta pública debajo del comentario
@@ -42,6 +54,7 @@ export type LogAction =
   | "webhook_subscribe"
   | "webhook_unsubscribe"
   | "webhook_url_save"
+  | "webhook_secret_rotate" // el tenant pidió un secreto de firma nuevo
   // efectos de borde que hoy solo dejan un `console.error` suelto
   | "label_resolve" // @handle del contacto y permalink de la publicación
   | "token_exchange"
@@ -57,6 +70,10 @@ export type LogOutcome =
   | "skipped" // se persistió, pero no se reenvía
   | "retry"
   | "failed"
+  // Terminal y sin vuelta: la cola agotó sus reintentos y el job pasó por la
+  // DLQ. Se separa de `failed` porque `failed` todavía puede tener intentos por
+  // delante y `dead` no: es la línea que busca el runbook de la DLQ.
+  | "dead"
 
 // Catálogo cerrado de motivos. Es la lista completa de razones por las que algo
 // puede no pasar, en un solo archivo y de una sola lectura: se puede leer entera
@@ -82,6 +99,11 @@ export type LogReason =
   | "http_error"
   | "network_error"
   | "max_attempts_exhausted"
+  // cola y recuperación
+  | "job_already_terminal" // el job ya estaba cerrado: no se entrega dos veces
+  | "invalid_queue_payload" // el cuerpo del mensaje no trae un `jobId`
+  | "queue_retries_exhausted" // llegó a la DLQ: el job queda `dead`
+  | "dlq_persist_failed"
   // salida hacia Meta
   | "meta_rejected"
   | "page_not_connected"
@@ -141,6 +163,13 @@ type SubjectFields = {
 
 type ContextFields = {
   requestId?: string
+  // El job de `external_webhook_jobs`. Es la clave con la que el runbook de la
+  // DLQ cruza el log con la bitácora de intentos.
+  jobId?: string
+  // El id del mensaje **de la cola de Cloudflare**, que no es el id de un
+  // mensaje de Resender. Van con nombres distintos justamente porque antes los
+  // dos viajaban bajo la misma clave.
+  queueMessageId?: string
   route?: string
   status?: number
   attempt?: number
@@ -181,6 +210,7 @@ const LEVEL_BY_OUTCOME: Record<LogOutcome, LogLevel> = {
   skipped: "info",
   retry: "warn",
   failed: "error",
+  dead: "error",
 }
 
 // Segunda línea de defensa detrás del tipo: si un secreto se cuela dentro del
