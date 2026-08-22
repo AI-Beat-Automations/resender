@@ -104,3 +104,14 @@ jobs:
           NEXT_PUBLIC_META_CONFIG_ID: ${{ vars.NEXT_PUBLIC_META_CONFIG_ID_STAGING }}
           NEXT_PUBLIC_POSTHOG_KEY: ${{ vars.NEXT_PUBLIC_POSTHOG_KEY_STAGING }}
           NEXT_PUBLIC_POSTHOG_HOST: ${{ vars.NEXT_PUBLIC_POSTHOG_HOST_STAGING }}
+
+      # Va al final y no en el job `ci`: el bundle que Cloudflare pesa lo produce
+      # el build de OpenNext, y el único que lo corre es este job. Para cuando
+      # llega acá, `.open-next` ya existe, así que medir solo cuesta un dry-run.
+      #
+      # Después del upload a propósito: si el bundle ya fuera tan grande que
+      # Cloudflare lo rechaza, el paso de arriba habría fallado primero y con el
+      # error de la plataforma, que es más informativo que el nuestro. Este check
+      # existe para avisar **antes** de llegar a ese punto.
+      - name: Bundle size
+        run: npm run check:bundle -w web
