@@ -134,6 +134,9 @@ export type LogReason =
   // No se pudo bajar el medio de Meta y no vale la pena reintentar: MIME fuera
   // de catálogo, archivo demasiado grande, o el media id ya no resuelve.
   | "media_download_failed"
+  // Se agotaron los reintentos del pedido de sync de Coexistence. Importa que
+  // sea visible: sin el sync, la conexión muere sola a las 24 h.
+  | "history_sync_failed"
   | "account_owned_by_other_tenant"
   | "page_limit_reached"
   | "configuration_failed"

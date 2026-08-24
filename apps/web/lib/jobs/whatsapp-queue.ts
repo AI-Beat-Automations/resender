@@ -2,6 +2,7 @@ import { handleMediaPurgeJob } from "@/lib/account/media-purge"
 import { getMediaBucket } from "@/lib/messages/media-access"
 import { log } from "@/lib/observability/logger"
 
+import { markHistorySyncFailed, requestHistorySync } from "./history-sync"
 import { downloadMediaToR2, markAttachmentFailed } from "./media-download"
 
 // Consumidor de `whatsapp-jobs` y de su DLQ.
@@ -65,6 +66,13 @@ export async function consumeWhatsappQueue(
         await markAttachmentFailed(job.messageId, "queue_retries_exhausted")
       }
 
+      // Sin el sync, la conexión de Coexistence muere sola cuando vencen las
+      // 24 h y el tenant no se entera. `failed` es lo que hace que Connections
+      // lo muestre como una acción concreta en vez de un silencio.
+      if (job.type === "history_sync_request") {
+        await markHistorySyncFailed(job.connectionId)
+      }
+
       log({
         entrypoint: "queue",
         action: "queue_consume",
@@ -121,11 +129,17 @@ async function runJob(
       return
 
     case "history_sync_request":
+      // **El sync hay que pedirlo.** El callback persiste la conexión y encola
+      // esto; si acá no se llamara a Meta, no llegaría ningún `history` y la
+      // conexión se perdería sola a las 24 h sin que nada fallara a la vista.
+      await requestHistorySync({ connectionId: job.connectionId })
+      return
+
     case "history_chunk":
-      // El historial de Coexistence se pide y se persiste desde el callback y el
-      // webhook, que es donde está el contexto de la conexión. Estos dos tipos
-      // quedan declarados en la unión —y atendidos acá— para que el día que el
-      // trabajo se mueva a la cola no haya que tocar el discriminador.
+      // Los chunks se persisten en la ingesta del webhook, que es donde está el
+      // contexto de la conexión y el dedupe. El tipo queda en la unión para que
+      // el día que el trabajo se mueva a la cola no haya que tocar el
+      // discriminador ni el productor.
       log({
         entrypoint: "queue",
         action: "queue_consume",

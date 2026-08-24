@@ -10,6 +10,7 @@ import {
 
 import { ConnectFacebookButton } from "@/features/connect-meta/ui/connect-facebook-button"
 import { ConnectInstagramButton } from "@/features/connect-meta/ui/connect-instagram-button"
+import { ConnectWhatsAppButton } from "@/features/connect-whatsapp/ui/connect-whatsapp-button"
 import {
   ConnectedPageCard,
   type ConnectedPageView,
@@ -29,7 +30,6 @@ const CLOSED_CHANNEL_ACCESS: ChannelAccess = {
   whatsapp: false,
 }
 import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
-import { Button } from "@workspace/ui/components/button"
 import { offersChannel } from "@/lib/pages/channel-display"
 import { formatMetaConnectionError } from "@/lib/pages/meta-connection-error"
 import { listTenantPages } from "@/lib/pages/page-registry"
@@ -102,7 +102,7 @@ export default async function ConnectionsPage({
           <div className="flex shrink-0 flex-wrap gap-2.5">
             <ConnectFacebookButton />
             {offersInstagram && <ConnectInstagramButton />}
-            {offersWhatsapp && <ConnectWhatsappButtons />}
+            {offersWhatsapp && <ConnectWhatsAppButton />}
           </div>
         )}
       </header>
@@ -252,7 +252,7 @@ function EmptyState({
               cliente.
             </p>
           </div>
-          <ConnectWhatsappButtons />
+          <ConnectWhatsAppButton />
         </section>
       )}
 
@@ -290,21 +290,6 @@ function EmptyState({
  * apuntan a las mismas rutas que va a usar el lanzador, así que el contrato de
  * URLs no cambia cuando llegue.
  */
-function ConnectWhatsappButtons() {
-  return (
-    <div className="flex shrink-0 flex-wrap gap-2.5">
-      <Button asChild size="lg">
-        <a href="/api/meta/whatsapp/start">Conectar número nuevo</a>
-      </Button>
-      <Button asChild variant="outline" size="lg">
-        <a href="/api/meta/whatsapp/start?mode=coexistence">
-          Conectar número existente (Coexistence)
-        </a>
-      </Button>
-    </div>
-  )
-}
-
 // El cupo del plan cuenta **conexiones**, sin mirar el canal (ADR 0011): una
 // cuenta de Instagram ocupa slot igual que una Página de Facebook. El contador
 // dice «conexiones» y no «páginas» justamente para que nadie busque por qué su
