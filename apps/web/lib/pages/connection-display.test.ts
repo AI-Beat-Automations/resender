@@ -8,6 +8,7 @@ import {
   HISTORY_SYNC_NOTICE,
   ONBOARDING_MODE_LABEL,
   formatConnectionIdentity,
+  offersPinReveal,
   resolveHistorySyncNotice,
   resolveReconnectHref,
   showsCoexistenceLimits,
@@ -211,5 +212,27 @@ describe("limitaciones de Coexistence", () => {
   it("nombra los dos flujos de alta con la copy de los botones", () => {
     expect(ONBOARDING_MODE_LABEL.standard).toContain("número nuevo")
     expect(ONBOARDING_MODE_LABEL.coexistence).toContain("Coexistence")
+  })
+})
+
+describe("PIN de verificación en dos pasos", () => {
+  // El caso que obliga a la columna `whatsapp_pin_generated`: cifrados, el PIN
+  // nuestro y el del cliente se ven igual, y solo el nuestro hay que devolverlo.
+  it("ofrece revelar solo el PIN que generamos nosotros", () => {
+    expect(
+      offersPinReveal({ channel: "whatsapp", whatsappPinGenerated: true })
+    ).toBe(true)
+    expect(
+      offersPinReveal({ channel: "whatsapp", whatsappPinGenerated: false })
+    ).toBe(false)
+  })
+
+  it("no lo ofrece en los canales que no tienen PIN", () => {
+    expect(
+      offersPinReveal({ channel: "messenger", whatsappPinGenerated: true })
+    ).toBe(false)
+    expect(
+      offersPinReveal({ channel: "instagram", whatsappPinGenerated: true })
+    ).toBe(false)
   })
 })

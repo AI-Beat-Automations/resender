@@ -242,3 +242,28 @@ export function showsCoexistenceLimits(page: {
 }): boolean {
   return page.channel === "whatsapp" && page.onboardingMode === "coexistence"
 }
+
+/**
+ * Si la tarjeta ofrece revelar el PIN de verificación en dos pasos.
+ *
+ * Solo cuando el PIN lo **generamos nosotros** (`whatsapp_pin_generated`). Es la
+ * distinción que la migración `0017` justifica: registrar un número que no tenía
+ * 2FA se la activa con un PIN que Meta no vuelve a mostrar y que no tiene
+ * endpoint de lectura, así que somos los únicos que lo sabemos y estamos
+ * obligados a poder devolvérselo. Un PIN que escribió el cliente ya lo conoce, y
+ * enseñárselo sería ruido que además invita a preguntarse por qué lo tenemos.
+ *
+ * Hace falta de verdad, no es una comodidad: sin esto, reconectar el mismo
+ * número en otro entorno —o después de restaurar— falla con un `133005` pidiendo
+ * un PIN que inventamos y que nadie puede recuperar.
+ *
+ * El botón se ofrece aunque la conexión esté desconectada: el PIN sigue vivo del
+ * lado de Meta, y justamente cuando la conexión ya no está es cuando hace falta
+ * recuperarlo.
+ */
+export function offersPinReveal(page: {
+  channel: PageChannel
+  whatsappPinGenerated: boolean
+}): boolean {
+  return page.channel === "whatsapp" && page.whatsappPinGenerated
+}
