@@ -1,4 +1,5 @@
 import { describeError, log } from "@/lib/observability/logger"
+import type { PageChannel } from "@/lib/pages/page-registry"
 import {
   extractMetaErrorCode,
   extractMetaErrorMessage,
@@ -215,12 +216,17 @@ export async function subscribePagesToWebhook(pages: ConnectedPage[]) {
 // Desuscribe una página del webhook del app. Se usa best-effort al eliminar la
 // cuenta del tenant: si falla, el borrado de datos continúa igual.
 export async function unsubscribeFromWebhook(
-  pageId: string,
-  pageAccessToken: string
+  nodeId: string,
+  pageAccessToken: string,
+  // De qué canal es la baja, solo para que el fallo no se registre siempre como
+  // de Messenger. La llamada es idéntica en los dos: WhatsApp usa este mismo
+  // `DELETE /{id}/subscribed_apps` del Graph de Facebook —donde vive Cloud
+  // API— pero con el id del WABA en lugar del page id.
+  channel: Extract<PageChannel, "messenger" | "whatsapp"> = "messenger"
 ): Promise<boolean> {
   // Graph espera el access_token como query param en DELETE; algunos stacks
   // descartan el body de una request DELETE.
-  const url = new URL(`${GRAPH}/${pageId}/subscribed_apps`)
+  const url = new URL(`${GRAPH}/${nodeId}/subscribed_apps`)
   url.searchParams.set("access_token", pageAccessToken)
   const res = await fetch(url, { method: "DELETE" })
   const data = await res.json()
@@ -230,8 +236,8 @@ export async function unsubscribeFromWebhook(
       action: "webhook_unsubscribe",
       outcome: "failed",
       reason: "unsubscribe_failed",
-      channel: "messenger",
-      accountId: pageId,
+      channel,
+      accountId: nodeId,
       errorCode: extractMetaErrorCode(data) ?? undefined,
       errorMessage: extractMetaErrorMessage(data) ?? undefined,
       status: res.status,

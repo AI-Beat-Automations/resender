@@ -24,12 +24,7 @@ type LogLevel = "info" | "warn" | "error"
 // No son rutas de Next —no hay request ni sesión detrás—, así que se nombran
 // aparte: filtrar por `entrypoint=queue` es «todo lo que pasó entregando», sin
 // mezclar con lo que pasó recibiendo.
-export type LogEntrypoint =
-  | "route"
-  | "action"
-  | "after"
-  | "queue"
-  | "scheduled"
+export type LogEntrypoint = "route" | "action" | "after" | "queue" | "scheduled"
 
 // Verbos, unión cerrada, uno por punto de entrada real. Que sea cerrada es lo
 // que hace que «mostrame todo lo que pasó con la cuenta X» sea un filtro por
@@ -60,6 +55,7 @@ export type LogAction =
   | "token_exchange"
   | "token_invalidate"
   | "token_decrypt"
+  | "media_download" // baja un medio entrante de WhatsApp de Meta a R2, y lo sirve
   | "usage_increment"
   | "subscription_check"
 
@@ -113,6 +109,9 @@ export type LogReason =
   | "unauthorized"
   | "waitlisted"
   | "channel_not_enabled" // ADR 0010: el tenant no tiene permiso para ese canal
+  // WhatsApp: el contacto no escribió en las últimas 24 h, así que Meta sólo
+  // aceptaría una plantilla. Se corta acá y no se llama a Cloud API.
+  | "customer_service_window_closed"
   | "plan_restricted"
   | "invalid_request"
   | "idempotent_replay"
@@ -125,6 +124,19 @@ export type LogReason =
   | "profile_fetch_failed"
   | "subscription_failed"
   | "unsubscribe_failed"
+  // WhatsApp: en este canal se conecta un número y se suscribe el WABA, así que
+  // la baja necesita saber de qué WABA cuelga y si queda algún número vivo.
+  | "missing_waba_id"
+  | "waba_has_active_numbers"
+  // La fila dice `available` y R2 no tiene el objeto: el estado derivado y el
+  // bucket se separaron, que es justo lo que la lifecycle rule debería evitar.
+  | "media_object_missing"
+  // No se pudo bajar el medio de Meta y no vale la pena reintentar: MIME fuera
+  // de catálogo, archivo demasiado grande, o el media id ya no resuelve.
+  | "media_download_failed"
+  // Se agotaron los reintentos del pedido de sync de Coexistence. Importa que
+  // sea visible: sin el sync, la conexión muere sola a las 24 h.
+  | "history_sync_failed"
   | "account_owned_by_other_tenant"
   | "page_limit_reached"
   | "configuration_failed"
@@ -143,6 +155,11 @@ type AccountFields = {
   channel?: PageChannel
   accountId?: string
   accountHandle?: string
+  // Cuántas conexiones activas siguen colgando del mismo nodo de Meta. Solo lo
+  // escribe la baja de WhatsApp, y es la que contesta «¿por qué este número se
+  // desconectó y su WABA sigue mandando eventos?». Es un conteo, no contenido:
+  // no dice de quién son ni qué mandaron.
+  remainingConnections?: number
 }
 
 type SubjectFields = {

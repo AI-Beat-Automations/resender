@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  checkAccountSlotAvailable,
   classifyPagesForSelection,
   formatPageAllowance,
   validatePageSelection,
@@ -212,5 +213,54 @@ describe("page selection copy", () => {
         "Esa selección incluye una página que no puedes conectar. Recarga la pantalla e inténtalo de nuevo."
       )
     }
+  })
+})
+
+describe("checkAccountSlotAvailable", () => {
+  it("deja conectar mientras quede hueco", () => {
+    expect(
+      checkAccountSlotAvailable({
+        activePageCount: 1,
+        maxPages: 2,
+        reconnectingActiveAccount: false,
+      })
+    ).toEqual({ ok: true })
+  })
+
+  it("bloquea la cuenta nueva cuando el cupo está lleno", () => {
+    const result = checkAccountSlotAvailable({
+      activePageCount: 2,
+      maxPages: 2,
+      reconnectingActiveAccount: false,
+    })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      // El cupo se dice en conexiones (ADR 0011) y nombra la acción.
+      expect(result.message).toContain("2 conexiones")
+      expect(result.message).toContain("Desconecta")
+    }
+  })
+
+  it("deja reconectar una cuenta que ya está activa aunque no quede cupo", () => {
+    // Reconectar no pide un hueco nuevo: ya ocupa el suyo. Sin esta rama, quien
+    // está en el tope no podría renovar el token de lo que ya tiene.
+    expect(
+      checkAccountSlotAvailable({
+        activePageCount: 5,
+        maxPages: 2,
+        reconnectingActiveAccount: true,
+      })
+    ).toEqual({ ok: true })
+  })
+
+  it("bloquea también cuando ya se pasó del límite", () => {
+    expect(
+      checkAccountSlotAvailable({
+        activePageCount: 3,
+        maxPages: 2,
+        reconnectingActiveAccount: false,
+      }).ok
+    ).toBe(false)
   })
 })

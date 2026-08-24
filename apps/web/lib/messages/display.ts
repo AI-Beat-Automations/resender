@@ -6,9 +6,12 @@ import {
 import {
   type AttachmentDisplay,
   toAttachmentDisplay,
+  whatsappMediaUrl,
 } from "@/lib/inbox/message-media"
 import type { PageChannel } from "@/lib/pages/page-registry"
 
+import { effectiveStatus } from "./media-retention"
+import type { AttachmentStatus, DeliveryStatus } from "./message-enums"
 import type { ConversationListItem, ThreadMessage } from "./read-model"
 
 // Presentación del log de mensajes (ADR 0005). Módulo puro: sin DB ni red, y
@@ -41,6 +44,15 @@ export type ConversationRowView = {
   failed: boolean
 }
 
+export type ThreadReactionView = {
+  /** Id del mensaje-reacción, para la key de React. */
+  id: string
+  /** El emoji tal como lo mandó WhatsApp. */
+  emoji: string
+  /** La puso el negocio (saliente) y no el cliente. */
+  outbound: boolean
+}
+
 export type ThreadMessageView = {
   id: string
   outbound: boolean
@@ -53,6 +65,16 @@ export type ThreadMessageView = {
   meta: string
   /** El saliente es la respuesta privada a un comentario de Instagram. */
   fromComment: boolean
+  /**
+   * Lo que reporta Meta sobre la entrega, ya en castellano y prefijado
+   * (`entrega: leído`). Es **otra cosa** que el `status` interno que va en
+   * `meta`, y por eso va en su propio campo y lleva el prefijo: `sent` interno
+   * significa «lo mandamos a Meta» y `delivered` significa «llegó al teléfono».
+   * Null en Messenger e Instagram, que no reportan entrega.
+   */
+  delivery: string | null
+  /** Reacciones colgadas de este mensaje; nunca burbujas propias. */
+  reactions: ThreadReactionView[]
   /** Error crudo del proveedor, solo en `failed`. */
   error: string | null
   /** Separador de fecha cuando el mensaje abre un día nuevo. */
@@ -101,9 +123,16 @@ export function formatPageLabel(page: {
   name: string
   username: string | null
   metaPageId: string
+  whatsappPhoneE164?: string | null
 }) {
   if (page.channel === "instagram" && page.username) {
     return `@${page.username} · ig_id ${page.metaPageId}`
+  }
+  // Mismo criterio en WhatsApp: `metaPageId` acá es el `phone_number_id`, un
+  // entero opaco. Lo que el usuario reconoce es el número; el id es lo que cita
+  // en soporte. Sin número —fila vieja o alta a medio hacer— cae al nombre.
+  if (page.channel === "whatsapp" && page.whatsappPhoneE164) {
+    return `${page.whatsappPhoneE164} · phone_number_id ${page.metaPageId}`
   }
   return `${page.name} · ${page.metaPageId}`
 }
@@ -150,16 +179,161 @@ export function toConversationRowView(
   }
 }
 
+// Cómo se lee en castellano cada estado de entrega que reporta Meta. Es un
+// `Record` sobre la unión y no un `switch` con default: el estado nuevo no
+// compila hasta que alguien decida cómo se dice.
+export const DELIVERY_STATUS_LABEL: Record<DeliveryStatus, string> = {
+  accepted: "aceptado",
+  sent: "enviado",
+  delivered: "entregado",
+  read: "leído",
+  failed: "no entregado",
+  deleted: "eliminado",
+}
+
+/**
+ * `entrega: leído`, o null si el proveedor todavía no dijo nada.
+ *
+ * El prefijo no es decoración. En la burbuja conviven dos palabras que se
+ * parecen y no significan lo mismo: el `status` interno (`sent` = «se lo
+ * mandamos a Meta») y el `delivery_status` (`sent` = «Meta lo mandó al
+ * teléfono», `delivered` = «llegó»). Sin el prefijo, un hilo con `sent · sent`
+ * es indescifrable; con él, cada uno dice de qué habla.
+ */
+export function formatDeliveryLabel(
+  deliveryStatus: DeliveryStatus | null
+): string | null {
+  if (!deliveryStatus) return null
+  return `entrega: ${DELIVERY_STATUS_LABEL[deliveryStatus]}`
+}
+
+export type ReactionGrouping = {
+  /** Los mensajes que llevan burbuja propia, en el orden que entraron. */
+  timeline: ThreadMessage[]
+  /** Reacciones por id del mensaje al que apuntan. */
+  reactionsByMessageId: Record<string, ThreadReactionView[]>
+}
+
+/**
+ * Separa las reacciones del hilo y las cuelga del mensaje al que apuntan.
+ *
+ * Una reacción **no es un mensaje**: WhatsApp la manda como una fila más, con
+ * su propio wamid y su `reply_to_meta_message_id` apuntando al mensaje
+ * reaccionado. Dibujarla como burbuja propia parte la conversación en dos —«ok»,
+ * «👍», «dale»— y hace ilegible un hilo donde la gente reacciona seguido.
+ *
+ * Tres reglas, y las tres tienen su motivo:
+ *
+ * 1. **Emoji vacío es una reacción retirada.** WhatsApp no manda un evento de
+ *    borrado: manda la misma reacción con el emoji en blanco. Tratarla como una
+ *    reacción más dejaría un chip fantasma sin contenido.
+ * 2. **Si el mensaje reaccionado no está en el hilo, la reacción sí lleva
+ *    burbuja.** Pasa con lo anterior al import de historial, o con un target que
+ *    todavía no bajó. Es feo, pero desaparecer en silencio es peor: el dato
+ *    existe y el usuario tiene derecho a verlo.
+ * 3. **El emparejamiento es por `meta_message_id`, no por posición.** Es el
+ *    único id que las dos filas comparten; el nuestro (`id`) no viaja a Meta.
+ */
+export function groupThreadReactions(
+  messages: ThreadMessage[]
+): ReactionGrouping {
+  const byMetaId = new Map<string, ThreadMessage>()
+  for (const message of messages) {
+    if (message.metaMessageId) byMetaId.set(message.metaMessageId, message)
+  }
+
+  const timeline: ThreadMessage[] = []
+  const reactionsByMessageId: Record<string, ThreadReactionView[]> = {}
+
+  for (const message of messages) {
+    if (message.attachmentType !== "reaction") {
+      timeline.push(message)
+      continue
+    }
+
+    const emoji = reactionEmoji(message)
+    // Retirada: ni chip ni burbuja. No hay nada que mostrar.
+    if (!emoji) continue
+
+    const target = message.replyToMetaMessageId
+      ? byMetaId.get(message.replyToMetaMessageId)
+      : undefined
+
+    if (!target) {
+      timeline.push(message)
+      continue
+    }
+
+    const view: ThreadReactionView = {
+      id: message.id,
+      emoji,
+      outbound: message.direction === "outbound",
+    }
+    reactionsByMessageId[target.id] = [
+      ...(reactionsByMessageId[target.id] ?? []),
+      view,
+    ]
+  }
+
+  return { timeline, reactionsByMessageId }
+}
+
+// El emoji viaja en el meta del adjunto; la caída al texto cubre a quien lo
+// persista ahí. Vacío en los dos lados = reacción retirada.
+function reactionEmoji(message: ThreadMessage): string {
+  const fromMeta = message.attachmentMeta?.emoji
+  if (typeof fromMeta === "string" && fromMeta.trim()) return fromMeta.trim()
+  return message.text.trim()
+}
+
+/**
+ * De dónde baja el adjunto de este mensaje y en qué estado está.
+ *
+ * En Messenger e Instagram no hay estado y la URL es la del CDN de Meta, tal
+ * como se persistió. En WhatsApp la URL **nunca** es de Meta —la firmada de
+ * Cloud API dura cinco minutos— sino la ruta propia que sirve la copia de R2, y
+ * el estado se **deriva** de la edad de la fila con `effectiveStatus` en vez de
+ * leerse crudo: si lo leyéramos crudo habría dos relojes, el de la lifecycle
+ * rule del bucket y el nuestro, y tarde o temprano se separan.
+ */
+function resolveAttachmentSource(
+  message: ThreadMessage,
+  now: Date
+): { url: string | null; status: AttachmentStatus | null } {
+  if (message.channel !== "whatsapp" || !message.attachmentStatus) {
+    return { url: message.attachmentUrl, status: null }
+  }
+
+  const status = effectiveStatus(
+    {
+      attachment_status: message.attachmentStatus,
+      created_at: message.createdAt,
+    },
+    now
+  )
+
+  return { url: whatsappMediaUrl({ messageId: message.id, status }), status }
+}
+
 /**
  * Hilo completo. El separador de fecha se resuelve aquí porque depende del
  * mensaje anterior, no del mensaje suelto.
+ *
+ * `now` entra por parámetro y no se toma adentro para que el vencimiento de la
+ * media sea testeable: la regla de los 180 días depende de la hora, y una
+ * función que consulta el reloj por su cuenta no se puede fijar en un test.
  */
 export function toThreadMessageViews(
-  messages: ThreadMessage[]
+  messages: ThreadMessage[],
+  now: Date = new Date()
 ): ThreadMessageView[] {
   let previousDay: string | null = null
+  // Las reacciones se resuelven antes del recorrido: una reacción puede llegar
+  // después del mensaje que reacciona, así que hay que ver el hilo entero para
+  // saber qué lleva burbuja y qué no.
+  const { timeline, reactionsByMessageId } = groupThreadReactions(messages)
 
-  return messages.map((message) => {
+  return timeline.map((message) => {
     const dayLabel = formatDayLabel(message.createdAt)
     const isNewDay = dayLabel !== previousDay
     previousDay = dayLabel
@@ -168,6 +342,7 @@ export function toThreadMessageViews(
     // comparten los dos modos de Inbox: un comentario nunca es respuesta
     // privada de nada.
     const fromComment = message.instagramSourceCommentId !== null
+    const source = resolveAttachmentSource(message, now)
 
     return {
       id: message.id,
@@ -179,14 +354,17 @@ export function toThreadMessageViews(
       attachment: message.attachmentType
         ? toAttachmentDisplay({
             type: message.attachmentType,
-            url: message.attachmentUrl,
+            url: source.url,
             meta: message.attachmentMeta,
+            status: source.status,
           })
         : null,
       meta: fromComment
         ? `${formatMessageMeta(message)} · respuesta a comentario`
         : formatMessageMeta(message),
       fromComment,
+      delivery: formatDeliveryLabel(message.deliveryStatus),
+      reactions: reactionsByMessageId[message.id] ?? [],
       error: failed ? message.error : null,
       dayLabel: isNewDay ? dayLabel : null,
     }

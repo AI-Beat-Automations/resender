@@ -1,4 +1,7 @@
-import { resolveInstagramAccess } from "@/lib/auth/channel-access"
+import {
+  resolveInstagramAccess,
+  resolveWhatsappAccess,
+} from "@/lib/auth/channel-access"
 import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
 import {
   countsTowardQuota,
@@ -8,7 +11,9 @@ import {
 import { hasActiveSubscription } from "@/lib/billing/subscription"
 import { incrementUsage } from "@/lib/billing/usage-counter"
 import {
+  insertCoexistenceMessage,
   insertInboundMessage,
+  updateDeliveryStatus,
   upsertConversation,
   type MessageRecord,
 } from "@/lib/messages/message-log"
@@ -36,7 +41,10 @@ import type { InboundEvent } from "./inbound-event"
 import { extractInstagramComments } from "./instagram-comments"
 import { extractInstagramDirectMessages } from "./instagram-webhook"
 import { extractInboundEvents } from "./meta-webhook"
+import { routeWhatsappWebhook } from "./whatsapp-webhook"
+import type { WhatsappStatusEvent } from "./whatsapp-parsers"
 import { accountFields, describeError, log } from "@/lib/observability/logger"
+import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { posthog } from "@/lib/posthog"
 
 export type InboundPushJob = () => Promise<void>
@@ -64,32 +72,51 @@ const RESTRICTED_SKIP_REASON =
 // No queda tabla porque una con todos los valores en `true` no decide nada;
 // el día que un canal deje de medirse, vuelve.
 //
-// El permiso por cuenta (ADR 0010) es de Instagram y de nadie más: Messenger no
-// tiene bandera y su ingesta no cambia en absoluto. Va como tabla y no como un
-// `channel === "instagram"` para que, cuando entre WhatsApp —bloqueado por Meta
-// por la misma razón—, el tipo obligue a decidir.
-const CHANNEL_NEEDS_PERMISSION: Record<PageChannel, boolean> = {
-  messenger: false,
-  instagram: true,
+// El permiso por cuenta (ADR 0010) lo tienen Instagram y WhatsApp, cada uno con
+// su bandera: los dos están implementados y a ninguno le concedió Meta todavía
+// el Advanced Access. Messenger no tiene bandera y su ingesta no cambia.
+//
+// Va como tabla —y no como `channel === "instagram" || channel === "whatsapp"`—
+// para que el canal que entre después obligue a decidir en vez de colarse por
+// el `else`. Es una sola tabla y no dos (una de «¿necesita permiso?» y otra de
+// «¿cómo se resuelve?») porque dos tablas sobre la misma clave dicen lo mismo
+// dos veces y se desincronizan: acá `null` **es** «este canal no tiene gate».
+const CHANNEL_ACCESS_RESOLVER: Record<
+  PageChannel,
+  ((tenantId: string) => Promise<boolean>) | null
+> = {
+  messenger: null,
+  instagram: resolveInstagramAccess,
+  whatsapp: resolveWhatsappAccess,
 }
 
 // Memo del permiso por tenant **dentro del lote**: un POST de Meta trae varios
 // eventos de la misma cuenta y la lectura es viva contra la base, así que sin
 // esto sería una consulta por evento.
 //
+// La clave lleva el canal además del tenant porque las banderas son dos y son
+// independientes: un tenant puede tener Instagram y no WhatsApp, y un memo
+// indexado solo por tenant le contestaría al segundo con la respuesta del
+// primero.
+//
 // La ausencia se pregunta con `undefined` y no con `?? null` como el memo de
 // entitlements: acá el valor cacheado puede ser `false`, y un memo que confunde
 // «todavía no pregunté» con «pregunté y no tiene permiso» consulta de más hoy y
 // se equivoca de lado el día que alguien lo invierta.
-async function resolveCachedInstagramAccess(
+async function resolveCachedChannelAccess(
   cache: Map<string, boolean>,
+  channel: PageChannel,
   tenantId: string
 ): Promise<boolean> {
-  const cached = cache.get(tenantId)
+  const resolve = CHANNEL_ACCESS_RESOLVER[channel]
+  if (!resolve) return true
+
+  const key = `${channel}:${tenantId}`
+  const cached = cache.get(key)
   if (cached !== undefined) return cached
 
-  const enabled = await resolveInstagramAccess(tenantId)
-  cache.set(tenantId, enabled)
+  const enabled = await resolve(tenantId)
+  cache.set(key, enabled)
   return enabled
 }
 
@@ -143,6 +170,157 @@ export async function ingestInstagramWebhookPayload(
   return [...messages, ...comments]
 }
 
+// Entrada del webhook de WhatsApp Cloud API.
+//
+// Un mismo POST puede traer las cinco cosas que Meta manda por este canal, y
+// las tres que producen filas —mensajes vivos, echoes de la Business App e
+// historial importado— entran por la **misma** ingesta que Messenger e
+// Instagram: los mismos gates en el mismo orden, el mismo dedupe y el mismo
+// contador. Lo que cambia por canal es el parser, no la política.
+//
+// Los acuses van después de los mensajes a propósito: si en el mismo lote viene
+// un mensaje y su `status`, el UPDATE encuentra la fila que el insert acaba de
+// escribir en vez de tocar cero filas.
+export async function ingestWhatsappWebhookPayload(
+  body: unknown,
+  requestId: string
+): Promise<IngestedInbound[]> {
+  const routed = routeWhatsappWebhook(body)
+
+  const ingested = await ingestInboundEvents(
+    routed.events,
+    "whatsapp",
+    requestId
+  )
+  await applyWhatsappStatuses(routed.statuses, requestId)
+
+  if (routed.unhandledFields.length > 0) {
+    // Un `field` que Meta manda y los parsers no modelan (`account_update`,
+    // `message_template_status_update`, `calls`…) tiene que aparecer en la
+    // bitácora, no desaparecer: es la señal de que hay algo nuevo que atender.
+    //
+    // El motivo se reusa del catálogo cerrado de `logger.ts` —el más cercano a
+    // «esto llegó y no produjo eventos»— porque agregar uno propio significa
+    // tocar un archivo que este slice no toca. Los `fields` de la línea dicen
+    // exactamente cuáles fueron.
+    log({
+      entrypoint: "route",
+      action: "webhook_receive",
+      outcome: "dropped",
+      reason: "no_events_in_payload",
+      requestId,
+      channel: "whatsapp",
+      fields: routed.unhandledFields,
+    })
+  }
+
+  return ingested
+}
+
+// Los acuses de entrega. No crean fila: mueven `delivery_status` de una que ya
+// existe, así que no pasan por la ingesta de mensajes ni devuelven `pushJob`.
+//
+// Mismos gates y en el mismo orden que un mensaje —cuenta, suscripción,
+// permiso de canal—: un tenant sin suscripción o con el canal revocado deja de
+// recibir en el acto, y eso incluye dejar de escribirle la fila.
+async function applyWhatsappStatuses(
+  statuses: WhatsappStatusEvent[],
+  requestId: string
+) {
+  const channelAccess = new Map<string, boolean>()
+
+  for (const status of statuses) {
+    const logSubject = {
+      subject: "message",
+      providerId: status.metaMessageId,
+      ...(status.recipientId ? { contactId: status.recipientId } : {}),
+    } as const
+
+    const page = await getActivePageByMetaPageId(
+      status.providerPhoneNumberId,
+      "whatsapp"
+    )
+    if (!page) {
+      log({
+        entrypoint: "route",
+        action: "inbound_ingest",
+        outcome: "dropped",
+        reason: "account_not_connected",
+        requestId,
+        channel: "whatsapp",
+        accountId: status.providerPhoneNumberId,
+        ...logSubject,
+      })
+      continue
+    }
+
+    if (!(await hasActiveSubscription(page.tenantId))) {
+      log({
+        entrypoint: "route",
+        action: "inbound_ingest",
+        outcome: "dropped",
+        reason: "no_active_subscription",
+        requestId,
+        ...accountFields(page),
+        ...logSubject,
+      })
+      continue
+    }
+
+    if (
+      !(await resolveCachedChannelAccess(
+        channelAccess,
+        "whatsapp",
+        page.tenantId
+      ))
+    ) {
+      log({
+        entrypoint: "route",
+        action: "inbound_ingest",
+        outcome: "dropped",
+        reason: "channel_not_enabled",
+        requestId,
+        ...accountFields(page),
+        ...logSubject,
+      })
+      continue
+    }
+
+    const applied = await updateDeliveryStatus({
+      connectedPageId: page.id,
+      metaMessageId: status.metaMessageId,
+      deliveryStatus: status.deliveryStatus,
+    })
+
+    if (!applied) {
+      // El callback perdió la guarda del UPDATE: o llegó atrasado (un `sent`
+      // después del `read` del mismo wamid, que Meta entrega desordenado), o es
+      // un reintento del que ya se aplicó, o el wamid no es de una fila nuestra.
+      // Los tres se descartan igual: no hay dato que mostrar, hay una
+      // inconsistencia de Meta. Queda la métrica para poder verla.
+      log({
+        entrypoint: "route",
+        action: "inbound_ingest",
+        outcome: "duplicate",
+        reason: "already_ingested",
+        requestId,
+        ...accountFields(page),
+        ...logSubject,
+      })
+      continue
+    }
+
+    log({
+      entrypoint: "route",
+      action: "inbound_ingest",
+      outcome: "ok",
+      requestId,
+      ...accountFields(page),
+      ...logSubject,
+    })
+  }
+}
+
 // El `requestId` se genera en la ruta y viaja como parámetro hasta el closure
 // del `pushJob`, que es lo que lo cruza al `after()` —donde la entrega corre
 // **después** de que ya se respondió—. Es lo que permite reconstruir un POST
@@ -160,7 +338,7 @@ async function ingestInboundEvents(
   // `ingestInstagramWebhookPayload` corre las dos ingestas con `Promise.all`, y
   // compartirlo obligaría a pasarlo por parámetro —tocando la firma que también
   // sirve a Messenger— para ahorrar, en el peor caso, una lectura por payload.
-  const instagramAccess = new Map<string, boolean>()
+  const channelAccess = new Map<string, boolean>()
 
   for (const event of incoming) {
     // El canal viene del webhook que recibió el evento, no del payload: sin él,
@@ -205,8 +383,7 @@ async function ingestInboundEvents(
     // impide conectar sin permiso—, y por eso va después del portón que sí se
     // cruza todos los días.
     if (
-      CHANNEL_NEEDS_PERMISSION[channel] &&
-      !(await resolveCachedInstagramAccess(instagramAccess, page.tenantId))
+      !(await resolveCachedChannelAccess(channelAccess, channel, page.tenantId))
     ) {
       log({
         entrypoint: "route",
@@ -225,13 +402,28 @@ async function ingestInboundEvents(
       page.tenantId
     )
 
+    // Ausente = entrante, que es lo único que producen Messenger e Instagram.
+    // WhatsApp sí manda salientes por webhook: el eco de la Business App y la
+    // mitad saliente del historial.
+    const direction = event.direction ?? "inbound"
+
     const conversation = await upsertConversation({
       tenantId: page.tenantId,
       connectedPageId: page.id,
       contactId: event.senderId,
       lastMessageAt: event.timestamp,
+      // El mensaje entero y no un `lastInboundAt` ya calculado: la regla de la
+      // ventana de 24 h es estado derivado y vive en
+      // `opensCustomerServiceWindow`. Duplicarla acá sería la segunda copia que
+      // se desincroniza sola.
+      message: {
+        direction,
+        historical: event.historical,
+        origin: event.origin,
+      },
     })
-    const { message, inserted } = await insertInboundMessage({
+
+    const persist = {
       tenantId: page.tenantId,
       conversationId: conversation.id,
       connectedPageId: page.id,
@@ -249,8 +441,23 @@ async function ingestInboundEvents(
             details: event.attachment.details,
           }
         : null,
+      origin: event.origin,
+      historical: event.historical,
+      deliveryStatus: event.deliveryStatus,
+      attachmentStatus: event.attachmentStatus,
+      replyToMetaMessageId: event.replyToMetaMessageId,
       createdAt: event.timestamp,
-    })
+    }
+
+    // Dos inserts y no uno con parámetro porque deduplican contra **índices
+    // únicos distintos**: el de la 0001 solo cubre `direction='inbound'` y el
+    // saliente con wamid —echoes e historial— necesita el de la 0017 §7. El
+    // predicado del `on conflict` va escrito literal en cada consulta (el
+    // driver HTTP de Neon no arma fragmentos `sql` anidados).
+    const { message, inserted } =
+      direction === "outbound"
+        ? await insertCoexistenceMessage(persist)
+        : await insertInboundMessage(persist)
 
     const subject = { kind: "message", id: message.id } as const
     const logSubject = {
@@ -297,14 +504,43 @@ async function ingestInboundEvents(
         : {}),
     })
 
+    // La descarga del binario, encolada y **no** hecha acá: la URL de Meta dura
+    // 5 minutos pero bajarla puede tardar (un documento llega hasta 100 MB) y a
+    // Meta hay que contestarle el 200 antes. Va pegado a la persistencia porque
+    // es parte de dejar la fila completa, y antes de la cuota para no depender
+    // de si el tenant tiene período resuelto.
+    //
+    // Solo `pending` encola. `unavailable` es «Meta nunca ofreció el binario»
+    // —el multimedia del historial de más de 14 días— y ya quedó escrito en la
+    // fila: encolarle una descarga sería reintentar para siempre algo que no
+    // existe.
+    if (event.attachmentStatus === "pending" && event.providerMediaId) {
+      await enqueueMediaDownload({
+        messageId: message.id,
+        providerMediaId: event.providerMediaId,
+        requestId,
+        page,
+      })
+    }
+
     // El entrante persistido consume cuota aunque la cuenta esté restringida o
     // la página no tenga `webhookUrl`: lo que se cobra es recibir y persistir,
     // no entregar. Best-effort — el contador nunca puede romper la ingesta.
     // Sin período resuelto no hay ventana contra la cual contar (fail-closed
     // del módulo puro), y ahí el entrante entra igual pero no suma.
+    //
+    // **La única excepción declarada a «todos los canales se miden» (ADR 0011)
+    // es el historial**, y está acá: un mensaje con `historical=true` es un
+    // backfill de una conversación que ocurrió **fuera** de Resender y que
+    // además decidimos no entregarle al webhook del tenant. Cobrar por algo que
+    // no se entrega no se puede defender, y sin la excepción un Starter podría
+    // quedarse sin cuota el mismo día que conecta su número (el sync importa
+    // hasta 180 días de conversaciones). Los echoes de la Business App **sí**
+    // cuentan: son tráfico vivo y sí se reenvían.
     const periodStart = entitlement.periodStart
     if (
       periodStart &&
+      !event.historical &&
       countsTowardQuota({ kind: "inbound", persisted: true })
     ) {
       try {
@@ -322,6 +558,13 @@ async function ingestInboundEvents(
       }
     }
 
+    // El historial no llega más lejos: ni analítica ni reenvío. Un import son
+    // miles de mensajes de hasta 180 días de antigüedad, y contarlos como
+    // «message received» convertiría el día de la conexión en un pico que no
+    // ocurrió. El corte va después de la persistencia y de la cuota para que se
+    // lea en el orden en que pasan las cosas: se guarda, no se cobra, no sale.
+    if (event.historical) continue
+
     if (posthog) {
       posthog.capture({
         distinctId: page.tenantId,
@@ -332,6 +575,9 @@ async function ingestInboundEvents(
           page_id: page.metaPageId,
           channel,
           event_type: event.eventType,
+          // Distingue el eco de la Business App de un entrante del cliente sin
+          // tener que cruzar la fila: son dos hechos comerciales distintos.
+          ...(event.origin ? { origin: event.origin } : {}),
         },
       })
       await posthog.flush()
@@ -377,6 +623,44 @@ async function ingestInboundEvents(
   return ingested
 }
 
+// El alta del job de descarga de media en la cola propia de WhatsApp.
+//
+// Cola separada de `webhook-deliveries` a propósito: un import de historial son
+// miles de jobs y en la cola de entregas competirían en batches de 10 con los
+// pushes de todos los tenants.
+//
+// Un fallo al encolar **no** rompe la ingesta ni pierde el mensaje: la fila
+// queda en `attachment_status='pending'`, que es exactamente lo que busca el
+// índice parcial `messages_attachment_pending_idx` de la 0017, así que es
+// recuperable. Lo que no puede pasar es que se caiga en silencio, y por eso
+// queda la línea.
+async function enqueueMediaDownload(input: {
+  messageId: string
+  providerMediaId: string
+  requestId: string
+  page: ConnectedPageRecord
+}) {
+  try {
+    await getCloudflareContext().env.WHATSAPP_JOBS.send({
+      type: "media_download",
+      messageId: input.messageId,
+      providerMediaId: input.providerMediaId,
+    })
+  } catch (error) {
+    log({
+      entrypoint: "route",
+      action: "inbound_ingest",
+      outcome: "failed",
+      reason: "internal_error",
+      requestId: input.requestId,
+      ...accountFields(input.page),
+      subject: "message",
+      subjectId: input.messageId,
+      errorMessage: describeError(error),
+    })
+  }
+}
+
 // Ingesta de comentarios. Mismo esqueleto que la de mensajes —resolver la
 // cuenta, gate de suscripción, insertar con dedupe, reenviar— pero contra
 // `instagram_comments`, que es otra tabla porque un comentario cuelga de una
@@ -394,7 +678,7 @@ async function ingestInstagramComments(
   const ingested: IngestedInbound[] = []
   // Mismos memos por lote que en los DMs, y propios de esta función por la
   // razón que está explicada allá.
-  const instagramAccess = new Map<string, boolean>()
+  const channelAccess = new Map<string, boolean>()
   const entitlements = new Map<string, TenantEntitlement>()
 
   for (const event of incoming) {
@@ -490,7 +774,13 @@ async function ingestInstagramComments(
     // comentario del tenant revocado se descarta sin persistir ni reenviar. Va
     // después de los tres filtros anti-bucle a propósito: un comentario nuestro
     // que vuelve tiene que seguir contándose como eco y no como revocación.
-    if (!(await resolveCachedInstagramAccess(instagramAccess, page.tenantId))) {
+    if (
+      !(await resolveCachedChannelAccess(
+        channelAccess,
+        "instagram",
+        page.tenantId
+      ))
+    ) {
       log({
         entrypoint: "route",
         action: "inbound_ingest",

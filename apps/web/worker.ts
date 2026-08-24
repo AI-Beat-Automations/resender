@@ -15,32 +15,34 @@
 // —reintentos a lo largo de minutos, DLQ, recuperación por cron— no cabe en el
 // ciclo de vida de un request, y por eso necesita cola.
 //
-// Este archivo llega vacío a propósito. Cambiar `main` es el único cambio de
-// este paso que puede tumbar el sitio entero, así que se despliega y se verifica
-// solo, antes de meterle lógica de entrega encima. Los handlers se completan en
-// el paso siguiente.
+// El archivo nació vacío a propósito —cambiar `main` es el único cambio capaz
+// de tumbar el sitio entero, así que se desplegó y se verificó solo— y hoy
+// despacha dos familias de colas: `webhook-deliveries` (entrega al webhook del
+// tenant) y `whatsapp-jobs` (media y purgado de R2).
 import { default as nextHandler } from "./.open-next/worker.js"
 
+import { recoverPendingMediaPurges } from "./lib/account/media-purge"
 import {
   consumeWebhookQueue,
   recoverWebhookJobs,
 } from "./lib/inbound/webhook-delivery"
+import { consumeWhatsappQueue } from "./lib/jobs/whatsapp-queue"
 
 type WebWorker = {
   fetch(
     request: Request,
     env: CloudflareEnv,
-    ctx: WorkerExecutionContext,
+    ctx: WorkerExecutionContext
   ): Promise<Response>
   queue(
     batch: MessageBatch<unknown>,
     env: CloudflareEnv,
-    ctx: WorkerExecutionContext,
+    ctx: WorkerExecutionContext
   ): Promise<void>
   scheduled(
     controller: ScheduledController,
     env: CloudflareEnv,
-    ctx: WorkerExecutionContext,
+    ctx: WorkerExecutionContext
   ): Promise<void>
 }
 
@@ -51,18 +53,32 @@ const worker: WebWorker = {
   // cada request del producto para servir a dos handlers que no lo necesitan.
   fetch: nextHandler.fetch,
 
-  // Atiende la cola principal y su DLQ: el mismo consumidor, que se comporta
-  // distinto según `batch.queue`. En la principal entrega; en la DLQ solo marca
-  // el job `dead` y nunca llama al webhook del cliente.
-  async queue(batch) {
+  // Un solo handler `queue` para las **cuatro** colas: Cloudflare no permite
+  // uno por cola, así que el despacho es por `batch.queue`. Dentro de cada
+  // familia, el consumidor distingue además la principal de su DLQ.
+  //
+  // Las dos familias no comparten nada más que este switch: `webhook-deliveries`
+  // lleva el trabajo en Postgres y solo encola un `jobId`, mientras que
+  // `whatsapp-jobs` lleva el trabajo en el cuerpo del mensaje.
+  async queue(batch, env) {
+    if (batch.queue.startsWith("whatsapp-jobs")) {
+      await consumeWhatsappQueue(batch, env)
+      return
+    }
+
     await consumeWebhookQueue(batch)
   },
 
   // Reclama los jobs cuyo plazo durable venció: los que quedaron
   // `pending`/`processing` porque el Worker murió entre encolar y entregar. Es
   // la red debajo de la cola, no un segundo camino de entrega.
+  //
+  // Suma el reclamo de los purgados de R2 que quedaron pendientes: la fila de
+  // `pending_media_deletions` sobrevive al borrado de la cuenta justamente para
+  // que este cron pueda volver a intentarlo.
   async scheduled(_controller, env) {
     await recoverWebhookJobs(env)
+    await recoverPendingMediaPurges(env)
   },
 }
 
