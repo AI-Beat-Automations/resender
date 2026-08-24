@@ -336,6 +336,7 @@ function toPageView(
     onboardingMode: page.onboardingMode,
     coexistenceStatus: page.coexistenceStatus,
     historySyncStatus: page.historySyncStatus,
+    whatsappPinGenerated: page.whatsappPinGenerated,
     status: page.status,
     tokenStatus: page.tokenStatus,
     tokenError: page.tokenError,

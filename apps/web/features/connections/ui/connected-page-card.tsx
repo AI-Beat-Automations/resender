@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useActionState } from "react"
+import { useActionState, useState, useTransition } from "react"
 import {
   Check,
   KeyRound,
@@ -10,6 +10,7 @@ import {
   Unplug,
 } from "lucide-react"
 
+import { revealWhatsappPin } from "@/features/connect-whatsapp/actions"
 import {
   disconnectPageAction,
   rotateWebhookSecretAction,
@@ -43,6 +44,7 @@ import {
   formatConnectionIdentity,
   resolveHistorySyncNotice,
   resolveReconnectHref,
+  offersPinReveal,
   showsCoexistenceLimits,
   type HistorySyncNotice,
   type HistorySyncStatus,
@@ -72,6 +74,10 @@ export type ConnectedPageView = {
   onboardingMode: WhatsappOnboardingMode | null
   coexistenceStatus: string | null
   historySyncStatus: HistorySyncStatus | null
+  // Si el PIN de dos pasos lo generamos nosotros. Es un booleano y nunca el PIN:
+  // el valor se pide bajo demanda a una server action, para que no viaje en el
+  // HTML de la pantalla ni quede en el caché del navegador.
+  whatsappPinGenerated: boolean
   status: "active" | "disconnected"
   tokenStatus: "valid" | "invalid"
   tokenError: string | null
@@ -126,6 +132,7 @@ export function ConnectedPageCard({
   const reconnectHref = resolveReconnectHref(page)
   const historySync = resolveHistorySyncNotice(page)
   const coexistence = showsCoexistenceLimits(page)
+  const pinReveal = offersPinReveal(page)
 
   return (
     <article
@@ -277,6 +284,8 @@ export function ConnectedPageCard({
             />
           )}
 
+          {pinReveal && <WhatsappPinPanel connectionId={page.id} />}
+
           {coexistence && (
             <div className="rounded-lg border border-border bg-surface-sunken px-3.5 py-3">
               <p className="text-[13px] font-medium">Límites de Coexistence</p>
@@ -416,6 +425,84 @@ const HISTORY_SYNC_TONE: Record<HistorySyncNotice["tone"], string> = {
  * llegar solo: en los otros cuatro invitaría a rehacer una conexión que está
  * avanzando bien, y en Coexistence rehacerla no es gratis.
  */
+
+// El PIN de verificación en dos pasos que **generamos nosotros** al registrar el
+// número (migración 0017). Meta no lo vuelve a mostrar y no tiene endpoint de
+// lectura, así que esta pantalla es el único lugar del mundo donde el cliente
+// puede recuperarlo. Sin esto, reconectar el mismo número en otro entorno falla
+// con un `133005` pidiendo un PIN que inventamos y que nadie puede consultar.
+//
+// **Bajo demanda y nunca en el HTML.** El valor se pide a la server action al
+// pulsar, en vez de viajar con la pantalla: un PIN embebido en el markup queda
+// en el caché del navegador y en cualquier captura de la página de Conexiones,
+// que es donde el cliente entra por otras cosas todo el tiempo.
+//
+// Se puede volver a ocultar a propósito: es un secreto que se lee, se anota y se
+// guarda, no algo que tenga que quedar a la vista del resto de la sesión.
+function WhatsappPinPanel({ connectionId }: { connectionId: string }) {
+  const [pin, setPin] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [pending, startTransition] = useTransition()
+
+  const reveal = () => {
+    setError(null)
+    startTransition(async () => {
+      const result = await revealWhatsappPin(connectionId)
+      if ("pin" in result && result.pin) {
+        setPin(result.pin)
+        return
+      }
+      setError(
+        "error" in result && result.error
+          ? result.error
+          : "No pudimos recuperar el PIN ahora mismo. Vuelve a intentarlo."
+      )
+    })
+  }
+
+  return (
+    <div className="rounded-lg border border-border bg-surface-sunken px-3.5 py-3">
+      <p className="text-[13px] font-medium">Verificación en dos pasos</p>
+      <p className="mt-1 text-[12.5px]/[1.55] text-muted-foreground">
+        Al registrar este número le activamos la verificación en dos pasos con
+        un PIN que generamos nosotros. Meta no vuelve a mostrarlo: necesitas
+        este PIN para volver a registrar el número, aquí o en cualquier otra
+        plataforma.
+      </p>
+
+      {pin ? (
+        <div className="mt-2.5 flex flex-wrap items-center gap-2.5">
+          <code className="rounded-md border border-border bg-card px-2.5 py-1 font-mono text-[15px] tracking-[0.2em]">
+            {pin}
+          </code>
+          <Button variant="ghost" size="sm" onClick={() => setPin(null)}>
+            Ocultar
+          </Button>
+        </div>
+      ) : (
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-2.5"
+          onClick={reveal}
+          disabled={pending}
+        >
+          {pending && (
+            <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+          )}
+          {pending ? "Recuperando…" : "Ver PIN"}
+        </Button>
+      )}
+
+      {error && (
+        <p className="mt-2 text-[12.5px]/[1.55] text-[var(--danger-text)]">
+          {error}
+        </p>
+      )}
+    </div>
+  )
+}
+
 function HistorySyncPanel({
   notice,
   reconnectHref,
