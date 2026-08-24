@@ -28,6 +28,10 @@
         "binding": "WEBHOOK_DELIVERIES",
         "queue": "webhook-deliveries",
       },
+      {
+        "binding": "WHATSAPP_JOBS",
+        "queue": "whatsapp-jobs",
+      },
     ],
     "consumers": [
       {
@@ -47,8 +51,38 @@
         "max_batch_timeout": 5,
         "max_retries": 5,
       },
+      {
+        // Cola propia y no `webhook-deliveries` a propósito: un import de
+        // historial de Coexistence son miles de jobs, y en la cola de entregas
+        // competirían en batches de 10 con los pushes de todos los tenants.
+        "queue": "whatsapp-jobs",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5,
+        "max_retries": 5,
+        "dead_letter_queue": "whatsapp-jobs-dlq",
+      },
+      {
+        // Mismo criterio que la DLQ de entregas: consumidor propio para marcar
+        // el job muerto, con reintentos porque esa escritura puede fallar.
+        "queue": "whatsapp-jobs-dlq",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5,
+        "max_retries": 5,
+      },
     ],
   },
+  // Media **entrante** de WhatsApp. La URL que da Meta dura 5 minutos y el
+  // media id 7 días, así que esta es la única copia. Privado y sin `r2.dev`: lo
+  // que autoriza la descarga es la fila de `messages`, no el bucket.
+  //
+  // La retención de 180 días es una lifecycle rule del bucket, no código:
+  // `wrangler r2 bucket lifecycle add whatsapp-media --prefix wa/ --expire-days 180`.
+  "r2_buckets": [
+    {
+      "binding": "WHATSAPP_MEDIA",
+      "bucket_name": "whatsapp-media",
+    },
+  ],
   // Recuperación: reclama los jobs cuyo plazo durable venció, es decir los que
   // quedaron `pending`/`processing` porque el Worker murió entre encolar y
   // entregar. Es la red debajo de la cola, no un segundo camino de entrega.
@@ -119,6 +153,10 @@
             "binding": "WEBHOOK_DELIVERIES",
             "queue": "webhook-deliveries-staging",
           },
+          {
+            "binding": "WHATSAPP_JOBS",
+            "queue": "whatsapp-jobs-staging",
+          },
         ],
         "consumers": [
           {
@@ -134,8 +172,29 @@
             "max_batch_timeout": 5,
             "max_retries": 5,
           },
+          {
+            "queue": "whatsapp-jobs-staging",
+            "max_batch_size": 10,
+            "max_batch_timeout": 5,
+            "max_retries": 5,
+            "dead_letter_queue": "whatsapp-jobs-staging-dlq",
+          },
+          {
+            "queue": "whatsapp-jobs-staging-dlq",
+            "max_batch_size": 10,
+            "max_batch_timeout": 5,
+            "max_retries": 5,
+          },
         ],
       },
+      // Bucket propio y no el de producción: compartirlo haría que un job de
+      // prueba tocara los archivos de un cliente que paga.
+      "r2_buckets": [
+        {
+          "binding": "WHATSAPP_MEDIA",
+          "bucket_name": "whatsapp-media-staging",
+        },
+      ],
       // Explícito aunque `triggers` sea heredable: staging es donde se verifica
       // que el cron corre, y depender de la herencia para eso deja la
       // verificación apoyada en un detalle de wrangler en vez de en el archivo.

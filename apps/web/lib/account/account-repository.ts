@@ -11,8 +11,10 @@ export type TenantDeletionContext = {
 }
 
 type ConnectedPageDeletionRow = {
+  id: string
   channel: PageChannel
   meta_page_id: string
+  waba_id: string | null
   status: PageStatus
   page_access_token_encrypted: string
 }
@@ -31,8 +33,12 @@ export async function loadTenantDeletionContext(
   `
   if (!user) return null
 
+  // `id` y `waba_id` son de WhatsApp: el WABA es el nodo que se desuscribe, y
+  // el id de la fila es lo que se excluye de la cuenta de números activos para
+  // que las conexiones que este borrado elimina no se cuenten a sí mismas.
   const rows = await sql<ConnectedPageDeletionRow[]>`
-    select channel, meta_page_id, status, page_access_token_encrypted
+    select id, channel, meta_page_id, waba_id, status,
+           page_access_token_encrypted
     from connected_pages
     where tenant_id = ${tenantId}
   `
@@ -47,8 +53,10 @@ export async function loadTenantDeletionContext(
   return {
     email: user.email,
     pages: rows.map((row) => ({
+      id: row.id,
       channel: row.channel,
       metaPageId: row.meta_page_id,
+      wabaId: row.waba_id,
       status: row.status,
       pageAccessToken: decryptSecret(row.page_access_token_encrypted),
     })),

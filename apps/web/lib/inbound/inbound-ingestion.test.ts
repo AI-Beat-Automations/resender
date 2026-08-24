@@ -4,10 +4,14 @@ const mocks = vi.hoisted(() => ({
   getActivePageByMetaPageId: vi.fn(),
   hasActiveSubscription: vi.fn(),
   resolveInstagramAccess: vi.fn(),
+  resolveWhatsappAccess: vi.fn(),
   getTenantEntitlement: vi.fn(),
   incrementUsage: vi.fn(),
   upsertConversation: vi.fn(),
   insertInboundMessage: vi.fn(),
+  insertCoexistenceMessage: vi.fn(),
+  updateDeliveryStatus: vi.fn(),
+  queueSend: vi.fn(),
   insertInboundComment: vi.fn(),
   isOwnPublishedComment: vi.fn(),
   enqueueDelivery: vi.fn(),
@@ -25,6 +29,7 @@ vi.mock("@/lib/billing/subscription", () => ({
 
 vi.mock("@/lib/auth/channel-access", () => ({
   resolveInstagramAccess: mocks.resolveInstagramAccess,
+  resolveWhatsappAccess: mocks.resolveWhatsappAccess,
 }))
 
 vi.mock("@/lib/billing/entitlement-status", () => ({
@@ -38,6 +43,17 @@ vi.mock("@/lib/billing/usage-counter", () => ({
 vi.mock("@/lib/messages/message-log", () => ({
   upsertConversation: mocks.upsertConversation,
   insertInboundMessage: mocks.insertInboundMessage,
+  insertCoexistenceMessage: mocks.insertCoexistenceMessage,
+  updateDeliveryStatus: mocks.updateDeliveryStatus,
+}))
+
+// La cola de WhatsApp es un binding de Cloudflare: fuera del Worker no existe,
+// así que el contexto se mockea entero. Lo que se afirma es el cuerpo del job,
+// que es el contrato con el consumidor (`WhatsappJobMessage`).
+vi.mock("@opennextjs/cloudflare", () => ({
+  getCloudflareContext: () => ({
+    env: { WHATSAPP_JOBS: { send: mocks.queueSend } },
+  }),
 }))
 
 vi.mock("./external-push", () => ({
@@ -68,6 +84,7 @@ vi.mock("@/lib/posthog", () => ({ posthog: null }))
 import {
   ingestInstagramWebhookPayload as ingestInstagramRaw,
   ingestMetaWebhookPayload as ingestMetaRaw,
+  ingestWhatsappWebhookPayload as ingestWhatsappRaw,
 } from "./inbound-ingestion"
 
 // El `requestId` lo genera la ruta y se pasa explícito hasta el closure del
@@ -77,6 +94,8 @@ const ingestInstagramWebhookPayload = (body: unknown) =>
   ingestInstagramRaw(body, REQUEST_ID)
 const ingestMetaWebhookPayload = (body: unknown) =>
   ingestMetaRaw(body, REQUEST_ID)
+const ingestWhatsappWebhookPayload = (body: unknown) =>
+  ingestWhatsappRaw(body, REQUEST_ID)
 
 const IG_ACCOUNT = "17841400000000000"
 const FB_PAGE = "104233889761204"
@@ -896,6 +915,460 @@ describe("ningún evento se descarta en silencio", () => {
 
     expect(mocks.log).toHaveBeenCalledWith(
       expect.objectContaining({ requestId: REQUEST_ID })
+    )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// WhatsApp
+// ---------------------------------------------------------------------------
+
+const PHONE_NUMBER_ID = "106540352242922"
+const BUSINESS_PHONE = "15550783881"
+const USER_PHONE = "16505551234"
+const WAMID = "wamid.HBgLMTY1MDM4Nzk0MzkVAgASGBQzQTRBNjU5OUFFRTAzODEwMTQ0RgA="
+
+const whatsappPage = (overrides: Record<string, unknown> = {}) =>
+  page({ channel: "whatsapp", metaPageId: PHONE_NUMBER_ID, ...overrides })
+
+const whatsappChange = (field: string, value: Record<string, unknown>) => ({
+  value: {
+    messaging_product: "whatsapp",
+    metadata: {
+      display_phone_number: BUSINESS_PHONE,
+      phone_number_id: PHONE_NUMBER_ID,
+    },
+    ...value,
+  },
+  field,
+})
+
+const whatsappPayload = (...changes: Array<Record<string, unknown>>) => ({
+  object: "whatsapp_business_account",
+  entry: [{ id: "102290129340398", changes }],
+})
+
+const liveText = (overrides: Record<string, unknown> = {}) =>
+  whatsappChange("messages", {
+    contacts: [{ profile: { name: "Sheena" }, wa_id: USER_PHONE }],
+    messages: [
+      {
+        from: USER_PHONE,
+        id: WAMID,
+        timestamp: "1749416383",
+        type: "text",
+        text: { body: "hola" },
+        ...overrides,
+      },
+    ],
+  })
+
+const arrangeWhatsapp = () => {
+  for (const mock of Object.values(mocks)) mock.mockReset()
+  mocks.hasActiveSubscription.mockResolvedValue(true)
+  mocks.resolveWhatsappAccess.mockResolvedValue(true)
+  mocks.getTenantEntitlement.mockResolvedValue(unrestricted)
+  mocks.getActivePageByMetaPageId.mockResolvedValue(whatsappPage())
+  mocks.upsertConversation.mockResolvedValue({
+    id: "conversation-1",
+    contactId: USER_PHONE,
+  })
+  mocks.insertInboundMessage.mockResolvedValue({
+    message: { id: "message-1", tenantId: "tenant-1" },
+    inserted: true,
+  })
+  mocks.insertCoexistenceMessage.mockResolvedValue({
+    message: { id: "message-2", tenantId: "tenant-1" },
+    inserted: true,
+  })
+  mocks.updateDeliveryStatus.mockResolvedValue(true)
+}
+
+describe("ingesta de WhatsApp", () => {
+  beforeEach(arrangeWhatsapp)
+
+  // El canal lo impone el webhook, nunca el payload: el `phone_number_id` es
+  // lo que `connected_pages.meta_page_id` guarda en este canal.
+  it("resuelve la cuenta por phone_number_id contra el canal whatsapp", async () => {
+    await ingestWhatsappWebhookPayload(whatsappPayload(liveText()))
+
+    expect(mocks.getActivePageByMetaPageId).toHaveBeenCalledWith(
+      PHONE_NUMBER_ID,
+      "whatsapp"
+    )
+  })
+
+  // El mismo orden que Messenger e Instagram, con la bandera de WhatsApp:
+  // cuenta → suscripción → permiso de canal → persistir.
+  it("aplica los tres gates antes de persistir", async () => {
+    mocks.hasActiveSubscription.mockResolvedValue(false)
+    await expect(
+      ingestWhatsappWebhookPayload(whatsappPayload(liveText()))
+    ).resolves.toEqual([])
+
+    mocks.hasActiveSubscription.mockResolvedValue(true)
+    mocks.resolveWhatsappAccess.mockResolvedValue(false)
+    await expect(
+      ingestWhatsappWebhookPayload(whatsappPayload(liveText()))
+    ).resolves.toEqual([])
+
+    expect(mocks.insertInboundMessage).not.toHaveBeenCalled()
+    expect(mocks.incrementUsage).not.toHaveBeenCalled()
+    expect(mocks.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "inbound_ingest",
+        outcome: "dropped",
+        reason: "channel_not_enabled",
+        channel: "whatsapp",
+      })
+    )
+  })
+
+  // La regla de la ventana de 24 h vive en `opensCustomerServiceWindow`: acá
+  // solo se comprueba que se le pasa el mensaje, no que se recalcula al lado.
+  it("le pasa el descriptor del mensaje al upsert de la conversación", async () => {
+    await ingestWhatsappWebhookPayload(whatsappPayload(liveText()))
+
+    expect(mocks.upsertConversation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contactId: USER_PHONE,
+        message: {
+          direction: "inbound",
+          historical: false,
+          origin: "customer",
+        },
+      })
+    )
+  })
+
+  it("persiste el entrante vivo con sus columnas de la 0017 y lo reenvía", async () => {
+    const ingested = await ingestWhatsappWebhookPayload(
+      whatsappPayload(liveText())
+    )
+
+    expect(mocks.insertInboundMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contactId: USER_PHONE,
+        metaMessageId: WAMID,
+        origin: "customer",
+        historical: false,
+        attachmentStatus: null,
+        replyToMetaMessageId: null,
+      })
+    )
+    expect(mocks.incrementUsage).toHaveBeenCalledWith(
+      "tenant-1",
+      unrestricted.periodStart
+    )
+
+    await ingested[0]!.pushJob()
+    expect(mocks.enqueueDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({ subject: { kind: "message", id: "message-1" } })
+    )
+  })
+
+  it("no reenvía dos veces el mismo wamid", async () => {
+    mocks.insertInboundMessage.mockResolvedValue({
+      message: { id: "message-1", tenantId: "tenant-1" },
+      inserted: false,
+    })
+
+    await expect(
+      ingestWhatsappWebhookPayload(whatsappPayload(liveText()))
+    ).resolves.toEqual([])
+    expect(mocks.queueSend).not.toHaveBeenCalled()
+  })
+})
+
+// El binario no se baja acá: a Meta hay que contestarle el 200 antes, y la URL
+// de descarga dura cinco minutos.
+describe("media entrante de WhatsApp", () => {
+  beforeEach(arrangeWhatsapp)
+
+  it("encola la descarga cuando hay id de asset", async () => {
+    await ingestWhatsappWebhookPayload(
+      whatsappPayload(
+        liveText({
+          type: "image",
+          text: undefined,
+          image: { id: "622684793477189", mime_type: "image/jpeg" },
+        })
+      )
+    )
+
+    expect(mocks.insertInboundMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ attachmentStatus: "pending" })
+    )
+    expect(mocks.queueSend).toHaveBeenCalledWith({
+      type: "media_download",
+      messageId: "message-1",
+      providerMediaId: "622684793477189",
+    })
+  })
+
+  // `unavailable` es «Meta nunca ofreció el binario»: encolarle una descarga
+  // sería reintentar para siempre algo que no existe.
+  it("marca unavailable sin encolar nada cuando no hay id de asset", async () => {
+    await ingestWhatsappWebhookPayload(
+      whatsappPayload(
+        liveText({
+          type: "image",
+          text: undefined,
+          image: { mime_type: "image/jpeg" },
+        })
+      )
+    )
+
+    expect(mocks.insertInboundMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ attachmentStatus: "unavailable" })
+    )
+    expect(mocks.queueSend).not.toHaveBeenCalled()
+  })
+
+  // La fila queda en `pending`, que es lo que busca el índice parcial de la
+  // 0017: recuperable, pero nunca en silencio.
+  it("registra el fallo al encolar sin romper la ingesta", async () => {
+    mocks.queueSend.mockRejectedValue(new Error("queue down"))
+
+    const ingested = await ingestWhatsappWebhookPayload(
+      whatsappPayload(
+        liveText({
+          type: "image",
+          text: undefined,
+          image: { id: "622684793477189", mime_type: "image/jpeg" },
+        })
+      )
+    )
+
+    expect(ingested).toHaveLength(1)
+    expect(mocks.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "inbound_ingest",
+        outcome: "failed",
+        reason: "internal_error",
+      })
+    )
+  })
+})
+
+// La única excepción declarada a «todos los canales se miden» (ADR 0011).
+describe("historial y echoes de Coexistence", () => {
+  const historyPayload = (status = "READ") =>
+    whatsappPayload(
+      whatsappChange("history", {
+        history: [
+          {
+            metadata: { phase: 0, chunk_order: 1, progress: 100 },
+            threads: [
+              {
+                id: USER_PHONE,
+                messages: [
+                  {
+                    from: BUSINESS_PHONE,
+                    id: "wamid.historico",
+                    timestamp: "1739230955",
+                    type: "text",
+                    text: { body: "de hace medio año" },
+                    history_context: { status },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      })
+    )
+
+  const echoPayload = () =>
+    whatsappPayload(
+      whatsappChange("smb_message_echoes", {
+        message_echoes: [
+          {
+            from: BUSINESS_PHONE,
+            to: USER_PHONE,
+            id: "wamid.eco",
+            timestamp: "1739321024",
+            type: "text",
+            text: { body: "escrito desde el móvil" },
+          },
+        ],
+      })
+    )
+
+  beforeEach(arrangeWhatsapp)
+
+  it("persiste el historial pero no lo cuenta ni lo reenvía", async () => {
+    await expect(
+      ingestWhatsappWebhookPayload(historyPayload())
+    ).resolves.toEqual([])
+
+    // Saliente con wamid: deduplica contra el índice de la 0017 §7.
+    expect(mocks.insertCoexistenceMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metaMessageId: "wamid.historico",
+        origin: "history",
+        historical: true,
+        deliveryStatus: "read",
+      })
+    )
+    // Ni cuota, ni entrega, ni salto registrado: el histórico no llega nunca
+    // al webhook del tenant, así que tampoco hay nada que anotar como omitido.
+    expect(mocks.incrementUsage).not.toHaveBeenCalled()
+    expect(mocks.enqueueDelivery).not.toHaveBeenCalled()
+    expect(mocks.recordSkippedDelivery).not.toHaveBeenCalled()
+  })
+
+  it("no abre la ventana de 24 h con un mensaje del historial", async () => {
+    await ingestWhatsappWebhookPayload(historyPayload())
+
+    expect(mocks.upsertConversation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.objectContaining({ historical: true }),
+      })
+    )
+  })
+
+  // El eco es tráfico vivo: se reenvía y se cobra.
+  it("persiste el echo como saliente, lo cuenta y lo reenvía", async () => {
+    const ingested = await ingestWhatsappWebhookPayload(echoPayload())
+
+    expect(mocks.insertCoexistenceMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contactId: USER_PHONE,
+        metaMessageId: "wamid.eco",
+        origin: "business_app",
+        historical: false,
+      })
+    )
+    expect(mocks.incrementUsage).toHaveBeenCalledWith(
+      "tenant-1",
+      unrestricted.periodStart
+    )
+
+    await ingested[0]!.pushJob()
+    expect(mocks.enqueueDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({ subject: { kind: "message", id: "message-2" } })
+    )
+  })
+
+  // Un echo con la cuenta restringida se comporta como cualquier otro entrante
+  // vivo (ADR 0003): se persiste, se cuenta y deja de reenviarse.
+  it("deja de reenviar el echo con el tenant restringido", async () => {
+    mocks.getTenantEntitlement.mockResolvedValue(restricted)
+
+    const [ingested] = await ingestWhatsappWebhookPayload(echoPayload())
+    await ingested!.pushJob()
+
+    expect(mocks.recordSkippedDelivery).toHaveBeenCalledWith(
+      { kind: "message", id: "message-2" },
+      expect.objectContaining({ logReason: "account_restricted" })
+    )
+  })
+})
+
+describe("acuses de entrega de WhatsApp", () => {
+  const statusPayload = (status: string) =>
+    whatsappPayload(
+      whatsappChange("messages", {
+        statuses: [
+          {
+            id: WAMID,
+            status,
+            timestamp: "1749416400",
+            recipient_id: USER_PHONE,
+          },
+        ],
+      })
+    )
+
+  beforeEach(arrangeWhatsapp)
+
+  it("mueve delivery_status con un solo update guardado", async () => {
+    await expect(
+      ingestWhatsappWebhookPayload(statusPayload("read"))
+    ).resolves.toEqual([])
+
+    expect(mocks.updateDeliveryStatus).toHaveBeenCalledWith({
+      connectedPageId: "page-row",
+      metaMessageId: WAMID,
+      deliveryStatus: "read",
+    })
+    // Un acuse no crea fila ni entrega nada.
+    expect(mocks.insertInboundMessage).not.toHaveBeenCalled()
+    expect(mocks.enqueueDelivery).not.toHaveBeenCalled()
+  })
+
+  // El callback atrasado pierde la guarda del UPDATE. No es dato que mostrar,
+  // es una inconsistencia de Meta: se descarta, pero con métrica.
+  it("registra el callback que pierde la guarda en vez de tragárselo", async () => {
+    mocks.updateDeliveryStatus.mockResolvedValue(false)
+
+    await ingestWhatsappWebhookPayload(statusPayload("sent"))
+
+    expect(mocks.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "inbound_ingest",
+        outcome: "duplicate",
+        reason: "already_ingested",
+        providerId: WAMID,
+      })
+    )
+  })
+
+  it("no toca la base con la cuenta sin permiso de canal", async () => {
+    mocks.resolveWhatsappAccess.mockResolvedValue(false)
+
+    await ingestWhatsappWebhookPayload(statusPayload("delivered"))
+
+    expect(mocks.updateDeliveryStatus).not.toHaveBeenCalled()
+  })
+
+  // Los mensajes se procesan antes que los acuses: si el mismo POST trae los
+  // dos, el UPDATE encuentra la fila que el insert acaba de escribir.
+  it("procesa los mensajes antes que sus acuses", async () => {
+    const order: string[] = []
+    mocks.insertInboundMessage.mockImplementation(async () => {
+      order.push("insert")
+      return {
+        message: { id: "message-1", tenantId: "tenant-1" },
+        inserted: true,
+      }
+    })
+    mocks.updateDeliveryStatus.mockImplementation(async () => {
+      order.push("status")
+      return true
+    })
+
+    await ingestWhatsappWebhookPayload(
+      whatsappPayload(
+        liveText(),
+        whatsappChange("messages", {
+          statuses: [
+            { id: WAMID, status: "delivered", timestamp: "1749416400" },
+          ],
+        })
+      )
+    )
+
+    expect(order).toEqual(["insert", "status"])
+  })
+})
+
+describe("campos de WhatsApp que ningún parser modela", () => {
+  beforeEach(arrangeWhatsapp)
+
+  it("los registra en vez de tragárselos", async () => {
+    await ingestWhatsappWebhookPayload(
+      whatsappPayload(whatsappChange("account_update", { event: "VERIFIED" }))
+    )
+
+    expect(mocks.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "webhook_receive",
+        outcome: "dropped",
+        channel: "whatsapp",
+        fields: ["account_update"],
+      })
     )
   })
 })

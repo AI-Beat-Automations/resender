@@ -1,5 +1,12 @@
 import Link from "next/link"
-import { AtSign, Check, Link2, TriangleAlert, X } from "lucide-react"
+import {
+  AtSign,
+  Check,
+  Link2,
+  MessageCircle,
+  TriangleAlert,
+  X,
+} from "lucide-react"
 
 import { ConnectFacebookButton } from "@/features/connect-meta/ui/connect-facebook-button"
 import { ConnectInstagramButton } from "@/features/connect-meta/ui/connect-instagram-button"
@@ -8,8 +15,21 @@ import {
   type ConnectedPageView,
 } from "@/features/connections/ui/connected-page-card"
 import { auth } from "@/auth"
-import { resolveInstagramAccess } from "@/lib/auth/channel-access"
+import {
+  resolveChannelAccess,
+  type ChannelAccess,
+} from "@/lib/auth/channel-access"
+
+// Sin sesión no hay permisos que leer y la pantalla no ofrece ningún canal
+// cerrado. Messenger queda en `true` porque no tiene bandera: lo que decide si
+// se ve es la sesión, y de eso ya se ocupa el layout.
+const CLOSED_CHANNEL_ACCESS: ChannelAccess = {
+  messenger: true,
+  instagram: false,
+  whatsapp: false,
+}
 import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
+import { Button } from "@workspace/ui/components/button"
 import { offersChannel } from "@/lib/pages/channel-display"
 import { formatMetaConnectionError } from "@/lib/pages/meta-connection-error"
 import { listTenantPages } from "@/lib/pages/page-registry"
@@ -45,12 +65,14 @@ export default async function ConnectionsPage({
   const tenantId = session?.user?.id ?? null
   const tenantPages = tenantId ? await listTenantPages(tenantId) : []
   const quota = tenantId ? await resolvePageQuota(tenantId) : null
-  // Permiso de Instagram del tenant (ADR 0010). Sin sesión no hay a quién
-  // preguntarle, así que se cierra.
-  const instagramAccess = tenantId
-    ? await resolveInstagramAccess(tenantId)
-    : false
-  const offersInstagram = offersChannel("instagram", instagramAccess)
+  // Permiso por canal del tenant (ADR 0010). Sin sesión no hay a quién
+  // preguntarle, así que se cierran los dos. Se resuelven de una sola consulta
+  // porque la pantalla los necesita juntos.
+  const access = tenantId
+    ? await resolveChannelAccess(tenantId)
+    : CLOSED_CHANNEL_ACCESS
+  const offersInstagram = offersChannel("instagram", access)
+  const offersWhatsapp = offersChannel("whatsapp", access)
 
   const sortedPages = [...tenantPages].sort(
     (left, right) => cardRank(left) - cardRank(right)
@@ -70,9 +92,9 @@ export default async function ConnectionsPage({
             Conexiones
           </h1>
           <p className="mt-2 max-w-[620px] text-[14.5px]/[1.6] text-muted-foreground">
-            Conecta tus páginas de Facebook y tus cuentas de Instagram,
-            configura un webhook por cuenta y desconecta canales sin borrar el
-            historial.
+            Conecta tus páginas de Facebook, tus cuentas de Instagram y tus
+            números de WhatsApp, configura un webhook por cuenta y desconecta
+            canales sin borrar el historial.
           </p>
         </div>
         {/* En el estado vacío los CTA viven en las tarjetas de abajo, no acá. */}
@@ -80,6 +102,7 @@ export default async function ConnectionsPage({
           <div className="flex shrink-0 flex-wrap gap-2.5">
             <ConnectFacebookButton />
             {offersInstagram && <ConnectInstagramButton />}
+            {offersWhatsapp && <ConnectWhatsappButtons />}
           </div>
         )}
       </header>
@@ -137,7 +160,10 @@ export default async function ConnectionsPage({
         )}
 
         {tenantPages.length === 0 ? (
-          <EmptyState offersInstagram={offersInstagram} />
+          <EmptyState
+            offersInstagram={offersInstagram}
+            offersWhatsapp={offersWhatsapp}
+          />
         ) : (
           <>
             <div className="mt-0.5 flex flex-wrap items-baseline justify-between gap-2">
@@ -149,7 +175,7 @@ export default async function ConnectionsPage({
             {sortedPages.map((page) => (
               <ConnectedPageCard
                 key={page.id}
-                page={toPageView(page, instagramAccess)}
+                page={toPageView(page, access)}
                 showWebhookHint={page.id === firstActiveId}
               />
             ))}
@@ -165,7 +191,13 @@ export default async function ConnectionsPage({
 // Meta, así que son dos caminos y no dos variantes del mismo botón.
 // Sin permiso, Instagram no aparece acá: es la pantalla que ve una cuenta
 // nueva, que es justo la población que nace sin el canal (ADR 0010).
-function EmptyState({ offersInstagram }: { offersInstagram: boolean }) {
+function EmptyState({
+  offersInstagram,
+  offersWhatsapp,
+}: {
+  offersInstagram: boolean
+  offersWhatsapp: boolean
+}) {
   return (
     <>
       <section className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-[22px] shadow-[var(--shadow-sm)] sm:flex-row sm:items-center">
@@ -203,6 +235,27 @@ function EmptyState({ offersInstagram }: { offersInstagram: boolean }) {
         </section>
       )}
 
+      {offersWhatsapp && (
+        <section className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-[22px] shadow-[var(--shadow-sm)] sm:flex-row sm:items-center">
+          <span
+            className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[var(--primary-tint)] text-primary"
+            aria-hidden
+          >
+            <MessageCircle className="size-5" />
+          </span>
+          <div className="flex-1">
+            <h2 className="font-heading text-base font-semibold">WhatsApp</h2>
+            <p className="mt-1 text-[13.5px] text-muted-foreground">
+              Da de alta un número nuevo, o conecta el que ya usas en WhatsApp
+              Business App sin dejar de usarlo desde el teléfono. Solo se puede
+              responder dentro de las 24 horas posteriores al último mensaje del
+              cliente.
+            </p>
+          </div>
+          <ConnectWhatsappButtons />
+        </section>
+      )}
+
       <section className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-border-strong bg-card p-10 text-center">
         <div className="max-w-[460px]">
           <h3 className="font-heading text-[19px] font-semibold tracking-[-0.02em]">
@@ -221,6 +274,34 @@ function EmptyState({ offersInstagram }: { offersInstagram: boolean }) {
         </ol>
       </section>
     </>
+  )
+}
+
+/**
+ * Los dos caminos de alta de WhatsApp. Son dos botones y no uno con un select
+ * porque son dos flujos distintos en Meta —el estándar registra el número con
+ * `/register`, el de Coexistence no lo toca nunca— y la elección no es
+ * reversible: un número quemado en el estándar deja de ser candidato para
+ * Coexistence.
+ *
+ * TODO: placeholders. El componente lanzador de `features/connect-whatsapp/`
+ * los reemplaza en cuanto exista: el alta real es un Embedded Signup en un
+ * popup con nonce y `session logging`, no una navegación suelta. Estos `<a>`
+ * apuntan a las mismas rutas que va a usar el lanzador, así que el contrato de
+ * URLs no cambia cuando llegue.
+ */
+function ConnectWhatsappButtons() {
+  return (
+    <div className="flex shrink-0 flex-wrap gap-2.5">
+      <Button asChild size="lg">
+        <a href="/api/meta/whatsapp/start">Conectar número nuevo</a>
+      </Button>
+      <Button asChild variant="outline" size="lg">
+        <a href="/api/meta/whatsapp/start?mode=coexistence">
+          Conectar número existente (Coexistence)
+        </a>
+      </Button>
+    </div>
   )
 }
 
@@ -269,15 +350,20 @@ async function resolvePageQuota(tenantId: string): Promise<PageQuotaView> {
 
 function toPageView(
   page: Awaited<ReturnType<typeof listTenantPages>>[number],
-  instagramAccess: boolean
+  access: ChannelAccess
 ): ConnectedPageView {
   return {
     id: page.id,
     channel: page.channel,
-    instagramAccess,
+    access,
     metaPageId: page.metaPageId,
     name: page.name,
     username: page.username,
+    wabaId: page.wabaId,
+    whatsappPhoneE164: page.whatsappPhoneE164,
+    onboardingMode: page.onboardingMode,
+    coexistenceStatus: page.coexistenceStatus,
+    historySyncStatus: page.historySyncStatus,
     status: page.status,
     tokenStatus: page.tokenStatus,
     tokenError: page.tokenError,

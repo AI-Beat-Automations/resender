@@ -4,6 +4,8 @@ import {
   formatMetaConnectionError,
   instagramAccountOwnedReason,
   metaPageOwnedReason,
+  whatsappNumberOwnedReason,
+  whatsappStepFailedReason,
 } from "./meta-connection-error"
 
 describe("formatMetaConnectionError", () => {
@@ -116,6 +118,16 @@ describe("formatMetaConnectionError", () => {
       "instagram_account_owned:1",
       "instagram_not_enabled",
       "instagram_page_limit_reached",
+      "whatsapp_not_enabled",
+      "whatsapp_page_limit_reached",
+      "whatsapp_exchange_failed",
+      "whatsapp_assets_failed",
+      "whatsapp_register_failed",
+      "whatsapp_subscribe_failed",
+      "whatsapp_sync_request_failed",
+      "whatsapp_persist_failed",
+      "whatsapp_state_mismatch",
+      "whatsapp_number_owned:1",
       "unknown",
     ]
 
@@ -124,5 +136,58 @@ describe("formatMetaConnectionError", () => {
         /^No se pudo conectar: /
       )
     }
+  })
+})
+
+describe("motivos de WhatsApp", () => {
+  // Los seis pasos de `WhatsappOnboardingStep`. El test existe para que agregar
+  // un paso al cliente sin darle texto acá se note: el motivo saldría crudo.
+  const STEPS = [
+    "exchange",
+    "assets",
+    "register",
+    "subscribe",
+    "sync_request",
+    "persist",
+  ] as const
+
+  it("da un texto propio a cada paso del Embedded Signup", () => {
+    for (const step of STEPS) {
+      const message = formatMetaConnectionError(whatsappStepFailedReason(step))
+      expect(message).toMatch(/^No se pudo conectar: /)
+      // Crudo significa «cayó en el default»: el motivo entero pegado al final.
+      expect(message).not.toContain(`whatsapp_${step}_failed`)
+    }
+  })
+
+  it("no promete que no quedó nada guardado cuando falla el history sync", () => {
+    // El único paso que corre con la conexión ya persistida.
+    expect(formatMetaConnectionError("whatsapp_sync_request_failed")).toContain(
+      "quedó conectado"
+    )
+  })
+
+  it("nombra el phone_number_id que ya pertenece a otro tenant", () => {
+    expect(
+      formatMetaConnectionError(whatsappNumberOwnedReason("109988776655"))
+    ).toBe(
+      "No se pudo conectar: el número de WhatsApp 109988776655 ya pertenece a otra cuenta de Resender."
+    )
+  })
+
+  it("explica el state_mismatch por la causa real: dos pestañas", () => {
+    const message = formatMetaConnectionError("whatsapp_state_mismatch")
+    expect(message).toContain("pestaña")
+    // No comparte texto con el `state_mismatch` genérico de los otros canales.
+    expect(message).not.toBe(formatMetaConnectionError("state_mismatch"))
+  })
+
+  it("explica el gate de canal y el cupo sin hablar de Instagram", () => {
+    expect(formatMetaConnectionError("whatsapp_not_enabled")).toContain(
+      "WhatsApp"
+    )
+    expect(formatMetaConnectionError("whatsapp_page_limit_reached")).toContain(
+      "cupo"
+    )
   })
 })

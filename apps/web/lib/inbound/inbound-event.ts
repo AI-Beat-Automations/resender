@@ -8,6 +8,17 @@
 // Instagram importara "el módulo de Messenger" para hablar de algo que no es de
 // Messenger.
 
+// Import **solo de tipos** y a propósito: `message-enums.ts` importa de aquí el
+// valor `INBOUND_ATTACHMENT_TYPES`, así que un import normal cerraría un ciclo
+// en tiempo de ejecución. `import type` se borra al compilar y el ciclo queda
+// solo en el grafo de tipos, que TypeScript sí resuelve.
+import type {
+  AttachmentStatus,
+  DeliveryStatus,
+  MessageAttachmentType,
+  MessageOrigin,
+} from "@/lib/messages/message-enums"
+
 export type InboundEventType = "message" | "postback"
 
 // Catálogo completo de tipos de adjunto que Meta puede mandar en un mensaje
@@ -60,10 +71,21 @@ export type AttachmentDetails = {
   elements?: AttachmentProductElement[]
   rawType?: string
   raw?: unknown
+  // Estado del binario, **solo en el sobre que sale al tenant**: lo agrega
+  // `buildInboundPushPayload` derivándolo de la fila (`attachment_status` más
+  // la edad, ver `lib/messages/media-retention.ts`). No se persiste aquí
+  // dentro: la columna es la fuente y el jsonb sería una segunda copia.
+  status?: AttachmentStatus
 }
 
 export type InboundAttachment = {
-  type: InboundAttachmentType
+  // El catálogo ancho —el de la fila, no el de Messenger— porque WhatsApp
+  // manda seis tipos que los otros dos canales no tienen (ubicación, contacto,
+  // reacción, interactivo, pedido, evento de sistema) y el evento neutro es el
+  // que los cruza. `MessageAttachmentType` **extiende** `INBOUND_ATTACHMENT_TYPES`
+  // (ver `message-enums.ts`), así que nada de lo que ya producían Messenger e
+  // Instagram deja de valer.
+  type: MessageAttachmentType
   url: string | null
   title: string | null
   details: AttachmentDetails
@@ -86,4 +108,38 @@ export type InboundEvent = {
   metaMessageId: string | null
   postbackPayload: string | null
   timestamp: Date
+
+  // ---------------------------------------------------------------------
+  // Campos de WhatsApp. **Todos opcionales y todos aditivos**: Messenger e
+  // Instagram no los escriben y la ingesta los lee con un default que es
+  // exactamente el comportamiento que esos dos canales tienen hoy. Así los
+  // tres canales siguen entrando por la misma puerta —los mismos gates, el
+  // mismo dedupe, el mismo contador— en vez de tener una ingesta por canal.
+  // ---------------------------------------------------------------------
+
+  // Ausente = `inbound`, que es lo único que Messenger e Instagram producen.
+  // WhatsApp sí manda salientes por webhook: el eco de lo que el negocio
+  // tecleó en la Business App y la mitad saliente del historial.
+  direction?: "inbound" | "outbound"
+  // Quién produjo el mensaje. `direction` no alcanza en Coexistence: un
+  // saliente puede ser nuestro (API) o un eco del negocio, y el webhook del
+  // tenant necesita distinguirlos para no automatizarse sobre sí mismo.
+  origin?: MessageOrigin
+  // Backfill del sync inicial. Es la bandera que apaga el reenvío y la cuota
+  // (única excepción declarada de la ADR 0011, ver `inbound-ingestion.ts`).
+  historical?: boolean
+  // Solo lo trae el historial, donde cada mensaje llega con el estado que ya
+  // tenía en el móvil. En vivo el estado llega aparte, por `statuses[]`.
+  deliveryStatus?: DeliveryStatus | null
+  // Lo que hay que escribir en `attachment_status`, y por tanto también si se
+  // encola una descarga: `pending` sí, `unavailable` no (Meta no ofrece el
+  // binario del historial de más de 14 días), `null` no hay binario.
+  attachmentStatus?: AttachmentStatus | null
+  // El id de media de Meta, lo único con lo que se puede pedir la descarga
+  // después. Va suelto y no dentro de `attachment` porque es un dato de
+  // ingesta —el job de descarga— y no del sobre que sale al tenant.
+  providerMediaId?: string | null
+  // `context.id`: el mensaje al que este responde. Ojo, una reacción **no**
+  // usa `context`; su vínculo viaja en `attachment.details`.
+  replyToMetaMessageId?: string | null
 }

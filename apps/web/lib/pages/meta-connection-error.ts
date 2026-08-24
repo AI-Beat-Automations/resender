@@ -9,6 +9,7 @@
 
 const PAGE_OWNED_PREFIX = "page_owned:"
 const INSTAGRAM_ACCOUNT_OWNED_PREFIX = "instagram_account_owned:"
+const WHATSAPP_NUMBER_OWNED_PREFIX = "whatsapp_number_owned:"
 
 // Todos los mensajes empiezan con este prefijo (spec C.8).
 const PREFIX = "No se pudo conectar"
@@ -75,6 +76,79 @@ export function formatMetaConnectionError(reason?: string | null): string {
     return `${PREFIX}: la cuenta de Instagram ${accountId} ya pertenece a otra cuenta de Resender.`
   }
 
+  // Motivos propios de WhatsApp, **uno por paso** del Embedded Signup, con el
+  // mismo criterio que los de Instagram: desde la pantalla todos se ven igual
+  // —vuelves a Conexiones sin el número— y son problemas distintos, con dueños
+  // distintos. Nombrar el paso es lo que separa «revisa la configuración de la
+  // app» de «el usuario no te asignó el número».
+  //
+  // Los pasos son los de `WhatsappOnboardingStep` (`lib/meta/whatsapp-client.ts`)
+  // y el orden de los `if` es el orden en el que corren, que es también el
+  // orden en el que hay que leerlos al depurar. **La convención es
+  // `whatsapp_<step>_failed`**, uno por miembro del paso, y está pensada para
+  // que el cierre del Embedded Signup no tenga que conocer este archivo: con el
+  // `step` que ya lleva su error a cuestas alcanza para armar el `reason`.
+  if (reason === "whatsapp_not_enabled") {
+    return `${PREFIX}: el canal de WhatsApp no está habilitado para tu cuenta.`
+  }
+
+  if (reason === "whatsapp_page_limit_reached") {
+    return `${PREFIX}: el cupo de conexiones de tu plan está completo. Desconecta una conexión en Conexiones para liberar cupo.`
+  }
+
+  if (reason === "whatsapp_exchange_failed") {
+    return `${PREFIX}: Meta no completó el intercambio de credenciales de WhatsApp. Vuelve a intentarlo.`
+  }
+
+  if (reason === "whatsapp_assets_failed") {
+    return `${PREFIX}: la autorización no incluyó el número ni la cuenta de WhatsApp Business. Vuelve a lanzarla y elige el número que quieres conectar.`
+  }
+
+  if (reason === "whatsapp_register_failed") {
+    return `${PREFIX}: Meta no pudo registrar el número en Cloud API. Revisa que no esté en uso en otra plataforma y vuelve a intentarlo.`
+  }
+
+  if (reason === "whatsapp_subscribe_failed") {
+    return `${PREFIX}: Meta no confirmó la suscripción al webhook de la cuenta de WhatsApp Business. El número no quedó conectado.`
+  }
+
+  // `sync_request` es el único paso que puede fallar **con el número ya
+  // conectado**: la conexión de Coexistence se persiste antes de pedir el
+  // historial, justamente para no arrancar el reloj de 24 h sobre una fila que
+  // todavía no existe. Por eso el texto no promete que no quedó nada guardado
+  // —quedó— y manda a rehacer el alta, que es lo único que vuelve a abrir la
+  // ventana del historial.
+  if (reason === "whatsapp_sync_request_failed") {
+    return `${PREFIX}: el número quedó conectado pero no pudimos pedirle el historial a Meta. El plazo de 24 horas ya corre: vuelve a lanzar el alta de Coexistence para pedirlo otra vez.`
+  }
+
+  // El `state_mismatch` de WhatsApp merece su propio texto porque su causa
+  // probable es otra y es **accionable**, y porque el momento en que aparece es
+  // el peor posible: el usuario ya creó el WABA, ya verificó el número por SMS y
+  // ya autorizó, y lo que recibe es que «la sesión venció» con un `code` de 30
+  // segundos ya gastado.
+  //
+  // Messenger e Instagram protegen su callback con una cookie de `state` que se
+  // siembra en la misma navegación que abre el diálogo; acá el nonce vive en una
+  // cookie única por navegador que el launcher emite al montarse. Abrir
+  // Conexiones en una segunda pestaña reemite el nonce y pisa el de la primera,
+  // así que **la causa número uno de este fallo no es un ataque ni un
+  // vencimiento sino dos pestañas abiertas** — y el remedio es cerrar una y
+  // reintentar desde la otra, que son diez segundos si alguien te lo dice y un
+  // correo a soporte si no.
+  if (reason === "whatsapp_state_mismatch") {
+    return `${PREFIX}: la autorización no coincide con esta pestaña. Suele pasar cuando Conexiones quedó abierta en otra pestaña o ventana, porque la segunda invalida la conexión que empezó la primera. Cierra las demás y vuelve a lanzarla desde una sola.`
+  }
+
+  if (reason === "whatsapp_persist_failed") {
+    return `${PREFIX}: el número se autorizó en Meta pero no se pudo guardar. Vuelve a intentarlo; si se repite, escríbenos.`
+  }
+
+  if (reason.startsWith(WHATSAPP_NUMBER_OWNED_PREFIX)) {
+    const phoneNumberId = reason.slice(WHATSAPP_NUMBER_OWNED_PREFIX.length)
+    return `${PREFIX}: el número de WhatsApp ${phoneNumberId} ya pertenece a otra cuenta de Resender.`
+  }
+
   // Motivo desconocido: se muestra crudo antes que tragárselo, porque es lo
   // único que el usuario puede citarnos en un correo de soporte.
   return `${PREFIX}: ${reason}.`
@@ -90,4 +164,21 @@ export function metaPageOwnedReason(metaPageId: string): string {
 // `PageOwnershipError` pero con un IG ID adentro.
 export function instagramAccountOwnedReason(igUserId: string): string {
   return `${INSTAGRAM_ACCOUNT_OWNED_PREFIX}${igUserId}`
+}
+
+// El tercero, para el cierre del Embedded Signup de WhatsApp: recibe el mismo
+// `PageOwnershipError` con un `phone_number_id` adentro. El prefijo es propio y
+// no se reusa `page_owned:` porque el mensaje nombra el canal, y decirle «la
+// página 109…» a quien acaba de autorizar un número lo manda a buscar en el
+// lugar equivocado.
+export function whatsappNumberOwnedReason(phoneNumberId: string): string {
+  return `${WHATSAPP_NUMBER_OWNED_PREFIX}${phoneNumberId}`
+}
+
+// El `reason` del querystring a partir del paso que falló. Es una plantilla y
+// no una tabla justamente para que agregar un paso a `WhatsappOnboardingStep`
+// no obligue a mantener dos listas en sincronía: el `if` de arriba que falte se
+// nota porque el mensaje sale crudo, no porque el mapeo se pierda.
+export function whatsappStepFailedReason(step: string): string {
+  return `whatsapp_${step}_failed`
 }

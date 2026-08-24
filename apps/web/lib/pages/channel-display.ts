@@ -1,3 +1,5 @@
+import type { ChannelAccess } from "@/lib/auth/channel-access"
+
 import type { PageChannel, PageStatus } from "./page-registry"
 
 // Cómo se presenta cada canal en /connections una vez que Instagram tiene
@@ -10,18 +12,22 @@ import type { PageChannel, PageStatus } from "./page-registry"
 
 /**
  * Si se invita a conectar el canal: el botón de la cabecera y la tarjeta del
- * estado vacío. Esconderlos **no** es un gate —`instagram/start` comprueba el
- * permiso por su cuenta y rebota a quien llegue con la URL a mano—, es no
- * ofrecer lo que la ruta va a rechazar.
+ * estado vacío. Esconderlos **no** es un gate —`instagram/start` y
+ * `whatsapp/start` comprueban el permiso por su cuenta y rebotan a quien llegue
+ * con la URL a mano—, es no ofrecer lo que la ruta va a rechazar.
  *
  * El permiso es de un canal y no de la cuenta: Messenger se ofrece siempre,
- * aunque Instagram esté cerrado para ese mismo tenant.
+ * aunque Instagram y WhatsApp estén cerrados para ese mismo tenant.
+ *
+ * Recibe el mapa entero y no un booleano suelto desde que son tres canales: la
+ * firma vieja `(channel, instagramAccess)` obligaba a que el llamador supiera de
+ * qué canal era ese booleano, y con dos banderas eso ya no se sostiene.
  */
 export function offersChannel(
   channel: PageChannel,
-  instagramAccess: boolean
+  access: ChannelAccess
 ): boolean {
-  return channel === "instagram" ? instagramAccess : true
+  return access[channel]
 }
 
 /**
@@ -40,12 +46,12 @@ export type ConnectionStatusBadge = {
 export function resolveConnectionStatus(page: {
   channel: PageChannel
   status: PageStatus
-  instagramAccess: boolean
+  access: ChannelAccess
 }): ConnectionStatus {
   // Una cuenta desconectada tampoco recibe tráfico, así que el permiso no le
   // cambia nada: «sin acceso» sería un segundo motivo para el mismo silencio.
   if (page.status !== "active") return "disconnected"
-  if (page.channel === "instagram" && !page.instagramAccess) return "no-access"
+  if (!page.access[page.channel]) return "no-access"
   return "active"
 }
 

@@ -20,6 +20,14 @@ interface CloudflareEnv {
   // Productor de la cola de entregas. La ingesta escribe el job en
   // `external_webhook_jobs` y encola su id; el consumidor vive en `worker.ts`.
   WEBHOOK_DELIVERIES: Queue<WebhookDeliveryMessage>
+  // Productor de `whatsapp-jobs`. Cola propia y no `webhook-deliveries` a
+  // propósito: un import de historial de Coexistence son miles de jobs, y en la
+  // cola de entregas competirían en batches de 10 con los pushes de **todos**
+  // los tenants.
+  WHATSAPP_JOBS: Queue<WhatsappJobMessage>
+  // Bucket R2 privado con la media **entrante** de WhatsApp. La saliente no
+  // pasa por acá: la hospeda el cliente y viaja por `link`.
+  WHATSAPP_MEDIA: R2Bucket
 }
 
 // Mismo nombre y forma que genera `wrangler types`, para que sustituir este
@@ -53,6 +61,28 @@ interface RateLimit {
 interface WebhookDeliveryMessage {
   jobId: string
 }
+
+// ---------------------------------------------------------------------------
+// Cola de trabajo de WhatsApp.
+//
+// A diferencia de `WebhookDeliveryMessage`, acá el cuerpo **sí** discrimina: no
+// hay una tabla de jobs que sepa qué hay que hacer. Son cuatro trabajos con
+// formas distintas y sin estado compartido en Postgres, así que el tipo del
+// mensaje es lo único que los distingue y por eso es una unión y no un `type:
+// string`: un job nuevo no compila hasta que el consumidor lo atiende.
+//
+// `history_chunk` lleva el chunk entero porque el webhook responde 200 antes de
+// persistirlo; los demás llevan solo ids, y el estado lo leen de la base.
+type WhatsappJobMessage =
+  // Pide el sync de historial a la SMB App Data API. Es lo que arranca el
+  // reloj de 24 h de Coexistence, y si falla la conexión muere en silencio.
+  | { type: "history_sync_request"; connectionId: string }
+  // Un chunk del historial. Llegan desordenados y por fases.
+  | { type: "history_chunk"; connectionId: string; chunk: unknown }
+  // Baja un medio entrante de Meta a R2. La URL de Meta dura 5 minutos.
+  | { type: "media_download"; messageId: string; providerMediaId: string }
+  // Vacía el prefijo R2 de una cuenta ya borrada. Reanudable con cursor.
+  | { type: "media_purge"; prefix: string; cursor?: string }
 
 interface QueueSendOptions {
   delaySeconds?: number
@@ -88,4 +118,60 @@ interface ScheduledController {
 interface WorkerExecutionContext {
   waitUntil(promise: Promise<unknown>): void
   passThroughOnException(): void
+}
+
+// ---------------------------------------------------------------------------
+// R2, con el mismo criterio que `Queue` y `RateLimit`: solo la superficie que
+// este worker usa de verdad. `get` devuelve un objeto con `body` como stream
+// porque la ruta de descarga hace streaming al cliente en vez de cargar el
+// archivo entero en memoria — un documento de WhatsApp llega hasta 100 MB.
+interface R2Range {
+  offset?: number
+  length?: number
+  suffix?: number
+}
+
+interface R2GetOptions {
+  range?: R2Range | string
+}
+
+interface R2PutOptions {
+  httpMetadata?: { contentType?: string }
+  customMetadata?: Record<string, string>
+}
+
+interface R2Object {
+  readonly key: string
+  readonly size: number
+  readonly etag: string
+  readonly httpMetadata?: { contentType?: string }
+  readonly customMetadata?: Record<string, string>
+}
+
+interface R2ObjectBody extends R2Object {
+  readonly body: ReadableStream
+  arrayBuffer(): Promise<ArrayBuffer>
+}
+
+interface R2Objects {
+  objects: R2Object[]
+  truncated: boolean
+  cursor?: string
+}
+
+interface R2ListOptions {
+  prefix?: string
+  limit?: number
+  cursor?: string
+}
+
+interface R2Bucket {
+  get(key: string, options?: R2GetOptions): Promise<R2ObjectBody | null>
+  put(
+    key: string,
+    value: ReadableStream | ArrayBuffer | string,
+    options?: R2PutOptions
+  ): Promise<R2Object>
+  delete(keys: string | string[]): Promise<void>
+  list(options?: R2ListOptions): Promise<R2Objects>
 }

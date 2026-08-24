@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  DELIVERY_STATUS_LABEL,
   NO_MESSAGES_CONTENT,
   formatContactLabel,
+  formatDeliveryLabel,
+  groupThreadReactions,
   toConversationRowView,
   toThreadMessageViews,
 } from "./display"
@@ -26,6 +29,7 @@ function conversation(
       metaPageId: "104233889761204",
       name: "Café Rioja",
       username: null,
+      whatsappPhoneE164: null,
     },
     latestMessage: {
       text: "¿Hacen envíos a Palermo?",
@@ -41,6 +45,7 @@ function conversation(
 function message(overrides: Partial<ThreadMessage> = {}): ThreadMessage {
   return {
     id: "msg-1",
+    channel: "messenger",
     direction: "inbound",
     status: "received",
     text: "Hola, ¿tienen turno para hoy?",
@@ -49,6 +54,10 @@ function message(overrides: Partial<ThreadMessage> = {}): ThreadMessage {
     attachmentType: null,
     attachmentUrl: null,
     attachmentMeta: null,
+    attachmentStatus: null,
+    metaMessageId: null,
+    replyToMetaMessageId: null,
+    deliveryStatus: null,
     createdAt: new Date(2026, 6, 27, 14, 1, 29),
     ...overrides,
   }
@@ -125,6 +134,7 @@ describe("toConversationRowView", () => {
           metaPageId: "17841400000000000",
           name: "Café Rioja",
           username: "cafe.rioja",
+          whatsappPhoneE164: null,
         },
       }),
       NOW
@@ -143,6 +153,7 @@ describe("toConversationRowView", () => {
           metaPageId: "17841400000000000",
           name: "Café Rioja",
           username: null,
+          whatsappPhoneE164: null,
         },
       }),
       NOW
@@ -350,5 +361,331 @@ describe("toThreadMessageViews", () => {
     const [plainText] = toThreadMessageViews([message()])
 
     expect(plainText?.attachment).toBeNull()
+  })
+})
+
+describe("formatPageLabel en WhatsApp", () => {
+  it("identifica la cuenta por el número, con el phone_number_id de secundario", () => {
+    // `metaPageId` acá es el `phone_number_id`: un entero opaco que no dice qué
+    // número es. Mismo criterio que el `@handle · ig_id` de Instagram.
+    const row = toConversationRowView(
+      conversation({
+        page: {
+          id: "page-3",
+          channel: "whatsapp",
+          metaPageId: "109988776655443",
+          name: "Café Rioja",
+          username: null,
+          whatsappPhoneE164: "+5491122334455",
+        },
+      }),
+      NOW
+    )
+
+    expect(row.pageLabel).toBe(
+      "+5491122334455 · phone_number_id 109988776655443"
+    )
+    expect(row.channel).toBe("whatsapp")
+  })
+
+  it("cae al nombre cuando la fila todavía no tiene el número", () => {
+    const row = toConversationRowView(
+      conversation({
+        page: {
+          id: "page-3",
+          channel: "whatsapp",
+          metaPageId: "109988776655443",
+          name: "Café Rioja",
+          username: null,
+          whatsappPhoneE164: null,
+        },
+      }),
+      NOW
+    )
+
+    expect(row.pageLabel).toBe("Café Rioja · 109988776655443")
+  })
+})
+
+describe("formatDeliveryLabel", () => {
+  it("prefija la entrega para no confundirla con el status interno", () => {
+    // En la burbuja conviven dos `sent` que no significan lo mismo: el interno
+    // es «se lo mandamos a Meta», el de entrega es «Meta lo mandó al teléfono».
+    expect(formatDeliveryLabel("sent")).toBe("entrega: enviado")
+    expect(formatDeliveryLabel("read")).toBe("entrega: leído")
+    expect(formatDeliveryLabel("failed")).toBe("entrega: no entregado")
+  })
+
+  it("no dice nada mientras el proveedor no haya reportado", () => {
+    expect(formatDeliveryLabel(null)).toBeNull()
+  })
+
+  it("le da texto propio a los seis estados", () => {
+    const labels = Object.values(DELIVERY_STATUS_LABEL)
+    expect(labels).toHaveLength(6)
+    expect(new Set(labels).size).toBe(6)
+  })
+
+  it("viaja en su propio campo de la vista, separado del `meta`", () => {
+    const [view] = toThreadMessageViews([
+      message({
+        channel: "whatsapp",
+        direction: "outbound",
+        status: "sent",
+        deliveryStatus: "read",
+        createdAt: new Date(2026, 6, 27, 14, 2, 11),
+      }),
+    ])
+
+    expect(view?.meta).toBe("outbound · 14:02:11 · sent")
+    expect(view?.delivery).toBe("entrega: leído")
+  })
+
+  it("es null en Messenger, que no reporta entrega", () => {
+    const [view] = toThreadMessageViews([message()])
+    expect(view?.delivery).toBeNull()
+  })
+})
+
+describe("groupThreadReactions", () => {
+  const reacted = message({
+    id: "msg-a",
+    channel: "whatsapp",
+    metaMessageId: "wamid.AAA",
+    text: "¿Hacen envíos a Palermo?",
+    createdAt: new Date(2026, 6, 27, 14, 0, 0),
+  })
+
+  it("cuelga la reacción del mensaje al que apunta y no le da burbuja", () => {
+    const { timeline, reactionsByMessageId } = groupThreadReactions([
+      reacted,
+      message({
+        id: "msg-b",
+        channel: "whatsapp",
+        direction: "outbound",
+        status: "sent",
+        text: "",
+        attachmentType: "reaction",
+        attachmentMeta: { emoji: "👍" },
+        replyToMetaMessageId: "wamid.AAA",
+        metaMessageId: "wamid.BBB",
+        createdAt: new Date(2026, 6, 27, 14, 0, 30),
+      }),
+    ])
+
+    expect(timeline.map((entry) => entry.id)).toEqual(["msg-a"])
+    expect(reactionsByMessageId["msg-a"]).toEqual([
+      { id: "msg-b", emoji: "👍", outbound: true },
+    ])
+  })
+
+  it("acumula varias reacciones sobre el mismo mensaje", () => {
+    const { reactionsByMessageId } = groupThreadReactions([
+      reacted,
+      message({
+        id: "msg-b",
+        channel: "whatsapp",
+        attachmentType: "reaction",
+        text: "❤️",
+        replyToMetaMessageId: "wamid.AAA",
+        createdAt: new Date(2026, 6, 27, 14, 0, 30),
+      }),
+      message({
+        id: "msg-c",
+        channel: "whatsapp",
+        direction: "outbound",
+        status: "sent",
+        attachmentType: "reaction",
+        attachmentMeta: { emoji: "😂" },
+        replyToMetaMessageId: "wamid.AAA",
+        createdAt: new Date(2026, 6, 27, 14, 0, 40),
+      }),
+    ])
+
+    expect(reactionsByMessageId["msg-a"]).toEqual([
+      { id: "msg-b", emoji: "❤️", outbound: false },
+      { id: "msg-c", emoji: "😂", outbound: true },
+    ])
+  })
+
+  it("descarta la reacción retirada, que llega con el emoji en blanco", () => {
+    // WhatsApp no manda un evento de borrado: manda la misma reacción vacía.
+    const { timeline, reactionsByMessageId } = groupThreadReactions([
+      reacted,
+      message({
+        id: "msg-b",
+        channel: "whatsapp",
+        attachmentType: "reaction",
+        text: "",
+        attachmentMeta: { emoji: "" },
+        replyToMetaMessageId: "wamid.AAA",
+        createdAt: new Date(2026, 6, 27, 14, 0, 30),
+      }),
+    ])
+
+    expect(timeline.map((entry) => entry.id)).toEqual(["msg-a"])
+    expect(reactionsByMessageId).toEqual({})
+  })
+
+  it("le devuelve la burbuja a la reacción cuyo target no está en el hilo", () => {
+    // Pasa con lo anterior al import de historial: desaparecer en silencio es
+    // peor que verse fea, el dato existe.
+    const huerfana = message({
+      id: "msg-b",
+      channel: "whatsapp",
+      attachmentType: "reaction",
+      attachmentMeta: { emoji: "👍" },
+      replyToMetaMessageId: "wamid.ZZZ",
+      createdAt: new Date(2026, 6, 27, 14, 0, 30),
+    })
+    const { timeline, reactionsByMessageId } = groupThreadReactions([
+      reacted,
+      huerfana,
+    ])
+
+    expect(timeline.map((entry) => entry.id)).toEqual(["msg-a", "msg-b"])
+    expect(reactionsByMessageId).toEqual({})
+  })
+
+  it("agrupa igual cuando la reacción llega antes que el mensaje reaccionado", () => {
+    const { timeline, reactionsByMessageId } = groupThreadReactions([
+      message({
+        id: "msg-b",
+        channel: "whatsapp",
+        attachmentType: "reaction",
+        attachmentMeta: { emoji: "👍" },
+        replyToMetaMessageId: "wamid.AAA",
+        createdAt: new Date(2026, 6, 27, 13, 0, 0),
+      }),
+      reacted,
+    ])
+
+    expect(timeline.map((entry) => entry.id)).toEqual(["msg-a"])
+    expect(reactionsByMessageId["msg-a"]).toHaveLength(1)
+  })
+
+  it("la vista del hilo no pinta la reacción como burbuja", () => {
+    const views = toThreadMessageViews([
+      reacted,
+      message({
+        id: "msg-b",
+        channel: "whatsapp",
+        attachmentType: "reaction",
+        attachmentMeta: { emoji: "👍" },
+        replyToMetaMessageId: "wamid.AAA",
+        createdAt: new Date(2026, 6, 27, 14, 0, 30),
+      }),
+    ])
+
+    expect(views).toHaveLength(1)
+    expect(views[0]?.reactions).toEqual([
+      { id: "msg-b", emoji: "👍", outbound: false },
+    ])
+  })
+})
+
+describe("media de WhatsApp en el hilo", () => {
+  const NOW_MEDIA = new Date(2026, 6, 27, 15, 30)
+
+  it("apunta a la ruta propia y no a la URL firmada de Meta", () => {
+    // La firmada de Cloud API dura cinco minutos: un <img src> ahí se rompe
+    // siempre. La copia que dura es la de R2 y la sirve nuestra ruta.
+    const [view] = toThreadMessageViews(
+      [
+        message({
+          id: "msg-media",
+          channel: "whatsapp",
+          text: "",
+          attachmentType: "image",
+          attachmentUrl: "https://lookaside.fbsbx.com/whatsapp/expira",
+          attachmentStatus: "available",
+          createdAt: new Date(2026, 6, 27, 14, 0, 0),
+        }),
+      ],
+      NOW_MEDIA
+    )
+
+    expect(view?.attachment).toEqual({
+      kind: "image",
+      url: "/api/meta/whatsapp/media/msg-media",
+    })
+  })
+
+  it("no da URL cuando el objeto ya venció, y lo explica", () => {
+    // El estado se deriva de la edad de la fila (`effectiveStatus`): un solo
+    // reloj, el mismo que cuenta la lifecycle rule de R2.
+    const [view] = toThreadMessageViews(
+      [
+        message({
+          id: "msg-media",
+          channel: "whatsapp",
+          text: "",
+          attachmentType: "image",
+          attachmentStatus: "available",
+          createdAt: new Date(2025, 11, 1, 10, 0, 0),
+        }),
+      ],
+      NOW_MEDIA
+    )
+
+    expect(view?.attachment).toEqual({
+      kind: "row",
+      label: "image · archivo expirado",
+      url: null,
+    })
+  })
+
+  it("distingue «nunca lo hubo» de «no se pudo descargar»", () => {
+    const [nunca, fallido] = toThreadMessageViews(
+      [
+        message({
+          id: "msg-1",
+          channel: "whatsapp",
+          text: "",
+          attachmentType: "image",
+          attachmentStatus: "unavailable",
+          createdAt: new Date(2026, 6, 27, 14, 0, 0),
+        }),
+        message({
+          id: "msg-2",
+          channel: "whatsapp",
+          text: "",
+          attachmentType: "audio",
+          attachmentStatus: "failed",
+          createdAt: new Date(2026, 6, 27, 14, 1, 0),
+        }),
+      ],
+      NOW_MEDIA
+    )
+
+    expect(nunca?.attachment).toEqual({
+      kind: "row",
+      label: "image · WhatsApp no conserva archivos de más de 14 días",
+      url: null,
+    })
+    expect(fallido?.attachment).toEqual({
+      kind: "row",
+      label: "audio · no se pudo descargar",
+      url: null,
+    })
+  })
+
+  it("deja intacta la URL del CDN en Messenger e Instagram", () => {
+    const [view] = toThreadMessageViews(
+      [
+        message({
+          channel: "instagram",
+          text: "",
+          attachmentType: "image",
+          attachmentUrl: "https://cdn.fbsbx.com/v/foto?oh=abc",
+        }),
+      ],
+      NOW_MEDIA
+    )
+
+    expect(view?.attachment).toEqual({
+      kind: "image",
+      url: "https://cdn.fbsbx.com/v/foto?oh=abc",
+    })
   })
 })

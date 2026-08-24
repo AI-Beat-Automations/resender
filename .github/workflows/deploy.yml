@@ -37,6 +37,7 @@ jobs:
           # Build-time: las NEXT_PUBLIC_* se inlinean en el bundle.
           NEXT_PUBLIC_META_APP_ID: ${{ vars.NEXT_PUBLIC_META_APP_ID }}
           NEXT_PUBLIC_META_CONFIG_ID: ${{ vars.NEXT_PUBLIC_META_CONFIG_ID }}
+          NEXT_PUBLIC_WHATSAPP_CONFIG_ID: ${{ vars.NEXT_PUBLIC_WHATSAPP_CONFIG_ID }}
           NEXT_PUBLIC_POSTHOG_KEY: ${{ vars.NEXT_PUBLIC_POSTHOG_KEY }}
           NEXT_PUBLIC_POSTHOG_HOST: ${{ vars.NEXT_PUBLIC_POSTHOG_HOST }}
           # Solo para que `next build` tenga un valor presente; en runtime el

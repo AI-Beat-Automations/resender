@@ -1,0 +1,503 @@
+import { describe, expect, it, vi } from "vitest"
+
+import {
+  WhatsappApiError,
+  WHATSAPP_COEXISTENCE_WEBHOOK_FIELDS,
+  type WhatsappSignupTarget,
+} from "@/lib/meta/whatsapp-client"
+import {
+  PageOwnershipError,
+  type ConnectedPageRecord,
+  type WhatsappNumberInput,
+  type WhatsappNumberOwnership,
+} from "@/lib/pages/page-registry"
+
+import {
+  checkWhatsappPlanSlot,
+  LOG_REASON_BY_STEP,
+  resolveWhatsappPinOrigin,
+  runWhatsappSignup,
+  type WhatsappSignupDeps,
+  type WhatsappSignupRequest,
+} from "./signup-flow"
+
+const target = (
+  overrides: Partial<WhatsappSignupTarget> = {}
+): WhatsappSignupTarget => ({
+  accessToken: "EAAtoken",
+  tokenExpiresAt: null,
+  wabaId: "waba-1",
+  wabaName: "Café Rioja",
+  phone: {
+    id: "phone-1",
+    displayPhoneNumber: "+34 600 000 000",
+    phoneE164: "+34600000000",
+    verifiedName: "Café Rioja",
+    isOnBizApp: false,
+  },
+  mode: "standard",
+  ...overrides,
+})
+
+const ownership = (
+  overrides: Partial<WhatsappNumberOwnership> = {}
+): WhatsappNumberOwnership => ({
+  ownedByOtherTenant: false,
+  activeForTenant: false,
+  connectionId: null,
+  storedPin: null,
+  storedPinGenerated: false,
+  ...overrides,
+})
+
+const page = (): ConnectedPageRecord =>
+  ({
+    id: "conn-1",
+    tenantId: "tenant-1",
+    channel: "whatsapp",
+    metaPageId: "phone-1",
+    name: "+34600000000",
+  }) as ConnectedPageRecord
+
+const request = (
+  overrides: Partial<WhatsappSignupRequest> = {}
+): WhatsappSignupRequest => ({
+  tenantId: "tenant-1",
+  code: "AQD-code",
+  wabaId: "waba-1",
+  phoneNumberId: "phone-1",
+  mode: "standard",
+  pin: null,
+  ...overrides,
+})
+
+function deps(overrides: Partial<WhatsappSignupDeps> = {}) {
+  const calls: string[] = []
+  const connected: WhatsappNumberInput[] = []
+
+  const base: WhatsappSignupDeps = {
+    begin: async (input) => target({ mode: input.mode ?? "standard" }),
+    finishStandard: async (signupTarget, input) => ({
+      accessToken: signupTarget.accessToken,
+      tokenExpiresAt: null,
+      wabaId: signupTarget.wabaId,
+      wabaName: signupTarget.wabaName,
+      phoneNumberId: signupTarget.phone.id,
+      phoneE164: signupTarget.phone.phoneE164,
+      verifiedName: signupTarget.phone.verifiedName,
+      pin: input.pin ?? "424242",
+      pinGenerated: !input.pin,
+      onboardingMode: "standard" as const,
+      historySyncRequested: null,
+    }),
+    subscribe: async () => {},
+    resolveOwnership: async () => ownership(),
+    connect: async (_tenantId, input) => {
+      connected.push(input)
+      return page()
+    },
+    enqueueHistorySync: async () => {},
+    markHistorySyncStatus: async () => {},
+    ...overrides,
+  }
+
+  // El orden de las llamadas es la mitad de lo que hay que fijar acá —dónde cae
+  // la comprobación de propiedad, qué pasa antes de persistir—, así que se
+  // graba en el envoltorio y no dentro de cada doble: un `override` que se
+  // olvidara de anotarse dejaría el test verde por el motivo equivocado.
+  const recorded = Object.fromEntries(
+    Object.entries(base).map(([name, fn]) => [
+      name,
+      vi.fn(async (...args: unknown[]) => {
+        calls.push(name)
+        return (fn as (...a: unknown[]) => unknown)(...args)
+      }),
+    ])
+  ) as unknown as WhatsappSignupDeps
+
+  return { deps: recorded, calls, connected }
+}
+
+describe("runWhatsappSignup — flujo A (estándar)", () => {
+  it("registra el número y lo persiste como standard", async () => {
+    const { deps: d, calls, connected } = deps()
+
+    const outcome = await runWhatsappSignup(d, request())
+
+    expect(outcome.kind).toBe("connected")
+    expect(calls).toEqual([
+      "begin",
+      "resolveOwnership",
+      "finishStandard",
+      "connect",
+    ])
+    expect(connected[0]).toMatchObject({
+      onboardingMode: "standard",
+      // Sin historial que importar: `null`, no `complete`.
+      historySyncStatus: null,
+      pin: "424242",
+      pinOrigin: "generated",
+    })
+    // El flujo estándar no pide historial ni encola nada.
+    expect(d.enqueueHistorySync).not.toHaveBeenCalled()
+  })
+
+  it("persiste lo que confirmó Graph, no lo que dijo el navegador", async () => {
+    const { deps: d, connected } = deps({
+      begin: vi.fn(async () =>
+        target({ phone: { ...target().phone, id: "phone-real" } })
+      ),
+    })
+
+    await runWhatsappSignup(
+      d,
+      request({ phoneNumberId: "phone-mentira", wabaId: "waba-mentira" })
+    )
+
+    expect(connected[0]).toMatchObject({
+      phoneNumberId: "phone-real",
+      wabaId: "waba-1",
+    })
+  })
+
+  it("reusa el PIN guardado al reconectar, sin marcarlo como del cliente", async () => {
+    const { deps: d, connected } = deps({
+      resolveOwnership: vi.fn(async () =>
+        ownership({ activeForTenant: true, storedPin: "111111" })
+      ),
+    })
+
+    await runWhatsappSignup(d, request())
+
+    expect(d.finishStandard).toHaveBeenCalledWith(expect.anything(), {
+      pin: "111111",
+    })
+    expect(connected[0]).toMatchObject({ pinOrigin: "stored" })
+  })
+
+  it("marca como del cliente el PIN que aportó tras un 133005", async () => {
+    const { deps: d, connected } = deps({
+      resolveOwnership: vi.fn(async () => ownership({ storedPin: "111111" })),
+    })
+
+    await runWhatsappSignup(d, request({ pin: "999999" }))
+
+    expect(d.finishStandard).toHaveBeenCalledWith(expect.anything(), {
+      pin: "999999",
+    })
+    expect(connected[0]).toMatchObject({ pinOrigin: "customer" })
+  })
+
+  it("devuelve pin_required en el 133005 en vez de un fallo genérico", async () => {
+    const { deps: d } = deps({
+      finishStandard: vi.fn(async () => {
+        throw new WhatsappApiError(
+          "phone number already has a two-step verification pin",
+          "register",
+          "pin_required",
+          133005
+        )
+      }),
+    })
+
+    expect(await runWhatsappSignup(d, request())).toEqual({
+      kind: "pin_required",
+      metaErrorCode: 133005,
+    })
+  })
+})
+
+describe("runWhatsappSignup — flujo B (Coexistence)", () => {
+  const coexistenceDeps = (overrides: Partial<WhatsappSignupDeps> = {}) =>
+    deps({
+      begin: vi.fn(async () =>
+        target({
+          mode: "coexistence",
+          phone: { ...target().phone, isOnBizApp: true },
+        })
+      ),
+      ...overrides,
+    })
+
+  it("NUNCA registra el número: /register lo desvincularía de la app", async () => {
+    // Es la diferencia de comportamiento más cara del slice y no se deshace
+    // desde acá: registrar un número que sigue vivo en la app de WhatsApp
+    // Business lo saca de la app para siempre.
+    const { deps: d, calls } = coexistenceDeps()
+
+    await runWhatsappSignup(d, request({ mode: "coexistence" }))
+
+    expect(d.finishStandard).not.toHaveBeenCalled()
+    expect(calls).not.toContain("finishStandard")
+  })
+
+  it("suscribe los tres campos antes de persistir, y en ese orden", async () => {
+    const { deps: d, calls, connected } = coexistenceDeps()
+
+    await runWhatsappSignup(d, request({ mode: "coexistence" }))
+
+    expect(d.subscribe).toHaveBeenCalledWith("EAAtoken", "waba-1", {
+      subscribedFields: WHATSAPP_COEXISTENCE_WEBHOOK_FIELDS,
+    })
+    expect(WHATSAPP_COEXISTENCE_WEBHOOK_FIELDS).toEqual([
+      "history",
+      "smb_app_state_sync",
+      "smb_message_echoes",
+    ])
+    expect(calls).toEqual([
+      "begin",
+      "resolveOwnership",
+      "subscribe",
+      "connect",
+      "enqueueHistorySync",
+    ])
+    expect(connected[0]).toMatchObject({
+      onboardingMode: "coexistence",
+      historySyncStatus: "not_requested",
+      pin: null,
+    })
+  })
+
+  it("no toca la marca del PIN de un registro anterior", async () => {
+    const { deps: d, connected } = coexistenceDeps()
+
+    await runWhatsappSignup(d, request({ mode: "coexistence" }))
+
+    expect(connected[0]).toMatchObject({ pin: null, pinOrigin: "stored" })
+  })
+
+  it("encola la solicitud de historial con el id de la conexión", async () => {
+    const { deps: d } = coexistenceDeps()
+
+    const outcome = await runWhatsappSignup(d, request({ mode: "coexistence" }))
+
+    expect(d.enqueueHistorySync).toHaveBeenCalledWith("conn-1")
+    expect(outcome).toMatchObject({
+      kind: "connected",
+      historySync: "not_requested",
+      historySyncError: null,
+    })
+  })
+
+  it("deja el estado en failed —visible— cuando el encolado no sale", async () => {
+    // El reloj de 24 h ya corre: si nadie va a pedir ese historial, el estado
+    // no puede quedarse en `not_requested`, que se lee como «todavía no le
+    // tocó».
+    const { deps: d } = coexistenceDeps({
+      enqueueHistorySync: vi.fn(async () => {
+        throw new Error("queue unavailable")
+      }),
+    })
+
+    const outcome = await runWhatsappSignup(d, request({ mode: "coexistence" }))
+
+    expect(d.markHistorySyncStatus).toHaveBeenCalledWith("conn-1", "failed")
+    expect(outcome).toMatchObject({
+      kind: "connected",
+      historySync: "failed",
+      historySyncError: "queue unavailable",
+    })
+  })
+
+  it("sigue adelante sin phone_number_id: Graph resuelve el número vinculado", async () => {
+    const { deps: d, connected } = coexistenceDeps()
+
+    await runWhatsappSignup(
+      d,
+      request({ mode: "coexistence", phoneNumberId: null })
+    )
+
+    expect(d.begin).toHaveBeenCalledWith(
+      expect.objectContaining({
+        hint: { wabaId: "waba-1", phoneNumberId: null },
+        mode: "coexistence",
+      })
+    )
+    expect(connected[0]).toMatchObject({ phoneNumberId: "phone-1" })
+  })
+})
+
+describe("runWhatsappSignup — propiedad y fallos", () => {
+  it("comprueba la propiedad entre la mitad reversible y la irreversible", async () => {
+    const { deps: d, calls } = deps({
+      resolveOwnership: vi.fn(async () => {
+        return ownership({ ownedByOtherTenant: true })
+      }),
+    })
+
+    const outcome = await runWhatsappSignup(d, request())
+
+    expect(outcome).toEqual({
+      kind: "owned_by_other_tenant",
+      phoneNumberId: "phone-1",
+    })
+    // Nada irreversible llegó a pasar: ni suscripción ni registro.
+    expect(calls).toEqual(["begin", "resolveOwnership"])
+    expect(d.finishStandard).not.toHaveBeenCalled()
+    expect(d.subscribe).not.toHaveBeenCalled()
+  })
+
+  it("también atrapa la carrera que ve el escritor", async () => {
+    const { deps: d } = deps({
+      connect: vi.fn(async () => {
+        throw new PageOwnershipError("phone-1")
+      }),
+    })
+
+    expect(await runWhatsappSignup(d, request())).toEqual({
+      kind: "owned_by_other_tenant",
+      phoneNumberId: "phone-1",
+    })
+  })
+
+  it("reporta el paso exacto que falló", async () => {
+    const { deps: d } = deps({
+      begin: vi.fn(async () => {
+        throw new WhatsappApiError("nope", "assets", "phone_not_in_waba", 100)
+      }),
+    })
+
+    expect(await runWhatsappSignup(d, request())).toEqual({
+      kind: "failed",
+      step: "assets",
+      metaErrorCode: 100,
+      errorMessage: "nope",
+    })
+  })
+
+  it("atribuye a persist lo que se rompe en nuestra base", async () => {
+    const { deps: d } = deps({
+      resolveOwnership: vi.fn(async () => {
+        throw new Error("neon is down")
+      }),
+    })
+
+    expect(await runWhatsappSignup(d, request())).toMatchObject({
+      kind: "failed",
+      step: "persist",
+      errorMessage: "neon is down",
+    })
+  })
+
+  it("tiene un motivo de log para cada paso del onboarding", () => {
+    expect(Object.keys(LOG_REASON_BY_STEP).sort()).toEqual([
+      "assets",
+      "exchange",
+      "persist",
+      "register",
+      "subscribe",
+      "sync_request",
+    ])
+  })
+})
+
+describe("resolveWhatsappPinOrigin", () => {
+  it("el PIN que generamos nosotros es el único que se enseña", () => {
+    expect(
+      resolveWhatsappPinOrigin({
+        submittedPin: null,
+        storedPin: null,
+        pinGenerated: true,
+      })
+    ).toBe("generated")
+  })
+
+  it("escribir el mismo PIN que ya teníamos no cambia de quién es", () => {
+    // Le pasa a quien lo copia de la propia tarjeta.
+    expect(
+      resolveWhatsappPinOrigin({
+        submittedPin: "111111",
+        storedPin: "111111",
+        pinGenerated: false,
+      })
+    ).toBe("stored")
+  })
+
+  it("un PIN distinto del guardado pasa a ser del cliente", () => {
+    expect(
+      resolveWhatsappPinOrigin({
+        submittedPin: "999999",
+        storedPin: "111111",
+        pinGenerated: false,
+      })
+    ).toBe("customer")
+  })
+
+  it("sin PIN guardado y sin generarlo, el PIN es del cliente", () => {
+    expect(
+      resolveWhatsappPinOrigin({
+        submittedPin: "999999",
+        storedPin: null,
+        pinGenerated: false,
+      })
+    ).toBe("customer")
+  })
+})
+
+describe("checkWhatsappPlanSlot", () => {
+  const slotDeps = (overrides = {}) => ({
+    countActivePages: vi.fn(async () => 1),
+    resolveMaxPages: vi.fn(async () => 2),
+    resolveOwnership: vi.fn(async () => ownership()),
+    ...overrides,
+  })
+
+  it("deja pasar cuando queda hueco", async () => {
+    expect(
+      await checkWhatsappPlanSlot(slotDeps(), {
+        tenantId: "tenant-1",
+        phoneNumberId: "phone-1",
+      })
+    ).toEqual({ ok: true })
+  })
+
+  it("deja reconectar un número que ya está activo aunque no quede cupo", async () => {
+    const d = slotDeps({
+      countActivePages: vi.fn(async () => 2),
+      resolveOwnership: vi.fn(async () => ownership({ activeForTenant: true })),
+    })
+
+    expect(
+      await checkWhatsappPlanSlot(d, {
+        tenantId: "tenant-1",
+        phoneNumberId: "phone-1",
+      })
+    ).toEqual({ ok: true })
+  })
+
+  it("sin pista del número no hay exención: el cupo se aplica entero", async () => {
+    // Coexistence puede no reportar `phone_number_id`. Es el lado correcto en
+    // el que fallar: un mensaje de cupo, y no una fila de más.
+    const d = slotDeps({ countActivePages: vi.fn(async () => 2) })
+
+    const result = await checkWhatsappPlanSlot(d, {
+      tenantId: "tenant-1",
+      phoneNumberId: null,
+    })
+
+    expect(result.ok).toBe(false)
+    expect(d.resolveOwnership).not.toHaveBeenCalled()
+  })
+
+  it("falla cerrado si el plan no se puede resolver", async () => {
+    const result = await checkWhatsappPlanSlot(
+      slotDeps({ resolveMaxPages: vi.fn(async () => null) }),
+      { tenantId: "tenant-1", phoneNumberId: "phone-1" }
+    )
+
+    expect(result).toMatchObject({ ok: false, reason: "plan_restricted" })
+  })
+
+  it("falla cerrado si la consulta del cupo se cae", async () => {
+    const result = await checkWhatsappPlanSlot(
+      slotDeps({
+        countActivePages: vi.fn(async () => {
+          throw new Error("neon is down")
+        }),
+      }),
+      { tenantId: "tenant-1", phoneNumberId: "phone-1" }
+    )
+
+    expect(result).toMatchObject({ ok: false, reason: "internal_error" })
+  })
+})

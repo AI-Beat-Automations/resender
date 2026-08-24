@@ -11,7 +11,7 @@ export const metadata: Metadata = {
     "How to delete your data from Resender, operated by Lorna Suriano Hernandez.",
 }
 
-const LAST_UPDATED = "August 19, 2026"
+const LAST_UPDATED = "August 24, 2026"
 const CONTACT_EMAIL = "info@resender.dev"
 
 export default function DataDeletionPage() {
@@ -55,9 +55,10 @@ export default function DataDeletionPage() {
             </ol>
             <p className="mt-3">
               This permanently and immediately deletes your account and all
-              associated data. As part of deletion, your connected Pages are
-              unsubscribed from Meta&rsquo;s webhook so Resender stops receiving
-              your messages.
+              associated data. As part of deletion, your connected Pages,
+              Instagram accounts and WhatsApp Business Accounts are unsubscribed
+              from Meta&rsquo;s webhooks so Resender stops receiving your
+              messages.
             </p>
           </section>
 
@@ -85,7 +86,21 @@ export default function DataDeletionPage() {
             <ul className="ml-5 list-disc space-y-1">
               <li>Your account (email and credentials).</li>
               <li>All connected Facebook Pages and their stored tokens.</li>
-              <li>All conversations and messages.</li>
+              <li>All connected Instagram accounts and their stored tokens.</li>
+              <li>
+                All connected WhatsApp Business Accounts (WABA) and phone
+                numbers, with their stored access tokens and the encrypted
+                two-step verification PIN.
+              </li>
+              <li>
+                All conversations and messages, on every channel, including
+                WhatsApp history imported through Coexistence.
+              </li>
+              <li>
+                All WhatsApp media files stored for you — images, video, audio
+                and voice notes, documents and stickers — in our private object
+                storage.
+              </li>
               <li>All API keys.</li>
             </ul>
           </section>
@@ -98,16 +113,34 @@ export default function DataDeletionPage() {
               Deletion takes effect immediately in production. Backups are
               purged within 30 days.
             </p>
+            <p className="mt-3">
+              Media files are the exception to &ldquo;immediately&rdquo;. They
+              live in object storage and have to be erased one by one, so the
+              purge runs as a background job right after your account is
+              deleted, and is confirmed separately once the storage provider
+              reports the files are gone. To know which files to erase, we keep
+              one internal identifier — nothing else about you — until that
+              confirmation arrives, and never longer than the 180-day expiry
+              that deletes the files anyway. Our{" "}
+              <Link
+                href="/privacy"
+                className="font-medium text-foreground underline-offset-4 hover:underline"
+              >
+                Privacy Policy
+              </Link>{" "}
+              describes this in full.
+            </p>
           </section>
 
           <section>
             <h2 className="mb-2 text-base font-semibold text-foreground">
-              If you messaged a business on Messenger
+              If you messaged a business on Messenger, Instagram or WhatsApp
             </h2>
             <p>
-              If you sent messages to a Facebook Page that uses Resender and
-              want that conversation removed, contact the business that operates
-              the Page (they control those conversations), or email us at{" "}
+              If you sent messages, media or comments to a Facebook Page, an
+              Instagram account or a WhatsApp number that uses Resender and want
+              that conversation removed, contact the business you were writing
+              to (it controls those conversations), or email us at{" "}
               <a
                 href={`mailto:${CONTACT_EMAIL}`}
                 className="font-medium text-foreground underline-offset-4 hover:underline"
