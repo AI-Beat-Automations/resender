@@ -1,6 +1,9 @@
 import type { WhatsappOnboardingMode } from "@/lib/meta/whatsapp-client"
 
-import type { WhatsappSignupAssets } from "./signup-events"
+import type {
+  WhatsappSignupAssets,
+  WhatsappSignupFinish,
+} from "./signup-events"
 
 // Cuándo se puede enviar el cierre del Embedded Signup, y qué falta cuando no.
 //
@@ -23,14 +26,15 @@ import type { WhatsappSignupAssets } from "./signup-events"
 export type WhatsappSubmissionInput = {
   // El `code` del callback de `FB.login`.
   code: string | null
-  // Los identificadores del `postMessage`.
-  assets: WhatsappSignupAssets | null
+  // El cierre que leyó el `postMessage`: los identificadores **y el modo que
+  // ese evento derivó**. Van juntos y no en dos campos porque el modo decide la
+  // mitad irreversible entera —el estándar registra el número con `/register` y
+  // Coexistence no lo toca— y el servidor no puede deducirlo del `code`: si
+  // pudiera llegar por separado, podría llegar de otro lado que no fuera el
+  // evento de cierre.
+  finish: WhatsappSignupFinish | null
   // El nonce vigente en memoria. `null` mientras se está renovando.
   nonce: string | null
-  // Qué botón lanzó este intento. Viaja con el envío porque decide la mitad
-  // irreversible entera —el estándar registra el número y Coexistence no— y
-  // porque el servidor no puede deducirlo del `code`.
-  mode: WhatsappOnboardingMode
 }
 
 export type WhatsappSubmissionDecision =
@@ -52,13 +56,19 @@ export type WhatsappSubmissionDecision =
 export function decideWhatsappSubmission(
   input: WhatsappSubmissionInput
 ): WhatsappSubmissionDecision {
-  const { code, assets, nonce, mode } = input
+  const { code, finish, nonce } = input
 
-  if (!code || !assets) {
-    return { kind: "await-pairing", started: Boolean(code || assets) }
+  if (!code || !finish) {
+    return { kind: "await-pairing", started: Boolean(code || finish) }
   }
 
   if (!nonce) return { kind: "await-nonce" }
 
-  return { kind: "submit", code, assets, nonce, mode }
+  return {
+    kind: "submit",
+    code,
+    assets: finish.assets,
+    nonce,
+    mode: finish.mode,
+  }
 }

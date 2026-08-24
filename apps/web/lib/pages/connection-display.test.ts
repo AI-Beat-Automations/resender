@@ -53,26 +53,21 @@ describe("catálogos por canal", () => {
   })
 
   it("manda cada canal a su propio diálogo de Meta", () => {
-    expect(
-      resolveReconnectHref({ channel: "messenger", onboardingMode: null })
-    ).toBe("/api/meta/start")
-    expect(
-      resolveReconnectHref({ channel: "instagram", onboardingMode: null })
-    ).toBe("/api/meta/instagram/start")
-    expect(
-      resolveReconnectHref({ channel: "whatsapp", onboardingMode: "standard" })
-    ).toBe("/api/meta/whatsapp/start")
+    expect(resolveReconnectHref({ channel: "messenger" })).toBe(
+      "/api/meta/start"
+    )
+    expect(resolveReconnectHref({ channel: "instagram" })).toBe(
+      "/api/meta/instagram/start"
+    )
+    expect(resolveReconnectHref({ channel: "whatsapp" })).toBe(
+      "/api/meta/whatsapp/start"
+    )
   })
 
-  it("reconecta Coexistence por su propio flujo, no por el estándar", () => {
-    // Relanzar el estándar sobre un número de Coexistence lo quemaría con
-    // `/register` y lo dejaría fuera del flujo para siempre.
-    expect(
-      resolveReconnectHref({
-        channel: "whatsapp",
-        onboardingMode: "coexistence",
-      })
-    ).toBe("/api/meta/whatsapp/start?mode=coexistence")
+  it("reconecta WhatsApp por el único punto de entrada que hay", () => {
+    // Sin `?mode=`: los dos flujos salen del mismo diálogo y el modo lo deriva
+    // el evento de cierre, no el enlace que trajo al usuario hasta el botón.
+    expect(resolveReconnectHref({ channel: "whatsapp" })).not.toContain("mode=")
   })
 })
 

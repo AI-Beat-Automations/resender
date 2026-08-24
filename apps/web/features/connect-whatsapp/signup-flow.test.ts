@@ -12,6 +12,9 @@ import {
   type WhatsappNumberOwnership,
 } from "@/lib/pages/page-registry"
 
+import { readWhatsappSignupEvent } from "./signup-events"
+import { parseWhatsappMode } from "./signup-launch"
+import { decideWhatsappSubmission } from "./signup-submission"
 import {
   checkWhatsappPlanSlot,
   LOG_REASON_BY_STEP,
@@ -499,5 +502,86 @@ describe("checkWhatsappPlanSlot", () => {
     )
 
     expect(result).toMatchObject({ ok: false, reason: "internal_error" })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// La invariante que no se puede romper, de punta a punta
+// ---------------------------------------------------------------------------
+//
+// Desde que hay un solo botón, el `onboarding_mode` no lo elige nadie en la UI:
+// lo deriva el evento de cierre del popup. Este bloque recorre la cadena entera
+// —`postMessage` → modo derivado → cuerpo del POST → cierre en el servidor—
+// porque cada eslabón está probado por separado y lo que importa es que el modo
+// que sale del `FINISH*` sea el mismo que decide llamar o no a `/register`.
+//
+// `POST /{phone_number_id}/register` es irreversible: desvincula el número de la
+// app de WhatsApp Business. Suponer el modo era registrar un número que el
+// cliente quería seguir usando desde su teléfono.
+describe("del postMessage a /register — el modo sale del evento de cierre", () => {
+  // El popup, tal cual llega: `data` es un string JSON desde un origen de la
+  // allowlist.
+  const closingMessage = (event: string) => ({
+    isTrusted: true,
+    origin: "https://www.facebook.com",
+    data: JSON.stringify({
+      type: "WA_EMBEDDED_SIGNUP",
+      event,
+      data: { waba_id: "waba-1", phone_number_id: "phone-1" },
+    }),
+  })
+
+  // Lo que el launcher y la ruta hacen entre el `postMessage` y el cierre: leer
+  // el evento, emparejarlo con el `code` y sanear el cuerpo del POST. Nada de
+  // esto puede inventar un modo: el único que existe es el del evento.
+  const modeFromClosingEvent = (event: string) => {
+    const signup = readWhatsappSignupEvent(closingMessage(event))
+    expect(signup?.kind).toBe("finished")
+    if (signup?.kind !== "finished") throw new Error("unreachable")
+
+    const decision = decideWhatsappSubmission({
+      code: "AQD-code",
+      finish: { mode: signup.mode, assets: signup.assets },
+      nonce: "nonce-1",
+    })
+    expect(decision.kind).toBe("submit")
+    if (decision.kind !== "submit") throw new Error("unreachable")
+
+    // El viaje por HTTP: el cuerpo llega como texto y la ruta lo sanea.
+    return parseWhatsappMode(decision.mode)
+  }
+
+  it("un cierre de Coexistence NUNCA llega a registerWhatsappPhoneNumber", async () => {
+    const mode = modeFromClosingEvent("FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING")
+    expect(mode).toBe("coexistence")
+
+    const { deps: d, calls } = deps({
+      begin: vi.fn(async () =>
+        target({
+          mode: "coexistence",
+          phone: { ...target().phone, isOnBizApp: true },
+        })
+      ),
+    })
+
+    await runWhatsappSignup(d, request({ mode }))
+
+    // `finishStandard` es `finishWhatsappSignup`, y es el único camino del
+    // producto hacia `registerWhatsappPhoneNumber`.
+    expect(d.finishStandard).not.toHaveBeenCalled()
+    expect(calls).not.toContain("finishStandard")
+    expect(d.subscribe).toHaveBeenCalled()
+  })
+
+  it("y un cierre estándar sí lo registra: el mismo botón, el otro desenlace", async () => {
+    const mode = modeFromClosingEvent("FINISH")
+    expect(mode).toBe("standard")
+
+    const { deps: d, connected } = deps()
+
+    await runWhatsappSignup(d, request({ mode }))
+
+    expect(d.finishStandard).toHaveBeenCalled()
+    expect(connected[0]).toMatchObject({ onboardingMode: "standard" })
   })
 })

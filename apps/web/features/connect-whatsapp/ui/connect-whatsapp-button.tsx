@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { LoaderCircle } from "lucide-react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { usePostHog } from "posthog-js/react"
 
 import { issueWhatsappSignupNonce } from "@/features/connect-whatsapp/actions"
@@ -12,26 +12,25 @@ import {
 } from "@/features/connect-whatsapp/facebook-sdk"
 import {
   buildFacebookLoginOptions,
-  parseWhatsappMode,
-  resolveWhatsappConfigId,
-  WHATSAPP_ENTRY_POINTS,
+  WHATSAPP_CONNECT_DESCRIPTION,
+  WHATSAPP_CONNECT_LABEL,
+  WHATSAPP_MODE_CAVEAT,
 } from "@/features/connect-whatsapp/signup-launch"
 import {
   describeWhatsappSignupEvent,
   readWhatsappSignupEvent,
-  type WhatsappSignupAssets,
+  type WhatsappSignupFinish,
 } from "@/features/connect-whatsapp/signup-events"
 import { decideWhatsappSubmission } from "@/features/connect-whatsapp/signup-submission"
-import type { WhatsappOnboardingMode } from "@/lib/meta/whatsapp-client"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 
-// Launcher del **Embedded Signup de WhatsApp**, con sus dos puntos de entrada.
-// Es el gemelo de `ConnectFacebookButton` y `ConnectInstagramButton`, pero es el
-// único de los tres que no puede ser un enlace: Meta no ofrece flujo de
-// redirección para Embedded Signup, así que esto abre un popup con el JS SDK y
-// recoge el resultado por dos canales distintos (ver más abajo).
+// Launcher del **Embedded Signup de WhatsApp**. Es el gemelo de
+// `ConnectFacebookButton` y `ConnectInstagramButton`, pero es el único de los
+// tres que no puede ser un enlace: Meta no ofrece flujo de redirección para
+// Embedded Signup, así que esto abre un popup con el JS SDK y recoge el
+// resultado por dos canales distintos (ver más abajo).
 //
 // El componente es a propósito un cascarón fino: lo delicado —qué `postMessage`
 // se cree, con qué opciones se lanza cada flujo, cuándo se puede enviar— vive en
@@ -40,12 +39,19 @@ import { Label } from "@workspace/ui/components/label"
 // de este repo puede cubrir (vitest corre en node, sin jsdom ni
 // testing-library).
 //
-// **Un solo launcher, dos botones.** No son dos componentes porque el nonce
-// vive en una cookie única por navegador: dos launchers montados a la vez se
-// pisarían el nonce y el segundo cierre fallaría con `state_mismatch`. Y son
-// dos botones y no un desplegable porque elegir mal no es una preferencia:
-// lanzar el flujo estándar sobre un número que sigue en la app de WhatsApp
-// Business lo desvincula de la app, y eso no se deshace desde acá.
+// **Un solo botón, y la elección adentro del diálogo.** Hubo dos botones
+// —«número nuevo» y «número existente»— hasta que se verificó contra el diálogo
+// real que el `featureType` es **aditivo**: con él puesto, el desplegable de
+// Meta ofrece las tres opciones (cuenta nueva, «Conecta una aplicación de
+// WhatsApp Business» y las WABAs del portafolio). Dos botones prometían una
+// elección que en realidad se hacía adentro, y peor: persistían el
+// `onboarding_mode` según cuál se hubiera pulsado, que es una suposición sobre
+// algo que el usuario podía cambiar en la ventana siguiente. Ahora el modo lo
+// **deriva el evento de cierre** (`signup-events.ts`) y este componente no
+// opina.
+//
+// Tampoco puede haber dos launchers montados a la vez: el nonce vive en una
+// cookie única por navegador y el segundo pisaría al primero.
 //
 // ---------------------------------------------------------------------------
 // Cómo se juntan el `code` y los identificadores
@@ -77,24 +83,22 @@ import { Label } from "@workspace/ui/components/label"
 // click event", dice Meta). Cualquier `await` antes de la llamada —incluida la
 // server action que siembra la cookie del nonce— rompe la cadena del gesto y el
 // clic deja de abrir nada. Por eso el nonce se pide al montar, se guarda en un
-// ref y el `onClick` es puramente síncrono. Los botones están deshabilitados
-// hasta que el nonce y el SDK están listos, que es la otra mitad de la regla.
+// ref y el `onClick` es puramente síncrono. El botón está deshabilitado hasta
+// que el nonce y el SDK están listos, que es la otra mitad de la regla.
 
 // El Configuration ID de Facebook Login for Business que define qué permisos y
 // qué productos pide el flujo. Es público (viaja en la llamada del navegador),
 // pero **se inlinea en tiempo de build**: si falta al compilar, no hay forma de
 // rellenarlo en runtime y el botón no puede funcionar. De ahí la rama de «falta
 // configuración» de abajo.
-const CONFIG = {
-  configId: process.env.NEXT_PUBLIC_WHATSAPP_CONFIG_ID ?? null,
-  // Opcional: si el despliegue no tiene una configuración aparte para
-  // Coexistence, se usa la misma y el flujo se distingue por `featureType`.
-  coexistenceConfigId:
-    process.env.NEXT_PUBLIC_WHATSAPP_COEXISTENCE_CONFIG_ID ?? null,
-}
+//
+// **Uno solo para los dos flujos**: la diferencia entre el alta estándar y
+// Coexistence no vive en la configuración de Facebook Login for Business sino
+// en lo que el usuario elige dentro del diálogo de Meta.
+const CONFIG_ID = process.env.NEXT_PUBLIC_WHATSAPP_CONFIG_ID ?? null
 // La misma App ID que usa Messenger: WhatsApp vive en la misma Meta App.
 const APP_ID = process.env.NEXT_PUBLIC_META_APP_ID ?? null
-const CONFIGURED = Boolean(CONFIG.configId) && Boolean(APP_ID)
+const CONFIGURED = Boolean(CONFIG_ID) && Boolean(APP_ID)
 
 // Cuánto se espera al canal que falta antes de admitir que la autorización
 // volvió a medias. Es holgado para lo que tarda un `postMessage`
@@ -106,27 +110,9 @@ const PAIRING_TIMEOUT_MS = 4_000
 // muerto y un `state_mismatch` gratis, así que se renueva antes de que expire.
 const NONCE_REFRESH_MS = 8 * 60 * 1_000
 
-export function ConnectWhatsAppButton({
-  mode: fixedMode,
-}: {
-  // Cuando se pasa, se renderiza solo ese punto de entrada. Lo usa el camino de
-  // «Reconectar», donde el modo ya lo decide la conexión que se está
-  // reconectando y ofrecer el otro sería ofrecer romperla.
-  mode?: WhatsappOnboardingMode
-} = {}) {
+export function ConnectWhatsAppButton() {
   const posthog = usePostHog()
   const router = useRouter()
-  const searchParams = useSearchParams()
-
-  // El modo que pidió `/api/meta/whatsapp/start?mode=…`. Solo resalta el botón:
-  // el popup necesita el clic del usuario y no se puede abrir por una URL.
-  const highlighted = searchParams.get("whatsapp")
-    ? parseWhatsappMode(searchParams.get("mode"))
-    : null
-
-  const entryPoints = fixedMode
-    ? WHATSAPP_ENTRY_POINTS.filter((entry) => entry.mode === fixedMode)
-    : WHATSAPP_ENTRY_POINTS
 
   const [nonce, setNonce] = useState<string | null>(null)
   const [nonceError, setNonceError] = useState<string | null>(null)
@@ -140,6 +126,10 @@ export function ConnectWhatsAppButton({
   // explicó el fallo con más detalle que ellos).
   const [notice, setNotice] = useState<string | null>(null)
   const noticeRef = useRef<string | null>(null)
+  // La consecuencia concreta del flujo que el usuario **eligió de verdad**.
+  // Antes del clic no se puede saber cuál de las dos es, así que se dice al
+  // cerrarse la ventana y no en la descripción del botón.
+  const [modeCaveat, setModeCaveat] = useState<string | null>(null)
 
   const sdkRef = useRef<FacebookSdk | null>(null)
   const nonceRef = useRef<string | null>(null)
@@ -148,13 +138,12 @@ export function ConnectWhatsAppButton({
   const awaitingNonceRef = useRef(false)
   const settleRef = useRef<() => void>(() => {})
   // Los dos canales del onboarding, más el candado que evita enviar dos veces.
+  // El cierre trae los ids **y el modo derivado del evento**, atados: no hay un
+  // `modeRef` aparte porque un modo que pudiera fijarse fuera de este objeto
+  // sería un modo que no salió del `FINISH*` que lo produjo.
   const codeRef = useRef<string | null>(null)
-  const assetsRef = useRef<WhatsappSignupAssets | null>(null)
+  const finishRef = useRef<WhatsappSignupFinish | null>(null)
   const submittedRef = useRef(false)
-  // Qué flujo se lanzó. Decide qué `FINISH*` vale y qué hace el servidor con el
-  // `code`; por eso vive en un ref y no en estado: el `postMessage` puede llegar
-  // antes del siguiente render.
-  const modeRef = useRef<WhatsappOnboardingMode>(fixedMode ?? "standard")
   // Cada clic abre un lanzamiento nuevo: el callback de uno viejo no puede pisar
   // al actual (pasa si alguien vuelve a pulsar con un popup ya abierto).
   const runRef = useRef(0)
@@ -254,9 +243,8 @@ export function ConnectWhatsAppButton({
   const settle = useCallback(() => {
     const decision = decideWhatsappSubmission({
       code: codeRef.current,
-      assets: assetsRef.current,
+      finish: finishRef.current,
       nonce: nonceRef.current,
-      mode: modeRef.current,
     })
 
     if (decision.kind === "await-pairing") {
@@ -361,7 +349,7 @@ export function ConnectWhatsAppButton({
   // perdernos. Es el *session logging* del que habla la documentación.
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
-      const signup = readWhatsappSignupEvent(event, modeRef.current)
+      const signup = readWhatsappSignupEvent(event)
       if (!signup) return
 
       if (signup.kind === "foreign-origin") {
@@ -380,7 +368,11 @@ export function ConnectWhatsAppButton({
       }
 
       if (signup.kind === "finished") {
-        assetsRef.current = signup.assets
+        finishRef.current = { mode: signup.mode, assets: signup.assets }
+        // Recién acá se sabe qué eligió el usuario dentro del diálogo, así que
+        // recién acá se le puede decir qué implica: el número queda registrado y
+        // deja de abrir en la app, o hay techo de 20 mps y reloj de 24 h.
+        setModeCaveat(WHATSAPP_MODE_CAVEAT[signup.mode])
         settle()
         return
       }
@@ -389,9 +381,10 @@ export function ConnectWhatsAppButton({
       // puro; acá solo se pinta y se cuenta.
       const message = describeWhatsappSignupEvent(signup)
       if (message) showNotice(message)
+      // Sin `mode`: un cierre que no completó no eligió flujo, y mandar el del
+      // botón sería inventar justo el dato que este cambio dejó de inventar.
       posthog?.capture("whatsapp signup not completed", {
         outcome: signup.kind,
-        mode: modeRef.current,
         ...(signup.kind === "abandoned"
           ? { current_step: signup.currentStep }
           : {}),
@@ -410,46 +403,42 @@ export function ConnectWhatsAppButton({
   // **Handler síncrono de arriba abajo.** Ni un `await`, ni un `fetch`, ni una
   // animación antes de `FB.login`: la cadena del gesto del usuario se corta con
   // cualquiera de las tres y el popup se bloquea.
-  const launch = (mode: WhatsappOnboardingMode) => {
+  const launch = () => {
     const sdk = sdkRef.current
-    const configId = resolveWhatsappConfigId(CONFIG, mode)
-    if (!sdk || !configId || !nonceRef.current) return
+    if (!sdk || !CONFIG_ID || !nonceRef.current) return
 
     const run = ++runRef.current
-    modeRef.current = mode
     codeRef.current = null
-    assetsRef.current = null
+    finishRef.current = null
     submittedRef.current = false
     awaitingNonceRef.current = false
     noticeRef.current = null
     setNotice(null)
     setActionError(null)
+    setModeCaveat(null)
     clearPairingTimer()
 
-    sdk.login(
-      (response) => {
-        if (run !== runRef.current) return
+    sdk.login((response) => {
+      if (run !== runRef.current) return
 
-        const code = response?.authResponse?.code
-        if (!code) {
-          // Sin `authResponse` no hubo autorización. Ojo con el matiz: cerrar
-          // con la X **en la última pantalla cuenta como éxito** para Meta y sí
-          // devuelve el `code`, así que este camino no es «cerró la ventana» a
-          // secas. Si el `postMessage` ya explicó qué pasó (un error reportado,
-          // por ejemplo), ese mensaje es mejor que este y se respeta.
-          if (!noticeRef.current) {
-            showNotice(
-              "La ventana de Meta se cerró sin completar la autorización, así que no se conectó ningún número. Si no llegaste a verla, permite las ventanas emergentes para este sitio y vuelve a intentarlo."
-            )
-          }
-          return
+      const code = response?.authResponse?.code
+      if (!code) {
+        // Sin `authResponse` no hubo autorización. Ojo con el matiz: cerrar
+        // con la X **en la última pantalla cuenta como éxito** para Meta y sí
+        // devuelve el `code`, así que este camino no es «cerró la ventana» a
+        // secas. Si el `postMessage` ya explicó qué pasó (un error reportado,
+        // por ejemplo), ese mensaje es mejor que este y se respeta.
+        if (!noticeRef.current) {
+          showNotice(
+            "La ventana de Meta se cerró sin completar la autorización, así que no se conectó ningún número. Si no llegaste a verla, permite las ventanas emergentes para este sitio y vuelve a intentarlo."
+          )
         }
+        return
+      }
 
-        codeRef.current = code
-        settle()
-      },
-      buildFacebookLoginOptions(configId, mode)
-    )
+      codeRef.current = code
+      settle()
+    }, buildFacebookLoginOptions(CONFIG_ID))
   }
 
   const configError = CONFIGURED
@@ -470,39 +459,39 @@ export function ConnectWhatsAppButton({
     // vez, porque el nonce vive en una cookie única por navegador y el segundo
     // pisaría al primero.
     <div id="conectar-whatsapp" className="flex flex-col items-start gap-4">
-      <div className="flex flex-col gap-3">
-        {entryPoints.map((entry) => (
-          <div key={entry.mode} className="flex flex-col items-start gap-1.5">
-            <Button
-              size="lg"
-              variant={entry.mode === "standard" ? "default" : "outline"}
-              onClick={() => launch(entry.mode)}
-              disabled={disabled}
-              // Un botón deshabilitado sin explicación es indistinguible de uno
-              // roto.
-              title={
-                configError ??
-                (sdkReady ? undefined : "Preparando la conexión con Meta…")
-              }
-              aria-describedby={`whatsapp-entry-${entry.mode}`}
-            >
-              {submitting && (
-                <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
-              )}
-              {submitting ? "Conectando…" : entry.label}
-            </Button>
-            <p
-              id={`whatsapp-entry-${entry.mode}`}
-              className={`max-w-[420px] text-[12.5px]/[1.5] ${
-                highlighted === entry.mode
-                  ? "text-foreground"
-                  : "text-muted-foreground"
-              }`}
-            >
-              {entry.description} {entry.caveat}
-            </p>
-          </div>
-        ))}
+      <div className="flex flex-col items-start gap-1.5">
+        <Button
+          size="lg"
+          onClick={launch}
+          disabled={disabled}
+          // Un botón deshabilitado sin explicación es indistinguible de uno
+          // roto.
+          title={
+            configError ??
+            (sdkReady ? undefined : "Preparando la conexión con Meta…")
+          }
+          aria-describedby="whatsapp-entry-description"
+        >
+          {submitting && (
+            <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+          )}
+          {submitting ? "Conectando…" : WHATSAPP_CONNECT_LABEL}
+        </Button>
+        <p
+          id="whatsapp-entry-description"
+          className="max-w-[420px] text-[12.5px]/[1.5] text-muted-foreground"
+        >
+          {WHATSAPP_CONNECT_DESCRIPTION}
+        </p>
+        {/* La consecuencia concreta, ya con el modo real en la mano. Es la
+            mitad que antes vivía en la descripción de cada botón y que con un
+            solo punto de entrada no se puede decir de antemano sin confundir:
+            hasta que la ventana no se cierra, no se sabe cuál de las dos toca. */}
+        {modeCaveat && (
+          <p className="max-w-[420px] text-[12.5px]/[1.5] text-foreground">
+            {modeCaveat}
+          </p>
+        )}
       </div>
 
       {/* El 133005: el número ya tenía verificación en dos pasos con un PIN que

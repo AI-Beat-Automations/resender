@@ -1,14 +1,13 @@
 import type { WhatsappOnboardingMode } from "@/lib/meta/whatsapp-client"
 
-// Los dos puntos de entrada del Embedded Signup y las opciones exactas con las
+// El único punto de entrada del Embedded Signup y las opciones exactas con las
 // que se le habla a `FB.login`.
 //
 // Módulo puro y separado del `.tsx` por la regla de siempre en este repo: los
 // tests no corren componentes, así que lo que se escriba dentro del botón es
 // una regla sin red. Y acá lo que hay que fijar con un test es justo lo que un
-// `.tsx` esconde bien: que el flujo estándar y el de Coexistence **no** salen
-// con las mismas opciones, porque de eso depende que Meta abra un diálogo o el
-// otro y, más abajo, que el número se registre con `/register` o no.
+// `.tsx` esconde bien: con qué `extras` sale el popup, porque de eso depende
+// qué opciones le ofrece Meta al usuario dentro del diálogo.
 
 // ---------------------------------------------------------------------------
 // ⚠️ `sessionInfoVersion` — DECISIÓN QUE UN HUMANO TIENE QUE VERIFICAR
@@ -23,8 +22,9 @@ import type { WhatsappOnboardingMode } from "@/lib/meta/whatsapp-client"
 //
 // 1. Todo `signup-events.ts` —los `postMessage` `WA_EMBEDDED_SIGNUP` con
 //    `FINISH`, `CANCEL`, `current_step`, `error_message`— **es** el session
-//    logging. Sin él el launcher no tiene cómo saber qué WABA se conectó ni por
-//    qué el usuario cerró, y el flujo se queda con un solo canal (el `code`).
+//    logging. Sin él el launcher no tiene cómo saber qué WABA se conectó, por
+//    cuál de los dos flujos terminó ni por qué el usuario cerró, y el flujo se
+//    queda con un solo canal (el `code`).
 // 2. Coexistence lo exige, y este slice implementa Coexistence.
 // 3. El coste de mandarlo de más es una clave ignorada en `extras`; el de
 //    omitirlo de menos es un onboarding de Coexistence que Meta puede rechazar y
@@ -37,20 +37,32 @@ import type { WhatsappOnboardingMode } from "@/lib/meta/whatsapp-client"
 // dependa de ella.
 export const WHATSAPP_SESSION_INFO_VERSION = "3"
 
-// ⚠️ **También a verificar**: el `featureType` con el que Meta abre el
-// onboarding de Coexistence. `whatsapp_business_app_onboarding` es el valor
-// documentado para «Business App onboarding», que es el nombre oficial del
-// flujo B del PRD. Si Meta lo renombra, el diálogo abre el flujo estándar sin
-// avisar y el usuario termina registrando —y desvinculando de la app— el número
-// que quería compartir. Por eso `signup-events.ts` rechaza el `FINISH` estándar
-// cuando el modo es Coexistence: es la red que atrapa exactamente ese error.
-export const WHATSAPP_COEXISTENCE_FEATURE_TYPE =
-  "whatsapp_business_app_onboarding"
+// El `featureType` con el que Meta abre el diálogo. **Va siempre**, y eso no es
+// un descuido: se verificó contra el diálogo real que este valor es
+// **aditivo**, no restrictivo. Con él puesto, el desplegable «Cuenta de
+// WhatsApp Business» ofrece las tres opciones —crear una cuenta nueva,
+// «Conecta una aplicación de WhatsApp Business» (Coexistence) y las WABAs que
+// el portafolio ya tiene—. Sin él, la opción de Coexistence no aparece.
+//
+// Por eso hay un solo botón: quien elige el flujo es el usuario, dentro del
+// diálogo de Meta, y no nosotros al armar las opciones. Qué eligió lo dice el
+// evento de cierre y lo deriva `signup-events.ts`; suponerlo desde el botón era
+// exactamente el error que podía terminar registrando con `/register` un número
+// que el cliente quería seguir usando desde la app.
+//
+// ⚠️ **A verificar contra la documentación viva**:
+// `whatsapp_business_app_onboarding` es el valor documentado para «Business App
+// onboarding». Si Meta lo renombra, el diálogo deja de ofrecer Coexistence —el
+// desplegable se queda con las otras dos opciones— y el usuario no puede
+// conectar el número que ya usa. No hay riesgo de registrar de más: el modo sale
+// del evento de cierre, así que un `featureType` muerto degrada el menú, no la
+// decisión.
+export const WHATSAPP_SIGNUP_FEATURE_TYPE = "whatsapp_business_app_onboarding"
 
 export type FacebookLoginExtras = {
   setup: Record<string, never>
   sessionInfoVersion: string
-  featureType?: string
+  featureType: string
 }
 
 export type FacebookLoginOptions = {
@@ -60,32 +72,16 @@ export type FacebookLoginOptions = {
   extras: FacebookLoginExtras
 }
 
-export type WhatsappSignupConfig = {
-  // El Configuration ID de Facebook Login for Business del flujo estándar.
-  configId: string | null
-  // El de Coexistence, si el despliegue tiene uno aparte. `null` significa «el
-  // mismo, distinguido por `featureType`», que es la forma soportada cuando
-  // Meta no obliga a dos configuraciones.
-  coexistenceConfigId: string | null
-}
-
-export function resolveWhatsappConfigId(
-  config: WhatsappSignupConfig,
-  mode: WhatsappOnboardingMode
-): string | null {
-  if (mode === "coexistence") {
-    return config.coexistenceConfigId ?? config.configId
-  }
-  return config.configId
-}
-
 // Las opciones de `FB.login`. `override_default_response_type` es lo que hace
 // que Meta devuelva un `code` canjeable por el servidor en vez de un token en el
 // navegador: sin él, `FB.login` entrega un access token al cliente, que es
 // exactamente lo que este flujo no puede permitirse.
+//
+// Un solo Configuration ID para los dos flujos: la diferencia entre estándar y
+// Coexistence no está en la configuración de Facebook Login for Business sino
+// en lo que el usuario elige adentro del diálogo.
 export function buildFacebookLoginOptions(
-  configId: string,
-  mode: WhatsappOnboardingMode
+  configId: string
 ): FacebookLoginOptions {
   return {
     config_id: configId,
@@ -97,56 +93,39 @@ export function buildFacebookLoginOptions(
       // aparte que este flujo no usa.
       setup: {},
       sessionInfoVersion: WHATSAPP_SESSION_INFO_VERSION,
-      ...(mode === "coexistence"
-        ? { featureType: WHATSAPP_COEXISTENCE_FEATURE_TYPE }
-        : {}),
+      featureType: WHATSAPP_SIGNUP_FEATURE_TYPE,
     },
   }
 }
 
-// El copy de los dos puntos de entrada. Son dos botones y no uno con un
-// desplegable porque la elección no es una preferencia: elegir mal el flujo
-// estándar sobre un número que sigue en la app de WhatsApp Business lo
-// desvincula de la app, y eso no se deshace desde acá.
-export type WhatsappEntryPoint = {
-  mode: WhatsappOnboardingMode
-  label: string
-  // Qué es este flujo, en la voz de la pantalla y sin jerga de Meta.
-  description: string
-  // La consecuencia que hay que decir **antes**, no después.
-  caveat: string
+// El copy del único punto de entrada. Antes del clic no se puede decir la
+// consecuencia concreta —todavía no está elegida—, así que se dice lo único
+// cierto: que adentro hay una elección y que no da lo mismo cuál.
+export const WHATSAPP_CONNECT_LABEL = "Conectar WhatsApp"
+
+export const WHATSAPP_CONNECT_DESCRIPTION =
+  "Meta abre su ventana y ahí eliges: dar de alta un número nuevo, o conectar el que ya usas en la app de WhatsApp Business. No da lo mismo cuál —cada opción deja el número de una manera distinta— y te contamos qué implica la que elijas en cuanto la ventana se cierre."
+
+// La consecuencia concreta, **después** del cierre y según lo que el usuario
+// eligió de verdad. Vive acá y no en el `.tsx` para que sea texto con test: es
+// lo que le explica a alguien por qué su número dejó de abrir en el teléfono, o
+// por qué tiene 24 horas para pedir el historial.
+export const WHATSAPP_MODE_CAVEAT: Record<WhatsappOnboardingMode, string> = {
+  standard:
+    "Diste de alta un número nuevo en la API de WhatsApp: queda registrado para la API y deja de poder usarse desde la app de WhatsApp Business.",
+  coexistence:
+    "Conectaste el número que ya usas en la app de WhatsApp Business: sigue funcionando ahí y además llega a Resender. Meta decide la elegibilidad y el número queda con un techo fijo de 20 mensajes por segundo. El historial hay que sincronizarlo dentro de las 24 horas siguientes.",
 }
 
-export const WHATSAPP_ENTRY_POINTS: readonly WhatsappEntryPoint[] = [
-  {
-    mode: "standard",
-    label: "Conectar un número nuevo",
-    description:
-      "Para un número que todavía no usas en la app de WhatsApp Business: lo damos de alta en la API de WhatsApp y las conversaciones entran y salen por Resender.",
-    caveat:
-      "Ese número queda registrado para la API y deja de poder usarse desde la app de WhatsApp Business.",
-  },
-  {
-    mode: "coexistence",
-    label: "Conectar un número existente",
-    description:
-      "Para el número que ya usas a diario en la app de WhatsApp Business: sigue funcionando ahí y además llega a Resender, con el historial que elijas compartir.",
-    caveat:
-      "Meta decide la elegibilidad y el número queda con un techo fijo de 20 mensajes por segundo. El historial hay que sincronizarlo dentro de las 24 horas siguientes a conectarlo.",
-  },
-] as const
-
-// El modo que pide el enlace de entrada (`/api/meta/whatsapp/start?mode=…`) y
-// el que reenvía el cierre al servidor. **Todo lo que no sea exactamente
-// `coexistence` es el flujo estándar**, y no un error: un parámetro perdido o
+// El modo que el launcher reenvía al servidor en el cierre. **Todo lo que no
+// sea exactamente `coexistence` es el flujo estándar**, y no un error: un cuerpo
 // tocado a mano tiene que caer en el flujo que no depende de que Meta habilite
 // nada, no en el que sí.
 //
-// La dirección de la caída se elige así y no al revés a propósito. Parece lo
-// contrario de «fail closed», pero no lo es: los dos flujos están detrás de los
-// mismos gates, y el daño de tratar Coexistence como estándar lo atrapa
-// `signup-events.ts` —el `FINISH` del flujo equivocado se rechaza— antes de que
-// llegue a `/register`.
+// El valor legítimo ya no lo elige un botón: sale del evento de cierre del
+// popup (`resolveWhatsappOnboardingMode`, en `signup-events.ts`), que es la
+// única fuente que sabe qué eligió el usuario dentro del diálogo de Meta. Esto
+// es solo el saneador del borde HTTP.
 export function parseWhatsappMode(value: unknown): WhatsappOnboardingMode {
   return value === "coexistence" ? "coexistence" : "standard"
 }

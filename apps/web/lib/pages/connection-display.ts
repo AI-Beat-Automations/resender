@@ -65,19 +65,14 @@ export const ONBOARDING_MODE_LABEL: Record<WhatsappOnboardingMode, string> = {
 }
 
 /**
- * A dónde va «Reconectar». En Coexistence hay que volver por el mismo Embedded
- * Signup especial: relanzar el estándar sobre un número de Coexistence lo
- * quemaría con `/register` y lo dejaría fuera del flujo para siempre.
+ * A dónde va «Reconectar». En WhatsApp llevó un `?mode=coexistence` mientras el
+ * launcher tuvo dos botones y había que resaltar el correcto. Ya no: Meta ofrece
+ * los dos flujos dentro del mismo diálogo, el usuario elige ahí y el modo lo
+ * deriva el evento de cierre. Un `?mode=` en el enlace prometería decidir algo
+ * que se decide adentro.
  */
-export function resolveReconnectHref(page: {
-  channel: PageChannel
-  onboardingMode: WhatsappOnboardingMode | null
-}): string {
-  const base = CHANNEL_RECONNECT_HREF[page.channel]
-  if (page.channel === "whatsapp" && page.onboardingMode === "coexistence") {
-    return `${base}?mode=coexistence`
-  }
-  return base
+export function resolveReconnectHref(page: { channel: PageChannel }): string {
+  return CHANNEL_RECONNECT_HREF[page.channel]
 }
 
 export type ConnectionIdentity = {

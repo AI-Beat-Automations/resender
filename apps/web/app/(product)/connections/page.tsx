@@ -277,19 +277,6 @@ function EmptyState({
   )
 }
 
-/**
- * Los dos caminos de alta de WhatsApp. Son dos botones y no uno con un select
- * porque son dos flujos distintos en Meta —el estándar registra el número con
- * `/register`, el de Coexistence no lo toca nunca— y la elección no es
- * reversible: un número quemado en el estándar deja de ser candidato para
- * Coexistence.
- *
- * TODO: placeholders. El componente lanzador de `features/connect-whatsapp/`
- * los reemplaza en cuanto exista: el alta real es un Embedded Signup en un
- * popup con nonce y `session logging`, no una navegación suelta. Estos `<a>`
- * apuntan a las mismas rutas que va a usar el lanzador, así que el contrato de
- * URLs no cambia cuando llegue.
- */
 // El cupo del plan cuenta **conexiones**, sin mirar el canal (ADR 0011): una
 // cuenta de Instagram ocupa slot igual que una Página de Facebook. El contador
 // dice «conexiones» y no «páginas» justamente para que nadie busque por qué su

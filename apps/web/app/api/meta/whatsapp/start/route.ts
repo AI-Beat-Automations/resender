@@ -6,8 +6,6 @@ import { resolveProductAccess } from "@/lib/auth/waitlist"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
 import { log, type LogReason } from "@/lib/observability/logger"
 
-import { parseWhatsappMode } from "@/features/connect-whatsapp/signup-launch"
-
 // Entrada al Embedded Signup de WhatsApp. Es el gemelo de
 // `/api/meta/instagram/start` y aplica **los mismos gates y en el mismo orden**
 // —sesión → acceso al producto → suscripción activa → permiso de canal—, pero
@@ -19,7 +17,12 @@ import { parseWhatsappMode } from "@/features/connect-whatsapp/signup-launch"
 // (`FB.login` tiene que llamarse de forma síncrona desde el clic). Una
 // redirección no puede abrirlo. Así que esta ruta hace lo único que puede
 // hacer sin el gesto: cerrar la puerta a quien no puede conectar —y decirle por
-// qué— y devolver a Conexiones, con el launcher ya montado y el modo elegido.
+// qué— y devolver a Conexiones, con el launcher ya montado y a la vista.
+//
+// **No lleva `?mode=`.** Lo llevó mientras hubo dos botones. Hoy hay uno solo
+// —Meta ofrece los dos flujos dentro del mismo diálogo— y el modo lo deriva el
+// evento de cierre, así que un modo en la URL no podría decidir nada: sería un
+// parámetro que promete elegir un flujo que en realidad se elige adentro.
 //
 // Existe igual, y no es ceremonia: es el `href` que ya usan las tarjetas
 // (`CHANNEL_RECONNECT_HREF`, `resolveReconnectHref`), y sin ella el gate de
@@ -70,11 +73,6 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  // Cuál de los dos flujos pidió el enlace. Se reenvía a la pantalla para que
-  // el launcher resalte el botón correcto: reconectar un número de Coexistence
-  // por el flujo estándar lo quemaría con `/register`.
-  const mode = parseWhatsappMode(request.nextUrl.searchParams.get("mode"))
-
   log({
     entrypoint: "route",
     action: "oauth_start",
@@ -88,9 +86,6 @@ export async function GET(request: NextRequest) {
   // «Reconectar» aterriza con el botón a la vista, que es lo más cerca del
   // popup que se puede llegar sin su clic.
   return NextResponse.redirect(
-    new URL(
-      `/connections?whatsapp=start&mode=${mode}#conectar-whatsapp`,
-      request.url
-    )
+    new URL("/connections#conectar-whatsapp", request.url)
   )
 }

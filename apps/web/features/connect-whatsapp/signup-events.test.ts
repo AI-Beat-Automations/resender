@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   describeWhatsappSignupEvent,
   readWhatsappSignupEvent,
+  resolveWhatsappOnboardingMode,
   WHATSAPP_SIGNUP_ALLOWED_ORIGINS,
   type WhatsappSignupMessage,
 } from "./signup-events"
@@ -27,23 +28,20 @@ describe("readWhatsappSignupEvent — el borde no confiable", () => {
     // `isTrusted: false` es lo único que separa un `dispatchEvent` de una
     // extensión de un mensaje real del popup.
     expect(
-      readWhatsappSignupEvent(
-        { ...finish({ waba_id: "1", phone_number_id: "2" }), isTrusted: false },
-        "standard"
-      )
+      readWhatsappSignupEvent({
+        ...finish({ waba_id: "1", phone_number_id: "2" }),
+        isTrusted: false,
+      })
     ).toBeNull()
   })
 
   it("rechaza un origen que solo termina en facebook.com", () => {
     // La documentación de Meta publica `origin.endsWith('facebook.com')`, y eso
     // acepta este dominio. La lista cerrada no.
-    const result = readWhatsappSignupEvent(
-      {
-        ...finish({ waba_id: "1", phone_number_id: "2" }),
-        origin: "https://evilfacebook.com",
-      },
-      "standard"
-    )
+    const result = readWhatsappSignupEvent({
+      ...finish({ waba_id: "1", phone_number_id: "2" }),
+      origin: "https://evilfacebook.com",
+    })
 
     expect(result).toEqual({
       kind: "foreign-origin",
@@ -53,30 +51,22 @@ describe("readWhatsappSignupEvent — el borde no confiable", () => {
 
   it("acepta los tres orígenes de la allowlist", () => {
     for (const origin of WHATSAPP_SIGNUP_ALLOWED_ORIGINS) {
-      const result = readWhatsappSignupEvent(
-        { ...finish({ waba_id: "1", phone_number_id: "2" }), origin },
-        "standard"
-      )
+      const result = readWhatsappSignupEvent({
+        ...finish({ waba_id: "1", phone_number_id: "2" }),
+        origin,
+      })
       expect(result?.kind).toBe("finished")
     }
   })
 
   it("ignora sin ruido lo que no dice ser de Embedded Signup", () => {
     expect(
-      readWhatsappSignupEvent(
-        message({ type: "OTHER", event: "FINISH" }),
-        "standard"
-      )
+      readWhatsappSignupEvent(message({ type: "OTHER", event: "FINISH" }))
     ).toBeNull()
+    expect(readWhatsappSignupEvent(message("no soy json"))).toBeNull()
+    expect(readWhatsappSignupEvent(message([1, 2, 3]))).toBeNull()
     expect(
-      readWhatsappSignupEvent(message("no soy json"), "standard")
-    ).toBeNull()
-    expect(readWhatsappSignupEvent(message([1, 2, 3]), "standard")).toBeNull()
-    expect(
-      readWhatsappSignupEvent(
-        message({ type: "WA_EMBEDDED_SIGNUP" }),
-        "standard"
-      )
+      readWhatsappSignupEvent(message({ type: "WA_EMBEDDED_SIGNUP" }))
     ).toBeNull()
   })
 
@@ -84,32 +74,27 @@ describe("readWhatsappSignupEvent — el borde no confiable", () => {
     // Un widget cualquiera desde otro origen no tiene que aparecer como
     // `foreign-origin`: eso ahogaría el aviso que sí importa.
     expect(
-      readWhatsappSignupEvent(
-        {
-          ...message({ type: "OTHER", event: "FINISH" }),
-          origin: "https://ads.example",
-        },
-        "standard"
-      )
+      readWhatsappSignupEvent({
+        ...message({ type: "OTHER", event: "FINISH" }),
+        origin: "https://ads.example",
+      })
     ).toBeNull()
   })
 
   it("acepta un objeto ya deserializado y un id numérico", () => {
-    const result = readWhatsappSignupEvent(
-      {
-        isTrusted: true,
-        origin: WHATSAPP_SIGNUP_ALLOWED_ORIGINS[0],
-        data: {
-          type: "WA_EMBEDDED_SIGNUP",
-          event: "FINISH",
-          data: { waba_id: 524126980791429, phone_number_id: "109" },
-        },
+    const result = readWhatsappSignupEvent({
+      isTrusted: true,
+      origin: WHATSAPP_SIGNUP_ALLOWED_ORIGINS[0],
+      data: {
+        type: "WA_EMBEDDED_SIGNUP",
+        event: "FINISH",
+        data: { waba_id: 524126980791429, phone_number_id: "109" },
       },
-      "standard"
-    )
+    })
 
     expect(result).toEqual({
       kind: "finished",
+      mode: "standard",
       assets: {
         wabaId: "524126980791429",
         phoneNumberId: "109",
@@ -123,32 +108,31 @@ describe("readWhatsappSignupEvent — los desenlaces", () => {
   it("clasifica el cierre feliz del flujo estándar", () => {
     expect(
       readWhatsappSignupEvent(
-        finish({ waba_id: "10", phone_number_id: "20", business_id: "30" }),
-        "standard"
+        finish({ waba_id: "10", phone_number_id: "20", business_id: "30" })
       )
     ).toEqual({
       kind: "finished",
+      mode: "standard",
       assets: { wabaId: "10", phoneNumberId: "20", businessId: "30" },
     })
   })
 
   it("trata un FINISH estándar sin número como un alta sin teléfono", () => {
-    expect(
-      readWhatsappSignupEvent(finish({ waba_id: "10" }), "standard")
-    ).toEqual({ kind: "finished-without-number" })
+    expect(readWhatsappSignupEvent(finish({ waba_id: "10" }))).toEqual({
+      kind: "finished-without-number",
+    })
   })
 
   it("exige el waba_id: sin él no hay nada que confirmar contra Graph", () => {
-    expect(
-      readWhatsappSignupEvent(finish({ phone_number_id: "20" }), "standard")
-    ).toEqual({ kind: "malformed" })
+    expect(readWhatsappSignupEvent(finish({ phone_number_id: "20" }))).toEqual({
+      kind: "malformed",
+    })
   })
 
   it("distingue el abandono del error reportado, que comparten CANCEL", () => {
     expect(
       readWhatsappSignupEvent(
-        finish({ current_step: "PHONE_NUMBER_SETUP" }, "CANCEL"),
-        "standard"
+        finish({ current_step: "PHONE_NUMBER_SETUP" }, "CANCEL")
       )
     ).toEqual({ kind: "abandoned", currentStep: "PHONE_NUMBER_SETUP" })
 
@@ -161,8 +145,7 @@ describe("readWhatsappSignupEvent — los desenlaces", () => {
             session_id: "s1",
           },
           "CANCEL"
-        ),
-        "standard"
+        )
       )
     ).toEqual({
       kind: "reported-error",
@@ -173,67 +156,77 @@ describe("readWhatsappSignupEvent — los desenlaces", () => {
   })
 
   it("reporta un FINISH* nuevo como flujo no soportado, no como silencio", () => {
-    expect(
-      readWhatsappSignupEvent(finish({}, "FINISH_OBO_MIGRATION"), "standard")
-    ).toEqual({ kind: "unsupported-flow", event: "FINISH_OBO_MIGRATION" })
-    expect(
-      readWhatsappSignupEvent(finish({}, "FINISH_ALGO_NUEVO"), "standard")
-    ).toEqual({ kind: "unsupported-flow", event: "FINISH_ALGO_NUEVO" })
+    expect(readWhatsappSignupEvent(finish({}, "FINISH_OBO_MIGRATION"))).toEqual(
+      { kind: "unsupported-flow", event: "FINISH_OBO_MIGRATION" }
+    )
+    expect(readWhatsappSignupEvent(finish({}, "FINISH_ALGO_NUEVO"))).toEqual({
+      kind: "unsupported-flow",
+      event: "FINISH_ALGO_NUEVO",
+    })
   })
 })
 
-describe("readWhatsappSignupEvent — los dos modos no se cruzan", () => {
-  it("no acepta el cierre de Coexistence cuando se lanzó el estándar", () => {
-    // Seguir adelante con este número lo registraría con `/register`, que es
-    // justo lo que lo desvincularía de la app de WhatsApp Business.
+describe("readWhatsappSignupEvent — el modo sale del evento de cierre", () => {
+  // Es **la** regla de seguridad del launcher. El botón es uno solo y las
+  // opciones de `FB.login` son las mismas para los dos flujos: quién elige es el
+  // usuario, dentro del diálogo de Meta. Si el modo se supusiera desde el botón,
+  // un cierre de Coexistence tomado por estándar terminaría en `/register`, que
+  // desvincula el número de la app de WhatsApp Business y no se deshace.
+  it("deriva standard del FINISH del flujo estándar", () => {
+    expect(resolveWhatsappOnboardingMode("FINISH")).toBe("standard")
     expect(
-      readWhatsappSignupEvent(
-        finish(
-          { waba_id: "10", phone_number_id: "20" },
-          "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING"
-        ),
-        "standard"
-      )
-    ).toEqual({
-      kind: "unsupported-flow",
-      event: "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING",
-    })
-  })
-
-  it("no acepta el cierre estándar cuando se lanzó Coexistence", () => {
-    expect(
-      readWhatsappSignupEvent(
-        finish({ waba_id: "10", phone_number_id: "20" }),
-        "coexistence"
-      )
-    ).toEqual({ kind: "unsupported-flow", event: "FINISH" })
-  })
-
-  it("cierra Coexistence con su propio evento", () => {
-    expect(
-      readWhatsappSignupEvent(
-        finish(
-          { waba_id: "10", phone_number_id: "20" },
-          "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING"
-        ),
-        "coexistence"
-      )
+      readWhatsappSignupEvent(finish({ waba_id: "10", phone_number_id: "20" }))
     ).toEqual({
       kind: "finished",
+      mode: "standard",
       assets: { wabaId: "10", phoneNumberId: "20", businessId: null },
     })
   })
 
-  it("deja seguir Coexistence sin phone_number_id: Graph sabe cuál es", () => {
-    // El número ya existe en la app de WhatsApp Business, así que el servidor
-    // lo resuelve por `is_on_biz_app` aunque el popup no lo reporte.
+  it("deriva coexistence del FINISH de Business App onboarding", () => {
+    expect(
+      resolveWhatsappOnboardingMode("FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING")
+    ).toBe("coexistence")
     expect(
       readWhatsappSignupEvent(
-        finish({ waba_id: "10" }, "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING"),
-        "coexistence"
+        finish(
+          { waba_id: "10", phone_number_id: "20" },
+          "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING"
+        )
       )
     ).toEqual({
       kind: "finished",
+      mode: "coexistence",
+      assets: { wabaId: "10", phoneNumberId: "20", businessId: null },
+    })
+  })
+
+  it("no deriva ningún modo de un FINISH* desconocido", () => {
+    // Registrar un número adivinando el flujo es exactamente lo que no puede
+    // pasar: sin modo derivado, el cierre no se envía y se le cuenta al usuario.
+    for (const event of [
+      "FINISH_ONLY_WABA",
+      "FINISH_OBO_MIGRATION",
+      "FINISH_GRANT_ONLY_API_ACCESS",
+      "FINISH_ALGO_NUEVO",
+      "CANCEL",
+    ]) {
+      expect(resolveWhatsappOnboardingMode(event)).toBeNull()
+    }
+  })
+
+  it("deja seguir Coexistence sin phone_number_id: Graph sabe cuál es", () => {
+    // El número ya existe en la app de WhatsApp Business, así que el servidor
+    // lo resuelve por `is_on_biz_app` aunque el popup no lo reporte. En el
+    // estándar la misma ausencia sí corta: ahí el alta del teléfono es el paso
+    // que el usuario se saltó.
+    expect(
+      readWhatsappSignupEvent(
+        finish({ waba_id: "10" }, "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING")
+      )
+    ).toEqual({
+      kind: "finished",
+      mode: "coexistence",
       assets: { wabaId: "10", phoneNumberId: null, businessId: null },
     })
   })
@@ -244,6 +237,7 @@ describe("describeWhatsappSignupEvent", () => {
     expect(
       describeWhatsappSignupEvent({
         kind: "finished",
+        mode: "standard",
         assets: { wabaId: "1", phoneNumberId: "2", businessId: null },
       })
     ).toBeNull()
@@ -252,13 +246,14 @@ describe("describeWhatsappSignupEvent", () => {
     ).toBeNull()
   })
 
-  it("manda al otro botón cuando el número sigue en la app de WhatsApp", () => {
-    const message = describeWhatsappSignupEvent({
-      kind: "unsupported-flow",
-      event: "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING",
-    })
-
-    expect(message).toContain("número existente")
+  it("no manda a ningún otro botón: los dos cierres soportados no llegan acá", () => {
+    // Con un solo punto de entrada, `FINISH` y
+    // `FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING` son los dos desenlaces válidos
+    // del mismo botón. Un texto que mandara «al otro botón» hablaría de una
+    // pantalla que ya no existe.
+    for (const event of ["FINISH", "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING"]) {
+      expect(resolveWhatsappOnboardingMode(event)).not.toBeNull()
+    }
   })
 
   it("no dice «error» cuando el usuario terminó bien por otra variante", () => {

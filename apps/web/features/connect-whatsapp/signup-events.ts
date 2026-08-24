@@ -58,18 +58,28 @@ export type WhatsappSignupAssets = {
   businessId: string | null
 }
 
+// Un cierre completado, con **el modo derivado del propio evento**. Los dos
+// viajan juntos a propósito: el modo decide la mitad irreversible entera —el
+// estándar registra el número con `/register` y Coexistence no lo toca—, y
+// atarlo al mismo objeto que trae los ids hace imposible enviar unos assets con
+// un modo que no salió de este cierre.
+export type WhatsappSignupFinish = {
+  mode: WhatsappOnboardingMode
+  assets: WhatsappSignupAssets
+}
+
 // Qué pasó en el popup, ya clasificado. Es una unión y no un booleano porque
 // Meta mete desenlaces muy distintos en el mismo canal, y cada uno se le cuenta
 // distinto a alguien que acaba de ver cerrarse una ventana:
 //
-// - `finished`: el camino feliz del flujo que se lanzó.
+// - `finished`: el camino feliz, por cualquiera de los dos flujos.
 // - `finished-without-number`: terminó, pero sin número. `FINISH_ONLY_WABA`, y
 //   también un `FINISH` del flujo estándar al que le falta el
 //   `phone_number_id`.
-// - `unsupported-flow`: terminó bien, pero por una variante que no es la que se
-//   lanzó (una migración OBO, un grant-only, o el onboarding de Business App
-//   cuando el usuario venía por el flujo estándar). No es un fallo nuestro ni
-//   del usuario, y decir «hubo un error» sería mentirle.
+// - `unsupported-flow`: terminó bien, pero por una variante que Resender no
+//   sabe cerrar (una migración OBO, un grant-only, o cualquier `FINISH*` que
+//   Meta agregue después). No es un fallo nuestro ni del usuario, y decir «hubo
+//   un error» sería mentirle.
 // - `flow-error`: `event: 'ERROR'`, el error que reporta el propio flujo.
 // - `reported-error`: ⚠️ **también llega con `event: 'CANCEL'`** —es la trampa
 //   de esta API— y solo se distingue del abandono por las claves de `data`.
@@ -77,7 +87,7 @@ export type WhatsappSignupAssets = {
 // - `malformed`: el `type` es el nuestro pero el contenido no sirve.
 // - `foreign-origin`: llegó de un origen fuera de la allowlist. Ver arriba.
 export type WhatsappSignupEvent =
-  | { kind: "finished"; assets: WhatsappSignupAssets }
+  | ({ kind: "finished" } & WhatsappSignupFinish)
   | { kind: "finished-without-number" }
   | { kind: "unsupported-flow"; event: string }
   | { kind: "flow-error" }
@@ -99,23 +109,39 @@ export type WhatsappSignupMessage = {
   data: unknown
 }
 
-// Los dos `FINISH*` que cierran un onboarding, uno por flujo. **Cuál de los dos
-// vale depende del modo que se lanzó**, y no se aceptan cruzados: un
-// `FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING` en el flujo estándar significa que
-// el usuario terminó vinculando un número que sigue vivo en la app de WhatsApp
-// Business, y seguir adelante con él lo registraría con `/register` —que es
-// exactamente lo que desvincula el número de la app y lo que Coexistence existe
-// para no hacer—.
-const FINISH_EVENT_BY_MODE: Record<WhatsappOnboardingMode, string> = {
-  standard: "FINISH",
-  coexistence: "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING",
+// **Qué flujo terminó de correr lo dice el evento de cierre, y nada más.**
+//
+// Meta ofrece las tres opciones dentro del mismo diálogo —crear una cuenta,
+// «Conecta una aplicación de WhatsApp Business» y las WABAs existentes— cuando
+// se manda el `featureType` (ver `signup-launch.ts`), así que el usuario elige
+// adentro y el botón que lo lanzó no sabe qué eligió. Suponerlo era el error
+// caro: un `FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING` tomado por estándar
+// termina en un `POST /{phone_number_id}/register`, que desvincula de la app de
+// WhatsApp Business el número que el cliente quería seguir usando ahí, y eso no
+// se deshace desde acá.
+//
+// Por eso esto es un mapa evento → modo y no una comparación contra el modo
+// lanzado: acá se **deriva**, no se valida.
+const MODE_BY_FINISH_EVENT: Record<string, WhatsappOnboardingMode> = {
+  FINISH: "standard",
+  FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING: "coexistence",
+}
+
+/**
+ * El modo que corresponde a un evento de cierre, o `null` si ese `FINISH*` no
+ * es ninguno de los dos que sabemos terminar. Exportado porque es **la** regla
+ * de la que depende que un número de Coexistence no pase nunca por `/register`.
+ */
+export function resolveWhatsappOnboardingMode(
+  event: string
+): WhatsappOnboardingMode | null {
+  return MODE_BY_FINISH_EVENT[event] ?? null
 }
 
 const FINISH_WITHOUT_NUMBER_EVENT = "FINISH_ONLY_WABA"
 
 export function readWhatsappSignupEvent(
-  message: WhatsappSignupMessage,
-  mode: WhatsappOnboardingMode
+  message: WhatsappSignupMessage
 ): WhatsappSignupEvent | null {
   // `isTrusted` es `false` en cualquier evento que haya despachado un script de
   // la página (`window.dispatchEvent(new MessageEvent(...))`). No para a un
@@ -160,7 +186,9 @@ export function readWhatsappSignupEvent(
 
   if (event === "ERROR") return { kind: "flow-error" }
 
-  if (event === FINISH_EVENT_BY_MODE[mode]) {
+  // El modo sale de acá y de ningún otro lado (ver `MODE_BY_FINISH_EVENT`).
+  const mode = resolveWhatsappOnboardingMode(event)
+  if (mode) {
     const wabaId = readText(data, "waba_id")
     // Sin `waba_id` no hay nada que confirmar contra Graph: el servidor lo
     // rechazaría igual, y decirlo acá ahorra un viaje y un `code` quemado.
@@ -177,6 +205,7 @@ export function readWhatsappSignupEvent(
 
     return {
       kind: "finished",
+      mode,
       assets: {
         wabaId,
         phoneNumberId,
@@ -189,10 +218,12 @@ export function readWhatsappSignupEvent(
     return { kind: "finished-without-number" }
   }
 
-  // `FINISH_OBO_MIGRATION`, `FINISH_GRANT_ONLY_API_ACCESS`, el `FINISH*` del
-  // otro modo y cualquiera que Meta agregue después. Se reconocen por prefijo
-  // para que un valor nuevo llegue como «no es el flujo que lanzaste» —que es
-  // la verdad— y no como un mensaje ignorado que deja el botón girando.
+  // `FINISH_OBO_MIGRATION`, `FINISH_GRANT_ONLY_API_ACCESS` y cualquiera que
+  // Meta agregue después. Se reconocen por prefijo para que un valor nuevo
+  // llegue como «terminaste por una variante que no soportamos» —que es la
+  // verdad— y no como un mensaje ignorado que deja el botón girando. **No se
+  // deriva ningún modo de un `FINISH*` desconocido**: registrar un número
+  // adivinando el flujo es justo lo que no puede pasar.
   if (event.startsWith("FINISH")) return { kind: "unsupported-flow", event }
 
   // Meta documenta que no hay eventos de progreso. Un `event` desconocido que ni
@@ -249,24 +280,16 @@ export function describeWhatsappSignupEvent(
   }
 }
 
-// Los `FINISH*` que no son el del flujo lanzado. Cada uno dice **qué** completó
-// el usuario y por qué ese resultado no sirve para el botón que pulsó: terminó
-// bien, no falló nada, y un «hubo un error» acá sería mentirle y mandarlo a
-// reintentar en bucle.
+// Los `FINISH*` que Resender no sabe cerrar. Cada uno dice **qué** completó el
+// usuario y por qué ese resultado no conecta nada: terminó bien, no falló nada,
+// y un «hubo un error» acá sería mentirle y mandarlo a reintentar en bucle.
 //
-// No hace falta el modo para redactarlos: los dos primeros casos solo pueden
-// llegar acá desde el otro flujo, así que el nombre del evento ya dice cuál era.
+// Los dos cierres que sí soportamos —`FINISH` y
+// `FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING`— ya no pasan por acá: los dos son
+// resultados válidos del único botón, y cuál de los dos fue es justamente lo que
+// deriva el modo.
 function describeUnsupportedFlow(event: string): string {
   switch (event) {
-    case "FINISH":
-      // Solo llega acá si el modo era Coexistence: el usuario dio de alta un
-      // número nuevo desde el flujo del número existente.
-      return "Diste de alta un número nuevo, no vinculaste el que ya usas en WhatsApp Business. Conéctalo con «Conectar WhatsApp» (número nuevo), o vuelve a lanzar el alta de número existente y elige el número que ya está en la app."
-    case "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING":
-      // Y acá solo si el modo era estándar. **No se puede seguir**: registrar
-      // con `/register` un número que sigue vivo en la app de WhatsApp Business
-      // lo desvincularía de la app.
-      return "El número que elegiste sigue en uso en la app de WhatsApp Business. Ese número se conecta con «Conectar un número existente», que lo deja funcionando en la app y en Resender a la vez."
     case "FINISH_OBO_MIGRATION":
       return "Completaste una migración desde otro proveedor. Ese flujo todavía no está soportado en Resender: escríbenos a info@resender.dev y lo hacemos contigo."
     case "FINISH_GRANT_ONLY_API_ACCESS":

@@ -60,6 +60,70 @@ distintos.
 Cada número es una [Conexión] y ocupa un slot del plan, sin agrupar por WABA
 (ADR 0011).
 
+### Un solo botón, y el `onboarding_mode` derivado del evento de cierre
+
+**Esto se desvía del PRD a sabiendas.** La sección «Embedded Signup y seguridad»
+pide «botón separado para número nuevo y número existente, con copy distinto».
+Hay un solo botón, «Conectar WhatsApp».
+
+El motivo es un hallazgo empírico, verificado contra el diálogo real de Meta y
+no leído en la documentación: **`extras.featureType =
+"whatsapp_business_app_onboarding"` es aditivo, no restrictivo**. Con el
+`featureType` puesto, el desplegable «Cuenta de WhatsApp Business» ofrece las
+tres opciones —crear una cuenta de WhatsApp Business, «Conecta una aplicación de
+WhatsApp Business» (Coexistence) y las WABAs que el portafolio ya tiene—. Sin
+él, la segunda no aparece. Los dos flujos salen, entonces, con **las mismas
+opciones de `FB.login` y el mismo Configuration ID**.
+
+Con eso, dos botones dejan de ser una elección: son dos etiquetas para el mismo
+diálogo. Y el precio de mantenerlos no era estético. El `onboarding_mode` se
+persistía según **cuál se hubiera pulsado**, es decir, según una suposición
+sobre algo que el usuario podía cambiar en la ventana siguiente. Ese campo
+decide si se llama a `POST /{phone_number_id}/register`, que es irreversible y
+desvincula el número de la app de WhatsApp Business: suponerlo mal es registrar
+un número que el cliente quería seguir usando desde su teléfono.
+
+Así que el modo **se deriva del evento de cierre**, que es la única fuente que
+sabe qué eligió el usuario:
+
+| evento de `WA_EMBEDDED_SIGNUP`            | modo                                                                      |
+| ----------------------------------------- | ------------------------------------------------------------------------- |
+| `FINISH`                                  | `standard`                                                                |
+| `FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING` | `coexistence`                                                             |
+| `FINISH_ONLY_WABA`                        | terminó sin número; no se conecta nada                                    |
+| cualquier otro `FINISH*`                  | variante no soportada; no se conecta nada, y **no se deriva ningún modo** |
+
+Es un cambio de dirección, no una simplificación: antes el módulo **comparaba**
+el evento contra el modo lanzado y rechazaba el cruzado —una red que existía
+justamente porque el modo venía del botón—; ahora el evento **es** la fuente de
+verdad. Por eso esto es más correcto que lo que pedía el PRD, no solo más
+barato: el PRD daba por hecho que la elección se hacía antes del diálogo, y en
+el diálogo real se hace adentro.
+
+Consecuencias que arrastra, todas deliberadas:
+
+- **El copy de las advertencias se mueve a después del cierre.** Antes del clic
+  no se puede decir la consecuencia concreta sin confundir, porque todavía no
+  está elegida: el botón dice que hay una elección y que no da lo mismo cuál, y
+  la advertencia específica —el número deja de poder usarse desde la app, o el
+  techo de 20 mps y el reloj de 24 h— se muestra al cerrarse la ventana, ya con
+  el modo real.
+- **`NEXT_PUBLIC_WHATSAPP_COEXISTENCE_CONFIG_ID` se borra.** Un solo
+  Configuration ID sirve para los dos flujos, así que la variable quedaba muerta
+  en `turbo.json` y en los tres workflows. Una env var declarada que no decide
+  nada es peor que no tenerla: alguien la va a rellenar creyendo que hace algo.
+- **`/api/meta/whatsapp/start` deja de aceptar `?mode=`**, y «Reconectar» deja
+  de generarlo. Ese parámetro solo servía para resaltar uno de los dos botones.
+- **La invariante tiene test propio, de punta a punta**: un cierre
+  `FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING` recorre `postMessage` → modo
+  derivado → cuerpo del POST → `runWhatsappSignup` y nunca llega a
+  `registerWhatsappPhoneNumber`.
+
+Riesgo que queda vivo: si Meta renombra el `featureType`, el diálogo deja de
+ofrecer Coexistence y el usuario no puede conectar el número que ya usa. Degrada
+el menú, no la decisión —el modo sigue saliendo del evento de cierre—, así que
+el fallo es «no aparece la opción», no «registramos de más».
+
 ### La ventana de 24 h se aplica localmente y no hay plantillas
 
 `conversations.last_inbound_at` se escribe en un solo módulo y solo cuando el

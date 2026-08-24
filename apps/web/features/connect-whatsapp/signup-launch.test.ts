@@ -3,78 +3,43 @@ import { describe, expect, it } from "vitest"
 import {
   buildFacebookLoginOptions,
   parseWhatsappMode,
-  resolveWhatsappConfigId,
-  WHATSAPP_COEXISTENCE_FEATURE_TYPE,
-  WHATSAPP_ENTRY_POINTS,
+  WHATSAPP_CONNECT_DESCRIPTION,
+  WHATSAPP_CONNECT_LABEL,
+  WHATSAPP_MODE_CAVEAT,
   WHATSAPP_SESSION_INFO_VERSION,
+  WHATSAPP_SIGNUP_FEATURE_TYPE,
 } from "./signup-launch"
 
 describe("buildFacebookLoginOptions", () => {
   it("pide un code y no un token, que es lo que nunca puede llegar al navegador", () => {
-    const options = buildFacebookLoginOptions("cfg", "standard")
+    const options = buildFacebookLoginOptions("cfg")
 
     expect(options.response_type).toBe("code")
     expect(options.override_default_response_type).toBe(true)
+    expect(options.config_id).toBe("cfg")
   })
 
-  it("manda sessionInfoVersion en los dos flujos: es el session logging", () => {
-    // Sin él no llegan los `postMessage` de los que vive `signup-events.ts`, y
-    // Coexistence lo exige formalmente.
-    for (const mode of ["standard", "coexistence"] as const) {
-      expect(
-        buildFacebookLoginOptions("cfg", mode).extras.sessionInfoVersion
-      ).toBe(WHATSAPP_SESSION_INFO_VERSION)
-    }
+  it("manda sessionInfoVersion: es el session logging del que vive el cierre", () => {
+    // Sin él no llegan los `postMessage` de los que `signup-events.ts` deriva el
+    // modo, y Coexistence lo exige formalmente.
+    expect(buildFacebookLoginOptions("cfg").extras.sessionInfoVersion).toBe(
+      WHATSAPP_SESSION_INFO_VERSION
+    )
   })
 
-  it("solo Coexistence lleva featureType", () => {
-    expect(
-      buildFacebookLoginOptions("cfg", "standard").extras.featureType
-    ).toBeUndefined()
-    expect(
-      buildFacebookLoginOptions("cfg", "coexistence").extras.featureType
-    ).toBe(WHATSAPP_COEXISTENCE_FEATURE_TYPE)
+  it("manda siempre el featureType, porque es aditivo y no restrictivo", () => {
+    // Verificado contra el diálogo real: con el `featureType` puesto el
+    // desplegable ofrece las tres opciones —cuenta nueva, «Conecta una
+    // aplicación de WhatsApp Business» y las WABAs del portafolio—. Sin él,
+    // Coexistence no aparece y el usuario no puede conectar el número que ya
+    // usa. Por eso hay un solo botón y estas opciones son las únicas.
+    expect(buildFacebookLoginOptions("cfg").extras.featureType).toBe(
+      WHATSAPP_SIGNUP_FEATURE_TYPE
+    )
   })
 
   it("manda setup vacío: los permisos viven en el Configuration ID", () => {
-    expect(buildFacebookLoginOptions("cfg", "standard").extras.setup).toEqual(
-      {}
-    )
-  })
-})
-
-describe("resolveWhatsappConfigId", () => {
-  it("usa la configuración propia de Coexistence cuando el despliegue la tiene", () => {
-    expect(
-      resolveWhatsappConfigId(
-        { configId: "std", coexistenceConfigId: "coex" },
-        "coexistence"
-      )
-    ).toBe("coex")
-  })
-
-  it("cae en la configuración estándar cuando no hay una aparte", () => {
-    expect(
-      resolveWhatsappConfigId(
-        { configId: "std", coexistenceConfigId: null },
-        "coexistence"
-      )
-    ).toBe("std")
-    expect(
-      resolveWhatsappConfigId(
-        { configId: "std", coexistenceConfigId: "coex" },
-        "standard"
-      )
-    ).toBe("std")
-  })
-
-  it("devuelve null cuando el despliegue no está configurado", () => {
-    expect(
-      resolveWhatsappConfigId(
-        { configId: null, coexistenceConfigId: null },
-        "standard"
-      )
-    ).toBeNull()
+    expect(buildFacebookLoginOptions("cfg").extras.setup).toEqual({})
   })
 })
 
@@ -89,28 +54,24 @@ describe("parseWhatsappMode", () => {
   })
 })
 
-describe("WHATSAPP_ENTRY_POINTS", () => {
-  it("son dos, con copy distinto, y dicen la consecuencia antes de lanzarse", () => {
-    expect(WHATSAPP_ENTRY_POINTS).toHaveLength(2)
-    expect(WHATSAPP_ENTRY_POINTS.map((entry) => entry.mode)).toEqual([
-      "standard",
-      "coexistence",
-    ])
-
-    const labels = new Set(WHATSAPP_ENTRY_POINTS.map((entry) => entry.label))
-    expect(labels.size).toBe(2)
-
-    for (const entry of WHATSAPP_ENTRY_POINTS) {
-      expect(entry.description.length).toBeGreaterThan(0)
-      expect(entry.caveat.length).toBeGreaterThan(0)
-    }
+describe("el copy del único punto de entrada", () => {
+  it("antes del clic avisa de que la elección de adentro tiene consecuencias", () => {
+    expect(WHATSAPP_CONNECT_LABEL).toBe("Conectar WhatsApp")
+    // No se puede prometer una consecuencia concreta antes de que el usuario
+    // elija dentro del diálogo, pero sí decir que hay elección y que no da
+    // lo mismo cuál.
+    expect(WHATSAPP_CONNECT_DESCRIPTION).toMatch(/eliges|elijas/)
+    expect(WHATSAPP_CONNECT_DESCRIPTION).toMatch(/no da lo mismo/i)
   })
 
-  it("avisa del plazo de 24 horas en el flujo que lo tiene", () => {
-    const coexistence = WHATSAPP_ENTRY_POINTS.find(
-      (entry) => entry.mode === "coexistence"
+  it("cada modo tiene su advertencia, para decirla al cerrarse la ventana", () => {
+    // Estándar: lo que se pierde. Coexistence: el techo y el reloj.
+    expect(WHATSAPP_MODE_CAVEAT.standard).toContain(
+      "deja de poder usarse desde la app de WhatsApp Business"
     )
-
-    expect(coexistence?.caveat).toContain("24 horas")
+    expect(WHATSAPP_MODE_CAVEAT.coexistence).toContain(
+      "20 mensajes por segundo"
+    )
+    expect(WHATSAPP_MODE_CAVEAT.coexistence).toContain("24 horas")
   })
 })

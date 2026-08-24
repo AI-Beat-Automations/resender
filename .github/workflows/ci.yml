@@ -63,7 +63,6 @@ jobs:
           WHATSAPP_VERIFY_TOKEN: ci-dummy
           META_GRAPH_VERSION: v23.0
           NEXT_PUBLIC_WHATSAPP_CONFIG_ID: "0"
-          NEXT_PUBLIC_WHATSAPP_COEXISTENCE_CONFIG_ID: "0"
 
   # Sube una versión del Worker por PR sin promoverla a deployment: valida que
   # el bundle de OpenNext no solo compile sino que Cloudflare lo acepte, que es

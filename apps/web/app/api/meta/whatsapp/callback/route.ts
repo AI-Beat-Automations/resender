@@ -155,6 +155,11 @@ export async function POST(request: NextRequest) {
     return fail("whatsapp_state_mismatch", "state_mismatch", { level: "warn" })
   }
 
+  // El modo **no lo eligió un botón**: el launcher lo deriva del evento de
+  // cierre del popup (`FINISH` → estándar,
+  // `FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING` → Coexistence) y lo manda en el
+  // cuerpo, porque el servidor no puede deducirlo del `code`. Acá solo se
+  // sanea el borde HTTP: esto se puede invocar por POST directo.
   const mode = parseWhatsappMode(readField(body, "mode"))
   const code = readField(body, "code")
   const wabaId = readField(body, "wabaId")
