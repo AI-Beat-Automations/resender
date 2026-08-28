@@ -15,6 +15,12 @@
 // la WABA de pruebas no se llene. Al revés no funciona: borrado de la WABA, ya
 // no hay id contra el que hacer `deregister`.
 //
+// ⚠️ **El paso 2 no está soportado por Graph**: verificado contra la API real,
+// un `DELETE` sobre un phone_number_id devuelve `code 100 subcode 33`. Borrar
+// el número de la WABA es un paso de UI (WhatsApp Manager). Se sigue
+// intentando —cuesta una llamada y el día que Meta lo habilite funciona solo—
+// pero su fallo no aborta nada y el script lo dice sin dramatizar.
+//
 // Uso:
 //   node scripts/whatsapp-free-number.mjs list
 //   node scripts/whatsapp-free-number.mjs list --waba <WABA_ID>
@@ -247,10 +253,25 @@ async function runFree() {
     return
   }
 
-  // 2. delete
+  // 2. delete. **Best-effort y a propósito**: Graph responde `code 100 subcode
+  // 33` («does not support this operation») a un `DELETE` sobre un
+  // phone_number_id, así que borrar el número de la WABA es un paso de UI y no
+  // de API. No se aborta ni se sale con error: el número ya quedó libre en el
+  // paso 1, que es lo único que impedía reusarlo, y presentar esto como un
+  // fallo mandaría a alguien a reintentar una limpieza que ya no hace falta.
   process.stdout.write("delete… ")
-  await graph(phoneNumberId, { method: "DELETE" })
-  console.log("ok")
+  try {
+    await graph(phoneNumberId, { method: "DELETE" })
+    console.log("ok")
+  } catch (error) {
+    console.log("no disponible por API")
+    console.log(
+      `  (${error.message})\n` +
+        "  El número YA está libre: el `deregister` es el que lo saca de Cloud API.\n" +
+        "  Para quitarlo también de la WABA: WhatsApp Manager → Configuración de la\n" +
+        "  cuenta → Números de teléfono → Administrar → Eliminar número de teléfono."
+    )
+  }
 
   console.log(
     "\nListo. Antes de reusarlo:\n" +
