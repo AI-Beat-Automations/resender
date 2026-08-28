@@ -1,36 +1,154 @@
 #!/usr/bin/env node
-// Libera un número de WhatsApp usado en una prueba, para poder reusarlo.
+// ===========================================================================
+// whatsapp-free-number — libera un número de WhatsApp usado en una prueba
+// ===========================================================================
 //
-// Existe porque el botón «Desconectar» de la app NO toca Meta: marca la fila
-// como desconectada y da de baja el webhook, pero el número sigue registrado
-// en Cloud API y por tanto sigue inutilizable para otra prueba —y para volver
-// a la app de WhatsApp Business—.
+// Herramienta de desarrollo. No la usa la app ni el despliegue: es para el
+// ciclo de pruebas del Embedded Signup, donde el mismo puñado de números se
+// conecta y se desconecta muchas veces y no hay forma de reusarlos sin pasar
+// por Meta a mano.
 //
-// Liberar un número son dos llamadas, en este orden y no en otro:
+// ---------------------------------------------------------------------------
+// Por qué existe
+// ---------------------------------------------------------------------------
+//
+// **El botón «Desconectar» de la app no libera el número.**
+// `disconnectPageAction` (`features/connections/actions.ts`) marca la fila como
+// desconectada y da de baja el webhook, y eso es todo lo que debe hacer: es la
+// acción de un cliente que se va, no la de un desarrollador limpiando un banco
+// de pruebas. Del lado de Meta el número sigue registrado en Cloud API, con su
+// verificación en dos pasos activa y ocupando su sitio en la WABA.
+//
+// Un número en ese estado no sirve para nada más: no se puede registrar en otra
+// WABA, no se puede volver a instalar en la app de WhatsApp Business, y no se
+// puede usar para probar Coexistence. Con dos o tres SIMs de prueba, eso es el
+// cuello de botella de todo el ciclo.
+//
+// ---------------------------------------------------------------------------
+// Cuándo se usa
+// ---------------------------------------------------------------------------
+//
+// **Sí:**
+//
+//   · Terminaste una prueba del flujo estándar (`FINISH`) y quieres reusar la
+//     SIM para la siguiente iteración.
+//   · Quieres pasar una SIM del flujo estándar a Coexistence. Registrar el
+//     número lo desvinculó de la app de WhatsApp Business; liberarlo es lo que
+//     lo devuelve a estar disponible para instalarlo ahí y probar el flujo B.
+//   · Una prueba quedó a medias —el `code` se quemó, el cierre falló después de
+//     `/register`— y el número quedó registrado sin fila en la base.
+//   · Estás limpiando WABAs de prueba acumuladas y quieres saber qué números
+//     cuelgan de cada una (`list`).
+//
+// **No:**
+//
+//   · Un número de **producción**. Esto no es reversible en lo que importa: se
+//     pierde el nombre verificado —vuelve a pasar por aprobación— y la
+//     calificación de calidad arranca de cero.
+//   · Un número **de Coexistence** que sigue en uso. `list` imprime
+//     `platform_type` justamente para que se vea antes de tocar nada; si no
+//     dice `CLOUD_API`, para y confirma qué es ese número.
+//   · El **número de prueba que presta Meta** (el `+1 555…` de App Dashboard →
+//     WhatsApp → Configuración de la API). No es tuyo: el `deregister` rebota.
+//
+// ---------------------------------------------------------------------------
+// Qué hace, exactamente
+// ---------------------------------------------------------------------------
 //
 //   1. POST /{phone_number_id}/deregister  → lo saca de Cloud API
 //   2. DELETE /{phone_number_id}           → lo saca de la WABA
 //
-// El paso 1 es el que de verdad libera el número; el 2 es la limpieza para que
-// la WABA de pruebas no se llene. Al revés no funciona: borrado de la WABA, ya
-// no hay id contra el que hacer `deregister`.
+// El paso 1 es el que de verdad libera el número. El 2 es higiene: que la WABA
+// de pruebas no se llene de números muertos que después ensucian el desplegable
+// del popup. El orden no es negociable: borrado de la WABA ya no hay id contra
+// el que hacer `deregister`.
 //
-// ⚠️ **El paso 2 no está soportado por Graph**: verificado contra la API real,
-// un `DELETE` sobre un phone_number_id devuelve `code 100 subcode 33`. Borrar
-// el número de la WABA es un paso de UI (WhatsApp Manager). Se sigue
-// intentando —cuesta una llamada y el día que Meta lo habilite funciona solo—
-// pero su fallo no aborta nada y el script lo dice sin dramatizar.
+// ⚠️ **El paso 2 no está soportado por Graph.** Verificado contra la API real:
+// un `DELETE` sobre un phone_number_id devuelve `code 100 subcode 33`
+// («does not support this operation»). Quitar el número de la WABA es un paso
+// de UI —WhatsApp Manager → Configuración de la cuenta → Números de teléfono →
+// Administrar → Eliminar número de teléfono—. Se sigue intentando, porque
+// cuesta una llamada y el día que Meta lo habilite funciona solo, pero su fallo
+// no aborta nada: para cuando ocurre, el número ya está libre.
 //
-// Uso:
+// **Lo que el script no hace y hay que hacer a mano:**
+//
+//   · Borrar la fila de la conexión en la base. Importa: si se queda, la
+//     siguiente prueba con ese número devuelve `owned_by_other_tenant` o le
+//     concede una exención de cupo que no le toca (ver `resolveOwnership` en
+//     `lib/pages/page-registry.ts`). Para WhatsApp el `meta_page_id` **es** el
+//     `phone_number_id`:
+//
+//       delete from ... where channel = 'whatsapp' and meta_page_id = '<id>'
+//
+//   · Borrar la WABA de prueba, si se creó solo para esa iteración.
+//   · Cerrar la sesión del dispositivo en el teléfono, si era Coexistence
+//     (WhatsApp Business → Ajustes → Dispositivos vinculados).
+//
+// ---------------------------------------------------------------------------
+// El token
+// ---------------------------------------------------------------------------
+//
+// Va en `WHATSAPP_ADMIN_TOKEN`, o en `--token <valor>`. Dos fuentes:
+//
+// **Temporal (24 h)** — App Dashboard → WhatsApp → Configuración de la API →
+// «Identificador de acceso» → *Generar identificador*. (La traducción al
+// español es confusa: «identificador de acceso» es el *access token*.) Trae
+// `whatsapp_business_management` y `whatsapp_business_messaging`. Es suficiente
+// para `free` y para `list --waba`. En esa misma tarjeta está el `waba_id`.
+//
+// **System user (no expira)** — business.facebook.com/settings → Usuarios →
+// Usuarios del sistema → Generar nuevo token → la app → marcar
+// `whatsapp_business_management` y `business_management`. Hace falta para
+// `list` sin `--waba`, porque el descubrimiento recorre `/me/businesses` y ese
+// permiso el token temporal no lo trae.
+//
+// En los dos casos, el token solo alcanza para las WABAs donde **tú eres admin
+// del portafolio** y **la app tiene acceso**. Un número que entró por tu propio
+// Embedded Signup cumple las dos; uno de otro portafolio, probablemente no
+// —ahí hace falta un system user de ese portafolio—.
+//
+// ---------------------------------------------------------------------------
+// Uso
+// ---------------------------------------------------------------------------
+//
+//   export WHATSAPP_ADMIN_TOKEN="EAAG..."
+//
+//   # Descubrir números y sus phone_number_id
 //   node scripts/whatsapp-free-number.mjs list
 //   node scripts/whatsapp-free-number.mjs list --waba <WABA_ID>
-//   node scripts/whatsapp-free-number.mjs free <PHONE_NUMBER_ID> [--pin 123456]
 //
-// Token: variable de entorno WHATSAPP_ADMIN_TOKEN, o --token <valor>.
-// El más cómodo es el temporal de App Dashboard → WhatsApp → Configuración de
-// la API (24 h). Para `list` sin --waba hace falta además `business_management`,
-// que ese token temporal no trae: usa un token de system user, o pasa --waba.
-
+//   # Liberar uno
+//   node scripts/whatsapp-free-number.mjs free <PHONE_NUMBER_ID>
+//
+// `list` es de solo lectura: es la forma segura de comprobar que el token
+// alcanza para una WABA antes de intentar nada destructivo.
+//
+// Flags de `free`:
+//
+//   --pin 123456   El `/register` del flujo estándar activó la verificación en
+//                  dos pasos con el PIN que generó `finishStandard`. Si el
+//                  `deregister` rebota pidiéndolo, está guardado en la fila de
+//                  la conexión, campo `pin`.
+//   --keep         Solo `deregister`: lo saca de Cloud API pero lo deja en la
+//                  WABA.
+//   --yes          Sin confirmación interactiva. Para iterar rápido; piénsalo
+//                  dos veces.
+//
+// Otras variables: `META_GRAPH_VERSION` sobreescribe la versión de Graph
+// (por defecto la misma que usa la app).
+//
+// ---------------------------------------------------------------------------
+// Después de liberar
+// ---------------------------------------------------------------------------
+//
+// Espera unos minutos antes de reusar el número: Meta tarda en propagarlo y un
+// registro inmediato rebota con un error que no dice lo que pasa.
+//
+// Y no encadenes muchos ciclos sobre la misma SIM: WhatsApp limita los OTP por
+// número por día, y el churn agresivo de registro/desregistro es una de las
+// señales por las que se banean números.
+//
 import { createInterface } from "node:readline/promises"
 
 const GRAPH_VERSION = process.env.META_GRAPH_VERSION ?? "v23.0"
