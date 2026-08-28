@@ -58,3 +58,89 @@ export const only = (...messages: Array<Record<string, unknown>>) => {
   expect(events).toHaveLength(messages.length)
   return events[0]!
 }
+
+// --- Los tres campos de plantilla, de ámbito WABA -------------------------
+//
+// Sobre aparte del de arriba, y **sin `metadata`**, que es la diferencia que
+// importa: ninguno de los tres payloads de la documentación trae
+// `phone_number_id`, porque la plantilla vive en la cuenta y no en el número.
+// Un fixture que se lo agregara para «que funcione» estaría probando un webhook
+// que Meta no manda, y taparía justo el caso que rompía antes de la 0014.
+//
+// El `id` del `entry` coincide con `WABA_ID` sin retoques: los ejemplos de Meta
+// usan literalmente `102290129340398`, el mismo de los payloads de mensajes.
+export const templateWebhook = (
+  field: string,
+  value: Record<string, unknown>
+) => ({
+  entry: [
+    {
+      id: WABA_ID,
+      time: 1751247548,
+      changes: [{ value, field }],
+    },
+  ],
+  object: "whatsapp_business_account",
+})
+
+// Aprobación de `order_confirmation`, literal de la referencia de
+// `message_template_status_update`. `reason: "NONE"` es un valor real del
+// catálogo de Meta y viene incluso en las aprobaciones.
+export const TEMPLATE_STATUS_APPROVED = {
+  event: "APPROVED",
+  message_template_id: 1689556908129832,
+  message_template_name: "order_confirmation",
+  message_template_language: "en-US",
+  reason: "NONE",
+  message_template_category: "UTILITY",
+}
+
+// Rechazo de `abandoned_cart` con `rejection_info`, literal de la misma página.
+// El bloque solo aparece cuando el motivo es `INVALID_FORMAT`.
+export const TEMPLATE_STATUS_REJECTED = {
+  event: "REJECTED",
+  message_template_id: 1689556908129835,
+  message_template_name: "abandoned_cart",
+  message_template_language: "en",
+  reason: "INVALID_FORMAT",
+  message_template_category: "MARKETING",
+  rejection_info: {
+    reason:
+      "Your template has parameters placed next to each other (like {{1}}{{2}}) without text or punctuation between them.",
+    recommendation:
+      "Separate parameters with descriptive text and ensure each parameter is clearly contextualized.",
+  },
+}
+
+// Aviso de recategorización **inminente**, literal de la referencia de
+// `template_category_update`. Ojo con la trampa: aquí `new_category` es la
+// categoría que la plantilla tiene ahora y `correct_category` la que tendrá
+// dentro de 24 h.
+export const TEMPLATE_CATEGORY_IMPENDING = {
+  message_template_id: 278077987957091,
+  message_template_name: "welcome_template",
+  message_template_language: "en-US",
+  new_category: "UTILITY",
+  correct_category: "MARKETING",
+  category_update_timestamp: 1746169200,
+}
+
+// La misma plantilla cuando la recategorización ya ocurrió, literal de la misma
+// página. Ahora `new_category` sí es la categoría estrenada.
+export const TEMPLATE_CATEGORY_COMPLETED = {
+  message_template_id: 278077987957091,
+  message_template_name: "welcome_template",
+  message_template_language: "en-US",
+  previous_category: "UTILITY",
+  new_category: "MARKETING",
+}
+
+// Caída de calidad de verde a amarillo, literal de la referencia de
+// `message_template_quality_update`. La escala es GREEN/YELLOW/RED/UNKNOWN.
+export const TEMPLATE_QUALITY_DROP = {
+  previous_quality_score: "GREEN",
+  new_quality_score: "YELLOW",
+  message_template_id: 806312974732579,
+  message_template_name: "welcome_template",
+  message_template_language: "en-US",
+}

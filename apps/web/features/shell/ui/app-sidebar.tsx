@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation"
 import {
   ArrowUpRight,
   BookOpen,
+  FileText,
   Inbox,
   Link2,
   LogOut,
@@ -20,14 +21,19 @@ import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 
 // Shell del producto (ADR 0005): sidebar fijo de 240 px que reemplaza al header
-// sticky. Cuatro destinos planos, sin grupos, y al pie tema + identidad.
+// sticky. Cinco destinos planos, sin grupos, y al pie tema + identidad.
 // Es cliente por `usePathname()`, así que la server action de cerrar sesión
 // llega por props desde el layout.
 
 type NavItem = {
   href: string
   /** Clave del bloque `shell` del diccionario, no el texto ya resuelto. */
-  label: "navConnections" | "navInbox" | "navSettings" | "navDocs"
+  label:
+    | "navConnections"
+    | "navInbox"
+    | "navTemplates"
+    | "navSettings"
+    | "navDocs"
   icon: LucideIcon
   external?: boolean
 }
@@ -35,6 +41,14 @@ type NavItem = {
 const NAV_ITEMS: NavItem[] = [
   { href: "/connections", label: "navConnections", icon: Link2 },
   { href: "/inbox", label: "navInbox", icon: Inbox },
+  // Plantillas va detrás de Inbox y no dentro de Conexiones: es una pantalla de
+  // mensajería —lo único que se puede enviar con la ventana de atención cerrada
+  // (ADR 0014)— y no de administración de cuentas. Se muestra siempre, aunque el
+  // tenant no tenga WhatsApp: la pantalla resuelve ese caso con su estado vacío
+  // y un camino a Conexiones, y un destino que aparece y desaparece del menú
+  // según el canal es más difícil de encontrar que uno que explica por qué está
+  // vacío.
+  { href: "/templates", label: "navTemplates", icon: FileText },
   { href: "/settings", label: "navSettings", icon: Settings },
   { href: "/docs", label: "navDocs", icon: BookOpen, external: true },
 ]

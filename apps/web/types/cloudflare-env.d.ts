@@ -66,10 +66,10 @@ interface WebhookDeliveryMessage {
 // Cola de trabajo de WhatsApp.
 //
 // A diferencia de `WebhookDeliveryMessage`, acá el cuerpo **sí** discrimina: no
-// hay una tabla de jobs que sepa qué hay que hacer. Son cuatro trabajos con
-// formas distintas y sin estado compartido en Postgres, así que el tipo del
-// mensaje es lo único que los distingue y por eso es una unión y no un `type:
-// string`: un job nuevo no compila hasta que el consumidor lo atiende.
+// hay una tabla de jobs que sepa qué hay que hacer. Son trabajos con formas
+// distintas y sin estado compartido en Postgres, así que el tipo del mensaje es
+// lo único que los distingue y por eso es una unión y no un `type: string`: un
+// job nuevo no compila hasta que el consumidor lo atiende.
 //
 // `history_chunk` lleva el chunk entero porque el webhook responde 200 antes de
 // persistirlo; los demás llevan solo ids, y el estado lo leen de la base.
@@ -83,6 +83,13 @@ type WhatsappJobMessage =
   | { type: "media_download"; messageId: string; providerMediaId: string }
   // Vacía el prefijo R2 de una cuenta ya borrada. Reanudable con cursor.
   | { type: "media_purge"; prefix: string; cursor?: string }
+  // Importa al espejo el catálogo de plantillas de la WABA de una conexión
+  // (ADR 0014). Lleva sólo el `connectionId` —y no el `wabaId` ni el token—
+  // por el mismo motivo que `history_sync_request`: el job se identifica por
+  // la conexión y lee de la base lo demás. Poner la WABA en el mensaje sería
+  // una segunda copia que puede quedar vieja, y el token no puede viajar por
+  // la cola en ningún caso.
+  | { type: "template_sync"; connectionId: string }
 
 interface QueueSendOptions {
   delaySeconds?: number

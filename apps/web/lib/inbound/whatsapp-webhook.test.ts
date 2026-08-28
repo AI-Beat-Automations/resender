@@ -3,8 +3,13 @@ import { describe, expect, it } from "vitest"
 import {
   BUSINESS_PHONE,
   PHONE_NUMBER_ID,
+  TEMPLATE_CATEGORY_COMPLETED,
+  TEMPLATE_QUALITY_DROP,
+  TEMPLATE_STATUS_APPROVED,
   USER_PHONE,
+  WABA_ID,
   message,
+  templateWebhook,
   webhook,
 } from "./whatsapp-parsers/test-fixtures"
 import { routeWhatsappWebhook } from "./whatsapp-webhook"
@@ -233,15 +238,73 @@ describe("puente de WhatsApp hacia el evento neutro", () => {
     ])
   })
 
-  // Un `field` nuevo de Meta tiene que aparecer en la bitácora, no
-  // desaparecer: la ruta lo registra desde acá.
-  it("propaga los campos que ningún parser modela", () => {
+  // Los eventos de plantilla son de ámbito WABA: no tienen conversación, no
+  // tienen contacto y no producen fila de `messages`. Lo que sí tienen es un
+  // efecto —el `update` del espejo—, y este módulo es el único camino entre el
+  // parser y la ingesta: lo que no se propaga acá se pierde en silencio, que es
+  // exactamente lo que pasaba antes de que `templates` existiera en el tipo.
+  it("propaga los eventos de plantilla sin convertirlos en mensajes", () => {
     const routed = routeWhatsappWebhook(
-      webhook("message_template_status_update", { event: "APPROVED" })
+      templateWebhook("message_template_status_update", {
+        ...TEMPLATE_STATUS_APPROVED,
+      })
     )
 
     expect(routed.events).toEqual([])
-    expect(routed.unhandledFields).toEqual(["message_template_status_update"])
+    expect(routed.unhandledFields).toEqual([])
+    expect(routed.templates).toEqual([
+      expect.objectContaining({
+        kind: "status",
+        wabaId: WABA_ID,
+        name: "order_confirmation",
+        // Con guion, como lo manda Meta. Normalizarlo es trabajo del espejo,
+        // que es el que conoce la otra punta.
+        language: "en-US",
+        status: "APPROVED",
+      }),
+    ])
+  })
+
+  // Los tres campos de plantilla salen por la misma lista, discriminados por
+  // `kind`: el consumidor resuelve la misma fila del espejo para los tres y
+  // tres listas le habrían pedido tres bucles.
+  it("junta los tres campos de plantilla en una sola lista", () => {
+    const routed = routeWhatsappWebhook({
+      entry: [
+        {
+          id: WABA_ID,
+          changes: [
+            {
+              value: TEMPLATE_CATEGORY_COMPLETED,
+              field: "template_category_update",
+            },
+            {
+              value: TEMPLATE_QUALITY_DROP,
+              field: "message_template_quality_update",
+            },
+          ],
+        },
+      ],
+      object: "whatsapp_business_account",
+    })
+
+    expect(routed.templates.map((event) => event.kind)).toEqual([
+      "category",
+      "quality",
+    ])
+  })
+
+  // Un `field` nuevo de Meta tiene que aparecer en la bitácora, no
+  // desaparecer: la ruta lo registra desde acá.
+  it("propaga los campos que ningún parser modela", () => {
+    // `message_template_status_update` era el ejemplo hasta que la 0014 le puso
+    // parser propio. Este tiene que ser siempre uno **sin** modelar.
+    const routed = routeWhatsappWebhook(
+      webhook("phone_number_quality_update", { event: "FLAGGED" })
+    )
+
+    expect(routed.events).toEqual([])
+    expect(routed.unhandledFields).toEqual(["phone_number_quality_update"])
   })
 
   it("no revienta con un cuerpo que no tiene forma de sobre", () => {
@@ -250,6 +313,7 @@ describe("puente de WhatsApp hacia el evento neutro", () => {
       statuses: [],
       contactSync: [],
       history: [],
+      templates: [],
       unhandledFields: [],
     })
   })

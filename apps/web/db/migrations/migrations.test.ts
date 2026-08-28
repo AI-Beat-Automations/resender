@@ -7,8 +7,17 @@ import { pgcrypto } from "@electric-sql/pglite/contrib/pgcrypto"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 
 import { buildInboundPushPayload } from "@/lib/inbound/external-push"
+import type { Sql } from "@/lib/db"
 import type { MessageRecord } from "@/lib/messages/message-log"
 import type { ConnectedPageRecord } from "@/lib/pages/page-registry"
+import {
+  __setSqlForTests,
+  createWhatsappTemplateMirror,
+  updateWhatsappTemplateCategory,
+  updateWhatsappTemplateStatus,
+  upsertSyncedWhatsappTemplate,
+  upsertSyncedWhatsappTemplates,
+} from "@/lib/whatsapp-templates/template-registry"
 
 // Corre la cadena COMPLETA de migraciones contra un Postgres real embebido
 // (PGlite), sin red y sin tocar la Neon de nadie. Lo que se prueba acá no se
@@ -24,6 +33,34 @@ const MIGRATIONS_DIR = dirname(fileURLToPath(import.meta.url))
 // La 0001 hace `create extension pgcrypto`; en PGlite las extensiones se
 // declaran al crear la instancia.
 const db = new PGlite({ extensions: { pgcrypto } })
+
+// Adapta `db.query(text, params)` de PGlite a la forma de `Sql`
+// (`lib/db.ts`): un tag de template literal con placeholders `$1, $2, ...`,
+// que es la misma interfaz que expone `getSql()` sobre el driver de Neon en
+// producción. Existe únicamente para el describe de más abajo, que inyecta
+// esto en `template-registry.ts` vía `__setSqlForTests` para ejercitar su SQL
+// **real** — el mismo `on conflict` con el mismo `coalesce` — en vez de
+// mockear `sql` o copiar la sentencia a mano en el test, que pasaría aunque
+// el registry cambiara.
+function makePgliteSql(instance: PGlite): Sql {
+  const tag = (async (strings: TemplateStringsArray, ...values: unknown[]) => {
+    const text = strings.reduce(
+      (acc, chunk, i) => acc + chunk + (i < values.length ? `$${i + 1}` : ""),
+      ""
+    )
+    const result = await instance.query(text, values)
+    return result.rows
+  }) as Sql
+
+  // El camino de lote del registry (`upsertSyncedWhatsappTemplates`) sí la
+  // llama. En PGlite las consultas ya se ejecutaron al construirlas —no hay
+  // nada perezoso que agrupar—, así que esto no reproduce la atomicidad del
+  // batch de Neon; lo que sí reproduce, que es lo que este test necesita, es
+  // que las mismas sentencias corran contra Postgres de verdad.
+  tag.transaction = (queries: Promise<unknown>[]) => Promise.all(queries)
+
+  return tag
+}
 
 // Ids sembrados antes de la 0016, para insertar mensajes nuevos después.
 let tenantId: string
@@ -488,5 +525,489 @@ describe("migración 0017: WhatsApp como tercer canal", () => {
     )
     expect(rows.rows.length).toBeGreaterThan(0)
     expect(rows.rows.every((row) => row.whatsapp_enabled === false)).toBe(true)
+  })
+})
+
+// Migración 0018: el espejo de las plantillas de WhatsApp.
+//
+// El espejo es una copia de un catálogo del que Meta es dueño (ADR 0014), y las
+// decisiones del esquema que lo hacen viable son justamente las que se salen de
+// la costumbre del repo: la clave es de la WABA y no del tenant, el dueño se
+// pone en `null` en vez de arrastrar la fila al borrar la cuenta, y el `status`
+// no lleva check. Las tres se prueban acá porque las tres se «arreglan» solas en
+// una revisión distraída.
+describe("migración 0018: espejo de plantillas de WhatsApp", () => {
+  async function insertTemplate(input: {
+    wabaId?: string
+    name: string
+    language?: string
+    status?: string
+    category?: string | null
+    createdByTenantId?: string | null
+  }) {
+    return db.query<{ id: string; status: string }>(
+      `insert into whatsapp_templates (
+         waba_id, name, language, status, category, created_by_tenant_id
+       )
+       values ($1, $2, $3, $4, $5, $6)
+       returning id, status`,
+      [
+        input.wabaId ?? "waba_1",
+        input.name,
+        input.language ?? "es",
+        input.status ?? "APPROVED",
+        input.category ?? null,
+        input.createdByTenantId ?? null,
+      ]
+    )
+  }
+
+  // La identidad de una plantilla en Meta es el par nombre+idioma dentro de la
+  // WABA: el mismo nombre en dos idiomas son dos plantillas distintas y las dos
+  // tienen que caber.
+  it("admite el mismo nombre en dos idiomas y rechaza el par repetido", async () => {
+    await expect(
+      insertTemplate({ name: "order_update", language: "es" })
+    ).resolves.toBeTruthy()
+    await expect(
+      insertTemplate({ name: "order_update", language: "en" })
+    ).resolves.toBeTruthy()
+
+    await expect(
+      insertTemplate({ name: "order_update", language: "es" })
+    ).rejects.toThrow(/whatsapp_templates_waba_id_name_language_key/)
+  })
+
+  // La misma plantilla en dos WABAs son dos filas: el catálogo es del recurso
+  // compartido, no del tenant.
+  it("no confunde plantillas homónimas de WABAs distintas", async () => {
+    await expect(
+      insertTemplate({ wabaId: "waba_2", name: "order_update", language: "es" })
+    ).resolves.toBeTruthy()
+  })
+
+  // **El punto entero de que `status` no tenga check.** El catálogo de Meta no
+  // es estable y `LIMIT_EXCEEDED` ni siquiera está en su lista canónica: una
+  // fila que no se puede insertar perdería la plantilla entera —nombre, idioma,
+  // hsm id— por no saber nombrar su estado. Lo que no reconocemos se normaliza a
+  // `unknown` al leer, y `unknown` no se envía.
+  it("acepta cualquier status, incluido uno fuera de la lista canónica", async () => {
+    const limited = await insertTemplate({
+      name: "promo_agosto",
+      status: "LIMIT_EXCEEDED",
+    })
+    expect(limited.rows[0]?.status).toBe("LIMIT_EXCEEDED")
+
+    const invented = await insertTemplate({
+      name: "promo_septiembre",
+      status: "SOMETHING_META_INVENTED",
+    })
+    expect(invented.rows[0]?.status).toBe("SOMETHING_META_INVENTED")
+  })
+
+  // La categoría sí es catálogo cerrado, al revés que el estado: la elegimos
+  // nosotros al crear la plantilla, no nos la empuja Meta.
+  it("rechaza una categoría fuera de catálogo", async () => {
+    await expect(
+      insertTemplate({ name: "cat_mala", category: "promocional" })
+    ).rejects.toThrow(/whatsapp_templates_category_check/)
+  })
+
+  // **La propiedad que separa a esta tabla del resto del esquema.** Todo cuelga
+  // de `users` con `on delete cascade` (0002); acá el cascade borraría una fila
+  // que describe una plantilla que **sigue existiendo en Meta** y que otro
+  // tenant de la misma WABA puede estar enviando. Al perder el dueño la fila
+  // sobrevive y queda read-only para todos, que es el resultado correcto.
+  it("al borrar la cuenta dueña deja la plantilla huérfana, no la borra", async () => {
+    const user = await db.query<{ id: string }>(
+      `insert into users (email, password_hash)
+       values ('duena@example.com', 'hash') returning id`
+    )
+    const owner = user.rows[0]!.id
+
+    await insertTemplate({
+      name: "plantilla_de_la_duena",
+      createdByTenantId: owner,
+    })
+
+    await db.query(`delete from users where id = $1`, [owner])
+
+    const rows = await db.query<{ created_by_tenant_id: string | null }>(
+      `select created_by_tenant_id from whatsapp_templates where name = $1`,
+      ["plantilla_de_la_duena"]
+    )
+    expect(rows.rows).toHaveLength(1)
+    expect(rows.rows[0]?.created_by_tenant_id).toBeNull()
+  })
+
+  // La fila que deja un envío de plantilla: `text = ''`, sin adjunto —una
+  // plantilla **no** es un adjunto, y el `template` de `attachment_type` es la
+  // tarjeta de Messenger— y el jsonb con lo que se envió de verdad.
+  it("persiste un envío de plantilla con template_meta y sin adjunto", async () => {
+    const templateMeta = {
+      name: "order_update",
+      language: "es",
+      components: [
+        { type: "body", parameters: [{ type: "text", text: "A-1042" }] },
+      ],
+    }
+
+    const inserted = await db.query<{
+      text: string | null
+      attachment_type: string | null
+      template_meta: Record<string, unknown> | null
+    }>(
+      `insert into messages (
+         tenant_id, conversation_id, connected_page_id, contact_id,
+         direction, status, text, origin, template_meta
+       )
+       values ($1, $2, $3, 'psid_1', 'outbound', 'sent', '', 'resender_api', $4)
+       returning text, attachment_type, template_meta`,
+      [tenantId, conversationId, pageId, JSON.stringify(templateMeta)]
+    )
+
+    const row = inserted.rows[0]!
+    expect(row.text).toBe("")
+    expect(row.attachment_type).toBeNull()
+    expect(row.template_meta).toEqual(templateMeta)
+  })
+})
+
+// Hermano del describe de la 0018: el `coalesce` del `on conflict` de
+// `upsertWhatsappTemplateRow` (`lib/whatsapp-templates/template-registry.ts`),
+// que es la garantía que pide el issue #79 — «que un segundo sync no vuelva
+// ajena una plantilla propia». El schema ya está migrado por el `beforeAll` de
+// arriba; acá sólo se inyecta `makePgliteSql(db)` en el registry para correr
+// sus funciones exportadas tal cual las llama el código real.
+describe("template-registry: el on conflict de upsertWhatsappTemplateRow (issue #79)", () => {
+  beforeAll(() => {
+    __setSqlForTests(makePgliteSql(db))
+  })
+
+  afterAll(() => {
+    __setSqlForTests(undefined)
+  })
+
+  // El caso que el ticket nombra con todas las letras.
+  it("un sync inserta una plantilla sin dueño, el tenant la reclama, y un segundo sync no se la quita", async () => {
+    const user = await db.query<{ id: string }>(
+      `insert into users (email, password_hash)
+       values ('reclama-plantilla@example.com', 'hash') returning id`
+    )
+    const owner = user.rows[0]!.id
+
+    const synced = await upsertSyncedWhatsappTemplate({
+      wabaId: "waba_reclamo",
+      name: "bienvenida",
+      language: "es",
+      status: "APPROVED",
+      category: "utility",
+      metaTemplateId: "hsm_reclamo_1",
+    })
+    expect(synced.createdByTenantId).toBeNull()
+
+    const claimed = await createWhatsappTemplateMirror({
+      wabaId: "waba_reclamo",
+      name: "bienvenida",
+      language: "es",
+      status: "APPROVED",
+      category: "utility",
+      metaTemplateId: "hsm_reclamo_1",
+      createdByTenantId: owner,
+    })
+    expect(claimed.createdByTenantId).toBe(owner)
+
+    // El segundo sync: mismo camino que el primero, sin dueño en el input.
+    const secondSync = await upsertSyncedWhatsappTemplate({
+      wabaId: "waba_reclamo",
+      name: "bienvenida",
+      language: "es",
+      status: "APPROVED",
+      category: "utility",
+      metaTemplateId: "hsm_reclamo_1",
+    })
+    expect(secondSync.createdByTenantId).toBe(owner)
+
+    // El caso que de verdad distingue las dos direcciones del `coalesce`: acá
+    // los dos lados del `on conflict` son no-null (dueño existente vs. un
+    // segundo reclamo), y sólo la dirección correcta —«el dueño existente
+    // siempre gana»— deja pasar esto. Con `excluded` ganando, este segundo
+    // reclamo le robaría la plantilla al dueño real.
+    const other = await db.query<{ id: string }>(
+      `insert into users (email, password_hash)
+       values ('otro-tenant@example.com', 'hash') returning id`
+    )
+    const intruder = other.rows[0]!.id
+
+    const secondClaim = await createWhatsappTemplateMirror({
+      wabaId: "waba_reclamo",
+      name: "bienvenida",
+      language: "es",
+      status: "APPROVED",
+      category: "utility",
+      metaTemplateId: "hsm_reclamo_1",
+      createdByTenantId: intruder,
+    })
+    expect(secondClaim.createdByTenantId).toBe(owner)
+  })
+
+  // El `unique (waba_id, name, language)` de la 0018 es lo que hace posible la
+  // idempotencia; lo que se fija acá es que el upsert la use (y no un
+  // insert-o-falla) y que sí mueva el `status` cuando Meta lo cambió.
+  it("un segundo sync es idempotente: no duplica la fila y actualiza el status", async () => {
+    await upsertSyncedWhatsappTemplate({
+      wabaId: "waba_idempotencia",
+      name: "recordatorio",
+      language: "es",
+      status: "PENDING",
+      category: "utility",
+      metaTemplateId: "hsm_idem_1",
+    })
+
+    const second = await upsertSyncedWhatsappTemplate({
+      wabaId: "waba_idempotencia",
+      name: "recordatorio",
+      language: "es",
+      status: "APPROVED",
+      category: "utility",
+      metaTemplateId: "hsm_idem_1",
+    })
+    expect(second.status).toBe("APPROVED")
+
+    const rows = await db.query(
+      `select id from whatsapp_templates
+       where waba_id = 'waba_idempotencia'
+         and name = 'recordatorio' and language = 'es'`
+    )
+    expect(rows.rows).toHaveLength(1)
+  })
+
+  // **El camino de lote, que es por donde entra el sync de verdad.** El de una
+  // fila lo cubre el test de arriba, pero el job nunca lo usa: escribe con
+  // `upsertSyncedWhatsappTemplates`, que agrupa en `sql.transaction` para no
+  // gastar una subrequest de Workers por plantilla. Los dos comparten la misma
+  // sentencia justamente para que la regla del dueño no pueda divergir, y esto
+  // es lo que lo fija contra Postgres: si alguien vuelve a separarlos, el lote
+  // le saca el dueño a la plantilla propia y sólo este test lo ve.
+  it("un lote tampoco vuelve ajena una plantilla propia", async () => {
+    const user = await db.query<{ id: string }>(
+      `insert into users (email, password_hash)
+       values ('lote-plantillas@example.com', 'hash') returning id`
+    )
+    const owner = user.rows[0]!.id
+
+    await createWhatsappTemplateMirror({
+      wabaId: "waba_lote",
+      name: "propia",
+      language: "es",
+      status: "APPROVED",
+      category: "utility",
+      metaTemplateId: "hsm_lote_propia",
+      createdByTenantId: owner,
+    })
+
+    // El sync ve la propia y una ajena, en la misma corrida: es el caso real
+    // —el catálogo de la WABA es compartido— y el que asegura que el lote
+    // escribe las dos sin confundir sus dueños.
+    await upsertSyncedWhatsappTemplates([
+      {
+        wabaId: "waba_lote",
+        name: "propia",
+        language: "es",
+        status: "PAUSED",
+        category: "utility",
+        metaTemplateId: "hsm_lote_propia",
+      },
+      {
+        wabaId: "waba_lote",
+        name: "ajena",
+        language: "es",
+        status: "APPROVED",
+        category: "marketing",
+        metaTemplateId: "hsm_lote_ajena",
+      },
+    ])
+
+    const rows = await db.query<{
+      name: string
+      status: string
+      created_by_tenant_id: string | null
+    }>(
+      `select name, status, created_by_tenant_id from whatsapp_templates
+       where waba_id = 'waba_lote' order by name asc`
+    )
+
+    // La ajena entra sin dueño; la propia conserva el suyo y **sí** mueve el
+    // estado, que es lo único que el sync tiene derecho a cambiar.
+    expect(rows.rows).toEqual([
+      { name: "ajena", status: "APPROVED", created_by_tenant_id: null },
+      { name: "propia", status: "PAUSED", created_by_tenant_id: owner },
+    ])
+  })
+
+  // El lote también canoniza el idioma, y con la misma función: la clave del
+  // `on conflict` es `(waba_id, name, language)`, así que un `pt-BR` sin
+  // canonizar duplicaría la fila de una plantilla que ya conocíamos en vez de
+  // actualizarla —y la copia nueva nacería sin dueño—.
+  it("un lote canoniza el idioma, así que no duplica la fila que ya existía", async () => {
+    await upsertSyncedWhatsappTemplate({
+      wabaId: "waba_lote_idioma",
+      name: "aviso",
+      language: "pt_BR",
+      status: "PENDING",
+      category: "utility",
+      metaTemplateId: "hsm_lote_idioma",
+    })
+
+    await upsertSyncedWhatsappTemplates([
+      {
+        wabaId: "waba_lote_idioma",
+        name: "aviso",
+        // La forma con guion, que es como lo escriben los webhooks de Meta.
+        language: "pt-BR",
+        status: "APPROVED",
+        category: "utility",
+        metaTemplateId: "hsm_lote_idioma",
+      },
+    ])
+
+    const rows = await db.query<{ language: string; status: string }>(
+      `select language, status from whatsapp_templates
+       where waba_id = 'waba_lote_idioma'`
+    )
+    expect(rows.rows).toEqual([{ language: "pt_BR", status: "APPROVED" }])
+  })
+
+  // El mismo `coalesce` protege `meta_template_id` y `category`, no sólo el
+  // dueño: una página de Graph sin categoría o sin hsm id no puede vaciar lo
+  // que una página anterior sí trajo.
+  it("el coalesce no pisa meta_template_id ni category con null cuando una página de Graph venga sin ellos", async () => {
+    await upsertSyncedWhatsappTemplate({
+      wabaId: "waba_pagina_parcial",
+      name: "envio_confirmado",
+      language: "es",
+      status: "APPROVED",
+      category: "marketing",
+      metaTemplateId: "hsm_pagina_1",
+    })
+
+    // Una página sin `category` ni `id` — el caso que documenta el
+    // `coalesce` en el registry.
+    const second = await upsertSyncedWhatsappTemplate({
+      wabaId: "waba_pagina_parcial",
+      name: "envio_confirmado",
+      language: "es",
+      status: "APPROVED",
+    })
+
+    expect(second.category).toBe("marketing")
+    expect(second.metaTemplateId).toBe("hsm_pagina_1")
+  })
+})
+
+// Hallazgo N2 de la revisión del issue #79: el webhook trae el hsm id
+// (`message_template_id`) y hasta ahora nadie lo escribía. Una fila del espejo
+// que quedó sin `meta_template_id` no lo recuperaba nunca por este camino, y
+// como el borrado y la edición van por `hsm_id`, esa plantilla quedaba
+// ineditable e imborrable —409 `template_missing_meta_id`— hasta el próximo
+// sync completo. Mismo patrón de infraestructura que el describe anterior:
+// PGlite con el schema migrado, `__setSqlForTests` para correr el SQL real del
+// registry en vez de mockearlo, que para un `coalesce` no demuestra nada.
+describe("template-registry: relleno de meta_template_id desde webhooks (issue #79, N2)", () => {
+  beforeAll(() => {
+    __setSqlForTests(makePgliteSql(db))
+  })
+
+  afterAll(() => {
+    __setSqlForTests(undefined)
+  })
+
+  it("un evento de status rellena meta_template_id cuando el espejo lo tenía en null", async () => {
+    await upsertSyncedWhatsappTemplate({
+      wabaId: "waba_relleno_status",
+      name: "confirmacion_envio",
+      language: "es",
+      status: "PENDING",
+      category: "utility",
+      // Sin metaTemplateId: el sync que dejó el hueco (una página de Graph sin
+      // hsm id, o una fila creada a mano).
+    })
+
+    const updated = await updateWhatsappTemplateStatus({
+      wabaId: "waba_relleno_status",
+      name: "confirmacion_envio",
+      language: "es",
+      status: "APPROVED",
+      metaTemplateId: "hsm_webhook_1",
+    })
+
+    expect(updated?.metaTemplateId).toBe("hsm_webhook_1")
+    expect(updated?.status).toBe("APPROVED")
+  })
+
+  it("un evento de status no pisa un meta_template_id que ya estaba", async () => {
+    await upsertSyncedWhatsappTemplate({
+      wabaId: "waba_no_pisa_status",
+      name: "confirmacion_pago",
+      language: "es",
+      status: "PENDING",
+      category: "utility",
+      metaTemplateId: "hsm_de_graph",
+    })
+
+    const updated = await updateWhatsappTemplateStatus({
+      wabaId: "waba_no_pisa_status",
+      name: "confirmacion_pago",
+      language: "es",
+      status: "APPROVED",
+      // El webhook trae otro id: no debería ganar, porque el que ya está vino
+      // de Graph directo y merece más confianza que un campo suelto de un
+      // webhook.
+      metaTemplateId: "hsm_del_webhook_no_deberia_ganar",
+    })
+
+    expect(updated?.metaTemplateId).toBe("hsm_de_graph")
+  })
+
+  it("un evento de categoría rellena meta_template_id cuando el espejo lo tenía en null", async () => {
+    await upsertSyncedWhatsappTemplate({
+      wabaId: "waba_relleno_categoria",
+      name: "bienvenida_v2",
+      language: "es",
+      status: "APPROVED",
+      category: "utility",
+    })
+
+    const updated = await updateWhatsappTemplateCategory({
+      wabaId: "waba_relleno_categoria",
+      name: "bienvenida_v2",
+      language: "es",
+      category: "marketing",
+      metaTemplateId: "hsm_webhook_categoria_1",
+    })
+
+    expect(updated?.metaTemplateId).toBe("hsm_webhook_categoria_1")
+    expect(updated?.category).toBe("marketing")
+  })
+
+  it("un evento de categoría no pisa un meta_template_id que ya estaba", async () => {
+    await upsertSyncedWhatsappTemplate({
+      wabaId: "waba_no_pisa_categoria",
+      name: "bienvenida_v3",
+      language: "es",
+      status: "APPROVED",
+      category: "utility",
+      metaTemplateId: "hsm_de_graph_2",
+    })
+
+    const updated = await updateWhatsappTemplateCategory({
+      wabaId: "waba_no_pisa_categoria",
+      name: "bienvenida_v3",
+      language: "es",
+      category: "marketing",
+      metaTemplateId: "hsm_del_webhook_no_deberia_ganar_2",
+    })
+
+    expect(updated?.metaTemplateId).toBe("hsm_de_graph_2")
   })
 })

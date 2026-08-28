@@ -14,9 +14,17 @@ import { accountFields, log, type LogAction, type LogReason } from "./logger"
 // respuesta que devolvía antes**, así el log no puede quedar desfasado del
 // control de flujo.
 
+// El envío de plantilla entra en la lista en vez de reusar `outbound_send`, y
+// es una decisión y no una omisión: son dos rutas con reglas distintas —la
+// plantilla existe justamente para saltar la ventana de 24 h— y una acción
+// propia es lo que deja preguntar «cuántos envíos de plantilla se rechazaron»
+// con un filtro por `action`, en vez de reconstruirlo restando `reason` sobre
+// un `outbound_send` que mezcla las dos. El helper sí es el mismo porque el
+// patrón es el mismo: una línea terminal por request, con el código de Meta ya
+// traducido.
 type OutboundAction = Extract<
   LogAction,
-  "outbound_send" | "comment_reply" | "comment_private_reply"
+  "outbound_send" | "template_send" | "comment_reply" | "comment_private_reply"
 >
 
 type Extra = {
@@ -24,6 +32,11 @@ type Extra = {
   providerId?: string
   contactId?: string
   textLength?: number
+  // Identidad de la [Plantilla] enviada (ADR 0014). **Los `components` no
+  // entran acá ni en ningún otro campo**: son datos del cliente final y valen
+  // lo mismo que el texto del mensaje, que este módulo tampoco escribe.
+  templateName?: string
+  templateLanguage?: string
   status?: number
   durationMs?: number
   errorCode?: string | number

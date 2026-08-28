@@ -8,6 +8,7 @@ export {
   extractWhatsappHistory,
   extractWhatsappMessages,
   extractWhatsappStatuses,
+  extractWhatsappTemplates,
   parseWhatsappWebhook,
 } from "./batch"
 
@@ -19,5 +20,7 @@ export type {
   WhatsappHistoryEvent,
   WhatsappMessageEvent,
   WhatsappStatusEvent,
+  WhatsappTemplateEvent,
+  WhatsappTemplateRejection,
   WhatsappWebhookBatch,
 } from "./types"

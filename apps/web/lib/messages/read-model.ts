@@ -34,6 +34,10 @@ export type ConversationListItem = {
     // Solo el type: el renglón de la lista lo muestra entre corchetes cuando
     // el mensaje no trae texto; la URL y el meta solo importan en el hilo.
     attachmentType: string | null
+    // Un envío de [Plantilla] (0018) no trae ni texto ni adjunto: sin esta
+    // columna el renglón de la lista se quedaría en un «Tú: » a secas, que es
+    // la misma burbuja vacía que el hilo tiene prohibido mostrar.
+    templateMeta: Record<string, unknown> | null
   } | null
 }
 
@@ -67,6 +71,12 @@ export type ThreadMessage = {
   // «lo aceptamos y lo mandamos» y «el destinatario lo leyó» son dos hechos y
   // mezclarlos en una columna pierde uno de los dos.
   deliveryStatus: DeliveryStatus | null
+  // Lo que se envió en un envío de [Plantilla] (`template_meta`, 0018): nombre,
+  // idioma y los `components` **de ese envío**. La fila viene con `text = ''` y
+  // sin adjunto, así que esta columna es todo el contenido que hay; sin ella la
+  // burbuja sale en blanco (ADR 0014). Se deja como jsonb crudo y la lectura la
+  // hace `toTemplateDisplay`: el read model no interpreta contenido.
+  templateMeta: Record<string, unknown> | null
   createdAt: Date
 }
 
@@ -88,6 +98,7 @@ type ConversationListRow = {
   latest_status: MessageStatus | null
   latest_created_at: Date | null
   latest_attachment_type: string | null
+  latest_template_meta: unknown
 }
 
 type ThreadMessageRow = {
@@ -107,6 +118,7 @@ type ThreadMessageRow = {
   meta_message_id: string | null
   reply_to_meta_message_id: string | null
   delivery_status: DeliveryStatus | null
+  template_meta: unknown
   created_at: Date
 }
 
@@ -133,11 +145,12 @@ export async function listConversationReadModel(input: {
       latest.direction as latest_direction,
       latest.status as latest_status,
       latest.created_at as latest_created_at,
-      latest.attachment_type as latest_attachment_type
+      latest.attachment_type as latest_attachment_type,
+      latest.template_meta as latest_template_meta
     from conversations c
     join connected_pages p on p.id = c.connected_page_id
     left join lateral (
-      select text, direction, status, created_at, attachment_type
+      select text, direction, status, created_at, attachment_type, template_meta
       from messages m
       where m.conversation_id = c.id
         and m.tenant_id = c.tenant_id
@@ -165,7 +178,7 @@ export async function listThreadMessages(input: {
            m.instagram_source_comment_id,
            m.attachment_type, m.attachment_url, m.attachment_meta,
            m.attachment_status, m.meta_message_id, m.reply_to_meta_message_id,
-           m.delivery_status, m.created_at,
+           m.delivery_status, m.template_meta, m.created_at,
            p.channel as page_channel
     from messages m
     join connected_pages p on p.id = m.connected_page_id
@@ -191,6 +204,7 @@ export async function listThreadMessages(input: {
     metaMessageId: row.meta_message_id,
     replyToMetaMessageId: row.reply_to_meta_message_id,
     deliveryStatus: row.delivery_status,
+    templateMeta: asJsonObject(row.template_meta),
     createdAt: row.created_at,
   }))
 }
@@ -223,6 +237,7 @@ function mapConversationListItem(
             status: row.latest_status,
             createdAt: row.latest_created_at,
             attachmentType: row.latest_attachment_type,
+            templateMeta: asJsonObject(row.latest_template_meta),
           }
         : null,
   }

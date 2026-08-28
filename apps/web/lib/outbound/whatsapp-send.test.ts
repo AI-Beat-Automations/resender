@@ -72,6 +72,43 @@ describe("whatsapp outbound content", () => {
     })
   })
 
+  // La plantilla es la única de las tres que no se traduce: nombre e idioma es
+  // lo único que Cloud API acepta al enviar, así que el contrato público y el
+  // de Meta coinciden campo por campo (ADR 0014).
+  it("passes the template through without translating it", () => {
+    const components = [
+      { type: "body", parameters: [{ type: "text", text: "A-1024" }] },
+    ]
+
+    expect(
+      toWhatsappOutboundMessage({
+        reply: null,
+        attachment: null,
+        template: { name: "order_update", language: "es", components },
+      })
+    ).toEqual({
+      template: { name: "order_update", language: "es", components },
+    })
+  })
+
+  // El único cambio de forma lo pone el builder: `language` es un objeto con
+  // `code` y no el string suelto que viaja por el contrato público.
+  it("builds the template envelope with language as an object", () => {
+    expect(
+      buildWhatsappOutboundPayload("5491100000000", {
+        reply: null,
+        attachment: null,
+        template: { name: "hello_world", language: "en_US" },
+      })
+    ).toEqual({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: "5491100000000",
+      type: "template",
+      template: { name: "hello_world", language: { code: "en_US" } },
+    })
+  })
+
   it("covers every public attachment type", () => {
     for (const type of OUTBOUND_ATTACHMENT_TYPES) {
       expect(WHATSAPP_MEDIA_TYPE_BY_ATTACHMENT[type]).toBeTruthy()
@@ -132,6 +169,28 @@ describe("sendWhatsappOutboundMessage", () => {
         message: {
           media: { type: "video", link: "https://cdn.example.com/v.mp4" },
         },
+      })
+    )
+  })
+
+  // La ruta de plantillas entra por el mismo adaptador y no por el cliente de
+  // Meta: es el único lugar donde los dos vocabularios se tocan y agregar un
+  // segundo envío habría abierto un segundo lugar donde desincronizarse.
+  it("sends a template through the same adapter as free-form", async () => {
+    await sendWhatsappOutboundMessage({
+      accessToken: "token-1",
+      phoneNumberId: "phone-1",
+      to: "5491100000000",
+      content: {
+        reply: null,
+        attachment: null,
+        template: { name: "order_update", language: "es" },
+      },
+    })
+
+    expect(mocks.sendWhatsappMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: { template: { name: "order_update", language: "es" } },
       })
     )
   })

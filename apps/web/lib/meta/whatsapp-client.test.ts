@@ -513,7 +513,7 @@ describe("suscripción del WABA", () => {
     expect(calls[0]?.url).not.toContain("subscribed_fields")
   })
 
-  it("manda los tres campos de Coexistence cuando se los pide", async () => {
+  it("manda la lista de Coexistence cuando se la pide", async () => {
     const calls = mockGraph()
 
     await subscribeWhatsappWebhook(BUSINESS_TOKEN, WABA_ID, {
@@ -522,7 +522,36 @@ describe("suscripción del WABA", () => {
 
     const url = new URL(calls[0]?.url ?? "")
     expect(url.searchParams.get("subscribed_fields")).toBe(
-      "history,smb_app_state_sync,smb_message_echoes"
+      [
+        "history",
+        "smb_app_state_sync",
+        "smb_message_echoes",
+        "message_template_status_update",
+        "message_template_quality_update",
+        "template_category_update",
+      ].join(",")
+    )
+  })
+
+  // Los nombres van verbatim de la doc de Meta y no se derivan uno del otro:
+  // `message_template_quality_update` lleva el prefijo y
+  // `template_category_update` no. Un campo mal escrito no da error —Meta
+  // acepta la suscripción igual— y se paga con un webhook que nunca llega, así
+  // que la única defensa es fijarlos acá.
+  it("nombra los campos de plantilla exactamente como Meta", () => {
+    expect(WHATSAPP_COEXISTENCE_WEBHOOK_FIELDS).toContain(
+      "message_template_status_update"
+    )
+    expect(WHATSAPP_COEXISTENCE_WEBHOOK_FIELDS).toContain(
+      "message_template_quality_update"
+    )
+    expect(WHATSAPP_COEXISTENCE_WEBHOOK_FIELDS).toContain(
+      "template_category_update"
+    )
+    // El de componentes queda fuera a propósito: el contenido de la plantilla
+    // no se resincroniza, sólo el estado (ADR 0014).
+    expect(WHATSAPP_COEXISTENCE_WEBHOOK_FIELDS).not.toContain(
+      "message_template_components_update"
     )
   })
 
@@ -871,6 +900,102 @@ describe("envío", () => {
     expect(image.image).toEqual({ link: "https://cdn.cliente/foto.jpg" })
   })
 
+  // El sobre de plantilla, entero y literal. Se comprueba con `toEqual` y no
+  // con `toMatchObject` porque acá lo que se está fijando es la forma completa:
+  // no está confirmada por la doc de Meta —ver el comentario del builder— y un
+  // campo de más o de menos se paga con un 400 genérico que no dice cuál.
+  it("arma el sobre de plantilla con language como objeto", () => {
+    expect(
+      buildWhatsappMessagePayload("1631", {
+        template: {
+          name: "order_update",
+          language: "es",
+          components: [
+            {
+              type: "body",
+              parameters: [{ type: "text", text: "A-1024" }],
+            },
+          ],
+        },
+      })
+    ).toEqual({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: "1631",
+      type: "template",
+      template: {
+        name: "order_update",
+        language: { code: "es" },
+        components: [
+          {
+            type: "body",
+            parameters: [{ type: "text", text: "A-1024" }],
+          },
+        ],
+      },
+    })
+  })
+
+  // Una plantilla sin variables no lleva `components`, y tampoco lo lleva
+  // vacío: mandar `[]` es pedirle a Meta que interprete una lista que no
+  // existe.
+  it("omite components cuando la plantilla no tiene variables", () => {
+    const payload = buildWhatsappMessagePayload("1631", {
+      template: { name: "hello_world", language: "en_US" },
+    })
+
+    expect(payload).toEqual({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: "1631",
+      type: "template",
+      template: { name: "hello_world", language: { code: "en_US" } },
+    })
+    expect(payload.template).not.toHaveProperty("components")
+  })
+
+  // Los `components` viajan **tal cual**: no se valida el conteo de parámetros
+  // ni se normaliza nada (ADR 0014). Un cuerpo que Meta va a rechazar sale
+  // igual, porque el rechazo de Meta le dice al cliente qué corregir y un falso
+  // rechazo nuestro no.
+  it("no toca los components ni cuando no tienen sentido", () => {
+    const components = [{ type: "body", parameters: [] }, { inventado: true }]
+
+    const payload = buildWhatsappMessagePayload("1631", {
+      template: { name: "order_update", language: "es", components },
+    })
+
+    expect((payload.template as Record<string, unknown>).components).toEqual(
+      components
+    )
+  })
+
+  // La rama nueva no puede haber corrido las viejas de sitio: el discriminante
+  // de plantilla se agregó **antes** de la caída a media justamente para que
+  // «no es texto» dejara de significar «es media», y este es el test que se
+  // rompe si alguien reordena los `if`.
+  it("deja intactas las ramas de texto y de media", () => {
+    expect(buildWhatsappMessagePayload("1631", { text: "hola" })).toEqual({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: "1631",
+      type: "text",
+      text: { body: "hola", preview_url: false },
+    })
+
+    expect(
+      buildWhatsappMessagePayload("1631", {
+        media: { type: "video", link: "https://cdn.cliente/v.mp4" },
+      })
+    ).toEqual({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: "1631",
+      type: "video",
+      video: { link: "https://cdn.cliente/v.mp4" },
+    })
+  })
+
   // Cloud API no devuelve `message_id` como Messenger: reusar la extracción de
   // allá devolvería `null` siempre y el mensaje quedaría sin el id con el que
   // después llegan sus `statuses`.
@@ -954,6 +1079,59 @@ describe("catálogo de errores de WhatsApp", () => {
       message: expect.stringContaining("couldn't retrieve the media"),
     })
     expect(explainWhatsappError({ error: { code: 190 } })?.code).toBeNull()
+  })
+
+  // La familia entera de plantillas, con los códigos verificados uno por uno
+  // contra la tabla de errores de Cloud API. Se comprueba por el texto y no por
+  // el código porque lo que se está fijando es que los siete lleven a acciones
+  // **distintas**: si dos devolvieran el mismo mensaje, traducirlos no habría
+  // servido de nada.
+  it("distingue los siete fallos de plantilla de la familia 132xxx", () => {
+    const message = (code: number) =>
+      explainWhatsappError({ error: { code } })?.message ?? ""
+
+    expect(message(132001)).toContain("no approved template with that name")
+    expect(message(132000)).toContain("number of variables")
+    expect(message(132005)).toContain("too long once the variables")
+    expect(message(132007)).toContain("violating one of its policies")
+    expect(message(132012)).toContain("wrong format")
+    expect(message(132015)).toContain("paused")
+    expect(message(132016)).toContain("permanently disabled")
+
+    const distinct = new Set(
+      [132000, 132001, 132005, 132007, 132012, 132015, 132016].map(message)
+    )
+    expect(distinct.size).toBe(7)
+  })
+
+  // Pausada y deshabilitada son el par que más importa separar: la primera se
+  // levanta sola y la segunda no vuelve nunca, así que «reintentá más tarde» es
+  // el consejo correcto para una y una mentira para la otra.
+  it("no manda a esperar la plantilla que Meta deshabilitó para siempre", () => {
+    expect(
+      explainWhatsappError({ error: { code: 132015 } })?.message
+    ).toContain("lifts on its own")
+    expect(
+      explainWhatsappError({ error: { code: 132016 } })?.message
+    ).toContain("never send again")
+  })
+
+  // El código estable sigue siendo sólo de los fallos de media: el caso que la
+  // API pública tiene que distinguir programáticamente —«la plantilla no está
+  // aprobada»— lo corta el gate del espejo antes de llamar a Meta, con su
+  // propio `template_not_approved`.
+  it("no le inventa código estable a la familia de plantillas", () => {
+    for (const code of [132000, 132001, 132005, 132007, 132012, 132015, 132016])
+      expect(explainWhatsappError({ error: { code } })?.code).toBeNull()
+  })
+
+  // Los huecos de la familia son reales: 132002, 132006 y 132014 no están
+  // documentados. Este test es el que se rompe si alguien «completa la serie»
+  // deduciendo el código del vecino en vez de mirar la tabla de Meta.
+  it("deja sin traducir los 132xxx que Meta no documenta", () => {
+    expect(explainWhatsappError({ error: { code: 132002 } })).toBeNull()
+    expect(explainWhatsappError({ error: { code: 132006 } })).toBeNull()
+    expect(explainWhatsappError({ error: { code: 132014 } })).toBeNull()
   })
 
   // `null` significa «no hay traducción, a propósito»: el mensaje crudo de Meta
@@ -1143,10 +1321,13 @@ describe("onboarding de Coexistence", () => {
     // Coexistence existe para no hacer.
     expect(calls.map((call) => call.stage)).not.toContain("register")
 
+    // Lo que fija este test es que Coexistence suscribe **con lista explícita**
+    // y el estándar no; los nombres exactos de los campos los pinta su propio
+    // test, que es donde hay que ir si Meta renombra alguno.
     const subscribeCall = calls.find((call) => call.stage === "subscribe")
     expect(
       new URL(subscribeCall?.url ?? "").searchParams.get("subscribed_fields")
-    ).toBe("history,smb_app_state_sync,smb_message_echoes")
+    ).toBe(WHATSAPP_COEXISTENCE_WEBHOOK_FIELDS.join(","))
 
     expect(result).toMatchObject({
       wabaId: WABA_ID,

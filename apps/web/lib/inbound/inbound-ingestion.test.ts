@@ -16,6 +16,8 @@ const mocks = vi.hoisted(() => ({
   isOwnPublishedComment: vi.fn(),
   enqueueDelivery: vi.fn(),
   recordSkippedDelivery: vi.fn(),
+  updateWhatsappTemplateStatus: vi.fn(),
+  updateWhatsappTemplateCategory: vi.fn(),
   log: vi.fn(),
 }))
 
@@ -78,6 +80,21 @@ vi.mock("@/lib/observability/logger", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/observability/logger")>()),
   log: mocks.log,
 }))
+
+// Del espejo de plantillas se mockean **sólo las dos escrituras**. Las
+// normalizaciones quedan reales a propósito: son decisiones —qué categoría
+// entra en el check de la 0018, qué forma tiene la clave— y mockearlas dejaría
+// pasar un lote que en producción rompe contra la restricción.
+vi.mock(
+  "@/lib/whatsapp-templates/template-registry",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("@/lib/whatsapp-templates/template-registry")
+    >()),
+    updateWhatsappTemplateStatus: mocks.updateWhatsappTemplateStatus,
+    updateWhatsappTemplateCategory: mocks.updateWhatsappTemplateCategory,
+  })
+)
 
 vi.mock("@/lib/posthog", () => ({ posthog: null }))
 
@@ -1370,5 +1387,273 @@ describe("campos de WhatsApp que ningún parser modela", () => {
         fields: ["account_update"],
       })
     )
+  })
+})
+
+// Los tres campos de plantilla son de ámbito WABA: llegan **sin**
+// `phone_number_id`, así que no hay cuenta conectada que resolver ni
+// conversación que tocar. Su efecto entero es el espejo del catálogo, y el del
+// evento de calidad es una línea de bitácora.
+describe("eventos de plantilla de WhatsApp", () => {
+  // Sin `metadata`, que es la diferencia que importa contra `whatsappChange`:
+  // ninguno de los tres payloads de la documentación de Meta la trae.
+  const templateChange = (field: string, value: Record<string, unknown>) => ({
+    value,
+    field,
+  })
+
+  const APPROVED = {
+    event: "APPROVED",
+    message_template_id: 1689556908129832,
+    message_template_name: "order_confirmation",
+    // Con guion, como lo manda Meta por este webhook. El catálogo de Graph lo
+    // devuelve con guion bajo, y unificarlos es trabajo del espejo.
+    message_template_language: "en-US",
+    reason: "NONE",
+    message_template_category: "UTILITY",
+  }
+
+  const mirrorRow = {
+    id: "template-1",
+    wabaId: "102290129340398",
+    name: "order_confirmation",
+    language: "en_US",
+    metaTemplateId: "1689556908129832",
+    category: "utility",
+    status: "APPROVED",
+    rawStatus: "APPROVED",
+    createdByTenantId: null,
+    syncedAt: new Date(),
+    createdAt: new Date(),
+  }
+
+  beforeEach(() => {
+    arrangeWhatsapp()
+    mocks.updateWhatsappTemplateStatus.mockResolvedValue(mirrorRow)
+    mocks.updateWhatsappTemplateCategory.mockResolvedValue(mirrorRow)
+  })
+
+  it("mueve el estado del espejo con la clave que mandó Meta", async () => {
+    await ingestWhatsappWebhookPayload(
+      whatsappPayload(
+        templateChange("message_template_status_update", APPROVED)
+      )
+    )
+
+    expect(mocks.updateWhatsappTemplateStatus).toHaveBeenCalledWith({
+      wabaId: "102290129340398",
+      name: "order_confirmation",
+      language: "en-US",
+      // Crudo: la columna no tiene check y normalizar de ida convertiría un
+      // estado nuevo de Meta en `unknown` para siempre.
+      status: "APPROVED",
+      // Traducida al vocabulario de la 0018, que sí tiene check y lo rompería.
+      category: "utility",
+      // El hsm id que trae el propio evento (issue #79, hallazgo N2): rellena
+      // el hueco del espejo, no lo pisa; eso lo decide el `coalesce` del
+      // registry, no este llamador.
+      metaTemplateId: "1689556908129832",
+    })
+  })
+
+  // No se resuelve ninguna cuenta ni se pregunta por suscripción: la plantilla
+  // vive en la WABA, la fila del espejo es compartida y el evento no se le
+  // puede atribuir a un tenant. El gate por tenant está río abajo, en el envío.
+  it("no pasa por los gates de la mensajería", async () => {
+    await ingestWhatsappWebhookPayload(
+      whatsappPayload(
+        templateChange("message_template_status_update", APPROVED)
+      )
+    )
+
+    expect(mocks.getActivePageByMetaPageId).not.toHaveBeenCalled()
+    expect(mocks.hasActiveSubscription).not.toHaveBeenCalled()
+    expect(mocks.insertInboundMessage).not.toHaveBeenCalled()
+  })
+
+  // El hueco del espejo es un estado legítimo —una plantilla de otra WABA, o
+  // una creada en WhatsApp Manager después del último sync—, así que se
+  // registra y se sigue. Fabricar la fila con lo que el webhook trae la dejaría
+  // sin hsm id y sin contenido, que es peor que no tenerla.
+  it("registra sin romper el lote la plantilla que el espejo no conoce", async () => {
+    mocks.updateWhatsappTemplateStatus.mockResolvedValue(null)
+
+    const ingested = await ingestWhatsappWebhookPayload(
+      whatsappPayload(
+        templateChange("message_template_status_update", APPROVED),
+        liveText()
+      )
+    )
+
+    expect(ingested).toHaveLength(1)
+    expect(mocks.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "template_sync",
+        outcome: "dropped",
+        reason: "template_not_found",
+        templateName: "order_confirmation",
+        // Canónico, no como lo mandó Meta (`en-US`): la bitácora se filtra por
+        // el valor con el que se llavea la fila, que es el de guion bajo.
+        templateLanguage: "en_US",
+        templateStatus: "APPROVED",
+        wabaId: "102290129340398",
+      })
+    )
+  })
+
+  it("tampoco rompe el lote cuando la escritura falla", async () => {
+    mocks.updateWhatsappTemplateStatus.mockRejectedValue(new Error("boom"))
+
+    const ingested = await ingestWhatsappWebhookPayload(
+      whatsappPayload(
+        templateChange("message_template_status_update", APPROVED),
+        liveText()
+      )
+    )
+
+    expect(ingested).toHaveLength(1)
+    expect(mocks.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "template_sync",
+        outcome: "failed",
+        reason: "internal_error",
+      })
+    )
+  })
+
+  // Una recategorización no vuelve a revisar la plantilla: escribirle un estado
+  // sería inventar uno que Meta no dijo.
+  it("mueve sólo la categoría cuando Meta recategoriza", async () => {
+    await ingestWhatsappWebhookPayload(
+      whatsappPayload(
+        templateChange("template_category_update", {
+          message_template_id: 278077987957091,
+          message_template_name: "welcome_template",
+          message_template_language: "en-US",
+          previous_category: "UTILITY",
+          new_category: "MARKETING",
+        })
+      )
+    )
+
+    expect(mocks.updateWhatsappTemplateCategory).toHaveBeenCalledWith({
+      wabaId: "102290129340398",
+      name: "welcome_template",
+      language: "en-US",
+      category: "marketing",
+      metaTemplateId: "278077987957091",
+    })
+    expect(mocks.updateWhatsappTemplateStatus).not.toHaveBeenCalled()
+    expect(mocks.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "template_sync",
+        outcome: "ok",
+        templateCategory: "marketing",
+      })
+    )
+  })
+
+  // El bajón de calidad no tiene columna donde guardarse y no la va a tener
+  // (ADR 0014): su efecto **es** la línea, y tiene que doler más que una
+  // informativa porque es el único aviso que hay antes de que Meta pause el
+  // número.
+  it("no toca el espejo con la calidad, la registra y la sube de nivel", async () => {
+    await ingestWhatsappWebhookPayload(
+      whatsappPayload(
+        templateChange("message_template_quality_update", {
+          previous_quality_score: "GREEN",
+          new_quality_score: "YELLOW",
+          message_template_id: 806312974732579,
+          message_template_name: "welcome_template",
+          message_template_language: "en-US",
+        })
+      )
+    )
+
+    expect(mocks.updateWhatsappTemplateStatus).not.toHaveBeenCalled()
+    expect(mocks.updateWhatsappTemplateCategory).not.toHaveBeenCalled()
+    expect(mocks.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "template_quality",
+        outcome: "ok",
+        level: "warn",
+        templateName: "welcome_template",
+        templateQualityScore: "YELLOW",
+        templatePreviousQualityScore: "GREEN",
+      })
+    )
+  })
+
+  it("trata el rojo como error, que es cuando Meta pausa", async () => {
+    await ingestWhatsappWebhookPayload(
+      whatsappPayload(
+        templateChange("message_template_quality_update", {
+          previous_quality_score: "YELLOW",
+          new_quality_score: "RED",
+          message_template_id: 806312974732579,
+          message_template_name: "welcome_template",
+          message_template_language: "en-US",
+        })
+      )
+    )
+
+    expect(mocks.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "template_quality",
+        level: "error",
+        templateQualityScore: "RED",
+      })
+    )
+  })
+
+  // El `rejection_info` es catálogo del negocio —el motivo en prosa y la
+  // recomendación para corregir la plantilla—, no contenido del cliente final:
+  // lo que este proyecto nunca escribe en la bitácora son los `components` con
+  // los que se hidrata un envío. Sin columna en el espejo (la 0018 va literal),
+  // la línea de log es el único lugar donde el motivo del rechazo sobrevive.
+  it("registra el motivo y la recomendación del rechazo, junto a nombre e idioma", async () => {
+    await ingestWhatsappWebhookPayload(
+      whatsappPayload(
+        templateChange("message_template_status_update", {
+          ...APPROVED,
+          event: "REJECTED",
+          reason: "INVALID_FORMAT",
+          rejection_info: {
+            reason: "Your template has parameters placed next to each other.",
+            recommendation: "Separate parameters with descriptive text.",
+          },
+        })
+      )
+    )
+
+    expect(mocks.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "template_sync",
+        outcome: "ok",
+        templateName: "order_confirmation",
+        templateLanguage: "en_US",
+        templateStatus: "REJECTED",
+        templateRejectionReason:
+          "Your template has parameters placed next to each other.",
+        templateRejectionRecommendation:
+          "Separate parameters with descriptive text.",
+      })
+    )
+  })
+
+  // Sin `rejection_info` —el caso normal, fuera de `INVALID_FORMAT`— no hay
+  // motivo que dar y el campo no puede aparecer con `undefined`: `toStrictEqual`
+  // en un test de log con `objectContaining` no lo vería, pero el propio `log`
+  // de Cloudflare sí lo escribiría vacío si el `change` lo incluyera siempre.
+  it("no inventa un rechazo cuando Meta no manda `rejection_info`", async () => {
+    await ingestWhatsappWebhookPayload(
+      whatsappPayload(
+        templateChange("message_template_status_update", APPROVED)
+      )
+    )
+
+    const [line] = mocks.log.mock.calls.at(-1) as [Record<string, unknown>]
+    expect(line).not.toHaveProperty("templateRejectionReason")
+    expect(line).not.toHaveProperty("templateRejectionRecommendation")
   })
 })

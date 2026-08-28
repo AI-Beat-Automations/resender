@@ -92,19 +92,48 @@ export const WHATSAPP_REQUIRED_SCOPES = [
   "whatsapp_business_messaging",
 ] as const
 
-// Los tres campos de Coexistence. **Hay que suscribirlos antes de onboardear el
-// número**, no después: `history` es el que trae el historial que el negocio
-// aceptó compartir, y si la suscripción llega tarde los chunks que Meta ya
-// disparó no vuelven —el sync se pide una vez y el reloj de 24 horas no se
-// reinicia—.
+// Los campos que se suscriben explícitamente al conectar por Coexistence.
+// **Hay que suscribirlos antes de onboardear el número**, no después: `history`
+// es el que trae el historial que el negocio aceptó compartir, y si la
+// suscripción llega tarde los chunks que Meta ya disparó no vuelven —el sync se
+// pide una vez y el reloj de 24 horas no se reinicia—.
 //
 // `smb_app_state_sync` trae los cambios de contactos y `smb_message_echoes` los
 // mensajes que el negocio manda **desde la app**; los que salen por Cloud API no
 // producen echo, así que no hay doble canal que deduplicar.
+//
+// Los tres últimos son de plantillas (ADR 0014) y se suman **acá y sólo acá**:
+// el flujo estándar sigue llamando a `subscribed_apps` pelado, y eso no cambia.
+// El motivo es el mismo de siempre y está escrito en `subscribeWhatsappWebhook`:
+// pasar una lista **estrecha** la suscripción a lo que alguien enumeró, y
+// hacer explícito el estándar convertiría una omisión futura en «`messages`
+// dejó de llegar para todos los números nuevos», en silencio.
+//
+// Sumarlos a esta lista, en cambio, es **asimétrico a favor** y por eso se hace
+// sin haber podido resolver la duda de fondo: si `subscribed_fields` reemplaza
+// —que es lo que el comentario de abajo teme—, entonces hacía falta agregarlos
+// o el estado de las plantillas nunca habría llegado a un número de
+// Coexistence; y si suma, esta lista no hace nada y agregarlos no cuesta nada.
+// No hay tercera opción en la que agregarlos empeore algo.
+//
+// `message_template_quality_update` lleva el prefijo `message_` y
+// `template_category_update` no: es una inconsistencia de Meta, no un error de
+// tipeo. Los cuatro campos de plantilla que existen son
+// `message_template_status_update`, `message_template_quality_update`,
+// `message_template_components_update` y `template_category_update`; el de
+// componentes queda fuera porque el contenido de la plantilla no se
+// resincroniza —sólo el estado tiene que estar fresco (ADR 0014)—.
+//
+// El de calidad no es opcional ni un extra de observabilidad: no hay tope local
+// de plantillas hacia contactos que nunca contestaron, así que la calidad que
+// reporta Meta es el **único** aviso que recibimos antes de que pause el número.
 export const WHATSAPP_COEXISTENCE_WEBHOOK_FIELDS = [
   "history",
   "smb_app_state_sync",
   "smb_message_echoes",
+  "message_template_status_update",
+  "message_template_quality_update",
+  "template_category_update",
 ] as const
 
 // "Two-step verification PIN incorrect." Es el único subcódigo del registro que
@@ -129,6 +158,15 @@ export function exceedsWhatsappTextLimit(text: string): boolean {
 // la unión para que el callback pueda reportar un único `step` sin inventarse un
 // valor cuando lo que falla es la escritura. `sync_request` es de Coexistence:
 // va después de `subscribe` y en lugar de `register`.
+//
+// `templates` es el intruso y hay que leerlo como tal: **no es un paso del
+// onboarding**. Entró porque `graphRequest` —que exige un `step` para poder
+// atribuir un fallo de red— ahora también lo usa la administración de plantillas
+// (ADR 0014), que ocurre cuando se le antoja al cliente y no dentro de ningún
+// flujo de conexión. La alternativa era un segundo tipo casi idéntico o un
+// `step` mentido —`assets`, que significa otra cosa—, y las dos cuestan más que
+// un miembro extra con este comentario al lado. Si algún día el CRUD de
+// plantillas crece hasta tener sus propios pasos, este es el valor que se parte.
 export type WhatsappOnboardingStep =
   | "exchange"
   | "assets"
@@ -136,6 +174,7 @@ export type WhatsappOnboardingStep =
   | "subscribe"
   | "sync_request"
   | "persist"
+  | "templates"
 
 // Por qué falló, dentro del paso. El `step` sirve para el log y para saber dónde
 // se cortó; el `reason` es lo que decide el mensaje de la pantalla: `pin_required`
@@ -325,7 +364,19 @@ function logMetaFailure(input: {
 // del runtime, que en un Worker es el de la request entera. El `timeoutMs` es
 // opcional y no una obligación de cada paso por lo mismo: quien no opine se
 // lleva el plazo común, y solo `/register` —que tarda otra cosa— lo cambia.
-async function graphRequest(
+//
+// **Está exportado porque ya tiene un segundo consumidor**: la administración de
+// plantillas vive en `lib/meta/whatsapp-template-client.ts` —este archivo pasa
+// las 1.600 líneas y el CRUD no cabe acá— y necesita exactamente estas tres
+// cosas resueltas igual: el plazo, el `json()` defensivo y el log de fallo con
+// el código de Meta ya extraído (ADR 0014). Escribir un segundo helper de
+// request habría dejado dos formas de fallar contra el mismo Graph, que se
+// desincronizan en la primera corrección que se aplique a una sola.
+//
+// Es interno del canal, no una API pública del módulo: sigue devolviendo el
+// sobre crudo de Graph y lanzando `WhatsappApiError` con un `step`, así que
+// quien lo use tiene que hablar ese vocabulario.
+export async function graphRequest(
   call: {
     step: WhatsappOnboardingStep
     action: LogAction
@@ -830,11 +881,13 @@ function resolveCoexistencePhoneNumber(
 // acá da un 400 que parece un fallo cualquiera y deja la cuenta muda (es el
 // mismo error que documenta `lib/pages/channel-webhook.ts` para la baja).
 //
-// `subscribed_fields` sólo se manda en Coexistence, y con los tres campos que
-// ese flujo necesita. En el estándar la llamada va pelada, que es lo que
-// documenta Meta y lo que ya funciona: pasar una lista ahí sería estrechar la
-// suscripción a lo que hoy sabemos leer y perder los campos que la app tiene
-// habilitados en el dashboard.
+// `subscribed_fields` sólo se manda en Coexistence, con la lista de
+// `WHATSAPP_COEXISTENCE_WEBHOOK_FIELDS`. **En el estándar la llamada va pelada**,
+// que es lo que documenta Meta y lo que ya funciona: pasar una lista ahí sería
+// estrechar la suscripción a lo que hoy sabemos leer y perder los campos que la
+// app tiene habilitados en el dashboard. Los campos de plantilla de la ADR 0014
+// tampoco cambiaron eso: se sumaron a la lista de Coexistence y el estándar
+// siguió pelado, a propósito.
 export async function subscribeWhatsappWebhook(
   accessToken: string,
   wabaId: string,
@@ -1240,9 +1293,31 @@ export type WhatsappOutboundMedia = {
   filename?: string
 }
 
+// La [Plantilla] tal como se **invoca**, que no es como se administra: al enviar
+// Meta sólo acepta `name` + `language`. No hay ningún campo de id en el envío,
+// así que el par nombre+idioma es el identificador y no un atajo nuestro
+// (ADR 0014).
+//
+// `components` viaja **tal cual** hacia Meta y este módulo no lo mira. No es
+// pereza: el conteo y el orden de los parámetros es lo que más fácil se
+// desactualiza —una edición cambia las variables y el webhook de estado no trae
+// contenido—, y un falso rechazo nuestro es peor que uno de Meta, porque contra
+// el nuestro el cliente no puede hacer nada. Por eso el tipo es `unknown[]` y no
+// una forma modelada: modelarla sería prometer una validación que decidimos no
+// hacer.
+export type WhatsappOutboundTemplate = {
+  name: string
+  // El código de idioma de Meta (`es`, `es_AR`, `en_US`). Va tal cual: la misma
+  // plantilla en dos idiomas son dos plantillas distintas y acá no se
+  // normaliza nada.
+  language: string
+  components?: unknown[]
+}
+
 export type WhatsappOutboundMessage =
   | { text: string; previewUrl?: boolean }
   | { media: WhatsappOutboundMedia }
+  | { template: WhatsappOutboundTemplate }
 
 // El sobre de Cloud API. `messaging_product` es obligatorio en **todas** las
 // llamadas de mensajería —no es el mismo campo que el `messaging_type` de
@@ -1267,6 +1342,40 @@ export function buildWhatsappMessagePayload(
       // del texto. Por defecto no: un preview que se genera solo cambia cómo se
       // ve el mensaje que el tenant escribió.
       text: { body: message.text, preview_url: message.previewUrl === true },
+    }
+  }
+
+  // La rama de plantilla va con discriminante explícito y **antes** del resto,
+  // para que la caída al final deje de ser un catch-all: hasta la fase anterior
+  // «no es texto» significaba «es media», y con un tercer miembro en la unión
+  // eso habría mandado una plantilla por el camino del adjunto sin que nada se
+  // quejara. Con el `if` de acá, quien agregue un cuarto miembro se lleva un
+  // error de compilación en la desestructuración de `message.media`, que es
+  // exactamente donde tiene que enterarse.
+  //
+  // **Aviso para quien lea esto después: esta forma no está confirmada por la
+  // doc de Meta.** Las páginas de plantillas devolvían 500 al escribirla y el
+  // sobre está tomado de implementaciones de terceros que sí funcionan contra
+  // Cloud API —AWS End User Messaging, Azure Communication Services y varios
+  // BSP—. Coinciden entre sí, que es la mejor evidencia que había, pero no es
+  // una fuente primaria: antes de dar por buena cualquier variación de este
+  // sobre hay que probarla contra un número real (ADR 0014).
+  //
+  // `components` se omite si no vino, y no se manda como `[]`: una plantilla sin
+  // variables no lleva el campo, y mandarlo vacío es pedirle a Meta que
+  // interprete una lista que no existe.
+  if ("template" in message) {
+    const { name, language, components } = message.template
+    return {
+      ...envelope,
+      type: "template",
+      template: {
+        name,
+        // `language` es un objeto con `code` y no un string suelto. Es el error
+        // de forma más fácil de cometer acá y da un 400 genérico.
+        language: { code: language },
+        ...(components ? { components } : {}),
+      },
     }
   }
 
@@ -1459,6 +1568,115 @@ export function explainWhatsappError(
     }
   }
 
+  // ---- Familia 132xxx: plantillas (ADR 0014) ----
+  //
+  // Es la única familia entera del catálogo, y no por prolijidad: un envío de
+  // plantilla falla por siete motivos distintos que se ven igual desde afuera
+  // —un 400— y llevan a acciones **opuestas**. «Pausada por calidad» se arregla
+  // sola con el tiempo y mandando mejores mensajes; «no existe» se arregla
+  // creando la plantilla; «faltan parámetros» se arregla en la llamada. Sin
+  // traducción, las tres le llegan al cliente como el mismo texto de Meta y no
+  // puede saber cuál le tocó.
+  //
+  // Los siete códigos están verificados uno por uno contra la tabla de errores
+  // de Cloud API, que hoy vive en
+  // `developers.facebook.com/documentation/business-messaging/whatsapp/support/error-codes`
+  // (la URL vieja de `/docs/whatsapp/cloud-api/support/error-codes/` redirige
+  // ahí). **Ninguno se dedujo del número vecino**: la familia tiene huecos
+  // —132002 a 132004, 132006, 132008 a 132011, 132013 y 132014 no existen— así
+  // que «el siguiente del que ya tengo» habría inventado un código.
+  //
+  // Todos van con `code: null`, siguiendo la regla de arriba: el código estable
+  // es sólo para lo que la API pública tiene que distinguir programáticamente,
+  // y el caso que sí lo necesita —«la plantilla no está aprobada»— lo resuelve
+  // el gate del espejo **antes** de llamar a Meta, con su propio
+  // `template_not_approved`. Lo que llega hasta acá ya es un rechazo de Meta y
+  // se distingue por el mensaje.
+
+  // 132001. Meta dice «no existe **en el idioma indicado** o no está aprobada»,
+  // y las dos mitades importan: la identidad de una plantilla es el par
+  // nombre+idioma, así que mandar `es` a una plantilla que sólo existe en
+  // `es_AR` da este mismo error que no haberla creado nunca. Es también el
+  // error que se lleva el fail-open del espejo cuando la fila no estaba.
+  if (code === 132001) {
+    return {
+      code: null,
+      message:
+        "WhatsApp has no approved template with that name in that language. Templates are identified by name **and** language code, so check the exact code (`es` and `es_AR` are different templates), and confirm the template is approved in WhatsApp Manager.",
+    }
+  }
+
+  // 132000. El conteo de variables del envío no coincide con el de la
+  // plantilla. Es el error que Resender **no** previene a propósito: validar el
+  // conteo contra nuestra copia sería rechazar envíos válidos cada vez que una
+  // edición cambió las variables y el espejo todavía no se enteró.
+  if (code === 132000) {
+    return {
+      code: null,
+      message:
+        "The number of variables sent doesn't match the number the template defines. Check the template body in WhatsApp Manager and send one parameter per placeholder, in order.",
+    }
+  }
+
+  // 132005. El texto **ya con las variables sustituidas** supera el límite. El
+  // cuerpo aprobado puede entrar de sobra y el envío no: lo que mide Meta es el
+  // resultado, así que el que tiene que acortarse es el valor que se manda.
+  if (code === 132005) {
+    return {
+      code: null,
+      message:
+        "The template text is too long once the variables are substituted. Shorten the parameter values you're sending, or edit the template body — Meta measures the final text, not the approved one.",
+    }
+  }
+
+  // 132007. La descripción oficial es genérica —«el contenido de la plantilla
+  // infringe una política de WhatsApp»— y no menciona el formato, aunque el
+  // nombre que circula fuera de Meta sea «format character policy». Se traduce
+  // sin prometer más precisión de la que da la fuente: decirle al cliente que
+  // es «un carácter mal puesto» cuando puede ser el contenido entero sería
+  // mandarlo a mirar el lugar equivocado.
+  if (code === 132007) {
+    return {
+      code: null,
+      message:
+        "WhatsApp rejected the template content for violating one of its policies. This covers both the formatting rules (whitespace, newlines and variables around the placeholders) and the content policy itself: review the template in WhatsApp Manager, where the rejection reason is spelled out.",
+    }
+  }
+
+  // 132012. El conteo está bien pero el **formato** de un valor no: es el error
+  // de los parámetros con nombre, las fechas y los importes con forma propia.
+  // Se separa del 132000 porque la corrección es otra —el valor, no la cantidad.
+  if (code === 132012) {
+    return {
+      code: null,
+      message:
+        "One of the variable values has the wrong format for the parameter it fills. Check the parameter types the template expects (named parameters, currency and date-time objects have their own shape) and resend with the corrected value.",
+    }
+  }
+
+  // 132015. **Pausada por calidad**, que es temporal y se levanta sola. No es
+  // «rota»: la plantilla sigue existiendo y aprobada, y lo que hay que hacer es
+  // dejar de mandarla un rato, no recrearla —recrearla quema un nombre y no
+  // arregla la calidad, que la reportan los usuarios finales—.
+  if (code === 132015) {
+    return {
+      code: null,
+      message:
+        "This template is paused because of its quality rating: too many recipients blocked or reported it. The pause lifts on its own if quality recovers, so stop sending it for now instead of recreating it — a new name starts from scratch but the complaints don't.",
+    }
+  }
+
+  // 132016. Pausada tantas veces que Meta la deshabilitó **para siempre**. Es
+  // el único de la familia que no se recupera esperando, y por eso el mensaje
+  // manda a otra plantilla en vez de a reintentar.
+  if (code === 132016) {
+    return {
+      code: null,
+      message:
+        "This template was paused too many times for low quality and is now permanently disabled: it will never send again. Use a different template, and rewrite the message so recipients are less likely to block or report it.",
+    }
+  }
+
   // 130429 es el techo de throughput de Cloud API y los otros cuatro son los
   // límites de app de Graph. Distinta capa, misma acción: esperar y reintentar.
   if (
@@ -1574,7 +1792,7 @@ export async function beginWhatsappSignup(input: {
 // Las dos ramas se separan acá y en ningún otro sitio:
 //
 // - **estándar**: suscribe pelado y registra el número con un PIN;
-// - **Coexistence**: suscribe **con los tres campos** y pide el history sync.
+// - **Coexistence**: suscribe **con la lista explícita** y pide el history sync.
 //   **No llama a `/register`**, y eso no es una omisión: registrar un número que
 //   ya opera desde la app de WhatsApp Business lo desvincula de la app, que es
 //   exactamente lo que Coexistence existe para no hacer.

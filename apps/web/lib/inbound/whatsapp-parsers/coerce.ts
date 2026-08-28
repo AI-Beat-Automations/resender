@@ -26,6 +26,25 @@ export function asBoolean(value: unknown): boolean | null {
   return typeof value === "boolean" ? value : null
 }
 
+// Un identificador de Meta que guardamos como texto, venga como string o como
+// **número** JSON. Los dos casos vivos son `entry.id` (el WABA) y
+// `message_template_id`: la documentación los promete string y los ejemplos —y
+// los payloads reales— los mandan numéricos.
+//
+// Existe porque leerlos con `asString` a secas los deja en null sin ruido, y
+// eso dejó de ser inofensivo: mientras el WABA era decorativo se perdía un dato
+// informativo, pero desde la 0014 es un tercio de la clave del espejo de
+// plantillas, y perderlo descarta el evento entero **sin dejar rastro** —el
+// `field` sí matcheó, así que tampoco cae en `unhandledFields`—.
+//
+// Lo que no se puede arreglar desde aquí es la pérdida de precisión de
+// `JSON.parse` si algún día un id supera 2^53: para eso haría falta no parsear
+// el cuerpo como JSON, y no vale la pena hoy.
+export function asTextId(value: unknown): string | null {
+  const numeric = asNumber(value)
+  return numeric === null ? asString(value) : String(numeric)
+}
+
 // Arma el jsonb de `attachment_meta` tirando lo que no vino. La ausencia de una
 // clave es información —«este payload no lo dice»— y es distinta de un null
 // explícito, que se leería como «Meta lo mandó vacío». `false` sí se conserva:
