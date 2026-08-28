@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest"
 
+import { es } from "@/content/i18n/app/es"
+
 import {
   checkAccountSlotAvailable,
   classifyPagesForSelection,
@@ -34,7 +36,7 @@ describe("page selection classification", () => {
     ])
 
     expect(
-      validatePageSelection({ view, selectedPageIds: ["c", "d"] })
+      validatePageSelection({ view, selectedPageIds: ["c", "d"] }, es)
     ).toEqual({
       ok: true,
       value: [
@@ -77,15 +79,20 @@ describe("page selection classification", () => {
     ])
     expect(view.remainingSlots).toBe(1)
 
-    expect(validatePageSelection({ view, selectedPageIds: ["a"] })).toEqual({
-      ok: true,
-      value: [{ pageId: "a", name: "Page a" }],
-    })
+    expect(validatePageSelection({ view, selectedPageIds: ["a"] }, es)).toEqual(
+      {
+        ok: true,
+        value: [{ pageId: "a", name: "Page a" }],
+      }
+    )
 
-    const reconnectAndAdd = validatePageSelection({
-      view,
-      selectedPageIds: ["a", "c"],
-    })
+    const reconnectAndAdd = validatePageSelection(
+      {
+        view,
+        selectedPageIds: ["a", "c"],
+      },
+      es
+    )
     expect(reconnectAndAdd.ok).toBe(false)
     expect(reconnectAndAdd).toMatchObject({ code: "page_limit_exceeded" })
   })
@@ -107,7 +114,7 @@ describe("page selection classification", () => {
       "owned_by_other_tenant",
     ])
 
-    const result = validatePageSelection({ view, selectedPageIds: ["a"] })
+    const result = validatePageSelection({ view, selectedPageIds: ["a"] }, es)
     expect(result.ok).toBe(false)
     expect(result).toMatchObject({ code: "invalid_selection" })
   })
@@ -121,10 +128,13 @@ describe("page selection classification", () => {
       maxPages: 2,
     })
 
-    const result = validatePageSelection({
-      view,
-      selectedPageIds: ["a", "b", "c"],
-    })
+    const result = validatePageSelection(
+      {
+        view,
+        selectedPageIds: ["a", "b", "c"],
+      },
+      es
+    )
 
     expect(result.ok).toBe(false)
     expect(result).toMatchObject({ code: "page_limit_exceeded" })
@@ -151,7 +161,7 @@ describe("page selection classification", () => {
     })
 
     expect(
-      validatePageSelection({ view, selectedPageIds: ["a", "b"] })
+      validatePageSelection({ view, selectedPageIds: ["a", "b"] }, es)
     ).toEqual({
       ok: true,
       value: [{ pageId: "b", name: "Page b" }],
@@ -174,11 +184,11 @@ describe("page selection copy", () => {
   it("names the disconnect action instead of the Connections screen when there is no room left", () => {
     const view = viewWith(2, 2)
 
-    expect(formatPageAllowance(view)).toBe(
+    expect(formatPageAllowance(view, es)).toBe(
       "No te queda cupo: desconecta una página para liberar cupo y conectar otra."
     )
 
-    const result = validatePageSelection({ view, selectedPageIds: ["a"] })
+    const result = validatePageSelection({ view, selectedPageIds: ["a"] }, es)
     expect(result.ok).toBe(false)
     if (!result.ok) {
       expect(result.message).toBe(
@@ -189,10 +199,10 @@ describe("page selection copy", () => {
   })
 
   it("says how many pages can still be added, in singular and plural", () => {
-    expect(formatPageAllowance(viewWith(1, 2))).toBe(
+    expect(formatPageAllowance(viewWith(1, 2), es)).toBe(
       "Puedes añadir 1 página más."
     )
-    expect(formatPageAllowance(viewWith(0, 3))).toBe(
+    expect(formatPageAllowance(viewWith(0, 3), es)).toBe(
       "Puedes añadir 3 páginas más."
     )
   })
@@ -206,7 +216,7 @@ describe("page selection copy", () => {
       maxPages: 2,
     })
 
-    const result = validatePageSelection({ view, selectedPageIds: ["a"] })
+    const result = validatePageSelection({ view, selectedPageIds: ["a"] }, es)
     expect(result.ok).toBe(false)
     if (!result.ok) {
       expect(result.message).toBe(
@@ -219,20 +229,26 @@ describe("page selection copy", () => {
 describe("checkAccountSlotAvailable", () => {
   it("deja conectar mientras quede hueco", () => {
     expect(
-      checkAccountSlotAvailable({
-        activePageCount: 1,
-        maxPages: 2,
-        reconnectingActiveAccount: false,
-      })
+      checkAccountSlotAvailable(
+        {
+          activePageCount: 1,
+          maxPages: 2,
+          reconnectingActiveAccount: false,
+        },
+        es
+      )
     ).toEqual({ ok: true })
   })
 
   it("bloquea la cuenta nueva cuando el cupo está lleno", () => {
-    const result = checkAccountSlotAvailable({
-      activePageCount: 2,
-      maxPages: 2,
-      reconnectingActiveAccount: false,
-    })
+    const result = checkAccountSlotAvailable(
+      {
+        activePageCount: 2,
+        maxPages: 2,
+        reconnectingActiveAccount: false,
+      },
+      es
+    )
 
     expect(result.ok).toBe(false)
     if (!result.ok) {
@@ -246,21 +262,27 @@ describe("checkAccountSlotAvailable", () => {
     // Reconectar no pide un hueco nuevo: ya ocupa el suyo. Sin esta rama, quien
     // está en el tope no podría renovar el token de lo que ya tiene.
     expect(
-      checkAccountSlotAvailable({
-        activePageCount: 5,
-        maxPages: 2,
-        reconnectingActiveAccount: true,
-      })
+      checkAccountSlotAvailable(
+        {
+          activePageCount: 5,
+          maxPages: 2,
+          reconnectingActiveAccount: true,
+        },
+        es
+      )
     ).toEqual({ ok: true })
   })
 
   it("bloquea también cuando ya se pasó del límite", () => {
     expect(
-      checkAccountSlotAvailable({
-        activePageCount: 3,
-        maxPages: 2,
-        reconnectingActiveAccount: false,
-      }).ok
+      checkAccountSlotAvailable(
+        {
+          activePageCount: 3,
+          maxPages: 2,
+          reconnectingActiveAccount: false,
+        },
+        es
+      ).ok
     ).toBe(false)
   })
 })

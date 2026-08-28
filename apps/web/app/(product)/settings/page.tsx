@@ -12,6 +12,7 @@ import {
   SubscriptionPanel,
   type SubscriptionView,
 } from "@/features/billing/ui/subscription-panel"
+import { LanguagePanel } from "@/features/settings/ui/language-panel"
 import { SettingsTabsNav } from "@/features/settings/ui/settings-tabs-nav"
 import { listApiKeys } from "@/lib/api-keys/api-keys"
 import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
@@ -19,6 +20,9 @@ import type { TenantEntitlement } from "@/lib/billing/entitlements"
 import { getPlanByLookupKey } from "@/lib/billing/plans"
 import { getSubscriptionByTenantId } from "@/lib/billing/subscription"
 import { resolveSettingsTab } from "@/lib/settings/settings-tabs"
+import type { Locale } from "@/content/i18n"
+import type { AppDict } from "@/content/i18n/app"
+import { getAppI18n } from "@/lib/i18n/app-dict"
 import { Separator } from "@workspace/ui/components/separator"
 
 type SettingsPageProps = {
@@ -30,7 +34,11 @@ type SettingsPageProps = {
 export default async function SettingsPage({
   searchParams,
 }: SettingsPageProps) {
-  const [session, params] = await Promise.all([auth(), searchParams])
+  const [session, params, { lang, t }] = await Promise.all([
+    auth(),
+    searchParams,
+    getAppI18n(),
+  ])
   if (!session?.user?.id) redirect("/login")
 
   const tab = resolveSettingsTab(params.tab)
@@ -39,17 +47,17 @@ export default async function SettingsPage({
     <div className="flex flex-col">
       <header>
         <p className="font-mono text-[11px] tracking-[0.08em] text-[var(--text-subtle)]">
-          {"// ajustes"}
+          {`// ${t.settings.eyebrow}`}
         </p>
         <h1 className="mt-1.5 font-heading text-[26px] font-bold tracking-[-0.02em]">
-          Ajustes
+          {t.settings.title}
         </h1>
         {tab === "cuenta" ? (
           <p className="mt-2 max-w-155 text-[14.5px]/[1.6] text-muted-foreground">
-            Administra tu cuenta y las API keys de integración externa.
+            {t.settings.subtitle}
           </p>
         ) : null}
-        <SettingsTabsNav active={tab} />
+        <SettingsTabsNav active={tab} t={t} />
       </header>
 
       <div className="mt-6">
@@ -57,21 +65,38 @@ export default async function SettingsPage({
           <AccountTab
             email={session.user.email ?? ""}
             tenantId={session.user.id}
+            lang={lang}
+            t={t}
           />
         ) : null}
-        {tab === "api-keys" ? <ApiKeysTab tenantId={session.user.id} /> : null}
+        {tab === "api-keys" ? (
+          <ApiKeysTab tenantId={session.user.id} t={t} />
+        ) : null}
         {tab === "suscripcion" ? (
-          <SubscriptionTab tenantId={session.user.id} />
+          <SubscriptionTab tenantId={session.user.id} t={t} />
         ) : null}
       </div>
     </div>
   )
 }
 
-function AccountTab({ email, tenantId }: { email: string; tenantId: string }) {
+function AccountTab({
+  email,
+  tenantId,
+  lang,
+  t,
+}: {
+  email: string
+  tenantId: string
+  lang: Locale
+  t: AppDict
+}) {
   return (
     <div className="flex max-w-205 flex-col gap-4">
-      <AccountIdentityPanel email={email} tenantId={tenantId} />
+      <AccountIdentityPanel email={email} tenantId={tenantId} t={t} />
+      {/* El idioma va en Cuenta y no en una pestaña propia: es una preferencia
+          de lectura de quien entra, como el email con el que entra. */}
+      <LanguagePanel lang={lang} t={t} />
       <ChangePasswordPanel />
       {/* La zona de peligro va separada del resto: borrar la cuenta no puede
           leerse a la misma altura que cambiar la contraseña. */}
@@ -85,17 +110,23 @@ function AccountTab({ email, tenantId }: { email: string; tenantId: string }) {
   )
 }
 
-async function ApiKeysTab({ tenantId }: { tenantId: string }) {
+async function ApiKeysTab({ tenantId, t }: { tenantId: string; t: AppDict }) {
   const apiKeys = await listApiKeys(tenantId)
 
   return (
     <div className="max-w-225">
-      <ApiKeysPanel apiKeys={apiKeys.map(toApiKeyView)} />
+      <ApiKeysPanel apiKeys={apiKeys.map(toApiKeyView)} t={t} />
     </div>
   )
 }
 
-async function SubscriptionTab({ tenantId }: { tenantId: string }) {
+async function SubscriptionTab({
+  tenantId,
+  t,
+}: {
+  tenantId: string
+  t: AppDict
+}) {
   const subscription = await getSubscriptionByTenantId(tenantId)
 
   // El entitlement solo alimenta el consumo: si no se puede resolver, la
@@ -113,6 +144,7 @@ async function SubscriptionTab({ tenantId }: { tenantId: string }) {
         subscription={
           subscription ? toSubscriptionView(subscription, entitlement) : null
         }
+        t={t}
       />
     </div>
   )

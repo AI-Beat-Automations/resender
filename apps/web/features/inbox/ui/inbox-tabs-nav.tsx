@@ -1,5 +1,6 @@
 import Link from "next/link"
 
+import type { AppDict } from "@/content/i18n/app"
 import { INBOX_TABS, inboxHref, type InboxTab } from "@/lib/inbox/inbox-tabs"
 import { cn } from "@workspace/ui/lib/utils"
 
@@ -18,19 +19,21 @@ import { cn } from "@workspace/ui/lib/utils"
 export function InboxTabsNav({
   active,
   accountId,
+  t,
 }: {
   active: InboxTab
   accountId: string | null
+  t: AppDict
 }) {
   return (
-    <nav aria-label="Modo de la bandeja" className="mt-4 flex gap-1">
+    <nav aria-label={t.inbox.tabsAria} className="mt-4 flex gap-1">
       {INBOX_TABS.map((tab) => {
-        const isActive = tab.id === active
+        const isActive = tab === active
 
         return (
           <Link
-            key={tab.id}
-            href={inboxHref({ tab: tab.id, pageId: accountId })}
+            key={tab}
+            href={inboxHref({ tab, pageId: accountId })}
             aria-current={isActive ? "page" : undefined}
             className={cn(
               "relative rounded-md px-1.5 py-1 text-sm font-medium transition-colors",
@@ -40,7 +43,7 @@ export function InboxTabsNav({
                 : "text-foreground/60 hover:text-foreground"
             )}
           >
-            {tab.label}
+            {t.inbox.tabs[tab]}
           </Link>
         )
       })}

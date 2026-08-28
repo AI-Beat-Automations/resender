@@ -136,7 +136,8 @@ export function parseOutboundSendInput(body: unknown): OutboundSendInputResult {
     return {
       ok: false,
       code: "send_target_conflict",
-      error: "reply and attachment are mutually exclusive; send exactly one of them",
+      error:
+        "reply and attachment are mutually exclusive; send exactly one of them",
     }
   }
 

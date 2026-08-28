@@ -1,3 +1,5 @@
+import type { AppDict } from "@/content/i18n/app"
+
 import type {
   AttachmentStatus,
   MessageAttachmentType,
@@ -55,25 +57,10 @@ const PREVIEW_KIND: Record<MessageAttachmentType, PreviewKind> = {
   system: "row",
 }
 
-/**
- * Lo que la burbuja dice en cada estado del binario (`attachment_status`, 0017).
- *
- * Los cinco textos son distintos porque los cinco estados son distintos, y esto
- * es requisito de producto, no un detalle: colapsar `failed` con `unavailable`
- * en un «no se pudo mostrar» genérico deja a soporte sin poder distinguir un bug
- * nuestro —lo intentamos y falló— de un límite de Meta —nunca hubo archivo que
- * pedir, porque el historial de más de 14 días no trae multimedia—.
- *
- * Va en el módulo puro y no en el `.tsx` por la misma razón que el resto: acá se
- * puede testear que ninguno de los cinco se quedó sin copy.
- */
-export const ATTACHMENT_STATUS_COPY: Record<AttachmentStatus, string> = {
-  pending: "descargando…",
-  available: "preview / descarga",
-  failed: "no se pudo descargar",
-  deleted: "archivo expirado",
-  unavailable: "WhatsApp no conserva archivos de más de 14 días",
-}
+// Lo que la burbuja dice en cada estado del binario vive en
+// `t.inbox.attachmentStatus`: sigue siendo un `Record<AttachmentStatus, string>`
+// —un estado nuevo no compila hasta que alguien decida cómo se dice— y el test
+// comprueba, en los dos idiomas, que los cinco textos siguen siendo distintos.
 
 /**
  * La ruta propia que sirve la media de WhatsApp.
@@ -125,7 +112,8 @@ export function toAttachmentDisplay(
      * Messenger e Instagram siguen exactamente como antes.
      */
     status?: AttachmentStatus | null
-  } | null
+  } | null,
+  t: AppDict
 ): AttachmentDisplay | null {
   if (!input) return null
 
@@ -134,7 +122,7 @@ export function toAttachmentDisplay(
   if (input.status && input.status !== "available") {
     return {
       kind: "row",
-      label: `${input.type} · ${ATTACHMENT_STATUS_COPY[input.status]}`,
+      label: `${input.type} · ${t.inbox.attachmentStatus[input.status]}`,
       url: null,
     }
   }

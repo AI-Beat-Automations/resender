@@ -7,6 +7,8 @@ import {
   connectSelectedPagesAction,
   type ConnectMetaActionState,
 } from "@/features/connect-meta/actions"
+import { fmt } from "@/content/i18n/app"
+import { useAppDict } from "@/content/i18n/app/provider"
 import {
   formatPageAllowance,
   type PageSelectionView,
@@ -23,6 +25,7 @@ export function PageSelectionForm({ view }: { view: PageSelectionView }) {
     FormData
   >(connectSelectedPagesAction, {})
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const t = useAppDict()
 
   const atLimit = selected.size >= view.remainingSlots
 
@@ -39,11 +42,10 @@ export function PageSelectionForm({ view }: { view: PageSelectionView }) {
     return (
       <section className="rounded-2xl border border-dashed border-border-strong bg-card p-10 text-center">
         <h2 className="font-heading text-[18px] font-semibold tracking-[-0.02em]">
-          Todavía no hay páginas que puedas conectar.
+          {t.select.emptyTitle}
         </h2>
         <p className="mx-auto mt-2 max-w-[460px] text-sm/[1.6] text-muted-foreground">
-          Meta no devolvió ninguna página que administres. Revisa que le hayas
-          dado acceso a tus páginas y vuelve a conectar Facebook.
+          {t.select.emptyBody}
         </p>
       </section>
     )
@@ -52,7 +54,7 @@ export function PageSelectionForm({ view }: { view: PageSelectionView }) {
   return (
     <form action={action} className="flex flex-col gap-3.5">
       <h2 className="font-mono text-[11px] tracking-[0.08em] text-muted-foreground">
-        PÁGINAS QUE ADMINISTRAS
+        {t.select.listHeading}
       </h2>
 
       <ul className="flex flex-col gap-2.5">
@@ -91,23 +93,26 @@ export function PageSelectionForm({ view }: { view: PageSelectionView }) {
                     <span className="font-heading text-base font-semibold">
                       {page.name}
                     </span>
-                    {connected && <Badge variant="success">ya conectada</Badge>}
+                    {connected && (
+                      <Badge variant="success">{t.select.badgeConnected}</Badge>
+                    )}
                     {/* El motivo se dice en la fila: si no, falta una página
                         que el usuario sí administra y nadie explica por qué. */}
-                    {foreign && <Badge variant="ghost">en otra cuenta</Badge>}
+                    {foreign && (
+                      <Badge variant="ghost">{t.select.badgeForeign}</Badge>
+                    )}
                   </span>
                   <span className="mt-1 block font-mono text-[11.5px] text-[var(--text-subtle)]">
                     page_id {page.metaPageId}
                   </span>
                   {foreign && (
                     <span className="mt-1 block text-[12.5px] text-muted-foreground">
-                      Ya está conectada en otra cuenta de Resender. Una página
-                      pertenece a una sola cuenta.
+                      {t.select.foreignBody}
                     </span>
                   )}
                   {connected && (
                     <span className="mt-1 block text-[12.5px] text-muted-foreground">
-                      Ya la tienes conectada y activa.
+                      {t.select.connectedBody}
                     </span>
                   )}
                 </span>
@@ -118,15 +123,17 @@ export function PageSelectionForm({ view }: { view: PageSelectionView }) {
       </ul>
 
       <p className="text-[12.5px] text-muted-foreground">
-        Esta pantalla solo agrega páginas: desmarcar una página conectada nunca
-        la desconecta.
+        {t.select.addOnlyHint}
       </p>
 
       {atLimit && (
         <p className="rounded-lg bg-surface-sunken px-3.5 py-3 text-[13px] text-muted-foreground">
           {view.remainingSlots === 0
-            ? formatPageAllowance(view)
-            : `Ya marcaste las ${view.remainingSlots} que te permite tu plan (${view.maxPages} conexiones en total). Desmarca una para elegir otra, o desconecta una para liberar cupo.`}
+            ? formatPageAllowance(view, t)
+            : fmt(t.select.atLimitHint, {
+                remainingSlots: view.remainingSlots,
+                maxPages: view.maxPages,
+              })}
         </p>
       )}
 
@@ -139,7 +146,7 @@ export function PageSelectionForm({ view }: { view: PageSelectionView }) {
           {pending && (
             <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
           )}
-          {pending ? "Conectando…" : "Conectar las páginas elegidas"}
+          {pending ? t.select.submitting : t.select.submit}
         </Button>
         <ActionMessage state={state} />
       </div>

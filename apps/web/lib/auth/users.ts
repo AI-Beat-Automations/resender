@@ -1,7 +1,11 @@
 import { getSql } from "@/lib/db"
 
 import { hashPassword, verifyPassword } from "./password"
-import { validateAuthInput, validatePasswordInput } from "./validation"
+import {
+  validateAuthInput,
+  validatePasswordInput,
+  type AuthInputError,
+} from "./validation"
 
 export type UserRecord = {
   id: string
@@ -26,9 +30,11 @@ export class DuplicateEmailError extends Error {
   }
 }
 
+// Lleva el **código** del validador, no un mensaje: quien la atrapa es una
+// server action, que sí sabe en qué idioma contestar.
 export class InvalidAuthInputError extends Error {
-  constructor(message: string) {
-    super(message)
+  constructor(readonly code: AuthInputError) {
+    super(code)
     this.name = "InvalidAuthInputError"
   }
 }

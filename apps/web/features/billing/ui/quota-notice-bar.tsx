@@ -1,5 +1,7 @@
 import Link from "next/link"
 
+import { fmt, type AppDict } from "@/content/i18n/app"
+
 // Barra de aviso de cuota, global en el dashboard (ADR 0003): quien no entra a
 // `/connections` no se enteraría del límite. v2 no la dibuja (spec C.4), pero
 // la ADR 0005 la conserva como franja al ancho del `main`, con los tokens
@@ -23,21 +25,33 @@ export type QuotaNoticeView = {
 // El `message` de `EntitlementBlock` no se reutiliza aquí a propósito: viaja en
 // el cuerpo de los 402/403 de la API externa, que está documentada en inglés
 // (`/docs`). Traducirlo cambiaría ese contrato, así que la franja escribe su
-// propio texto en español a partir del código de bloqueo (ADR 0005).
-function restrictedMessage(notice: QuotaNoticeView): string {
+// propio texto a partir del código de bloqueo (ADR 0005).
+function restrictedMessage(notice: QuotaNoticeView, t: AppDict): string {
+  const intl = t.intl
   switch (notice.blockCode) {
     case "page_limit_exceeded":
-      return `Tu plan permite ${formatCount(notice.maxPages)} conexiones y tienes ${formatCount(notice.activePageCount)}. Desconecta conexiones para volver a enviar.`
+      return fmt(t.quota.blockedPageLimit, {
+        maxPages: formatCount(notice.maxPages, intl),
+        activePageCount: formatCount(notice.activePageCount, intl),
+      })
     case "quota_exceeded":
-      return `Agotaste los ${formatCount(notice.limit)} mensajes de tu plan en este período de facturación. Sube de plan para volver a enviar.`
+      return fmt(t.quota.blockedQuota, {
+        limit: formatCount(notice.limit, intl),
+      })
     case "plan_unavailable":
-      return "No pudimos resolver los límites de tu plan. No se arregla desde tu cuenta: lo revisamos nosotros."
+      return t.quota.blockedPlanUnavailable
     default:
-      return "Tu cuenta dejó de enviar mensajes. Revisa tu suscripción para reanudarla."
+      return t.quota.blockedDefault
   }
 }
 
-export function QuotaNoticeBar({ notice }: { notice: QuotaNoticeView | null }) {
+export function QuotaNoticeBar({
+  notice,
+  t,
+}: {
+  notice: QuotaNoticeView | null
+  t: AppDict
+}) {
   if (!notice) return null
 
   const restricted = notice.level === "restricted"
@@ -52,29 +66,30 @@ export function QuotaNoticeBar({ notice }: { notice: QuotaNoticeView | null }) {
     >
       <p>
         <span className="font-semibold">
-          {restricted
-            ? "Cuenta restringida."
-            : "Te estás acercando a tu límite."}
+          {restricted ? t.quota.restrictedTitle : t.quota.warningTitle}
         </span>{" "}
         {restricted
-          ? restrictedMessage(notice)
-          : `Llevas ${formatCount(notice.usage)} de los ${formatCount(notice.limit)} mensajes de tu plan en este período de facturación.`}
+          ? restrictedMessage(notice, t)
+          : fmt(t.quota.warningBody, {
+              usage: formatCount(notice.usage, t.intl),
+              limit: formatCount(notice.limit, t.intl),
+            })}
       </p>
       {notice.blockCode === "page_limit_exceeded" ? (
         <Link href="/connections" className={ctaClassName}>
-          Administrar páginas
+          {t.quota.ctaManagePages}
         </Link>
       ) : notice.blockCode === "plan_unavailable" ? (
         // Este bloqueo no se arregla pagando: es una inconsistencia de datos
         // nuestra, así que la salida es soporte y no la pestaña de plan.
-        <a href="mailto:info@resender.dev" className={ctaClassName}>
-          Escríbenos
+        <a href={`mailto:${t.common.contactEmail}`} className={ctaClassName}>
+          {t.quota.ctaContact}
         </a>
       ) : (
         // A la pestaña de Suscripción, no a Ajustes a secas: un usuario
         // bloqueado no debe aterrizar en Cuenta (ADR 0005).
         <Link href="/settings?tab=suscripcion" className={ctaClassName}>
-          Subir de plan
+          {t.quota.ctaUpgrade}
         </Link>
       )}
     </div>
@@ -84,7 +99,7 @@ export function QuotaNoticeBar({ notice }: { notice: QuotaNoticeView | null }) {
 const ctaClassName =
   "font-medium whitespace-nowrap underline underline-offset-4"
 
-function formatCount(value: number | null): string {
+function formatCount(value: number | null, intl: string): string {
   if (value === null) return "—"
-  return value.toLocaleString("es-ES")
+  return value.toLocaleString(intl)
 }

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Check, Copy } from "lucide-react"
 
+import { useAppDict } from "@/content/i18n/app/provider"
 import { Button } from "@workspace/ui/components/button"
 
 // Copiar al portapapeles: lo usan el `tenant_id` de Cuenta (solo icono, para
@@ -22,6 +23,7 @@ export function CopyButton({
   size?: "icon-sm" | "sm" | "lg"
 }) {
   const [copied, setCopied] = useState(false)
+  const t = useAppDict().common
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -53,7 +55,7 @@ export function CopyButton({
       title={withText ? undefined : label}
     >
       {copied ? <Check aria-hidden /> : <Copy aria-hidden />}
-      {withText ? (copied ? "Copiado" : "Copiar") : null}
+      {withText ? (copied ? t.copied : t.copy) : null}
     </Button>
   )
 }

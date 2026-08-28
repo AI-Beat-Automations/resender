@@ -9,6 +9,7 @@ import {
   whatsappMediaUrl,
 } from "@/lib/inbox/message-media"
 import type { PageChannel } from "@/lib/pages/page-registry"
+import { fmt, type AppDict } from "@/content/i18n/app"
 
 import { effectiveStatus } from "./media-retention"
 import type { AttachmentStatus, DeliveryStatus } from "./message-enums"
@@ -81,9 +82,6 @@ export type ThreadMessageView = {
   dayLabel: string | null
 }
 
-/** Texto del renglón principal cuando la conversación no tiene mensajes. */
-export const NO_MESSAGES_CONTENT = "Todavía no hay mensajes."
-
 /**
  * Etiqueta histórica del contacto. Se conserva para no romper llamadas
  * existentes, pero el log no la usa: ahí manda `formatPsidLabel` (ADR 0005).
@@ -139,10 +137,11 @@ export function formatPageLabel(page: {
 
 /** Renglón principal del log: el último mensaje, con `Tú: ` si es saliente. */
 export function formatConversationContent(
-  latestMessage: ConversationListItem["latestMessage"]
+  latestMessage: ConversationListItem["latestMessage"],
+  t: AppDict
 ) {
-  if (!latestMessage) return NO_MESSAGES_CONTENT
-  const prefix = latestMessage.direction === "outbound" ? "Tú: " : ""
+  if (!latestMessage) return t.log.noMessages
+  const prefix = latestMessage.direction === "outbound" ? t.log.you : ""
   // Un mensaje solo-adjunto llega con texto vacío: el renglón muestra el type
   // entre corchetes (`[image]`) en su lugar. Con texto, el renglón no cambia
   // — el adjunto se descubre al abrir el hilo.
@@ -155,7 +154,8 @@ export function formatConversationContent(
 
 export function toConversationRowView(
   conversation: ConversationListItem,
-  now: Date
+  now: Date,
+  t: AppDict
 ): ConversationRowView {
   const { latestMessage } = conversation
   const name = conversation.contactName?.trim()
@@ -171,25 +171,18 @@ export function toConversationRowView(
         : null,
     pageLabel: formatPageLabel(conversation.page),
     channel: conversation.page.channel,
-    timestamp: formatLogTimestamp(conversation.lastMessageAt, now),
+    timestamp: formatLogTimestamp(conversation.lastMessageAt, now, t),
     timestampIso: conversation.lastMessageAt.toISOString(),
-    content: formatConversationContent(latestMessage),
+    content: formatConversationContent(latestMessage, t),
     hasMessages: latestMessage !== null,
     failed: latestMessage?.status === "failed",
   }
 }
 
-// Cómo se lee en castellano cada estado de entrega que reporta Meta. Es un
-// `Record` sobre la unión y no un `switch` con default: el estado nuevo no
-// compila hasta que alguien decida cómo se dice.
-export const DELIVERY_STATUS_LABEL: Record<DeliveryStatus, string> = {
-  accepted: "aceptado",
-  sent: "enviado",
-  delivered: "entregado",
-  read: "leído",
-  failed: "no entregado",
-  deleted: "eliminado",
-}
+// Cómo se lee cada estado de entrega que reporta Meta vive en
+// `t.log.delivery`: sigue siendo un `Record` sobre la unión y no un `switch` con
+// default, así que el estado nuevo no compila hasta que alguien decida cómo se
+// dice —ahora en los dos idiomas.
 
 /**
  * `entrega: leído`, o null si el proveedor todavía no dijo nada.
@@ -201,10 +194,11 @@ export const DELIVERY_STATUS_LABEL: Record<DeliveryStatus, string> = {
  * es indescifrable; con él, cada uno dice de qué habla.
  */
 export function formatDeliveryLabel(
-  deliveryStatus: DeliveryStatus | null
+  deliveryStatus: DeliveryStatus | null,
+  t: AppDict
 ): string | null {
   if (!deliveryStatus) return null
-  return `entrega: ${DELIVERY_STATUS_LABEL[deliveryStatus]}`
+  return fmt(t.log.deliveryPrefix, { status: t.log.delivery[deliveryStatus] })
 }
 
 export type ReactionGrouping = {
@@ -325,6 +319,7 @@ function resolveAttachmentSource(
  */
 export function toThreadMessageViews(
   messages: ThreadMessage[],
+  t: AppDict,
   now: Date = new Date()
 ): ThreadMessageView[] {
   let previousDay: string | null = null
@@ -334,7 +329,7 @@ export function toThreadMessageViews(
   const { timeline, reactionsByMessageId } = groupThreadReactions(messages)
 
   return timeline.map((message) => {
-    const dayLabel = formatDayLabel(message.createdAt)
+    const dayLabel = formatDayLabel(message.createdAt, t)
     const isNewDay = dayLabel !== previousDay
     previousDay = dayLabel
     const failed = message.status === "failed"
@@ -352,18 +347,21 @@ export function toThreadMessageViews(
       // El adjunto se resuelve acá y no en el componente: la regla de preview
       // vs fila vive en `message-media.ts`, que sí corre bajo Vitest.
       attachment: message.attachmentType
-        ? toAttachmentDisplay({
-            type: message.attachmentType,
-            url: source.url,
-            meta: message.attachmentMeta,
-            status: source.status,
-          })
+        ? toAttachmentDisplay(
+            {
+              type: message.attachmentType,
+              url: source.url,
+              meta: message.attachmentMeta,
+              status: source.status,
+            },
+            t
+          )
         : null,
       meta: fromComment
-        ? `${formatMessageMeta(message)} · respuesta a comentario`
-        : formatMessageMeta(message),
+        ? `${formatMessageMeta(message, t)} · ${t.log.fromCommentSuffix}`
+        : formatMessageMeta(message, t),
       fromComment,
-      delivery: formatDeliveryLabel(message.deliveryStatus),
+      delivery: formatDeliveryLabel(message.deliveryStatus, t),
       reactions: reactionsByMessageId[message.id] ?? [],
       error: failed ? message.error : null,
       dayLabel: isNewDay ? dayLabel : null,

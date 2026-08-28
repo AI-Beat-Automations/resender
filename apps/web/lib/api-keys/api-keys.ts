@@ -40,9 +40,13 @@ type ApiKeyAuthRow = ApiKeyRow & {
   secret_hash: string
 }
 
+/** Por qué no vale la etiqueta. Código y no mensaje: el texto lo pone Ajustes,
+ * que es quien sabe el idioma. */
+export type ApiKeyLabelError = "label_required" | "label_too_long"
+
 export class InvalidApiKeyLabelError extends Error {
-  constructor(message: string) {
-    super(message)
+  constructor(readonly code: ApiKeyLabelError) {
+    super(code)
     this.name = "InvalidApiKeyLabelError"
   }
 }
@@ -127,12 +131,10 @@ export async function authenticateApiKey(apiKey: unknown) {
 function normalizeLabel(labelInput: unknown) {
   const label = typeof labelInput === "string" ? labelInput.trim() : ""
   if (label.length < 1) {
-    throw new InvalidApiKeyLabelError("Escribe una etiqueta para la key.")
+    throw new InvalidApiKeyLabelError("label_required")
   }
   if (label.length > 80) {
-    throw new InvalidApiKeyLabelError(
-      "La etiqueta no puede pasar de 80 caracteres."
-    )
+    throw new InvalidApiKeyLabelError("label_too_long")
   }
   return label
 }

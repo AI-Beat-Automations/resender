@@ -1,3 +1,5 @@
+import { fmt, type AppDict } from "@/content/i18n/app"
+
 import type { WhatsappOnboardingMode } from "@/lib/meta/whatsapp-client"
 
 // Lectura, validación y clasificación de los `postMessage` del Embedded Signup
@@ -236,21 +238,24 @@ export function readWhatsappSignupEvent(
 // mensaje para el usuario: el éxito lo resuelve el envío al servidor, y el
 // origen ajeno es una nota de diagnóstico, no algo que la pantalla deba decir.
 export function describeWhatsappSignupEvent(
-  event: WhatsappSignupEvent
+  event: WhatsappSignupEvent,
+  t: AppDict
 ): string | null {
+  const e = t.whatsappEvents
+
   switch (event.kind) {
     case "finished":
     case "foreign-origin":
       return null
 
     case "finished-without-number":
-      return "Terminaste sin agregar un número: la cuenta de WhatsApp Business quedó lista, pero Resender necesita un número para recibir mensajes. Vuelve a lanzar la conexión y completa el paso del teléfono."
+      return e.finishedWithoutNumber
 
     case "unsupported-flow":
-      return describeUnsupportedFlow(event.event)
+      return describeUnsupportedFlow(event.event, t)
 
     case "flow-error":
-      return "Meta cortó la conexión con un error y no se conectó ningún número. Vuelve a intentarlo en unos minutos; si se repite, escríbenos a info@resender.dev."
+      return e.flowError
 
     case "reported-error": {
       // El texto es el que Meta le mostró al usuario dentro del flujo: es lo más
@@ -258,25 +263,27 @@ export function describeWhatsappSignupEvent(
       // sesión no son para nosotros —no son estables ni sirven para ramificar—,
       // son lo que Meta pide citar si el cliente escribe a soporte.
       const reference = [
-        event.errorCode ? `código ${event.errorCode}` : null,
-        event.sessionId ? `sesión ${event.sessionId}` : null,
+        event.errorCode
+          ? fmt(e.reportedErrorCode, { code: event.errorCode })
+          : null,
+        event.sessionId
+          ? fmt(e.reportedErrorSession, { id: event.sessionId })
+          : null,
       ]
         .filter(Boolean)
         .join(" · ")
-      const suffix = reference
-        ? ` (${reference} — cítalos si escribes a soporte).`
-        : ""
-      return `Meta rechazó la conexión: ${event.errorMessage}${suffix}`
+      const suffix = reference ? fmt(e.reportedErrorSuffix, { reference }) : ""
+      return fmt(e.reportedError, { message: event.errorMessage, suffix })
     }
 
     case "abandoned": {
-      const step = event.currentStep ? STEP_LABEL[event.currentStep] : null
-      const where = step ? ` Te quedaste en ${step}.` : ""
-      return `Cerraste la ventana de Meta antes de terminar, así que no se conectó ningún número.${where} Puedes volver a lanzarla cuando quieras.`
+      const step = event.currentStep ? e.steps[event.currentStep] : null
+      const where = step ? fmt(e.abandonedWhere, { step }) : ""
+      return fmt(e.abandoned, { where })
     }
 
     case "malformed":
-      return "Meta devolvió una respuesta incompleta y no se conectó ningún número. Vuelve a lanzar la conexión."
+      return e.malformed
   }
 }
 
@@ -288,30 +295,24 @@ export function describeWhatsappSignupEvent(
 // `FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING`— ya no pasan por acá: los dos son
 // resultados válidos del único botón, y cuál de los dos fue es justamente lo que
 // deriva el modo.
-function describeUnsupportedFlow(event: string): string {
+function describeUnsupportedFlow(event: string, t: AppDict): string {
   switch (event) {
     case "FINISH_OBO_MIGRATION":
-      return "Completaste una migración desde otro proveedor. Ese flujo todavía no está soportado en Resender: escríbenos a info@resender.dev y lo hacemos contigo."
+      return t.whatsappEvents.unsupportedMigration
     case "FINISH_GRANT_ONLY_API_ACCESS":
-      return "Solo diste acceso a la API, sin conectar un número. Vuelve a lanzar la conexión y completa el flujo hasta elegir el teléfono."
+      return t.whatsappEvents.unsupportedGrantOnly
     default:
-      return `Meta terminó el flujo en una variante que Resender todavía no soporta (${truncate(event, 60)}). No se conectó ningún número; escríbenos a info@resender.dev.`
+      return fmt(t.whatsappEvents.unsupportedOther, {
+        event: truncate(event, 60),
+      })
   }
 }
 
-// En qué pantalla estaba el usuario cuando cerró. Nombres de Meta a la izquierda
-// (tabla de `current_step`), en castellano y en la voz de la pantalla a la
-// derecha. Un valor nuevo cae en `undefined` y el mensaje simplemente omite el
+// En qué pantalla estaba el usuario cuando cerró: los `current_step` de Meta
+// traducidos a la voz de la pantalla, en `t.whatsappEvents.steps`. Es el único
+// `Record` del diccionario con clave abierta —las claves son de Meta, no
+// nuestras—, así que un valor nuevo cae en `undefined` y el mensaje omite el
 // «te quedaste en…», que es preferible a decir `PHONE_NUMBER_SETUP`.
-const STEP_LABEL: Record<string, string> = {
-  BUSINESS_ACCOUNT_SELECTION: "la selección del portafolio de negocio",
-  WABA_PHONE_PROFILE_PICKER: "la selección de la cuenta de WhatsApp Business",
-  WHATSAPP_BUSINESS_PROFILE_SETUP:
-    "la creación de la cuenta de WhatsApp Business",
-  PHONE_NUMBER_SETUP: "el alta del número de teléfono",
-  PHONE_NUMBER_VERIFICATION: "la verificación del número",
-  PERMISSIONS: "la revisión de permisos",
-}
 
 function isAllowedOrigin(origin: string): boolean {
   return (WHATSAPP_SIGNUP_ALLOWED_ORIGINS as readonly string[]).includes(origin)

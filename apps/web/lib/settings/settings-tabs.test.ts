@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest"
 
+import { es } from "@/content/i18n/app/es"
+import { en } from "@/content/i18n/app/en"
+
 import {
   DEFAULT_SETTINGS_TAB,
   resolveSettingsTab,
@@ -20,7 +23,7 @@ describe("settings tab resolution", () => {
 
   it("keeps every valid tab", () => {
     for (const tab of SETTINGS_TABS) {
-      expect(resolveSettingsTab(tab.id)).toBe(tab.id)
+      expect(resolveSettingsTab(tab)).toBe(tab)
     }
   })
 
@@ -33,15 +36,18 @@ describe("settings tab resolution", () => {
   })
 
   it("exposes the three tabs with their visible label", () => {
-    expect(SETTINGS_TABS.map((tab) => tab.id)).toEqual([
-      "cuenta",
-      "api-keys",
-      "suscripcion",
-    ])
-    expect(SETTINGS_TABS.map((tab) => tab.label)).toEqual([
+    // Los ids siguen en español: son contrato de URL —la franja de cuota enlaza
+    // a `?tab=suscripcion`— y no se traducen. La etiqueta sí.
+    expect(SETTINGS_TABS).toEqual(["cuenta", "api-keys", "suscripcion"])
+    expect(SETTINGS_TABS.map((tab) => es.settings.tabs[tab])).toEqual([
       "Cuenta",
       "API keys",
       "Suscripción",
+    ])
+    expect(SETTINGS_TABS.map((tab) => en.settings.tabs[tab])).toEqual([
+      "Account",
+      "API keys",
+      "Subscription",
     ])
   })
 

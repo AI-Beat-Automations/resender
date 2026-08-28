@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest"
 
+import { es } from "@/content/i18n/app/es"
+import { en } from "@/content/i18n/app/en"
+
 import {
-  DELIVERY_STATUS_LABEL,
-  NO_MESSAGES_CONTENT,
   formatContactLabel,
   formatDeliveryLabel,
   groupThreadReactions,
@@ -79,7 +80,8 @@ describe("toConversationRowView", () => {
         contactName: "Lori",
         contactSyncedAt: new Date(2026, 6, 27, 12, 0),
       }),
-      NOW
+      NOW,
+      es
     )
 
     expect(row.contactLabel).toBe("@lori_surianno")
@@ -95,7 +97,8 @@ describe("toConversationRowView", () => {
         contactName: "Cafe.Rioja",
         contactSyncedAt: new Date(2026, 6, 27, 12, 0),
       }),
-      NOW
+      NOW,
+      es
     )
 
     expect(row.contactLabel).toBe("@cafe.rioja")
@@ -105,17 +108,17 @@ describe("toConversationRowView", () => {
   it("cae al PSID mientras no haya @handle", () => {
     // Es el caso de Messenger, donde no hay perfil que pedir, y el de una
     // conversación que todavía nadie miró.
-    expect(toConversationRowView(conversation(), NOW).contactLabel).toBe(
+    expect(toConversationRowView(conversation(), NOW, es).contactLabel).toBe(
       "psid 8837120041"
     )
     expect(
-      toConversationRowView(conversation({ contactUsername: "  " }), NOW)
+      toConversationRowView(conversation({ contactUsername: "  " }), NOW, es)
         .contactLabel
     ).toBe("psid 8837120041")
   })
 
   it("pone el último mensaje en el renglón principal", () => {
-    const row = toConversationRowView(conversation(), NOW)
+    const row = toConversationRowView(conversation(), NOW, es)
 
     expect(row.content).toBe("¿Hacen envíos a Palermo?")
     expect(row.hasMessages).toBe(true)
@@ -137,7 +140,8 @@ describe("toConversationRowView", () => {
           whatsappPhoneE164: null,
         },
       }),
-      NOW
+      NOW,
+      es
     )
 
     expect(row.pageLabel).toBe("@cafe.rioja · ig_id 17841400000000000")
@@ -156,7 +160,8 @@ describe("toConversationRowView", () => {
           whatsappPhoneE164: null,
         },
       }),
-      NOW
+      NOW,
+      es
     )
 
     expect(row.pageLabel).toBe("Café Rioja · 17841400000000000")
@@ -174,7 +179,8 @@ describe("toConversationRowView", () => {
         },
         lastMessageAt: new Date(2026, 6, 26, 19, 12),
       }),
-      NOW
+      NOW,
+      es
     )
 
     expect(row.content).toBe("Tú: Te confirmo el turno del jueves.")
@@ -185,10 +191,11 @@ describe("toConversationRowView", () => {
   it("resuelve la conversación sin mensajes", () => {
     const row = toConversationRowView(
       conversation({ latestMessage: null }),
-      NOW
+      NOW,
+      es
     )
 
-    expect(row.content).toBe(NO_MESSAGES_CONTENT)
+    expect(row.content).toBe(es.log.noMessages)
     expect(row.hasMessages).toBe(false)
     expect(row.failed).toBe(false)
   })
@@ -204,7 +211,8 @@ describe("toConversationRowView", () => {
           attachmentType: "image",
         },
       }),
-      NOW
+      NOW,
+      es
     )
 
     expect(row.content).toBe("[image]")
@@ -222,7 +230,8 @@ describe("toConversationRowView", () => {
           attachmentType: "file",
         },
       }),
-      NOW
+      NOW,
+      es
     )
 
     expect(row.content).toBe("Tú: [file]")
@@ -239,7 +248,8 @@ describe("toConversationRowView", () => {
           attachmentType: "image",
         },
       }),
-      NOW
+      NOW,
+      es
     )
 
     expect(row.content).toBe("Mirá la foto")
@@ -248,17 +258,20 @@ describe("toConversationRowView", () => {
 
 describe("toThreadMessageViews", () => {
   it("compone el metadato y solo abre separador al cambiar de día", () => {
-    const views = toThreadMessageViews([
-      message({ id: "a", createdAt: new Date(2026, 6, 26, 19, 12, 3) }),
-      message({
-        id: "b",
-        direction: "outbound",
-        status: "sent",
-        text: "¡Sí! Te espero hoy a las 15:00 👍",
-        createdAt: new Date(2026, 6, 27, 14, 2, 11),
-      }),
-      message({ id: "c", createdAt: new Date(2026, 6, 27, 14, 2, 40) }),
-    ])
+    const views = toThreadMessageViews(
+      [
+        message({ id: "a", createdAt: new Date(2026, 6, 26, 19, 12, 3) }),
+        message({
+          id: "b",
+          direction: "outbound",
+          status: "sent",
+          text: "¡Sí! Te espero hoy a las 15:00 👍",
+          createdAt: new Date(2026, 6, 27, 14, 2, 11),
+        }),
+        message({ id: "c", createdAt: new Date(2026, 6, 27, 14, 2, 40) }),
+      ],
+      es
+    )
 
     expect(views.map((view) => view.dayLabel)).toEqual([
       "26 jul 2026",
@@ -271,22 +284,25 @@ describe("toThreadMessageViews", () => {
   })
 
   it("solo expone el error del proveedor en los mensajes fallidos", () => {
-    const [failed, sent] = toThreadMessageViews([
-      message({
-        id: "a",
-        direction: "outbound",
-        status: "failed",
-        error: "OAuthException 190 · Error validating access token",
-        createdAt: new Date(2026, 6, 27, 14, 5, 2),
-      }),
-      message({
-        id: "b",
-        direction: "outbound",
-        status: "sent",
-        error: "ruido que no debería pintarse",
-        createdAt: new Date(2026, 6, 27, 14, 6, 0),
-      }),
-    ])
+    const [failed, sent] = toThreadMessageViews(
+      [
+        message({
+          id: "a",
+          direction: "outbound",
+          status: "failed",
+          error: "OAuthException 190 · Error validating access token",
+          createdAt: new Date(2026, 6, 27, 14, 5, 2),
+        }),
+        message({
+          id: "b",
+          direction: "outbound",
+          status: "sent",
+          error: "ruido que no debería pintarse",
+          createdAt: new Date(2026, 6, 27, 14, 6, 0),
+        }),
+      ],
+      es
+    )
 
     expect(failed?.failed).toBe(true)
     expect(failed?.error).toBe(
@@ -298,21 +314,24 @@ describe("toThreadMessageViews", () => {
   })
 
   it("marca la respuesta privada a un comentario, que es un DM como cualquier otro", () => {
-    const [privateReply, plain] = toThreadMessageViews([
-      message({
-        id: "a",
-        direction: "outbound",
-        status: "sent",
-        instagramSourceCommentId: "17851400000000000",
-        createdAt: new Date(2026, 6, 27, 14, 2, 11),
-      }),
-      message({
-        id: "b",
-        direction: "outbound",
-        status: "sent",
-        createdAt: new Date(2026, 6, 27, 14, 3, 0),
-      }),
-    ])
+    const [privateReply, plain] = toThreadMessageViews(
+      [
+        message({
+          id: "a",
+          direction: "outbound",
+          status: "sent",
+          instagramSourceCommentId: "17851400000000000",
+          createdAt: new Date(2026, 6, 27, 14, 2, 11),
+        }),
+        message({
+          id: "b",
+          direction: "outbound",
+          status: "sent",
+          createdAt: new Date(2026, 6, 27, 14, 3, 0),
+        }),
+      ],
+      es
+    )
 
     expect(privateReply?.fromComment).toBe(true)
     expect(privateReply?.meta).toBe(
@@ -325,13 +344,16 @@ describe("toThreadMessageViews", () => {
   it("resuelve el adjunto del mensaje sin tocar el texto", () => {
     // Texto + adjunto: la vista lleva los dos; el componente decide cómo
     // apilarlos, acá solo se comprueba que ninguno pisa al otro.
-    const [withBoth] = toThreadMessageViews([
-      message({
-        text: "Mirá la foto",
-        attachmentType: "image",
-        attachmentUrl: "https://cdn.fbsbx.com/v/foto?oh=abc",
-      }),
-    ])
+    const [withBoth] = toThreadMessageViews(
+      [
+        message({
+          text: "Mirá la foto",
+          attachmentType: "image",
+          attachmentUrl: "https://cdn.fbsbx.com/v/foto?oh=abc",
+        }),
+      ],
+      es
+    )
 
     expect(withBoth?.text).toBe("Mirá la foto")
     expect(withBoth?.attachment).toEqual({
@@ -341,13 +363,16 @@ describe("toThreadMessageViews", () => {
   })
 
   it("deja el texto vacío y el adjunto poblado en el mensaje solo-adjunto", () => {
-    const [onlyAttachment] = toThreadMessageViews([
-      message({
-        text: "",
-        attachmentType: "appointment_booking",
-        attachmentMeta: { booking: { bookingId: "bk-778" } },
-      }),
-    ])
+    const [onlyAttachment] = toThreadMessageViews(
+      [
+        message({
+          text: "",
+          attachmentType: "appointment_booking",
+          attachmentMeta: { booking: { bookingId: "bk-778" } },
+        }),
+      ],
+      es
+    )
 
     expect(onlyAttachment?.text).toBe("")
     expect(onlyAttachment?.attachment).toEqual({
@@ -358,7 +383,7 @@ describe("toThreadMessageViews", () => {
   })
 
   it("no arma adjunto cuando el mensaje no trae", () => {
-    const [plainText] = toThreadMessageViews([message()])
+    const [plainText] = toThreadMessageViews([message()], es)
 
     expect(plainText?.attachment).toBeNull()
   })
@@ -379,7 +404,8 @@ describe("formatPageLabel en WhatsApp", () => {
           whatsappPhoneE164: "+5491122334455",
         },
       }),
-      NOW
+      NOW,
+      es
     )
 
     expect(row.pageLabel).toBe(
@@ -400,7 +426,8 @@ describe("formatPageLabel en WhatsApp", () => {
           whatsappPhoneE164: null,
         },
       }),
-      NOW
+      NOW,
+      es
     )
 
     expect(row.pageLabel).toBe("Café Rioja · 109988776655443")
@@ -411,38 +438,45 @@ describe("formatDeliveryLabel", () => {
   it("prefija la entrega para no confundirla con el status interno", () => {
     // En la burbuja conviven dos `sent` que no significan lo mismo: el interno
     // es «se lo mandamos a Meta», el de entrega es «Meta lo mandó al teléfono».
-    expect(formatDeliveryLabel("sent")).toBe("entrega: enviado")
-    expect(formatDeliveryLabel("read")).toBe("entrega: leído")
-    expect(formatDeliveryLabel("failed")).toBe("entrega: no entregado")
+    expect(formatDeliveryLabel("sent", es)).toBe("entrega: enviado")
+    expect(formatDeliveryLabel("read", es)).toBe("entrega: leído")
+    expect(formatDeliveryLabel("failed", es)).toBe("entrega: no entregado")
   })
 
   it("no dice nada mientras el proveedor no haya reportado", () => {
-    expect(formatDeliveryLabel(null)).toBeNull()
+    expect(formatDeliveryLabel(null, es)).toBeNull()
   })
 
   it("le da texto propio a los seis estados", () => {
-    const labels = Object.values(DELIVERY_STATUS_LABEL)
-    expect(labels).toHaveLength(6)
-    expect(new Set(labels).size).toBe(6)
+    // Seis estados, seis textos distintos, en los dos idiomas: dos que
+    // coincidan hacen indistinguibles «lo mandamos» y «llegó».
+    for (const dict of [es, en]) {
+      const labels = Object.values(dict.log.delivery)
+      expect(labels).toHaveLength(6)
+      expect(new Set(labels).size).toBe(6)
+    }
   })
 
   it("viaja en su propio campo de la vista, separado del `meta`", () => {
-    const [view] = toThreadMessageViews([
-      message({
-        channel: "whatsapp",
-        direction: "outbound",
-        status: "sent",
-        deliveryStatus: "read",
-        createdAt: new Date(2026, 6, 27, 14, 2, 11),
-      }),
-    ])
+    const [view] = toThreadMessageViews(
+      [
+        message({
+          channel: "whatsapp",
+          direction: "outbound",
+          status: "sent",
+          deliveryStatus: "read",
+          createdAt: new Date(2026, 6, 27, 14, 2, 11),
+        }),
+      ],
+      es
+    )
 
     expect(view?.meta).toBe("outbound · 14:02:11 · sent")
     expect(view?.delivery).toBe("entrega: leído")
   })
 
   it("es null en Messenger, que no reporta entrega", () => {
-    const [view] = toThreadMessageViews([message()])
+    const [view] = toThreadMessageViews([message()], es)
     expect(view?.delivery).toBeNull()
   })
 })
@@ -565,17 +599,20 @@ describe("groupThreadReactions", () => {
   })
 
   it("la vista del hilo no pinta la reacción como burbuja", () => {
-    const views = toThreadMessageViews([
-      reacted,
-      message({
-        id: "msg-b",
-        channel: "whatsapp",
-        attachmentType: "reaction",
-        attachmentMeta: { emoji: "👍" },
-        replyToMetaMessageId: "wamid.AAA",
-        createdAt: new Date(2026, 6, 27, 14, 0, 30),
-      }),
-    ])
+    const views = toThreadMessageViews(
+      [
+        reacted,
+        message({
+          id: "msg-b",
+          channel: "whatsapp",
+          attachmentType: "reaction",
+          attachmentMeta: { emoji: "👍" },
+          replyToMetaMessageId: "wamid.AAA",
+          createdAt: new Date(2026, 6, 27, 14, 0, 30),
+        }),
+      ],
+      es
+    )
 
     expect(views).toHaveLength(1)
     expect(views[0]?.reactions).toEqual([
@@ -602,6 +639,7 @@ describe("media de WhatsApp en el hilo", () => {
           createdAt: new Date(2026, 6, 27, 14, 0, 0),
         }),
       ],
+      es,
       NOW_MEDIA
     )
 
@@ -625,6 +663,7 @@ describe("media de WhatsApp en el hilo", () => {
           createdAt: new Date(2025, 11, 1, 10, 0, 0),
         }),
       ],
+      es,
       NOW_MEDIA
     )
 
@@ -655,6 +694,7 @@ describe("media de WhatsApp en el hilo", () => {
           createdAt: new Date(2026, 6, 27, 14, 1, 0),
         }),
       ],
+      es,
       NOW_MEDIA
     )
 
@@ -680,6 +720,7 @@ describe("media de WhatsApp en el hilo", () => {
           attachmentUrl: "https://cdn.fbsbx.com/v/foto?oh=abc",
         }),
       ],
+      es,
       NOW_MEDIA
     )
 

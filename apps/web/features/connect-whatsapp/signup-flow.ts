@@ -1,4 +1,5 @@
 import type { LogReason } from "@/lib/observability/logger"
+import type { AppDict } from "@/content/i18n/app"
 import {
   WhatsappApiError,
   WHATSAPP_COEXISTENCE_WEBHOOK_FIELDS,
@@ -377,7 +378,8 @@ export type WhatsappPlanSlotResult =
  */
 export async function checkWhatsappPlanSlot(
   deps: WhatsappPlanSlotDeps,
-  input: { tenantId: string; phoneNumberId: string | null }
+  input: { tenantId: string; phoneNumberId: string | null },
+  t: AppDict
 ): Promise<WhatsappPlanSlotResult> {
   let maxPages: number | null
   let activePageCount: number
@@ -401,8 +403,7 @@ export async function checkWhatsappPlanSlot(
     return {
       ok: false,
       reason: "internal_error",
-      message:
-        "No pudimos comprobar el cupo de tu plan ahora mismo. Vuelve a intentarlo en un momento.",
+      message: t.actions.quotaCheckFailed,
     }
   }
 
@@ -412,16 +413,14 @@ export async function checkWhatsappPlanSlot(
     return {
       ok: false,
       reason: "plan_restricted",
-      message:
-        "No pudimos resolver los límites de tu plan. Escríbenos a info@resender.dev.",
+      message: t.actions.planUnresolved,
     }
   }
 
-  const slot = checkAccountSlotAvailable({
-    activePageCount,
-    maxPages,
-    reconnectingActiveAccount,
-  })
+  const slot = checkAccountSlotAvailable(
+    { activePageCount, maxPages, reconnectingActiveAccount },
+    t
+  )
   if (slot.ok) return { ok: true }
 
   return { ok: false, reason: "page_limit_reached", message: slot.message }

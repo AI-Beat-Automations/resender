@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest"
 
 import type { ChannelAccess } from "@/lib/auth/channel-access"
 
+import { es } from "@/content/i18n/app/es"
+import { en } from "@/content/i18n/app/en"
+
 import {
-  CONNECTION_STATUS_BADGE,
+  CONNECTION_STATUS_VARIANT,
   offersChannel,
   resolveConnectionStatus,
 } from "./channel-display"
@@ -120,18 +123,24 @@ describe("connected account status", () => {
 })
 
 describe("status badge", () => {
-  it("labels the three states and keeps the red for the token", () => {
-    expect(CONNECTION_STATUS_BADGE.active).toEqual({
-      label: "activa",
-      variant: "success",
-    })
-    expect(CONNECTION_STATUS_BADGE["no-access"]).toEqual({
-      label: "sin acceso",
-      variant: "warning",
-    })
-    expect(CONNECTION_STATUS_BADGE.disconnected).toEqual({
-      label: "desconectada",
-      variant: "ghost",
-    })
+  // La variante es del módulo y la etiqueta del diccionario: el color es una
+  // decisión de diseño que tiene que ser la misma en los dos idiomas, y el
+  // texto no.
+  it("keeps the tint of each state, and the red for the token", () => {
+    expect(CONNECTION_STATUS_VARIANT.active).toBe("success")
+    expect(CONNECTION_STATUS_VARIANT["no-access"]).toBe("warning")
+    expect(CONNECTION_STATUS_VARIANT.disconnected).toBe("ghost")
+  })
+
+  it("labels the three states in both languages", () => {
+    expect(es.channels.statusBadge.active).toBe("activa")
+    expect(es.channels.statusBadge["no-access"]).toBe("sin acceso")
+    expect(es.channels.statusBadge.disconnected).toBe("desconectada")
+
+    // Tres etiquetas distintas en cada idioma: si dos coinciden, dos estados
+    // que significan cosas distintas se ven igual.
+    for (const dict of [es, en]) {
+      expect(new Set(Object.values(dict.channels.statusBadge)).size).toBe(3)
+    }
   })
 })

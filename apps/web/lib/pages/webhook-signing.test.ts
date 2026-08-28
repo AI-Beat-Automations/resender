@@ -34,7 +34,11 @@ describe("signaturePayload", () => {
   // cliente arma otra cadena, su verificación falla siempre y no sabe por qué.
   it("firma eventId, timestamp y cuerpo, en ese orden y con puntos", () => {
     expect(
-      signaturePayload({ eventId: "evt_1", timestamp: 1735689600, body: '{"a":1}' })
+      signaturePayload({
+        eventId: "evt_1",
+        timestamp: 1735689600,
+        body: '{"a":1}',
+      })
     ).toBe('evt_1.1735689600.{"a":1}')
   })
 })
@@ -112,7 +116,9 @@ describe("verifyWebhookSignature", () => {
     expect(() =>
       verifyWebhookSignature({ ...input, signature: "v1=abc" })
     ).not.toThrow()
-    expect(verifyWebhookSignature({ ...input, signature: "v1=abc" })).toBe(false)
+    expect(verifyWebhookSignature({ ...input, signature: "v1=abc" })).toBe(
+      false
+    )
   })
 })
 

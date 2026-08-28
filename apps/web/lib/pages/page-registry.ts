@@ -7,7 +7,7 @@ import type {
   WhatsappOnboardingMode,
 } from "./connection-display"
 import type { PageOwnershipRow } from "./page-selection"
-import { normalizeWebhookUrl } from "./webhook-url"
+import { normalizeWebhookUrl, type WebhookUrlError } from "./webhook-url"
 import {
   encryptWebhookSigningSecret,
   generateWebhookSigningSecret,
@@ -114,9 +114,12 @@ export class PageOwnershipError extends Error {
   }
 }
 
+// Lleva el **código** de `normalizeWebhookUrl`, no un mensaje: quien la atrapa
+// es la server action, que sí tiene el idioma del usuario a mano. El `message`
+// del Error se queda con el código para que un log no salga vacío.
 export class InvalidWebhookUrlError extends Error {
-  constructor(message: string) {
-    super(message)
+  constructor(readonly code: WebhookUrlError) {
+    super(code)
     this.name = "InvalidWebhookUrlError"
   }
 }

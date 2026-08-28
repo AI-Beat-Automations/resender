@@ -1,5 +1,6 @@
 import Link from "next/link"
 
+import type { AppDict } from "@/content/i18n/app"
 import { inboxHref, type InboxTab } from "@/lib/inbox/inbox-tabs"
 import { Badge } from "@workspace/ui/components/badge"
 
@@ -19,10 +20,12 @@ export function InboxAccountFilter({
   tab,
   accounts,
   selectedAccountId,
+  t,
 }: {
   tab: InboxTab
   accounts: InboxFilterAccount[]
   selectedAccountId: string | null
+  t: AppDict
 }) {
   // Sin cuentas no hay nada que filtrar: una fila con una sola píldora
   // «Todas las cuentas» es un control que no hace nada.
@@ -32,7 +35,7 @@ export function InboxAccountFilter({
     <div className="mt-3.5 flex flex-wrap gap-2">
       <FilterPill
         href={inboxHref({ tab })}
-        label="Todas las cuentas"
+        label={t.inbox.filterAll}
         active={!selectedAccountId}
       />
       {accounts.map((account) => (

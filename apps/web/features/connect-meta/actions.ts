@@ -35,12 +35,10 @@ import {
   classifyPagesForSelection,
   validatePageSelection,
 } from "@/lib/pages/page-selection"
-import {
-  accountFields,
-  describeError,
-  log,
-} from "@/lib/observability/logger"
+import { accountFields, describeError, log } from "@/lib/observability/logger"
 import { posthog } from "@/lib/posthog"
+import { getAppDict } from "@/lib/i18n/app-dict"
+import type { AppDict } from "@/content/i18n/app"
 
 export type ConnectMetaActionState = {
   error?: string
@@ -49,8 +47,11 @@ export type ConnectMetaActionState = {
 
 // Los fallos que también puede devolver el callback de Meta se redactan desde
 // el módulo de dominio (ADR 0005): el mismo problema, el mismo texto, llegue el
-// usuario por el redirect o por esta server action.
-const EXPIRED_AUTHORIZATION = formatMetaConnectionError("meta_session_expired")
+// usuario por el redirect o por esta server action. Ya no es una constante de
+// módulo porque depende del idioma de quien está conectando, que sale de la
+// cookie y por lo tanto de la petición.
+const expiredAuthorization = (t: AppDict) =>
+  formatMetaConnectionError("meta_session_expired", t)
 
 type PublicPage = { id: string; name: string }
 
@@ -67,28 +68,29 @@ export async function connectSelectedPagesAction(
   _state: ConnectMetaActionState,
   formData: FormData
 ): Promise<ConnectMetaActionState> {
+  const t = await getAppDict()
   const session = await auth()
-  if (!session?.user?.id) return { error: "No has iniciado sesión." }
+  if (!session?.user?.id) return { error: t.actions.notSignedIn }
 
   // Los mismos gates que protegen `/api/meta/start` y `/api/meta/callback`. El
   // layout de `(product)` no alcanza: una server action se puede invocar por
   // POST directo sin renderizar la pantalla, y la fila de `subscriptions` de un
   // tenant dado de baja conserva su `price_lookup_key`.
   if (await isUserWaitlisted(session.user.id)) {
-    return { error: "Tu cuenta está en la lista de espera." }
+    return { error: t.actions.waitlisted }
   }
   if (!(await hasActiveSubscription(session.user.id))) {
-    return { error: "Tu suscripción no está activa." }
+    return { error: t.actions.noSubscription }
   }
 
   const selectedPageIds = formData
     .getAll("pageIds")
     .filter((value): value is string => typeof value === "string")
   if (selectedPageIds.length === 0) {
-    return { error: "Elige al menos una página." }
+    return { error: t.actions.selectOnePage }
   }
 
-  const result = await connectSelectedPages(session.user.id, selectedPageIds)
+  const result = await connectSelectedPages(session.user.id, selectedPageIds, t)
   if (!result.ok) return result.state
 
   revalidatePath("/connections")
@@ -107,10 +109,11 @@ export async function connectSelectedPagesAction(
 // que no eligió nunca se persisten.
 async function connectSelectedPages(
   tenantId: string,
-  selectedPageIds: string[]
+  selectedPageIds: string[],
+  t: AppDict
 ): Promise<ConnectOutcome> {
   const userToken = await getMetaUserAccessToken(tenantId)
-  if (!userToken) return failed(EXPIRED_AUTHORIZATION)
+  if (!userToken) return failed(expiredAuthorization(t))
 
   let metaPages: ConnectedPage[]
   try {
@@ -125,7 +128,7 @@ async function connectSelectedPages(
       tenantId,
       errorMessage: describeError(error),
     })
-    return failed(EXPIRED_AUTHORIZATION)
+    return failed(expiredAuthorization(t))
   }
 
   const [subscription, activePageCount, ownership] = await Promise.all([
@@ -136,9 +139,7 @@ async function connectSelectedPages(
 
   const limits = resolvePlanLimits(subscription?.priceLookupKey ?? null)
   if (!limits) {
-    return failed(
-      "No pudimos resolver los límites de tu plan. Escríbenos a info@resender.dev."
-    )
+    return failed(t.actions.planUnresolved)
   }
 
   const view = classifyPagesForSelection({
@@ -152,10 +153,10 @@ async function connectSelectedPages(
     maxPages: limits.maxPages,
   })
 
-  const validated = validatePageSelection({ view, selectedPageIds })
+  const validated = validatePageSelection({ view, selectedPageIds }, t)
   if (!validated.ok) return failed(validated.message)
   if (validated.value.length === 0) {
-    return failed("Elige al menos una página nueva para conectar.")
+    return failed(t.actions.selectOneNewPage)
   }
 
   const byPageId = new Map(metaPages.map((page) => [page.pageId, page]))
@@ -214,7 +215,7 @@ async function connectSelectedPages(
           accountId,
         })
       }
-      return failed(formatMetaConnectionError("webhook_subscription_failed"))
+      return failed(formatMetaConnectionError("webhook_subscription_failed", t))
     }
     if (error instanceof PageOwnershipError) {
       log({
@@ -227,7 +228,7 @@ async function connectSelectedPages(
         accountId: error.metaPageId,
       })
       return failed(
-        formatMetaConnectionError(metaPageOwnedReason(error.metaPageId))
+        formatMetaConnectionError(metaPageOwnedReason(error.metaPageId), t)
       )
     }
     if (error instanceof SecretEncryptionConfigError) {
@@ -240,7 +241,7 @@ async function connectSelectedPages(
         tenantId,
         errorMessage: describeError(error),
       })
-      return failed(formatMetaConnectionError("configuration_failed"))
+      return failed(formatMetaConnectionError("configuration_failed", t))
     }
     log({
       entrypoint: "action",
@@ -251,8 +252,6 @@ async function connectSelectedPages(
       tenantId,
       errorMessage: describeError(error),
     })
-    return failed(
-      "No se pudo conectar: hubo un problema con las páginas seleccionadas. Inténtalo de nuevo."
-    )
+    return failed(t.actions.connectFailed)
   }
 }

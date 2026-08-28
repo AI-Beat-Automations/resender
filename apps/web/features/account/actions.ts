@@ -1,6 +1,7 @@
 "use server"
 
 import { auth, signOut } from "@/auth"
+import { getAppDict } from "@/lib/i18n/app-dict"
 import {
   accountDeletionConfirmationMatches,
   deletedConnectionIds,
@@ -16,12 +17,27 @@ import {
   tenantMediaPrefix,
 } from "@/lib/account/media-purge"
 import { changeUserPassword, InvalidAuthInputError } from "@/lib/auth/users"
-import { validatePasswordChangeInput } from "@/lib/auth/validation"
+import {
+  validatePasswordChangeInput,
+  type AuthInputError,
+} from "@/lib/auth/validation"
 import { getStripe } from "@/lib/billing/stripe"
 import { unsubscribeChannelWebhook } from "@/lib/pages/channel-webhook"
 
 export type DeleteAccountState = {
   error?: string
+}
+
+// El validador devuelve códigos (`lib/auth/validation`); esta tabla los lleva a
+// la clave del diccionario. Es un `Record` sobre la unión: un código nuevo no
+// compila hasta que alguien decida cómo se dice.
+const AUTH_INPUT_KEY: Record<
+  AuthInputError,
+  "invalidEmail" | "passwordTooShort" | "passwordsDoNotMatch"
+> = {
+  invalid_email: "invalidEmail",
+  password_too_short: "passwordTooShort",
+  passwords_do_not_match: "passwordsDoNotMatch",
 }
 
 export type ChangePasswordState = {
@@ -32,21 +48,22 @@ export async function changePasswordAction(
   _state: ChangePasswordState,
   formData: FormData
 ): Promise<ChangePasswordState> {
+  const t = await getAppDict()
   const input = validatePasswordChangeInput(
     formData.get("newPassword"),
     formData.get("confirmPassword")
   )
-  if (!input.ok) return { error: input.error }
+  if (!input.ok) return { error: t.actions[AUTH_INPUT_KEY[input.error]] }
 
   const session = await auth()
-  if (!session?.user?.id) return { error: "No hay sesión iniciada." }
+  if (!session?.user?.id) return { error: t.actions.notSignedIn }
 
   try {
     const user = await changeUserPassword(session.user.id, input.value.password)
-    if (!user) return { error: "No encontramos la cuenta." }
+    if (!user) return { error: t.actions.accountNotFound }
   } catch (error) {
     if (error instanceof InvalidAuthInputError) {
-      return { error: error.message }
+      return { error: t.actions[AUTH_INPUT_KEY[error.code]] }
     }
     throw error
   }
@@ -61,11 +78,12 @@ export async function deleteAccountAction(
   _state: DeleteAccountState,
   formData: FormData
 ): Promise<DeleteAccountState> {
+  const t = await getAppDict()
   const session = await auth()
-  if (!session?.user?.id) return { error: "No hay sesión iniciada." }
+  if (!session?.user?.id) return { error: t.actions.notSignedIn }
 
   const context = await loadTenantDeletionContext(session.user.id)
-  if (!context) return { error: "No encontramos la cuenta." }
+  if (!context) return { error: t.actions.accountNotFound }
 
   if (
     !accountDeletionConfirmationMatches(
@@ -73,9 +91,7 @@ export async function deleteAccountAction(
       context.email
     )
   ) {
-    return {
-      error: "El email no coincide. Escribe tu email exacto para confirmar.",
-    }
+    return { error: t.actions.confirmEmailMismatch }
   }
 
   // Paso 1 de 3 del borrado de media: dejar escrito el prefijo R2 del tenant
@@ -90,10 +106,7 @@ export async function deleteAccountAction(
     await insertPendingMediaDeletion(mediaPrefix)
   } catch (error) {
     console.error("pending media deletion insert failed", mediaPrefix, error)
-    return {
-      error:
-        "No pudimos preparar el borrado. Vuelve a intentarlo en un minuto.",
-    }
+    return { error: t.actions.deletePrepareFailed }
   }
 
   // Best-effort: dejar de recibir mensajes de Meta antes de borrar. Un fallo

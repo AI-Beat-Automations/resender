@@ -38,10 +38,7 @@ export function offersChannel(
  */
 export type ConnectionStatus = "active" | "no-access" | "disconnected"
 
-export type ConnectionStatusBadge = {
-  label: string
-  variant: "success" | "warning" | "ghost"
-}
+export type ConnectionStatusVariant = "success" | "warning" | "ghost"
 
 export function resolveConnectionStatus(page: {
   channel: PageChannel
@@ -63,12 +60,15 @@ export function resolveConnectionStatus(page: {
  * Va en el tinte de aviso y no en el destructivo porque la conexión está bien
  * —el token es válido, la cuenta sigue suscrita—; en esta tarjeta el rojo ya
  * significa «Meta rechazó el token».
+ *
+ * Solo la variante: la etiqueta es copy y vive en `t.channels.statusBadge`. El
+ * color no se traduce, y un traductor no debería poder cambiarlo.
  */
-export const CONNECTION_STATUS_BADGE: Record<
+export const CONNECTION_STATUS_VARIANT: Record<
   ConnectionStatus,
-  ConnectionStatusBadge
+  ConnectionStatusVariant
 > = {
-  active: { label: "activa", variant: "success" },
-  "no-access": { label: "sin acceso", variant: "warning" },
-  disconnected: { label: "desconectada", variant: "ghost" },
+  active: "success",
+  "no-access": "warning",
+  disconnected: "ghost",
 }

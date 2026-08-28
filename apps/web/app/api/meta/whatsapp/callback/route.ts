@@ -27,6 +27,7 @@ import {
   log,
   type LogReason,
 } from "@/lib/observability/logger"
+import { getAppDict } from "@/lib/i18n/app-dict"
 import {
   formatMetaConnectionError,
   whatsappNumberOwnedReason,
@@ -73,6 +74,10 @@ type CallbackResponse =
   | { ok: false; error: string; pinRequired?: boolean }
 
 export async function POST(request: NextRequest) {
+  // El idioma de quien está conectando: la respuesta de esta ruta se pinta tal
+  // cual en el launcher, así que sus errores tienen que salir en el idioma de la
+  // consola y no en el del servidor.
+  const t = await getAppDict()
   const gate = (reason: LogReason, error: string, status = 403) => {
     log({
       entrypoint: "route",
@@ -87,7 +92,7 @@ export async function POST(request: NextRequest) {
 
   const session = await auth()
   if (!session?.user?.id) {
-    return gate("not_authenticated", "No has iniciado sesión.", 401)
+    return gate("not_authenticated", t.actions.notSignedIn, 401)
   }
   const tenantId = session.user.id
 
@@ -96,18 +101,18 @@ export async function POST(request: NextRequest) {
   // invocar por POST directo sin renderizar la pantalla.
   const access = await resolveProductAccess(tenantId)
   if (access === "unknown_user") {
-    return gate("not_authenticated", "No has iniciado sesión.", 401)
+    return gate("not_authenticated", t.actions.notSignedIn, 401)
   }
   if (access === "waitlisted") {
-    return gate("waitlisted", "Tu cuenta está en la lista de espera.")
+    return gate("waitlisted", t.actions.waitlisted)
   }
   if (!(await hasActiveSubscription(tenantId))) {
-    return gate("no_active_subscription", "Tu suscripción no está activa.")
+    return gate("no_active_subscription", t.actions.noSubscription)
   }
   if (!(await resolveWhatsappAccess(tenantId))) {
     return gate(
       "channel_not_enabled",
-      formatMetaConnectionError("whatsapp_not_enabled")
+      formatMetaConnectionError("whatsapp_not_enabled", t)
     )
   }
 
@@ -133,7 +138,7 @@ export async function POST(request: NextRequest) {
     })
     return NextResponse.json<CallbackResponse>({
       ok: false,
-      error: formatMetaConnectionError(reason),
+      error: formatMetaConnectionError(reason, t),
     })
   }
 
@@ -224,7 +229,8 @@ export async function POST(request: NextRequest) {
       },
       resolveOwnership: resolveWhatsappNumberOwnership,
     },
-    { tenantId, phoneNumberId }
+    { tenantId, phoneNumberId },
+    t
   )
   if (!slot.ok) {
     log({
@@ -293,8 +299,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json<CallbackResponse>({
       ok: false,
       pinRequired: true,
-      error:
-        "No se pudo conectar: el número ya tiene la verificación en dos pasos activada. Vuelve a lanzar la conexión indicando su PIN de seis dígitos, o desactívala desde WhatsApp Manager e inténtalo de nuevo.",
+      error: t.metaErrors.whatsappPinRequired,
     })
   }
 

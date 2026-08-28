@@ -14,6 +14,7 @@ import {
 
 import { SignOutForm } from "@/components/sign-out-form"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { useAppDict } from "@/content/i18n/app/provider"
 import { initialsFromEmail } from "@/lib/account/initials"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
@@ -25,16 +26,17 @@ import { cn } from "@workspace/ui/lib/utils"
 
 type NavItem = {
   href: string
-  label: string
+  /** Clave del bloque `shell` del diccionario, no el texto ya resuelto. */
+  label: "navConnections" | "navInbox" | "navSettings" | "navDocs"
   icon: LucideIcon
   external?: boolean
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { href: "/connections", label: "Conexiones", icon: Link2 },
-  { href: "/inbox", label: "Inbox", icon: Inbox },
-  { href: "/settings", label: "Ajustes", icon: Settings },
-  { href: "/docs", label: "Documentación", icon: BookOpen, external: true },
+  { href: "/connections", label: "navConnections", icon: Link2 },
+  { href: "/inbox", label: "navInbox", icon: Inbox },
+  { href: "/settings", label: "navSettings", icon: Settings },
+  { href: "/docs", label: "navDocs", icon: BookOpen, external: true },
 ]
 
 export function AppSidebar({
@@ -45,6 +47,7 @@ export function AppSidebar({
   signOutAction: () => Promise<void>
 }) {
   const pathname = usePathname()
+  const t = useAppDict().shell
 
   return (
     <aside className="flex h-svh w-[var(--sidebar-w)] shrink-0 flex-col border-r border-sidebar-border bg-sidebar px-3 pt-5 pb-3.5">
@@ -52,7 +55,7 @@ export function AppSidebar({
           `.dev` en bold) y no coincide con el del sidebar, así que va inline. */}
       <Link
         href="/connections"
-        aria-label="Resender.dev — inicio"
+        aria-label={t.home}
         className="inline-flex items-baseline px-2.5 font-heading text-[17px] font-bold tracking-[-0.02em] text-foreground"
       >
         resender
@@ -86,7 +89,7 @@ export function AppSidebar({
                 )}
                 aria-hidden
               />
-              <span className="flex-1">{item.label}</span>
+              <span className="flex-1">{t[item.label]}</span>
               {item.external ? (
                 <ArrowUpRight
                   className="size-[13px] text-[var(--text-subtle)]"
@@ -101,7 +104,7 @@ export function AppSidebar({
       <div className="mt-auto flex flex-col gap-3">
         <div className="flex items-center justify-between px-2.5">
           <span className="font-mono text-[11px] text-[var(--text-subtle)]">
-            tema
+            {t.theme}
           </span>
           <ThemeToggle />
         </div>
@@ -126,8 +129,8 @@ export function AppSidebar({
               type="submit"
               variant="ghost"
               size="icon-sm"
-              title="Cerrar sesión"
-              aria-label="Cerrar sesión"
+              title={t.signOut}
+              aria-label={t.signOut}
             >
               <LogOut className="size-[15px]" aria-hidden />
             </Button>
