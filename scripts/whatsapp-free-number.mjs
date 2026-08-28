@@ -58,18 +58,27 @@
 //   1. POST /{phone_number_id}/deregister  → lo saca de Cloud API
 //   2. DELETE /{phone_number_id}           → lo saca de la WABA
 //
-// El paso 1 es el que de verdad libera el número. El 2 es higiene: que la WABA
-// de pruebas no se llene de números muertos que después ensucian el desplegable
-// del popup. El orden no es negociable: borrado de la WABA ya no hay id contra
-// el que hacer `deregister`.
+// **Los dos son necesarios, y hacen cosas distintas.** El 1 lo saca de Cloud
+// API; el 2 lo saca de la WABA. Verificado en la práctica: con solo el paso 1,
+// el Embedded Signup rechaza el número con «Este número está registrado en una
+// cuenta de WhatsApp existente. Para usarlo, desconéctalo de dicha cuenta»,
+// porque un número no puede estar en dos WABAs a la vez. Sin el paso 2 el
+// número **no** se puede reusar en otra cuenta.
 //
-// ⚠️ **El paso 2 no está soportado por Graph.** Verificado contra la API real:
-// un `DELETE` sobre un phone_number_id devuelve `code 100 subcode 33`
-// («does not support this operation»). Quitar el número de la WABA es un paso
-// de UI —WhatsApp Manager → Configuración de la cuenta → Números de teléfono →
-// Administrar → Eliminar número de teléfono—. Se sigue intentando, porque
-// cuesta una llamada y el día que Meta lo habilite funciona solo, pero su fallo
-// no aborta nada: para cuando ocurre, el número ya está libre.
+// El orden no es negociable: borrado de la WABA ya no hay id contra el que
+// hacer `deregister`.
+//
+// ⚠️ **Y el paso 2 no está soportado por Graph.** Verificado contra la API
+// real: un `DELETE` sobre un phone_number_id devuelve `code 100 subcode 33`
+// («does not support this operation»). Es decir: **este script no puede
+// terminar el trabajo solo**. Deja el número desregistrado y avisa; quitarlo de
+// la WABA hay que hacerlo a mano en WhatsApp Manager → (elegir la WABA) →
+// Configuración de la cuenta → Números de teléfono → Eliminar número de
+// teléfono. Después Meta tarda hasta 3 minutos en liberarlo.
+//
+// El `DELETE` se sigue intentando porque cuesta una llamada y el día que Meta
+// lo habilite el script se completa solo; su fallo no aborta nada, pero
+// tampoco significa que hayas terminado.
 //
 // **Lo que el script no hace y hay que hacer a mano:**
 //
@@ -385,9 +394,12 @@ async function runFree() {
     console.log("no disponible por API")
     console.log(
       `  (${error.message})\n` +
-        "  El número YA está libre: el `deregister` es el que lo saca de Cloud API.\n" +
-        "  Para quitarlo también de la WABA: WhatsApp Manager → Configuración de la\n" +
-        "  cuenta → Números de teléfono → Administrar → Eliminar número de teléfono."
+        "  ⚠️ FALTA UN PASO: el número está fuera de Cloud API, pero sigue en la\n" +
+        "  WABA, y así el Embedded Signup lo rechaza («este número está registrado\n" +
+        "  en una cuenta de WhatsApp existente»). Bórralo a mano en:\n" +
+        "  WhatsApp Manager → elegir la WABA → Configuración de la cuenta →\n" +
+        "  Números de teléfono → Eliminar número de teléfono.\n" +
+        "  Después Meta tarda hasta 3 minutos en liberarlo."
     )
   }
 
