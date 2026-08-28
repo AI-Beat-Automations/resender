@@ -65,6 +65,20 @@ const GRAPH = GRAPH_FACEBOOK_BASE
 // se queda mirando una pantalla que no dice nada.
 const GRAPH_TIMEOUT_MS = 10_000
 
+// `/register` es la excepción y por eso tiene su propio plazo. Aprovisionar un
+// número nuevo en Cloud API tarda mucho más que cualquier otra llamada del
+// onboarding, y con los 10 segundos de arriba se abortaba desde acá un registro
+// que Meta sí estaba procesando: el número quedaba dado de alta del otro lado,
+// el PIN que habíamos generado se perdía —solo se persiste si `/register`
+// responde— y el reintento chocaba con un 133005 cuyo PIN ya no conocía nadie.
+//
+// 30 segundos no lo pone ningún límite de la plataforma: Cloudflare no acota la
+// duración de un `fetch` ni la de la request mientras el cliente siga
+// conectado, y el tope de CPU no cuenta la espera de red. Lo pone la paciencia
+// de quien mira el popup recién cerrado, que además ya esperó el canje, el
+// `debug_token`, los números y la suscripción.
+const GRAPH_REGISTER_TIMEOUT_MS = 30_000
+
 // La descarga de bytes tiene su propio plazo: un documento de Cloud API llega
 // hasta 100 MB y 10 segundos no alcanzan ni de lejos. La URL temporal vive 5
 // minutos, así que el techo real lo pone Meta y no nosotros.
@@ -308,16 +322,23 @@ function logMetaFailure(input: {
 //
 // El `AbortSignal.timeout` va acá y no en cada llamador para que ninguna llamada
 // nueva pueda nacer sin plazo: un `fetch` sin señal se cuelga hasta el timeout
-// del runtime, que en un Worker es el de la request entera.
+// del runtime, que en un Worker es el de la request entera. El `timeoutMs` es
+// opcional y no una obligación de cada paso por lo mismo: quien no opine se
+// lleva el plazo común, y solo `/register` —que tarda otra cosa— lo cambia.
 async function graphRequest(
-  call: { step: WhatsappOnboardingStep; action: LogAction; accountId?: string },
+  call: {
+    step: WhatsappOnboardingStep
+    action: LogAction
+    accountId?: string
+    timeoutMs?: number
+  },
   input: URL | string,
   init?: RequestInit
 ): Promise<{ ok: boolean; status: number; data: Record<string, unknown> }> {
   let response: Response
   try {
     response = await fetch(input, {
-      signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS),
+      signal: AbortSignal.timeout(call.timeoutMs ?? GRAPH_TIMEOUT_MS),
       ...init,
     })
   } catch (error) {
@@ -919,7 +940,12 @@ export async function registerWhatsappPhoneNumber(
   pin: string
 ): Promise<void> {
   const { ok, status, data } = await graphRequest(
-    { step: "register", action: "account_connect", accountId: phoneNumberId },
+    {
+      step: "register",
+      action: "account_connect",
+      accountId: phoneNumberId,
+      timeoutMs: GRAPH_REGISTER_TIMEOUT_MS,
+    },
     `${GRAPH}/${encodeURIComponent(phoneNumberId)}/register`,
     {
       method: "POST",
