@@ -59,8 +59,19 @@ export const WHATSAPP_SESSION_INFO_VERSION = "3"
 // decisión.
 export const WHATSAPP_SIGNUP_FEATURE_TYPE = "whatsapp_business_app_onboarding"
 
+// La versión del flujo de Embedded Signup. Verificado contra el enlace que el
+// propio App Dashboard genera para la landing alojada por Meta, que sale con
+// `extras={"version":"v4","sessionInfoVersion":"3","featureType":"whatsapp_business_app_onboarding"}`:
+// esos son los tres valores canónicos, y el nuestro solo traía dos.
+//
+// Va explícito y no implícito porque v2 se deprecia el 2026-10-15 y el default
+// de Meta hasta entonces no está garantizado; dejarlo al default es apostar a
+// que el flip de la fecha nos encuentre despiertos.
+export const WHATSAPP_SIGNUP_VERSION = "v4"
+
 export type FacebookLoginExtras = {
   setup: Record<string, never>
+  version: string
   sessionInfoVersion: string
   featureType: string
 }
@@ -92,6 +103,7 @@ export function buildFacebookLoginOptions(
       // Configuration ID, no acá. Prellenar datos del negocio es una función
       // aparte que este flujo no usa.
       setup: {},
+      version: WHATSAPP_SIGNUP_VERSION,
       sessionInfoVersion: WHATSAPP_SESSION_INFO_VERSION,
       featureType: WHATSAPP_SIGNUP_FEATURE_TYPE,
     },
