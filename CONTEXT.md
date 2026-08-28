@@ -330,3 +330,18 @@ Resender no maneja datos de tarjeta: la compra se hace en la pagina de Checkout 
 
 ### Webhook de Stripe
 El estado de las suscripciones se replica en Postgres consumiendo webhooks firmados de Stripe en `app/api/stripe/webhook` (verificacion con `STRIPE_WEBHOOK_SECRET`, espejo del patron HMAC del webhook de Meta). Eventos relevantes: `checkout.session.completed` y `customer.subscription.created/updated/deleted`, procesados con upsert idempotente sobre la tabla `subscriptions`. En desarrollo se usa `stripe listen` (Stripe CLI) para recibirlos en local.
+
+### Idioma
+Resender es bilingue **espanol e ingles** en las dos superficies: el sitio publico y el producto. El espanol es el idioma por defecto y vive **sin prefijo** en la URL (`/pricing`); el ingles vive bajo `/en` (`/en/pricing`). Esa convencion no cambia.
+**Lo que ves lo decide la URL**: un enlace `/en/...` compartido se ve en ingles siempre, sin importar la preferencia de quien lo abre.
+El registro de voz sigue siendo distinto a proposito (landing en voseo, producto en tuteo neutro, ADR 0005); ser bilingue no unifica las voces.
+
+### Preferencia de idioma
+Vive en dos sitios con roles distintos: la cookie `NEXT_LOCALE` **gobierna el sitio publico** (y es lo unico que tiene un anonimo) y `users.locale` **gobierna el producto**, que no se rutea por idioma: `/settings` e `/inbox` no tienen gemela `/en`.
+Los dos selectores —el del header publico (`components/language-toggle.tsx`) y el de `Settings > Language`— escriben **las dos cosas** a la vez, asi que en el uso normal coinciden.
+Discrepan solo cuando entras por un enlace ajeno: el proxy de next-intl escribe la cookie al navegar a `/en/...`, y entonces **el sitio queda en ingles y el dashboard sigue en espanol**. Eso es correcto, no un defecto: en el producto **gana la cuenta**, y tocar cualquiera de los dos selectores realinea todo.
+La raiz `/` si respeta la cookie y el `accept-language`: un visitante con el navegador en ingles aterriza en `/en`. El precio es que `/` deja de ser cacheable igual para todos.
+Al registrarse, la cookie siembra `users.locale`: quien eligio ingles en la landing estrena la cuenta en ingles.
+
+### Paginas legales
+`/privacy`, `/terms` y `/data-deletion` son **unicas y en ingles**: quedan fuera del segmento de idioma, sin gemela `/en`, como ya las trata `app/sitemap.ts` (`SHARED_ROUTES`). Un documento legal traducido son dos documentos que mantener sincronizados, y una divergencia entre ellos es un problema juridico, no un typo.

@@ -23,11 +23,11 @@ describe("auth input validation", () => {
   it("validates password change confirmation", () => {
     expect(validatePasswordChangeInput("1234567", "1234567")).toEqual({
       ok: false,
-      error: "La contraseña debe tener al menos 8 caracteres.",
+      error: "password_too_short",
     })
     expect(validatePasswordChangeInput("12345678", "different")).toEqual({
       ok: false,
-      error: "Las contraseñas no coinciden.",
+      error: "passwords_do_not_match",
     })
     expect(validatePasswordChangeInput("12345678", "12345678")).toEqual({
       ok: true,

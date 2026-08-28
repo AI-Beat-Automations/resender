@@ -394,6 +394,9 @@ export const en: Dict = {
       invalidCredentials: "Incorrect email or password.",
       duplicateEmail: "That email is already registered. Sign in.",
       invalidInput: "Check your email and password and try again.",
+      invalidEmail: "Enter a valid email.",
+      passwordTooShort: "The password must be at least 8 characters.",
+      passwordsDoNotMatch: "The passwords don't match.",
       createdNoSignin:
         "We created your account, but couldn't sign you in. Sign in from Log in.",
     },

@@ -9,15 +9,19 @@ import { resolveProductAccess } from "@/lib/auth/waitlist"
 import { PLANS } from "@/lib/billing/plans"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
 import { privatePageMetadata } from "@/lib/seo"
+import { fmt } from "@/content/i18n/app"
+import { getAppI18n } from "@/lib/i18n/app-dict"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 
+// La metadata es estática y no puede leer la cookie (Next la resuelve fuera del
+// render): se queda en español, que es el idioma por defecto. Es un `<title>`
+// de una página `noindex` que nadie busca, y volverla dinámica costaría
+// renderizar la página entera dos veces.
 export const metadata = privatePageMetadata("Suscripción")
 
 // El plan destacado. El diseño marca Pro con el anillo violeta grueso.
 const RECOMMENDED_PLAN = "pro_monthly"
-
-const numberFormat = new Intl.NumberFormat("es-ES")
 
 // Pricing para cuentas sin suscripción activa. Vive fuera del grupo
 // `(product)` a propósito: ese layout rebota aquí a los tenants sin
@@ -29,6 +33,8 @@ const numberFormat = new Intl.NumberFormat("es-ES")
 // autenticarse, y una cuenta en lista de espera necesita que alguien le levante
 // la bandera.
 export default async function BillingPage() {
+  const { lang, t } = await getAppI18n()
+  const numberFormat = new Intl.NumberFormat(t.intl)
   const session = await auth()
   if (!session?.user?.id) redirect("/login")
   const access = await resolveProductAccess(session.user.id)
@@ -43,11 +49,12 @@ export default async function BillingPage() {
 
   return (
     <AccessShell
+      lang={lang}
       topbarEnd={
         // `SignOutForm` hace el `posthog.reset()` antes de la server action.
         <SignOutForm action={signOutAction}>
           <Button type="submit" variant="outline">
-            Cerrar sesión
+            {t.billing.signOut}
           </Button>
         </SignOutForm>
       }
@@ -59,13 +66,12 @@ export default async function BillingPage() {
         email={session.user.email}
       />
       <div className="flex w-full flex-col items-center">
-        <AccessEyebrow label="pricing" />
+        <AccessEyebrow label={t.billing.eyebrow} />
         <h1 className="mt-2 font-heading text-3xl font-bold tracking-tight">
-          Elige tu plan.
+          {t.billing.title}
         </h1>
         <p className="mt-2.5 max-w-130 text-center text-[15px]/[1.6] text-muted-foreground">
-          Tu cuenta está aprobada. El pago ocurre en una página segura de
-          Stripe.
+          {t.billing.subtitle}
         </p>
         <div className="mt-7 grid w-full max-w-155 gap-5 sm:grid-cols-2">
           {PLANS.map((plan) => {
@@ -88,14 +94,24 @@ export default async function BillingPage() {
                     <span className="font-heading text-4xl font-bold tracking-tight">
                       ${plan.priceMonthlyUsd}
                     </span>
-                    <span className="text-sm text-muted-foreground">/ mes</span>
+                    <span className="text-sm text-muted-foreground">
+                      {t.billing.perMonth}
+                    </span>
                   </p>
                   {/* Los límites junto al precio: `/billing` era la única
                       superficie donde se pagaba sin ver qué se compra. */}
                   <p className="mt-2 text-[13.5px] text-muted-foreground">
-                    {numberFormat.format(plan.limits.messagesPerPeriod)}{" "}
-                    mensajes · {plan.limits.maxPages}{" "}
-                    {plan.limits.maxPages === 1 ? "conexión" : "conexiones"}
+                    {fmt(
+                      plan.limits.maxPages === 1
+                        ? t.billing.planLimitsOne
+                        : t.billing.planLimitsMany,
+                      {
+                        messages: numberFormat.format(
+                          plan.limits.messagesPerPeriod
+                        ),
+                        pages: plan.limits.maxPages,
+                      }
+                    )}
                   </p>
                 </div>
                 <form
@@ -108,7 +124,7 @@ export default async function BillingPage() {
                     variant={recommended ? "default" : "outline"}
                     className="w-full"
                   >
-                    Suscribirme
+                    {t.billing.subscribe}
                   </Button>
                 </form>
               </section>
@@ -116,8 +132,7 @@ export default async function BillingPage() {
           })}
         </div>
         <p className="mt-6 text-center text-[13.5px] text-muted-foreground">
-          Cambia de plan, actualiza tu tarjeta o cancela cuando quieras desde
-          Ajustes, con el portal de Stripe.
+          {t.billing.footnote}
         </p>
       </div>
     </AccessShell>

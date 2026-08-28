@@ -172,7 +172,17 @@ export type Dict = {
     errors: {
       invalidCredentials: string
       duplicateEmail: string
+      // Genérico. Se conserva para el fallo que no trae código: un
+      // `InvalidAuthInputError` siempre lo trae, pero el catch-all sí puede no
+      // tenerlo.
       invalidInput: string
+      // Los tres códigos de `lib/auth/validation`. Dicen **qué campo** falló,
+      // que es la mitad útil del error; antes solo los veía quien leía en
+      // español, porque el validador devolvía su texto y el inglés caía al
+      // genérico de arriba (ADR 0006).
+      invalidEmail: string
+      passwordTooShort: string
+      passwordsDoNotMatch: string
       createdNoSignin: string
     }
   }

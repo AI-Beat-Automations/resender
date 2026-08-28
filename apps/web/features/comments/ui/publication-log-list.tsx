@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { TriangleAlert } from "lucide-react"
 
+import type { AppDict } from "@/content/i18n/app"
 import type { PublicationRowView } from "@/lib/comments/display"
 import { inboxHref } from "@/lib/inbox/inbox-tabs"
 import { cn } from "@workspace/ui/lib/utils"
@@ -15,19 +16,21 @@ export function PublicationLogList({
   rows,
   selectedKey,
   selectedAccountId,
+  t,
 }: {
   rows: PublicationRowView[]
   selectedKey: string | null
   selectedAccountId: string | null
+  t: AppDict
 }) {
   return (
     <aside className="flex w-[352px] shrink-0 flex-col border-r border-border bg-card">
       <div className="border-b border-border px-[18px] py-4">
         <h2 className="font-heading text-[15px] font-semibold">
-          Publicaciones
+          {t.inbox.publicationsHeading}
         </h2>
         <p className="mt-0.5 text-[12.5px] text-muted-foreground">
-          Ordenadas por actividad reciente.
+          {t.inbox.sortedByActivity}
         </p>
       </div>
 
@@ -35,8 +38,8 @@ export function PublicationLogList({
         // Dos vacíos distintos: sin datos vs. el filtro no devolvió nada.
         <p className="px-[18px] py-5 text-[13.5px] text-muted-foreground">
           {selectedAccountId
-            ? "No hay comentarios para este filtro."
-            : "Todavía no hay comentarios."}
+            ? t.inbox.emptyCommentsFiltered
+            : t.inbox.emptyComments}
         </p>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto">

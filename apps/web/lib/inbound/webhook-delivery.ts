@@ -94,9 +94,13 @@ export async function enqueueDelivery(input: {
   if (!normalized.ok || !normalized.value) {
     // Una URL inválida no es un fallo transitorio: no se encola, se registra el
     // intento fallido y se termina. Mismo comportamiento que antes.
+    // El error que se persiste es un **código**, no el texto de la pantalla:
+    // esto corre en un job sin idioma, y la columna la leemos nosotros al
+    // depurar una entrega, no el cliente. `normalizeWebhookUrl` dejó de
+    // devolver copy justamente para esto (ADR de i18n del producto).
     const deliveryError = normalized.ok
       ? "webhookUrl not configured"
-      : normalized.error
+      : `webhookUrl invalid: ${normalized.error}`
     await recordDelivery({
       subject: input.subject,
       webhookUrl: input.webhookUrl,
@@ -623,9 +627,7 @@ export async function consumeWebhookQueue(
 
 // La red debajo de la cola, no un segundo camino de entrega: solo reencola jobs
 // cuyo plazo ya venció. Un job sano nunca pasa por acá.
-export async function recoverWebhookJobs(
-  env: CloudflareEnv
-): Promise<number> {
+export async function recoverWebhookJobs(env: CloudflareEnv): Promise<number> {
   const jobIds = await findRecoverableJobs()
   await Promise.all(
     jobIds.map((jobId) => env.WEBHOOK_DELIVERIES.send({ jobId }))

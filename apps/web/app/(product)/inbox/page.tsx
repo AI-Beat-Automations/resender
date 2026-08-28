@@ -37,6 +37,8 @@ import {
   listThreadMessages,
 } from "@/lib/messages/read-model"
 import { listTenantPages } from "@/lib/pages/page-registry"
+import type { AppDict } from "@/content/i18n/app"
+import { getAppDict } from "@/lib/i18n/app-dict"
 import { Button } from "@workspace/ui/components/button"
 
 export default async function InboxPage({
@@ -49,7 +51,11 @@ export default async function InboxPage({
     media?: string | string[]
   }>
 }) {
-  const [session, params] = await Promise.all([auth(), searchParams])
+  const [session, params, t] = await Promise.all([
+    auth(),
+    searchParams,
+    getAppDict(),
+  ])
   const tenantId = session?.user?.id
 
   if (!tenantId) return null
@@ -73,16 +79,15 @@ export default async function InboxPage({
     <div className="flex flex-col">
       <header>
         <p className="font-mono text-[11px] tracking-[0.08em] text-[var(--text-subtle)]">
-          {"// inbox"}
+          {`// ${t.inbox.eyebrow}`}
         </p>
         <h1 className="mt-1 font-heading text-[26px] font-bold tracking-[-0.02em]">
-          Inbox
+          {t.inbox.title}
         </h1>
         <p className="mt-2 max-w-[640px] text-[14.5px] leading-relaxed text-muted-foreground">
-          Log durable de mensajes y comentarios. Las respuestas salen de la API
-          externa; esta pantalla es de solo lectura.
+          {t.inbox.subtitle}
         </p>
-        <InboxTabsNav active={tab} accountId={accountId ?? null} />
+        <InboxTabsNav active={tab} accountId={accountId ?? null} t={t} />
         <InboxAccountFilter
           tab={tab}
           accounts={filterable.map((account) => ({
@@ -90,6 +95,7 @@ export default async function InboxPage({
             name: account.name,
           }))}
           selectedAccountId={accountId ?? null}
+          t={t}
         />
       </header>
 
@@ -99,12 +105,14 @@ export default async function InboxPage({
           accountId={accountId}
           mediaParam={firstParam(params.media)}
           hasInstagram={filterable.length > 0}
+          t={t}
         />
       ) : (
         <MensajesMode
           tenantId={tenantId}
           accountId={accountId}
           conversationParam={firstParam(params.conversation)}
+          t={t}
         />
       )}
     </div>
@@ -115,10 +123,12 @@ async function MensajesMode({
   tenantId,
   accountId,
   conversationParam,
+  t,
 }: {
   tenantId: string
   accountId: string | undefined
   conversationParam: string | undefined
+  t: AppDict
 }) {
   const conversations = await listConversationReadModel({
     tenantId,
@@ -165,7 +175,8 @@ async function MensajesMode({
             contactName: profile.name,
           }
         : conversation,
-      now
+      now,
+      t
     )
   })
   const selectedRow =
@@ -177,6 +188,7 @@ async function MensajesMode({
         rows={rows}
         selectedConversationId={selectedRow?.id ?? null}
         selectedAccountId={accountId ?? null}
+        t={t}
       />
       {selectedRow ? (
         <MessageThread
@@ -185,10 +197,11 @@ async function MensajesMode({
             pageLabel: selectedRow.pageLabel,
             channel: selectedRow.channel,
           }}
-          messages={toThreadMessageViews(thread)}
+          messages={toThreadMessageViews(thread, t)}
+          t={t}
         />
       ) : (
-        <EmptyThread filtered={Boolean(accountId)} />
+        <EmptyThread filtered={Boolean(accountId)} t={t} />
       )}
     </InboxPanels>
   )
@@ -199,11 +212,13 @@ async function ComentariosMode({
   accountId,
   mediaParam,
   hasInstagram,
+  t,
 }: {
   tenantId: string
   accountId: string | undefined
   mediaParam: string | undefined
   hasInstagram: boolean
+  t: AppDict
 }) {
   // Sin cuenta de Instagram no hay hueco que llenar: es el único vacío
   // accionable de la pantalla, así que ocupa el ancho entero y lleva CTA en
@@ -213,11 +228,11 @@ async function ComentariosMode({
       <div className="mt-6 flex min-h-[28rem] overflow-hidden rounded-[var(--radius-2xl)] border border-border bg-surface-app">
         <EmptyPane
           icon={MessageSquare}
-          title="Todavía no hay ninguna cuenta de Instagram conectada."
-          body="Los comentarios llegan solo por Instagram. Conecta una cuenta profesional para verlos acá."
+          title={t.inbox.noInstagramTitle}
+          body={t.inbox.noInstagramBody}
           action={
             <Button asChild variant="outline" size="sm">
-              <Link href="/connections">Ir a Conexiones</Link>
+              <Link href="/connections">{t.inbox.noInstagramCta}</Link>
             </Button>
           }
         />
@@ -255,6 +270,7 @@ async function ComentariosMode({
     toPublicationRowView(
       publication,
       now,
+      t,
       media.get(mediaKey(publication.connectedPageId, publication.mediaId))
     )
   )
@@ -269,6 +285,7 @@ async function ComentariosMode({
         rows={rows}
         selectedKey={selectedRow?.key ?? null}
         selectedAccountId={accountId ?? null}
+        t={t}
       />
       {selectedRow ? (
         <CommentThread
@@ -277,20 +294,19 @@ async function ComentariosMode({
             mediaPermalink: selectedRow.mediaPermalink,
             accountLabel: selectedRow.accountLabel,
           }}
-          comments={toCommentBubbleViews(thread)}
+          comments={toCommentBubbleViews(thread, t)}
+          t={t}
         />
       ) : (
         <EmptyPane
           icon={MessageSquare}
           title={
             accountId
-              ? "Esta cuenta todavía no tiene comentarios."
-              : "Todavía no hay comentarios guardados."
+              ? t.inbox.noCommentsFilteredTitle
+              : t.inbox.noCommentsTitle
           }
           body={
-            accountId
-              ? "El filtro no devolvió ninguna publicación. Prueba con «Todas las cuentas» para ver el resto del log."
-              : "Cuando alguien comente una publicación, el comentario se guarda acá y se reenvía a tu webhook."
+            accountId ? t.inbox.noCommentsFilteredBody : t.inbox.noCommentsBody
           }
         />
       )}

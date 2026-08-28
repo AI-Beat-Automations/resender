@@ -2,6 +2,7 @@ import { getSql } from "@/lib/db"
 import type { PageChannel } from "@/lib/pages/page-registry"
 
 import type { MessageDirection, MessageStatus } from "./message-log"
+import type { AttachmentStatus, DeliveryStatus } from "./message-enums"
 
 export type ConversationListItem = {
   id: string
@@ -20,6 +21,10 @@ export type ConversationListItem = {
     metaPageId: string
     name: string
     username: string | null
+    // El número en formato humano (migración 0017). En WhatsApp `metaPageId` es
+    // el `phone_number_id`, que no dice qué número es: sin esta columna el log
+    // identificaría la cuenta por un entero opaco.
+    whatsappPhoneE164: string | null
   }
   latestMessage: {
     text: string
@@ -34,6 +39,10 @@ export type ConversationListItem = {
 
 export type ThreadMessage = {
   id: string
+  // Denormalizado desde `connected_pages`: todas las filas del hilo comparten
+  // canal, pero llevarlo en la fila deja a `toThreadMessageViews` puro — no
+  // tiene que recibir el hilo y el canal por separado y confiar en que casen.
+  channel: PageChannel
   direction: MessageDirection
   status: MessageStatus
   text: string
@@ -46,6 +55,18 @@ export type ThreadMessage = {
   attachmentType: string | null
   attachmentUrl: string | null
   attachmentMeta: Record<string, unknown> | null
+  // Ciclo de vida del binario en R2 (0017). Solo WhatsApp lo informa; en
+  // Messenger e Instagram es null porque no hospedamos nada.
+  attachmentStatus: AttachmentStatus | null
+  // El wamid propio y el del mensaje al que este responde o reacciona. Es lo
+  // único que permite colgar una reacción del mensaje correcto: la reacción
+  // llega como un mensaje suelto que apunta por id, no por conversación.
+  metaMessageId: string | null
+  replyToMetaMessageId: string | null
+  // Lo que reporta Meta sobre la entrega, **distinto** del `status` interno:
+  // «lo aceptamos y lo mandamos» y «el destinatario lo leyó» son dos hechos y
+  // mezclarlos en una columna pierde uno de los dos.
+  deliveryStatus: DeliveryStatus | null
   createdAt: Date
 }
 
@@ -61,6 +82,7 @@ type ConversationListRow = {
   meta_page_id: string
   page_name: string
   page_username: string | null
+  page_whatsapp_phone_e164: string | null
   latest_text: string | null
   latest_direction: MessageDirection | null
   latest_status: MessageStatus | null
@@ -70,6 +92,7 @@ type ConversationListRow = {
 
 type ThreadMessageRow = {
   id: string
+  page_channel: PageChannel
   direction: MessageDirection
   status: MessageStatus
   // Nullable en DB desde que un mensaje puede ser solo adjunto; el read model
@@ -80,6 +103,10 @@ type ThreadMessageRow = {
   attachment_type: string | null
   attachment_url: string | null
   attachment_meta: unknown
+  attachment_status: AttachmentStatus | null
+  meta_message_id: string | null
+  reply_to_meta_message_id: string | null
+  delivery_status: DeliveryStatus | null
   created_at: Date
 }
 
@@ -101,6 +128,7 @@ export async function listConversationReadModel(input: {
       p.meta_page_id,
       p.name as page_name,
       p.username as page_username,
+      p.whatsapp_phone_e164 as page_whatsapp_phone_e164,
       latest.text as latest_text,
       latest.direction as latest_direction,
       latest.status as latest_status,
@@ -129,18 +157,26 @@ export async function listThreadMessages(input: {
   conversationId: string
 }) {
   const sql = getSql()
+  // El join con `connected_pages` trae el canal, que es lo que decide de dónde
+  // sale la URL del adjunto: el CDN de Meta en Messenger e Instagram, la ruta
+  // propia en WhatsApp. Es una fila por hilo, no por mensaje.
   const rows = await sql<ThreadMessageRow[]>`
-    select id, direction, status, text, error,
-           instagram_source_comment_id,
-           attachment_type, attachment_url, attachment_meta, created_at
-    from messages
-    where tenant_id = ${input.tenantId}
-      and conversation_id = ${input.conversationId}
-    order by created_at asc
+    select m.id, m.direction, m.status, m.text, m.error,
+           m.instagram_source_comment_id,
+           m.attachment_type, m.attachment_url, m.attachment_meta,
+           m.attachment_status, m.meta_message_id, m.reply_to_meta_message_id,
+           m.delivery_status, m.created_at,
+           p.channel as page_channel
+    from messages m
+    join connected_pages p on p.id = m.connected_page_id
+    where m.tenant_id = ${input.tenantId}
+      and m.conversation_id = ${input.conversationId}
+    order by m.created_at asc
   `
 
   return rows.map((row) => ({
     id: row.id,
+    channel: row.page_channel,
     direction: row.direction,
     status: row.status,
     // Un mensaje solo-adjunto puede venir con text null: se normaliza a ""
@@ -151,6 +187,10 @@ export async function listThreadMessages(input: {
     attachmentType: row.attachment_type,
     attachmentUrl: row.attachment_url,
     attachmentMeta: asJsonObject(row.attachment_meta),
+    attachmentStatus: row.attachment_status,
+    metaMessageId: row.meta_message_id,
+    replyToMetaMessageId: row.reply_to_meta_message_id,
+    deliveryStatus: row.delivery_status,
     createdAt: row.created_at,
   }))
 }
@@ -171,6 +211,7 @@ function mapConversationListItem(
       metaPageId: row.meta_page_id,
       name: row.page_name,
       username: row.page_username,
+      whatsappPhoneE164: row.page_whatsapp_phone_e164,
     },
     // Ojo: el guard ya no incluye `latest_text` — un mensaje solo-adjunto
     // viene con texto vacío o null y sigue siendo el último mensaje real.

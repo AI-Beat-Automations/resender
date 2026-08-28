@@ -2,6 +2,7 @@ import Link from "next/link"
 import { TriangleAlert } from "lucide-react"
 
 import { ChannelBadge } from "@/features/inbox/ui/channel-badge"
+import type { AppDict } from "@/content/i18n/app"
 import { inboxHref } from "@/lib/inbox/inbox-tabs"
 import type { ConversationRowView } from "@/lib/messages/display"
 import { cn } from "@workspace/ui/lib/utils"
@@ -15,19 +16,21 @@ export function ConversationLogList({
   rows,
   selectedConversationId,
   selectedAccountId,
+  t,
 }: {
   rows: ConversationRowView[]
   selectedConversationId: string | null
   selectedAccountId: string | null
+  t: AppDict
 }) {
   return (
     <aside className="flex w-[352px] shrink-0 flex-col border-r border-border bg-card">
       <div className="border-b border-border px-[18px] py-4">
         <h2 className="font-heading text-[15px] font-semibold">
-          Conversaciones
+          {t.inbox.conversationsHeading}
         </h2>
         <p className="mt-0.5 text-[12.5px] text-muted-foreground">
-          Ordenadas por actividad reciente.
+          {t.inbox.sortedByActivity}
         </p>
       </div>
 
@@ -35,8 +38,8 @@ export function ConversationLogList({
         // Dos vacíos distintos: sin datos vs. el filtro no devolvió nada.
         <p className="px-[18px] py-5 text-[13.5px] text-muted-foreground">
           {selectedAccountId
-            ? "No hay conversaciones para este filtro."
-            : "Todavía no hay conversaciones."}
+            ? t.inbox.emptyConversationsFiltered
+            : t.inbox.emptyConversations}
         </p>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -46,6 +49,7 @@ export function ConversationLogList({
               row={row}
               active={row.id === selectedConversationId}
               selectedAccountId={selectedAccountId}
+              t={t}
             />
           ))}
         </div>
@@ -58,10 +62,12 @@ function ConversationRow({
   row,
   active,
   selectedAccountId,
+  t,
 }: {
   row: ConversationRowView
   active: boolean
   selectedAccountId: string | null
+  t: AppDict
 }) {
   return (
     <Link
@@ -114,7 +120,7 @@ function ConversationRow({
         ) : null}
       </p>
       <p className="mt-1 flex items-center gap-1.5 font-mono text-[10.5px] text-[var(--text-subtle)]">
-        <ChannelBadge channel={row.channel} />
+        <ChannelBadge channel={row.channel} t={t} />
         <span className="truncate">{row.pageLabel}</span>
       </p>
     </Link>

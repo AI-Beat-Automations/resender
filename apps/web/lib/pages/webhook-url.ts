@@ -1,6 +1,15 @@
+/**
+ * Por qué no vale la URL. Es un **código y no un mensaje** porque este módulo lo
+ * comparten dos llamadores con destinos distintos: la pantalla de Conexiones,
+ * que se lo enseña a una persona en su idioma, y la entrega de webhooks
+ * (`lib/inbound/webhook-delivery.ts`), que corre en un job y no tiene idioma
+ * ninguno. El texto se resuelve en el borde, contra `t.actions`.
+ */
+export type WebhookUrlError = "not_https" | "invalid_url"
+
 export type WebhookUrlResult =
   | { ok: true; value: string | null }
-  | { ok: false; error: string }
+  | { ok: false; error: WebhookUrlError }
 
 export type WebhookUrlMode = "development" | "production"
 
@@ -31,13 +40,9 @@ export function normalizeWebhookUrl(
       return { ok: true, value: url.toString() }
     }
 
-    return {
-      ok: false,
-      error:
-        "La URL tiene que usar https. Solo se permite http en localhost, para desarrollo.",
-    }
+    return { ok: false, error: "not_https" }
   } catch {
-    return { ok: false, error: "Escribe una URL válida." }
+    return { ok: false, error: "invalid_url" }
   }
 }
 

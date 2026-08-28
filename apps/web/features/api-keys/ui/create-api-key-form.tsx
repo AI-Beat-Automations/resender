@@ -7,6 +7,7 @@ import {
   createApiKeyAction,
   type CreateApiKeyState,
 } from "@/features/api-keys/actions"
+import { useAppDict } from "@/content/i18n/app/provider"
 import { CopyButton } from "@/features/settings/ui/copy-button"
 import {
   SettingsCard,
@@ -20,31 +21,31 @@ export function CreateApiKeyForm() {
     createApiKeyAction,
     {}
   )
+  const t = useAppDict().apiKeys
 
   return (
     <SettingsCard>
-      <SettingsCardTitle>Crear API key</SettingsCardTitle>
+      <SettingsCardTitle>{t.createTitle}</SettingsCardTitle>
       <p className="mt-1 max-w-150 text-[13.5px]/[1.55] text-muted-foreground">
-        Usa API keys opacas para que n8n o tu backend llamen a la API externa de
-        Resender. El secreto completo se muestra una sola vez.
+        {t.createBody}
       </p>
       <form action={action} className="mt-4 flex max-w-130 gap-2.5">
         <Input
           name="label"
           required
           maxLength={80}
-          placeholder="n8n producción"
-          aria-label="Etiqueta de la API key"
+          placeholder={t.labelPlaceholder}
+          aria-label={t.labelAria}
           className="flex-1"
         />
         <Button type="submit" size="lg" disabled={pending}>
           {pending ? (
             <>
               <LoaderCircle className="animate-spin" aria-hidden />
-              Creando…
+              {t.creating}
             </>
           ) : (
-            "Crear key"
+            t.create
           )}
         </Button>
       </form>
@@ -57,7 +58,7 @@ export function CreateApiKeyForm() {
         <div className="mt-4 rounded-lg border border-warning-soft-border bg-warning-soft p-4 text-warning-soft-foreground">
           <p className="flex items-center gap-2 text-[13.5px] font-medium">
             <TriangleAlert className="size-[15px] shrink-0" aria-hidden />
-            Copia la key ahora: no vamos a volver a mostrarla.
+            {t.revealTitle}
           </p>
           <div className="mt-3 flex gap-2.5">
             <code className="flex-1 overflow-hidden rounded-lg bg-card px-3.5 py-3 font-mono text-[12.5px] text-ellipsis whitespace-nowrap text-foreground">
@@ -65,7 +66,7 @@ export function CreateApiKeyForm() {
             </code>
             <CopyButton
               value={state.apiKey}
-              label="Copiar la API key"
+              label={t.copyKey}
               withText
               variant="default"
               size="lg"

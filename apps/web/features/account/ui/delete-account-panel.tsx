@@ -12,6 +12,7 @@ import {
   SettingsCard,
   SettingsCardTitle,
 } from "@/features/settings/ui/settings-card"
+import { useAppDict } from "@/content/i18n/app/provider"
 import { isPostHogEnabled } from "@/lib/posthog-client"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -32,6 +33,8 @@ import { Label } from "@workspace/ui/components/label"
 // (ADR 0005). Sigue exigiendo escribir el email exacto de la cuenta.
 export function DeleteAccountPanel({ email }: { email: string }) {
   const posthog = usePostHog()
+  const dict = useAppDict()
+  const t = dict.account
 
   // Mismo patrón que `change-password-panel`: el `reset()` se adelanta porque el
   // camino feliz termina en un redirect, y si la acción devuelve error se
@@ -57,13 +60,10 @@ export function DeleteAccountPanel({ email }: { email: string }) {
   return (
     <SettingsCard className="border-destructive-soft-border">
       <SettingsCardTitle className="text-[var(--danger-text)]">
-        Eliminar cuenta
+        {t.deleteTitle}
       </SettingsCardTitle>
       <p className="mt-1.5 max-w-160 text-[13.5px]/[1.6] text-muted-foreground">
-        Borra definitivamente tu cuenta y todos tus datos: páginas conectadas,
-        conversaciones, mensajes y API keys. Antes de borrar intentamos
-        desuscribir tus páginas del webhook de Meta. Es inmediato y no se puede
-        deshacer; las copias de respaldo se purgan en 30 días.
+        {t.deleteBody}
       </p>
 
       <Dialog>
@@ -74,21 +74,19 @@ export function DeleteAccountPanel({ email }: { email: string }) {
             size="lg"
             className="mt-4"
           >
-            Eliminar cuenta
+            {t.deleteCta}
           </Button>
         </DialogTrigger>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Eliminar tu cuenta</DialogTitle>
-            <DialogDescription>
-              Se borran tu cuenta, tus páginas conectadas, tus conversaciones,
-              tus mensajes y tus API keys. Es inmediato y no se puede deshacer.
-            </DialogDescription>
+            <DialogTitle>{t.deleteDialogTitle}</DialogTitle>
+            <DialogDescription>{t.deleteDialogBody}</DialogDescription>
           </DialogHeader>
           <form action={action} className="grid gap-2">
             <Label htmlFor="confirmEmail">
-              Escribe <span className="font-mono text-xs">{email}</span> para
-              confirmar
+              {t.deleteConfirmBefore}
+              <span className="font-mono text-xs">{email}</span>
+              {t.deleteConfirmAfter}
             </Label>
             <Input
               id="confirmEmail"
@@ -105,7 +103,7 @@ export function DeleteAccountPanel({ email }: { email: string }) {
             <DialogFooter className="mt-2">
               <DialogClose asChild>
                 <Button type="button" variant="ghost" size="lg">
-                  Cancelar
+                  {dict.common.cancel}
                 </Button>
               </DialogClose>
               <Button
@@ -117,10 +115,10 @@ export function DeleteAccountPanel({ email }: { email: string }) {
                 {pending ? (
                   <>
                     <LoaderCircle className="animate-spin" aria-hidden />
-                    Eliminando…
+                    {t.deleting}
                   </>
                 ) : (
-                  "Sí, eliminar mi cuenta"
+                  t.deleteConfirm
                 )}
               </Button>
             </DialogFooter>

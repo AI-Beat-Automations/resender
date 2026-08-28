@@ -163,12 +163,16 @@ describe("migración 0016: adjuntos en messages", () => {
     )
   })
 
+  // `location` estaba acá hasta la 0017, que lo metió en el catálogo junto al
+  // resto de lo que manda WhatsApp. El caso que este test cuida no es «este
+  // tipo concreto»: es que el catálogo siga siendo cerrado, así que el valor de
+  // prueba es uno que nadie va a querer agregar nunca.
   it("rechaza un attachment_type fuera del catálogo", async () => {
     await expect(
       insertMessage({
         text: null,
-        attachmentType: "location",
-        attachmentUrl: "https://maps.test/punto",
+        attachmentType: "no_existe_este_tipo",
+        attachmentUrl: "https://ejemplo.test/x",
       })
     ).rejects.toThrow(/messages_attachment_type_check/)
   })
@@ -260,6 +264,12 @@ describe("migración 0016: adjuntos en messages", () => {
         tokenErrorAt: null,
         tokenExpiresAt: null,
         webhookUrl: null,
+        wabaId: null,
+        whatsappPhoneE164: null,
+        onboardingMode: null,
+        coexistenceStatus: null,
+        historySyncStatus: null,
+        whatsappPinGenerated: false,
     hasSigningSecret: false,
         connectedAt: new Date(),
         disconnectedAt: null,
@@ -276,6 +286,7 @@ describe("migración 0016: adjuntos en messages", () => {
           contactId: "psid_1",
           contactName: null,
           lastMessageAt: new Date(),
+          lastInboundAt: null,
         },
         message,
         eventType: "message",
@@ -289,5 +300,193 @@ describe("migración 0016: adjuntos en messages", () => {
         details: item.details,
       })
     }
+  })
+})
+
+// Migración 0017: WhatsApp como tercer canal.
+//
+// Se prueba contra la cadena completa —la misma que corre `scripts/migrate.mjs`—
+// porque lo que importa acá no es que el SQL sea válido, sino que pase **sobre
+// datos que ya existen**: la fila legacy sembrada antes de la 0016 sigue viva
+// cuando la 0017 backfillea `origin` y `last_inbound_at`.
+describe("migración 0017: WhatsApp como tercer canal", () => {
+  it("acepta el canal whatsapp y sigue rechazando lo que no existe", async () => {
+    await expect(
+      db.query(
+        `insert into connected_pages (
+           tenant_id, channel, meta_page_id, name, page_access_token_encrypted,
+           waba_id, whatsapp_phone_e164, onboarding_mode, history_sync_status
+         )
+         values ($1, 'whatsapp', '1555550001', 'Soporte', 'enc',
+                 'waba_1', '+5491100000000', 'coexistence', 'requested')`,
+        [tenantId]
+      )
+    ).resolves.toBeTruthy()
+
+    await expect(
+      db.query(
+        `insert into connected_pages (
+           tenant_id, channel, meta_page_id, name, page_access_token_encrypted
+         )
+         values ($1, 'telegram', 'tg_1', 'X', 'enc')`,
+        [tenantId]
+      )
+    ).rejects.toThrow(/connected_pages_channel_check/)
+  })
+
+  it("rechaza un onboarding_mode y un history_sync_status fuera de catálogo", async () => {
+    await expect(
+      db.query(
+        `insert into connected_pages (
+           tenant_id, channel, meta_page_id, name, page_access_token_encrypted,
+           onboarding_mode
+         )
+         values ($1, 'whatsapp', '1555550002', 'X', 'enc', 'hibrido')`,
+        [tenantId]
+      )
+    ).rejects.toThrow(/onboarding_mode/)
+
+    await expect(
+      db.query(
+        `insert into connected_pages (
+           tenant_id, channel, meta_page_id, name, page_access_token_encrypted,
+           history_sync_status
+         )
+         values ($1, 'whatsapp', '1555550003', 'X', 'enc', 'casi')`,
+        [tenantId]
+      )
+    ).rejects.toThrow(/history_sync_status/)
+  })
+
+  // El backfill que evita que el filtro `origin='customer'` de la ventana de
+  // 24 h deje mudas todas las conversaciones que ya existían.
+  it("backfillea origin en lo que ya estaba persistido", async () => {
+    const rows = await db.query<{ direction: string; origin: string }>(
+      `select direction, origin from messages where text = 'hola legacy'`
+    )
+    expect(rows.rows).toHaveLength(1)
+    expect(rows.rows[0]).toEqual({ direction: "inbound", origin: "customer" })
+  })
+
+  it("backfillea last_inbound_at desde el último entrante real", async () => {
+    const rows = await db.query<{ last_inbound_at: string | null }>(
+      `select last_inbound_at from conversations where id = $1`,
+      [conversationId]
+    )
+    expect(rows.rows[0]?.last_inbound_at).not.toBeNull()
+  })
+
+  // El índice de la 0001 solo cubre `direction='inbound'`, así que sin este los
+  // echoes de Business App y la mitad saliente del historial se duplicarían en
+  // cada reintento de Meta.
+  it("deduplica los salientes de Coexistence por wamid", async () => {
+    const insertEcho = () =>
+      db.query(
+        `insert into messages (
+           tenant_id, conversation_id, connected_page_id, contact_id,
+           direction, status, text, meta_message_id, origin
+         )
+         values ($1, $2, $3, 'psid_1', 'outbound', 'sent', 'eco',
+                 'wamid.ECHO1', 'business_app')`,
+        [tenantId, conversationId, pageId]
+      )
+
+    await expect(insertEcho()).resolves.toBeTruthy()
+    await expect(insertEcho()).rejects.toThrow(
+      /messages_coexistence_meta_id_unique/
+    )
+  })
+
+  // Un saliente nuestro comparte columnas con un echo pero **no** entra en el
+  // índice parcial: si entrara, dos envíos por API sin wamid todavía asignado
+  // chocarían entre sí.
+  it("no mete los salientes de la API en el índice de Coexistence", async () => {
+    const insertApiSend = () =>
+      db.query(
+        `insert into messages (
+           tenant_id, conversation_id, connected_page_id, contact_id,
+           direction, status, text, meta_message_id, origin
+         )
+         values ($1, $2, $3, 'psid_1', 'outbound', 'sent', 'hola',
+                 'wamid.API1', 'resender_api')`,
+        [tenantId, conversationId, pageId]
+      )
+
+    await expect(insertApiSend()).resolves.toBeTruthy()
+    await expect(insertApiSend()).resolves.toBeTruthy()
+  })
+
+  it("acepta los seis tipos de adjunto que suma WhatsApp", async () => {
+    for (const type of [
+      "location",
+      "contacts",
+      "reaction",
+      "interactive",
+      "order",
+      "system",
+    ]) {
+      const row = await insertMessage({ text: null, attachmentType: type })
+      expect(row.attachment_type).toBe(type)
+    }
+  })
+
+  it("rechaza un attachment_status fuera de los cinco estados", async () => {
+    await expect(
+      db.query(
+        `insert into messages (
+           tenant_id, conversation_id, connected_page_id, contact_id,
+           direction, status, text, attachment_type, attachment_status
+         )
+         values ($1, $2, $3, 'psid_1', 'inbound', 'received', null,
+                 'image', 'descargando')`,
+        [tenantId, conversationId, pageId]
+      )
+    ).rejects.toThrow(/attachment_status/)
+  })
+
+  // **La propiedad de la que depende todo el borrado de media.** El resto del
+  // esquema cuelga de `users` con `on delete cascade` (0002), así que en el
+  // instante del DELETE no queda ninguna fila que recuerde qué hay en R2. Esta
+  // tabla existe justamente para sobrevivirlo, y lo que se lo permite es **no
+  // tener foreign key**. Si alguien se la agrega "por consistencia", el purgado
+  // de R2 deja de tener de dónde salir y este test es el que lo delata.
+  it("pending_media_deletions sobrevive al borrado de la cuenta", async () => {
+    const user = await db.query<{ id: string }>(
+      `insert into users (email, password_hash)
+       values ('borrame@example.com', 'hash') returning id`
+    )
+    const doomed = user.rows[0]!.id
+
+    await db.query(
+      `insert into pending_media_deletions (r2_prefix) values ($1)`,
+      [`wa/${doomed}/`]
+    )
+
+    await db.query(`delete from users where id = $1`, [doomed])
+
+    const survivors = await db.query<{ r2_prefix: string }>(
+      `select r2_prefix from pending_media_deletions where r2_prefix = $1`,
+      [`wa/${doomed}/`]
+    )
+    expect(survivors.rows).toHaveLength(1)
+  })
+
+  it("no admite dos purgados del mismo prefijo", async () => {
+    await db.query(
+      `insert into pending_media_deletions (r2_prefix) values ('wa/dup/')`
+    )
+    await expect(
+      db.query(
+        `insert into pending_media_deletions (r2_prefix) values ('wa/dup/')`
+      )
+    ).rejects.toThrow(/r2_prefix/)
+  })
+
+  it("nace con el canal apagado para todas las cuentas, sin backfill", async () => {
+    const rows = await db.query<{ whatsapp_enabled: boolean }>(
+      `select whatsapp_enabled from users`
+    )
+    expect(rows.rows.length).toBeGreaterThan(0)
+    expect(rows.rows.every((row) => row.whatsapp_enabled === false)).toBe(true)
   })
 })

@@ -9,7 +9,7 @@ import {
   DuplicateEmailError,
   InvalidAuthInputError,
 } from "@/lib/auth/users"
-import { validateAuthInput } from "@/lib/auth/validation"
+import { validateAuthInput, type AuthInputError } from "@/lib/auth/validation"
 import { posthog } from "@/lib/posthog"
 
 export type AuthFormState = {
@@ -52,6 +52,17 @@ export async function loginAction(
   return {}
 }
 
+// Código del validador → clave del diccionario. `Record` sobre la unión: un
+// código nuevo no compila hasta que alguien decida cómo se dice.
+const AUTH_INPUT_KEY: Record<
+  AuthInputError,
+  "invalidEmail" | "passwordTooShort" | "passwordsDoNotMatch"
+> = {
+  invalid_email: "invalidEmail",
+  password_too_short: "passwordTooShort",
+  passwords_do_not_match: "passwordsDoNotMatch",
+}
+
 export async function registerAction(
   _state: AuthFormState,
   formData: FormData
@@ -70,11 +81,12 @@ export async function registerAction(
     if (error instanceof DuplicateEmailError) {
       return { error: errors.duplicateEmail }
     }
-    // `lib/auth/validation` devuelve su texto en español y dice qué campo
-    // falló, así que en español se propaga tal cual. En inglés no hay
-    // equivalente traducido: ahí cae al genérico del diccionario.
+    // `lib/auth/validation` devuelve un **código** y dice qué campo falló, que
+    // es la mitad útil del error. Antes eso solo lo veía quien leía en español
+    // —el validador devolvía su texto y el inglés caía al genérico (ADR 0006)—;
+    // con el código, los dos idiomas dicen lo mismo.
     if (error instanceof InvalidAuthInputError) {
-      return { error: locale === "es" ? error.message : errors.invalidInput }
+      return { error: errors[AUTH_INPUT_KEY[error.code]] }
     }
     throw error
   }

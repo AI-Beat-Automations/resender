@@ -176,3 +176,157 @@ The source files `docs/domain.md` and `prd_api_separation.md` referenced by the
 planning document were absent. `CONTEXT.md`, migrations `0001`–`0009`, current
 production code, and `docs/phase-1-api-migration.md` were used as the canonical
 inputs.
+
+---
+
+# Infraestructura manual de WhatsApp (Fase 1)
+
+> Vigente. A diferencia del resto de este documento, esta sección **no** describe
+> el Worker `api` borrado por la [ADR 0012](./adr/0012-un-solo-worker-next-sin-api-separada.md):
+> los recursos son del Worker `web`, que es el único desplegado, y los bindings
+> ya están declarados en `apps/web/wrangler.jsonc`.
+
+Nada de esto lo crea el deploy. `wrangler deploy` **falla** si el bucket o la
+cola que nombra un binding no existen todavía, así que estos comandos se corren
+a mano —una sola vez, autenticado contra la cuenta de Cloudflare— **antes** del
+primer deploy con el canal de WhatsApp.
+
+## Crear buckets R2 y colas
+
+Desde la raíz del repositorio:
+
+```bash
+npx wrangler r2 bucket create whatsapp-media
+npx wrangler r2 bucket create whatsapp-media-staging
+npx wrangler r2 bucket lifecycle add whatsapp-media --prefix wa/ --expire-days 180
+npx wrangler r2 bucket lifecycle add whatsapp-media-staging --prefix wa/ --expire-days 180
+npx wrangler queues create whatsapp-jobs
+npx wrangler queues create whatsapp-jobs-dlq
+npx wrangler queues create whatsapp-jobs-staging
+npx wrangler queues create whatsapp-jobs-staging-dlq
+```
+
+Los nombres son exactos: los bindings de `apps/web/wrangler.jsonc`
+(`WHATSAPP_MEDIA`, `WHATSAPP_JOBS`) resuelven por nombre, no por id.
+
+Comprobaciones después de correrlos:
+
+- `npx wrangler r2 bucket list` muestra los dos buckets.
+- `npx wrangler r2 bucket lifecycle list whatsapp-media` muestra la regla de 180
+  días sobre el prefijo `wa/`.
+- `npx wrangler queues list` muestra las cuatro colas.
+- Ninguno de los dos buckets tiene acceso público ni el subdominio `r2.dev`
+  habilitado. Lo que autoriza una descarga es la fila de `messages` en Postgres,
+  no el bucket; con `r2.dev` prendido, una key filtrada sería acceso anónimo al
+  archivo de un cliente.
+
+**La lifecycle rule es la retención.** Los 180 días de media entrante no son
+código: no hay job de borrado por antigüedad, y el estado que ve la UI se deriva
+de la edad de la fila. Si la regla no se crea, los bytes se acumulan para
+siempre y el costo de R2 no queda acotado por nada —la cuota del plan mide
+eventos, no bytes—. Es también la red de seguridad del borrado de cuenta: aunque
+el job `media_purge` muera para siempre, los archivos expiran solos.
+
+## Por qué staging tiene bucket y colas propios
+
+Porque compartirlos sería darle a un job de prueba acceso a los archivos de un
+cliente que paga.
+
+No es una precaución teórica: el job `media_purge` borra **por prefijo**
+(`wa/{tenantId}/`) y el consumidor de `whatsapp-jobs` toma los mensajes de la
+cola sin preguntar quién los puso. Con un bucket compartido, un tenant de prueba
+que reusara un uuid, un fixture mal armado o un purge lanzado contra la base
+equivocada borrarían media real de producción, y no hay papelera: R2 no
+versiona estos objetos y la copia de Meta ya expiró (la URL de descarga dura 5
+minutos). Con la cola compartida el problema es simétrico: un import de
+historial de staging son miles de jobs que el consumidor de producción tomaría
+como propios.
+
+Mismo criterio, ya escrito, para las colas de `webhook-deliveries` y para el
+`namespace_id` del rate limiter en `apps/web/wrangler.jsonc`.
+
+## Secretos y vars nuevas
+
+Producción, desde `apps/web`:
+
+```bash
+cd apps/web
+npx wrangler secret put WHATSAPP_VERIFY_TOKEN
+```
+
+`WHATSAPP_VERIFY_TOKEN` es **propio de este webhook** y no se reusa
+`META_VERIFY_TOKEN`: el challenge de WhatsApp llega a
+`/api/meta/whatsapp/webhook`, y compartir el valor haría que rotarlo por un
+incidente en un canal obligara a reconfigurar el otro en el App Dashboard. Es
+una cadena aleatoria larga, distinta por ambiente, y no vive en el repositorio.
+
+Staging **no** usa `wrangler secret put`. CI sube una versión de `web-staging`
+por cada PR sin desplegarla (`.github/workflows/ci.yml`, job `preview`), y en
+ese estado wrangler rechaza `secret put` con «the latest version of your Worker
+isn't currently deployed». La forma que no toca el tráfico:
+
+```bash
+npx wrangler versions secret put WHATSAPP_VERIFY_TOKEN --env staging
+```
+
+`META_APP_ID`, `META_APP_SECRET`, `TOKEN_ENCRYPTION_KEY` y `DATABASE_URL` se
+reusan tal cual están: la firma del webhook de WhatsApp es el mismo
+`X-Hub-Signature-256` con el mismo App Secret, y el PIN cifrado de
+`connected_pages` usa la misma `TOKEN_ENCRYPTION_KEY` que los tokens de página.
+
+### Var de runtime
+
+`META_GRAPH_VERSION` es una **var**, no un secreto: no es sensible y conviene
+poder leerla en el dashboard para saber contra qué versión de Graph está
+corriendo cada ambiente. Va en el bloque `vars` de `apps/web/wrangler.jsonc`
+—producción y `env.staging`, porque `vars` no se hereda— y la aplicación la
+valida al arrancar en vez de hardcodear la versión en cada llamada.
+
+### Variables de build en GitHub Actions
+
+`NEXT_PUBLIC_WHATSAPP_CONFIG_ID` es el Configuration ID del Embedded Signup y
+**no** es un secreto de Worker: las `NEXT_PUBLIC_*` se inlinean en el bundle
+durante `next build`, así que cargarlas con `wrangler secret put` no tendría
+ningún efecto. Se configuran como *variables* del repositorio en GitHub
+(Settings → Secrets and variables → Actions → Variables), que es de donde ya las
+leen los dos workflows:
+
+| Variable de GitHub | La consume | Se inyecta como |
+|---|---|---|
+| `NEXT_PUBLIC_WHATSAPP_CONFIG_ID` | `.github/workflows/deploy.yml` | `NEXT_PUBLIC_WHATSAPP_CONFIG_ID` |
+| `NEXT_PUBLIC_WHATSAPP_CONFIG_ID_STAGING` | `.github/workflows/deploy-staging.yml` | `NEXT_PUBLIC_WHATSAPP_CONFIG_ID` |
+
+El gemelo de staging existe por lo mismo que el de `NEXT_PUBLIC_META_CONFIG_ID`:
+si en el build de staging se cuela el valor de producción, el bundle de staging
+abre el Embedded Signup de la app de Meta productiva y un onboarding de prueba
+termina conectando un número contra la app real.
+
+## Configuración en el App Dashboard de Meta
+
+Fuera de Cloudflare, pero parte del mismo paso manual y sin lo cual nada de lo
+anterior sirve:
+
+1. Producto WhatsApp agregado a la app de Meta, con la URL de callback
+   `https://resender.dev/api/meta/whatsapp/webhook` y el mismo
+   `WHATSAPP_VERIFY_TOKEN` que se cargó en el Worker (staging apunta a
+   `https://staging.resender.dev/...` con su propio valor).
+2. Suscripción por WABA a los cuatro campos: `messages`, `history`,
+   `smb_app_state_sync` y `smb_message_echoes`. Los tres últimos son requisito
+   de Coexistence y hay que suscribirlos **antes** de onboardear un número, no
+   después.
+3. Embedded Signup configurado con **session logging habilitado** —es requisito
+   de Meta para Coexistence, no una opción— y su Configuration ID copiado a las
+   variables de GitHub de la tabla anterior.
+
+## Verificación de extremo a extremo
+
+Antes de dar el canal por operativo:
+
+- `GET /api/meta/whatsapp/webhook` con el challenge de Meta devuelve el
+  `hub.challenge`; con un verify token equivocado devuelve `403`.
+- Un mensaje con imagen al número de prueba deja el adjunto en `available` y el
+  objeto bajo `wa/{tenantId}/...` en el bucket del ambiente correcto.
+- `npx wrangler queues list` muestra consumo en `whatsapp-jobs` y nada en
+  `whatsapp-jobs-dlq`.
+- Borrar una cuenta de prueba deja el prefijo `wa/{tenantId}/` vacío, o un job
+  reclamable a la vista.

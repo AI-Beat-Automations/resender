@@ -1,3 +1,5 @@
+import { fmt, type AppDict } from "@/content/i18n/app"
+
 import type { PageStatus } from "./page-registry"
 
 // Módulo puro de selección de páginas (ADR 0004). Sin base de datos, sin red:
@@ -80,14 +82,63 @@ function resolveState(
 // se redacte dos veces. Sin cupo nombra **la acción** (desconectar), no la
 // pantalla: quien llegó desde «Volver a conectar» ya viene de Conexiones
 // (ADR 0005).
-export function formatPageAllowance(view: PageSelectionView): string {
-  if (view.remainingSlots === 0) {
-    return "No te queda cupo: desconecta una página para liberar cupo y conectar otra."
-  }
+export function formatPageAllowance(
+  view: PageSelectionView,
+  t: AppDict
+): string {
+  if (view.remainingSlots === 0) return t.select.allowanceNone
 
-  return `Puedes añadir ${view.remainingSlots} ${
-    view.remainingSlots === 1 ? "página" : "páginas"
-  } más.`
+  return fmt(
+    view.remainingSlots === 1 ? t.select.allowanceOne : t.select.allowanceMany,
+    { count: view.remainingSlots }
+  )
+}
+
+// Cupo del plan para un canal que conecta **una cuenta por autorización**:
+// WhatsApp hoy, y cualquier otro que entre por un diálogo sin pantalla de
+// selección. Messenger no lo usa —allá el usuario marca varias a la vez y el que
+// decide es `validatePageSelection`, que además tiene que contar cuántas de las
+// marcadas son nuevas—, pero el texto sale del mismo sitio a propósito: es el
+// mismo límite, y contarlo dos veces con dos redacciones es cómo empiezan a no
+// coincidir.
+//
+// Sin esta puerta, el Embedded Signup de WhatsApp escribe la fila igual y el
+// tenant termina con más cuentas activas que su plan. El daño no se ve en la
+// pantalla de Conexiones: `countActivePages` pasa a superar el límite, el
+// entitlement entero cae en `page_limit_exceeded` (ADR 0003) y **las páginas de
+// Messenger que ya funcionaban dejan de entregar** —se siguen persistiendo y
+// contando, pero no se reenvían— y `/api/meta/send` empieza a responder 403.
+// Conectar un canal nuevo no puede apagar otro que ya estaba pagado y andando.
+export type AccountSlotResult = { ok: true } | { ok: false; message: string }
+
+export function checkAccountSlotAvailable(
+  input: {
+    // Cuentas `active` del tenant que ocupan cupo (`countActivePages`).
+    activePageCount: number
+    maxPages: number
+    // `true` cuando la cuenta que se está conectando **ya está activa** para
+    // este mismo tenant. Reconectarla no pide un hueco nuevo: ya ocupa el suyo,
+    // y contarlo dos veces dejaría a quien está al límite sin poder renovar el
+    // token de una cuenta que ya tiene.
+    reconnectingActiveAccount: boolean
+  },
+  t: AppDict
+): AccountSlotResult {
+  if (input.reconnectingActiveAccount) return { ok: true }
+  if (input.activePageCount < input.maxPages) return { ok: true }
+
+  return {
+    ok: false,
+    // El cupo se dice en **conexiones** (ADR 0011), igual que en el resto de
+    // las pantallas: cuenta páginas de Facebook, cuentas de Instagram y números
+    // de WhatsApp juntos, y decir «ya tienes 2 números» a quien tiene dos
+    // páginas lo manda a buscar números que no existen. Y nombra la acción, no
+    // la pantalla: liberar un hueco es lo único que desbloquea esto.
+    message: fmt(t.actions.accountSlotFull, {
+      maxPages: input.maxPages,
+      activePageCount: input.activePageCount,
+    }),
+  }
 }
 
 export type PageSelectionResult =
@@ -101,10 +152,13 @@ export type PageSelectionResult =
 // Devuelve solo las conexiones genuinamente nuevas. Marcar una página que ya
 // está conectada por este tenant es válido y simplemente no cuenta como nueva
 // (la pantalla solo agrega: desmarcar no desconecta).
-export function validatePageSelection(input: {
-  view: PageSelectionView
-  selectedPageIds: string[]
-}): PageSelectionResult {
+export function validatePageSelection(
+  input: {
+    view: PageSelectionView
+    selectedPageIds: string[]
+  },
+  t: AppDict
+): PageSelectionResult {
   const byPageId = new Map(
     input.view.pages.map((page) => [page.metaPageId, page])
   )
@@ -116,8 +170,7 @@ export function validatePageSelection(input: {
       return {
         ok: false,
         code: "invalid_selection",
-        message:
-          "Esa selección incluye una página que no puedes conectar. Recarga la pantalla e inténtalo de nuevo.",
+        message: t.actions.invalidSelection,
       }
     }
 
@@ -131,17 +184,21 @@ export function validatePageSelection(input: {
     // `activePageCount` de este tenant pueden incluir cuentas de Instagram que
     // esta pantalla ni siquiera lista. Lo que se añade acá sí son páginas, y
     // por eso el resto de la frase las sigue nombrando así.
-    const plan = `Tu plan permite ${maxPages} conexiones y ya tienes ${activePageCount} activas`
+    const plan = fmt(t.actions.pageLimitPlan, { maxPages, activePageCount })
+    const tail =
+      remainingSlots === 0
+        ? t.actions.pageLimitNone
+        : fmt(
+            remainingSlots === 1
+              ? t.actions.pageLimitRemainingOne
+              : t.actions.pageLimitRemainingMany,
+            { remainingSlots }
+          )
 
     return {
       ok: false,
       code: "page_limit_exceeded",
-      message:
-        remainingSlots === 0
-          ? `${plan}: no te queda cupo. Desconecta una página para liberar cupo y conectar otra.`
-          : `${plan}: puedes añadir ${remainingSlots} ${
-              remainingSlots === 1 ? "página" : "páginas"
-            } más. Desmarca las que sobren o desconecta una página para liberar cupo.`,
+      message: `${plan}${tail}`,
     }
   }
 

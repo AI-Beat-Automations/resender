@@ -6,22 +6,16 @@
 
 export type InboxTab = "mensajes" | "comentarios"
 
-export type InboxTabDescriptor = {
-  id: InboxTab
-  label: string
-}
-
 export const DEFAULT_INBOX_TAB: InboxTab = "mensajes"
 
-// Orden y etiqueta visible de los dos modos; la UI los lee de aquí en vez de
-// redeclararlos.
-export const INBOX_TABS: readonly InboxTabDescriptor[] = [
-  { id: "mensajes", label: "Mensajes" },
-  { id: "comentarios", label: "Comentarios" },
-]
+// Orden de los dos modos; la UI lo lee de aquí en vez de redeclararlo. La
+// **etiqueta** vive en `t.inbox.tabs`, que es un `Record<InboxTab, string>`: el
+// id es contrato de URL —`?tab=comentarios` está en enlaces que la gente ya
+// guardó— y por eso sigue en español aunque la etiqueta se traduzca.
+export const INBOX_TABS: readonly InboxTab[] = ["mensajes", "comentarios"]
 
 export function isInboxTab(value: unknown): value is InboxTab {
-  return INBOX_TABS.some((tab) => tab.id === value)
+  return INBOX_TABS.some((tab) => tab === value)
 }
 
 // `searchParams` de Next puede entregar `string`, `string[]` (`?tab=a&tab=b`)

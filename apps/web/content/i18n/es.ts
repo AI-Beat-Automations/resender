@@ -409,6 +409,9 @@ export const es: Dict = {
       invalidCredentials: "Email o contraseña incorrectos.",
       duplicateEmail: "Ese email ya está registrado. Inicia sesión.",
       invalidInput: "Revisa el email y la contraseña e inténtalo de nuevo.",
+      invalidEmail: "Escribe un email válido.",
+      passwordTooShort: "La contraseña debe tener al menos 8 caracteres.",
+      passwordsDoNotMatch: "Las contraseñas no coinciden.",
       createdNoSignin:
         "Creamos tu cuenta, pero no pudimos iniciar la sesión. Entra desde Iniciar sesión.",
     },

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 
 import { auth } from "@/auth"
+import { getAppDict } from "@/lib/i18n/app-dict"
 import {
   disconnectPage,
   getActivePageWithTokenByConnectionId,
@@ -12,11 +13,7 @@ import {
   updatePageWebhookUrl,
 } from "@/lib/pages/page-registry"
 import { unsubscribeChannelWebhook } from "@/lib/pages/channel-webhook"
-import {
-  accountFields,
-  describeError,
-  log,
-} from "@/lib/observability/logger"
+import { accountFields, describeError, log } from "@/lib/observability/logger"
 import { posthog } from "@/lib/posthog"
 
 export type ConnectionActionState = {
@@ -32,12 +29,13 @@ export async function saveWebhookUrlAction(
   _state: ConnectionActionState,
   formData: FormData
 ): Promise<ConnectionActionState> {
+  const t = await getAppDict()
   const session = await auth()
-  if (!session?.user?.id) return { error: "No has iniciado sesión." }
+  if (!session?.user?.id) return { error: t.actions.notSignedIn }
 
   const connectionId = formData.get("connectionId")
   if (typeof connectionId !== "string" || !connectionId) {
-    return { error: "Página inválida." }
+    return { error: t.actions.invalidPage }
   }
 
   try {
@@ -47,7 +45,7 @@ export async function saveWebhookUrlAction(
       formData.get("webhookUrl")
     )
 
-    if (!updated) return { error: "No encontramos esa página." }
+    if (!updated) return { error: t.actions.pageNotFound }
 
     log({
       entrypoint: "action",
@@ -81,16 +79,21 @@ export async function saveWebhookUrlAction(
     revalidatePath("/connections")
     return secret
       ? {
-          message: "Webhook actualizado. Copia el secreto de firma:",
+          message: t.actions.webhookUpdatedWithSecret,
           revealedSecret: secret,
         }
-      : { message: "Webhook actualizado." }
+      : { message: t.actions.webhookUpdated }
   } catch (error) {
-    // `normalizeWebhookUrl` (lib/pages/webhook-url.ts) ya devuelve su mensaje en
-    // español y solo lo consume esta pantalla, así que se propaga tal cual:
-    // distingue «tiene que ser https» de «no es una URL válida».
+    // `normalizeWebhookUrl` devuelve un código y no un mensaje: el texto se
+    // resuelve acá, que es donde hay idioma. Sigue distinguiendo «tiene que ser
+    // https» de «no es una URL válida», que es la mitad útil del error.
     if (error instanceof InvalidWebhookUrlError) {
-      return { error: error.message }
+      return {
+        error:
+          error.code === "not_https"
+            ? t.actions.webhookUrlNotHttps
+            : t.actions.webhookUrlInvalid,
+      }
     }
     throw error
   }
@@ -100,12 +103,13 @@ export async function disconnectPageAction(
   _state: ConnectionActionState,
   formData: FormData
 ): Promise<ConnectionActionState> {
+  const t = await getAppDict()
   const session = await auth()
-  if (!session?.user?.id) return { error: "No has iniciado sesión." }
+  if (!session?.user?.id) return { error: t.actions.notSignedIn }
 
   const connectionId = formData.get("connectionId")
   if (typeof connectionId !== "string" || !connectionId) {
-    return { error: "Página inválida." }
+    return { error: t.actions.invalidPage }
   }
 
   let pageToUnsubscribe: Awaited<
@@ -131,7 +135,7 @@ export async function disconnectPageAction(
   }
 
   const disconnected = await disconnectPage(session.user.id, connectionId)
-  if (!disconnected) return { error: "No encontramos esa página." }
+  if (!disconnected) return { error: t.actions.pageNotFound }
 
   log({
     entrypoint: "action",
@@ -176,7 +180,7 @@ export async function disconnectPageAction(
   }
 
   revalidatePath("/connections")
-  return { message: "Página desconectada. El historial se conserva." }
+  return { message: t.actions.disconnected }
 }
 
 // Rotar es la única forma de volver a ver un secreto, y por eso invalida el
@@ -186,16 +190,17 @@ export async function rotateWebhookSecretAction(
   _state: ConnectionActionState,
   formData: FormData
 ): Promise<ConnectionActionState> {
+  const t = await getAppDict()
   const session = await auth()
-  if (!session?.user?.id) return { error: "No has iniciado sesión." }
+  if (!session?.user?.id) return { error: t.actions.notSignedIn }
 
   const connectionId = formData.get("connectionId")
   if (typeof connectionId !== "string" || !connectionId) {
-    return { error: "Página inválida." }
+    return { error: t.actions.invalidPage }
   }
 
   const secret = await rotateWebhookSigningSecret(session.user.id, connectionId)
-  if (!secret) return { error: "No encontramos esa página." }
+  if (!secret) return { error: t.actions.pageNotFound }
 
   log({
     entrypoint: "action",
@@ -209,7 +214,7 @@ export async function rotateWebhookSecretAction(
 
   revalidatePath("/connections")
   return {
-    message: "Secreto rotado. Cópialo ahora: no vuelve a mostrarse.",
+    message: t.actions.secretRotated,
     revealedSecret: secret,
   }
 }
