@@ -27,6 +27,14 @@ describe("buildFacebookLoginOptions", () => {
     )
   })
 
+  it("manda version v4: es lo que genera el propio App Dashboard", () => {
+    // El enlace de la landing alojada por Meta sale con
+    // `extras={"version":"v4","sessionInfoVersion":"3","featureType":"..."}`.
+    // v2 se deprecia el 2026-10-15, así que la versión va explícita y no al
+    // default.
+    expect(buildFacebookLoginOptions("cfg").extras.version).toBe("v4")
+  })
+
   it("manda siempre el featureType, porque es aditivo y no restrictivo", () => {
     // Verificado contra el diálogo real: con el `featureType` puesto el
     // desplegable ofrece las tres opciones —cuenta nueva, «Conecta una
