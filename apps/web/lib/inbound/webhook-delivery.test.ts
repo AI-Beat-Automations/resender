@@ -14,7 +14,9 @@ vi.mock("@/lib/db", () => ({
 vi.mock("@/lib/posthog", () => ({ posthog: null }))
 
 vi.mock("@opennextjs/cloudflare", () => ({
-  getCloudflareContext: () => ({ env: { WEBHOOK_DELIVERIES: { send: sendMock } } }),
+  getCloudflareContext: () => ({
+    env: { WEBHOOK_DELIVERIES: { send: sendMock } },
+  }),
 }))
 
 import { encryptSecret } from "@/lib/crypto/encryption"
@@ -98,7 +100,10 @@ describe("eventIdFor", () => {
   // Determinista y derivado del uuid: el mismo evento reingerido produce el
   // mismo id, que es de lo que se agarra el consumidor para deduplicar.
   it("deriva un id estable del uuid del sujeto", () => {
-    const subject = { kind: "message" as const, id: "0189a1b2-c3d4-4e5f-8a9b-0c1d2e3f4a5b" }
+    const subject = {
+      kind: "message" as const,
+      id: "0189a1b2-c3d4-4e5f-8a9b-0c1d2e3f4a5b",
+    }
     expect(eventIdFor(subject)).toBe("evt_0189a1b2c3d44e5f8a9b0c1d2e3f4a5b")
     expect(eventIdFor(subject)).toBe(eventIdFor(subject))
   })
@@ -163,7 +168,7 @@ describe("enqueueDelivery", () => {
       "http://example.com/hook",
       "failed",
       null,
-      "La URL tiene que usar https. Solo se permite http en localhost, para desarrollo.",
+      "webhookUrl invalid: not_https",
       1,
     ])
   })
@@ -190,7 +195,9 @@ describe("enqueueDelivery", () => {
     // recibiría el mismo mensaje dos veces.
     sqlMock
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ id: "job-1", status: "succeeded", attempt_count: 1 }])
+      .mockResolvedValueOnce([
+        { id: "job-1", status: "succeeded", attempt_count: 1 },
+      ])
 
     await enqueueDelivery({
       subject: { kind: "message", id: "message-1" },
@@ -206,7 +213,9 @@ describe("enqueueDelivery", () => {
     // pero cinco minutos después.
     sqlMock
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ id: "job-1", status: "pending", attempt_count: 0 }])
+      .mockResolvedValueOnce([
+        { id: "job-1", status: "pending", attempt_count: 0 },
+      ])
 
     await enqueueDelivery({
       subject: { kind: "message", id: "message-1" },
@@ -220,7 +229,9 @@ describe("enqueueDelivery", () => {
 
 describe("deliverJob", () => {
   it("entrega y cierra el job cuando el tenant responde 200", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 200 }))
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 200 }))
     sqlMock
       .mockResolvedValueOnce([{ id: "job-1" }]) // claim
       .mockResolvedValueOnce([jobRow]) // getJob
@@ -236,7 +247,9 @@ describe("deliverJob", () => {
   it("firma el push cuando la conexión tiene secreto", async () => {
     process.env.TOKEN_ENCRYPTION_KEY = "0".repeat(64)
     const secret = generateWebhookSigningSecret()
-    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 200 }))
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 200 }))
     sqlMock
       .mockResolvedValueOnce([{ id: "job-1" }])
       .mockResolvedValueOnce([
@@ -265,7 +278,9 @@ describe("deliverJob", () => {
   // Dejar de entregarles por un secreto que nunca se les pidió sería romperles el
   // producto para mejorarles la seguridad.
   it("entrega sin firmar cuando la conexión no tiene secreto", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 200 }))
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 200 }))
     sqlMock
       .mockResolvedValueOnce([{ id: "job-1" }])
       .mockResolvedValueOnce([jobRow])
@@ -279,7 +294,9 @@ describe("deliverJob", () => {
   })
 
   it("pide reintento con el retardo del intento actual ante un 503", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 503 }))
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 503 }))
     sqlMock
       .mockResolvedValueOnce([{ id: "job-1" }])
       .mockResolvedValueOnce([{ ...jobRow, attempt_count: 2 }])
@@ -290,7 +307,9 @@ describe("deliverJob", () => {
   })
 
   it("no reintenta un 404 del endpoint del tenant", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 404 }))
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 404 }))
     sqlMock
       .mockResolvedValueOnce([{ id: "job-1" }])
       .mockResolvedValueOnce([jobRow])
@@ -330,7 +349,9 @@ describe("deliverJob", () => {
     const fetchMock = vi.fn()
     sqlMock
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ ...jobRow, status: "processing", attempt_count: 1 }])
+      .mockResolvedValueOnce([
+        { ...jobRow, status: "processing", attempt_count: 1 },
+      ])
 
     const result = await deliverJob({ jobId: "job-1", fetcher: fetchMock })
 

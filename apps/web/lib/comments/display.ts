@@ -4,6 +4,8 @@ import {
   formatMessageMeta,
 } from "@/lib/inbox/log-format"
 
+import { fmt, type AppDict } from "@/content/i18n/app"
+
 import type { PublicationComment, PublicationListItem } from "./read-model"
 
 // Presentación del log de comentarios. Gemelo de `lib/messages/display.ts`:
@@ -52,12 +54,15 @@ export type CommentBubbleView = {
 // caption y el permalink salen de Graph y se cachean (migración 0014); este
 // sustantivo más el id es la caída para cuando todavía no se resolvieron o
 // Meta no los devuelve.
-const MEDIA_NOUNS: Record<string, string> = {
-  FEED: "publicación",
-  REELS: "reel",
-  STORY: "historia",
-  AD: "anuncio",
-}
+// El `media_product_type` que manda Meta, en mayúsculas, contra la clave del
+// diccionario. El mapa se queda acá porque es del webhook, no del idioma; el
+// sustantivo sale de `t.log.mediaNouns`.
+const MEDIA_NOUN_KEYS = {
+  FEED: "feed",
+  REELS: "reels",
+  STORY: "story",
+  AD: "ad",
+} as const satisfies Record<string, keyof AppDict["log"]["mediaNouns"]>
 
 // Un caption de Instagram puede tener 2200 caracteres y varios párrafos de
 // hashtags. En un renglón de log entra la primera línea y poco más.
@@ -77,17 +82,23 @@ export function formatCommentAuthorLabel(comment: {
  * `reel 17841400000000000`. Se recorta a la primera línea porque un caption
  * suele terminar en tres renglones de hashtags que no identifican nada.
  */
-export function formatMediaLabel(publication: {
-  mediaId: string
-  mediaProductType: string | null
-  caption?: string | null
-}) {
+export function formatMediaLabel(
+  publication: {
+    mediaId: string
+    mediaProductType: string | null
+    caption?: string | null
+  },
+  t: AppDict
+) {
   const caption = truncateCaption(publication.caption)
   if (caption) return caption
 
   const key = publication.mediaProductType?.trim().toUpperCase() ?? ""
-  const noun = MEDIA_NOUNS[key] ?? "publicación"
-  return `${noun} ${publication.mediaId}`
+  const nounKey =
+    key in MEDIA_NOUN_KEYS
+      ? MEDIA_NOUN_KEYS[key as keyof typeof MEDIA_NOUN_KEYS]
+      : "feed"
+  return `${t.log.mediaNouns[nounKey]} ${publication.mediaId}`
 }
 
 function truncateCaption(caption: string | null | undefined) {
@@ -98,8 +109,10 @@ function truncateCaption(caption: string | null | undefined) {
 }
 
 /** `1 comentario` · `12 comentarios`. */
-export function formatCommentCount(count: number) {
-  return count === 1 ? "1 comentario" : `${count} comentarios`
+export function formatCommentCount(count: number, t: AppDict) {
+  return count === 1
+    ? t.log.commentCountOne
+    : fmt(t.log.commentCountMany, { count })
 }
 
 /** `@cafe.rioja · ig_id 17841…`, igual que la tarjeta de Conexiones. */
@@ -128,26 +141,31 @@ export function formatPublicationKey(publication: {
 
 /** Renglón principal: el último comentario, con `Tú: ` si es saliente. */
 export function formatPublicationContent(
-  latestComment: PublicationListItem["latestComment"]
+  latestComment: PublicationListItem["latestComment"],
+  t: AppDict
 ) {
-  const prefix = latestComment.direction === "outbound" ? "Tú: " : ""
+  const prefix = latestComment.direction === "outbound" ? t.log.you : ""
   return `${prefix}${latestComment.text}`
 }
 
 export function toPublicationRowView(
   publication: PublicationListItem,
   now: Date,
+  t: AppDict,
   media?: { permalink: string | null; caption: string | null }
 ): PublicationRowView {
   return {
     key: formatPublicationKey(publication),
-    mediaLabel: formatMediaLabel({ ...publication, caption: media?.caption }),
+    mediaLabel: formatMediaLabel(
+      { ...publication, caption: media?.caption },
+      t
+    ),
     mediaPermalink: media?.permalink ?? null,
     accountLabel: formatAccountLabel(publication.account),
-    countLabel: formatCommentCount(publication.commentCount),
-    timestamp: formatLogTimestamp(publication.lastCommentAt, now),
+    countLabel: formatCommentCount(publication.commentCount, t),
+    timestamp: formatLogTimestamp(publication.lastCommentAt, now, t),
     timestampIso: publication.lastCommentAt.toISOString(),
-    content: formatPublicationContent(publication.latestComment),
+    content: formatPublicationContent(publication.latestComment, t),
     failed: publication.latestComment.status === "failed",
   }
 }
@@ -160,7 +178,8 @@ export function toPublicationRowView(
  * inventa nada.
  */
 export function toCommentBubbleViews(
-  comments: PublicationComment[]
+  comments: PublicationComment[],
+  t: AppDict
 ): CommentBubbleView[] {
   const authorByCommentId = new Map<string, string>()
   for (const comment of comments) {
@@ -175,7 +194,7 @@ export function toCommentBubbleViews(
   let previousDay: string | null = null
 
   return comments.map((comment) => {
-    const dayLabel = formatDayLabel(comment.createdAt)
+    const dayLabel = formatDayLabel(comment.createdAt, t)
     const isNewDay = dayLabel !== previousDay
     previousDay = dayLabel
     const failed = comment.status === "failed"
@@ -186,8 +205,8 @@ export function toCommentBubbleViews(
       : undefined
     const meta = [
       author,
-      formatMessageMeta(comment),
-      parentAuthor ? `respondiendo a ${parentAuthor}` : null,
+      formatMessageMeta(comment, t),
+      parentAuthor ? fmt(t.log.replyingTo, { author: parentAuthor }) : null,
     ]
       .filter(Boolean)
       .join(" · ")

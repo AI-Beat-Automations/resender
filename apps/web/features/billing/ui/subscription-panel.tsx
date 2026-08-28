@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { ExternalLink } from "lucide-react"
 
+import { fmt, type AppDict } from "@/content/i18n/app"
 import { openPortal } from "@/features/billing/actions"
 import {
   SettingsCard,
@@ -30,21 +31,23 @@ export type SubscriptionView = {
 // un `form`, así que la pantalla no necesita cliente.
 export function SubscriptionPanel({
   subscription,
+  t,
 }: {
   subscription: SubscriptionView | null
+  t: AppDict
 }) {
   if (!subscription) {
     return (
       <SettingsCard>
         <div className="flex items-center justify-between gap-3">
-          <SettingsCardTitle>Suscripción</SettingsCardTitle>
-          <Badge variant="ghost">sin suscripción</Badge>
+          <SettingsCardTitle>{t.subscription.title}</SettingsCardTitle>
+          <Badge variant="ghost">{t.subscription.none}</Badge>
         </div>
         <p className="mt-3 text-[13.5px]/[1.6] text-muted-foreground">
-          No hay ninguna suscripción registrada para esta cuenta.
+          {t.subscription.noneBody}
         </p>
         <Button asChild size="lg" className="mt-4">
-          <Link href="/billing">Elegir un plan</Link>
+          <Link href="/billing">{t.subscription.choosePlan}</Link>
         </Button>
       </SettingsCard>
     )
@@ -60,7 +63,7 @@ export function SubscriptionPanel({
   return (
     <SettingsCard>
       <div className="flex items-center justify-between gap-3">
-        <SettingsCardTitle>Suscripción</SettingsCardTitle>
+        <SettingsCardTitle>{t.subscription.title}</SettingsCardTitle>
         {/* En minúscula y en inglés: es el valor literal de
             `subscription.status` (spec C.1). */}
         <Badge variant={statusBadgeVariant(subscription.status)}>
@@ -69,11 +72,13 @@ export function SubscriptionPanel({
       </div>
 
       <div className="mt-4 flex flex-col gap-2.5">
-        <SettingsDataRow label="plan" labelWidth={92}>
+        <SettingsDataRow label={t.subscription.planLabel} labelWidth={92}>
           <span className="text-[13.5px]">
             {subscription.planName}
             {subscription.planPriceMonthlyUsd !== null
-              ? ` · $${subscription.planPriceMonthlyUsd} / mes`
+              ? fmt(t.subscription.perMonth, {
+                  price: subscription.planPriceMonthlyUsd,
+                })
               : null}
           </span>
         </SettingsDataRow>
@@ -81,30 +86,38 @@ export function SubscriptionPanel({
           // Con la cancelación programada la fecha es la del corte, no la de
           // una renovación que no va a ocurrir.
           <SettingsDataRow
-            label={subscription.cancelAtPeriodEnd ? "cancela" : "renueva"}
+            label={
+              subscription.cancelAtPeriodEnd
+                ? t.subscription.cancelsLabel
+                : t.subscription.renewsLabel
+            }
             labelWidth={92}
           >
             <span className="text-[13.5px]">
-              {formatDate(subscription.currentPeriodEnd)}
+              {formatDate(subscription.currentPeriodEnd, t.intl)}
             </span>
           </SettingsDataRow>
         ) : null}
-        <SettingsDataRow label="conexiones" labelWidth={92}>
+        <SettingsDataRow
+          label={t.subscription.connectionsLabel}
+          labelWidth={92}
+        >
           {/* Contador, no barra: una barra para «2 de 5» es ruido
               (ADR 0005). */}
           <span className="font-mono text-[12.5px]">
-            {formatCount(subscription.pagesInUse)} /{" "}
-            {formatCount(subscription.pageLimit)}
+            {formatCount(subscription.pagesInUse, t.intl)} /{" "}
+            {formatCount(subscription.pageLimit, t.intl)}
           </span>
         </SettingsDataRow>
       </div>
 
       <div className="mt-4">
         <div className="flex items-baseline justify-between gap-3">
-          <span className="text-[13.5px]">Mensajes de este período</span>
+          <span className="text-[13.5px]">{t.subscription.periodMessages}</span>
           {bar.available ? (
             <span className="font-mono text-[12.5px] text-muted-foreground">
-              {formatCount(bar.usage)} / {formatCount(bar.limit)}
+              {formatCount(bar.usage, t.intl)} /{" "}
+              {formatCount(bar.limit, t.intl)}
             </span>
           ) : null}
         </div>
@@ -114,19 +127,18 @@ export function SubscriptionPanel({
             value={bar.percentage}
             max={100}
             tone={bar.tone}
-            aria-label="Consumo de mensajes del período"
+            aria-label={t.subscription.usageAria}
           />
         ) : (
           // Sin límite resuelto no hay barra: una barra vacía sugeriría cuota
           // libre cuando en realidad el plan no se pudo resolver (ADR 0005).
           <p className="mt-2 rounded-lg border border-destructive-soft-border bg-destructive-soft px-3.5 py-3 text-[13px]/[1.55] text-destructive-soft-foreground">
-            No pudimos resolver los límites de tu plan, así que no podemos
-            mostrarte el consumo. Escríbenos a{" "}
+            {t.subscription.limitsUnresolved}{" "}
             <a
-              href="mailto:info@resender.dev"
+              href={`mailto:${t.common.contactEmail}`}
               className="font-medium underline underline-offset-4"
             >
-              info@resender.dev
+              {t.common.contactEmail}
             </a>
             .
           </p>
@@ -136,12 +148,11 @@ export function SubscriptionPanel({
       <form action={openPortal} className="mt-4">
         <Button type="submit" variant="outline" size="lg">
           <ExternalLink className="size-[15px]" aria-hidden />
-          Administrar suscripción
+          {t.subscription.managePortal}
         </Button>
       </form>
       <p className="mt-3 text-[12.5px] text-muted-foreground">
-        Cambia de plan, actualiza tu método de pago o cancela en el portal de
-        clientes de Stripe.
+        {t.subscription.portalHint}
       </p>
     </SettingsCard>
   )
@@ -158,13 +169,13 @@ function statusBadgeVariant(
   return "ghost"
 }
 
-function formatCount(value: number | null): string {
+function formatCount(value: number | null, intl: string): string {
   if (value === null) return "—"
-  return value.toLocaleString("es-ES")
+  return value.toLocaleString(intl)
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("es-ES", {
+function formatDate(iso: string, intl: string): string {
+  return new Date(iso).toLocaleDateString(intl, {
     year: "numeric",
     month: "long",
     day: "numeric",

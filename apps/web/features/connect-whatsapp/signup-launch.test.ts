@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest"
 
+import { es } from "@/content/i18n/app/es"
+import { en } from "@/content/i18n/app/en"
+
 import {
   buildFacebookLoginOptions,
   parseWhatsappMode,
-  WHATSAPP_CONNECT_DESCRIPTION,
-  WHATSAPP_CONNECT_LABEL,
-  WHATSAPP_MODE_CAVEAT,
   WHATSAPP_SESSION_INFO_VERSION,
   WHATSAPP_SIGNUP_FEATURE_TYPE,
 } from "./signup-launch"
@@ -56,22 +56,38 @@ describe("parseWhatsappMode", () => {
 
 describe("el copy del único punto de entrada", () => {
   it("antes del clic avisa de que la elección de adentro tiene consecuencias", () => {
-    expect(WHATSAPP_CONNECT_LABEL).toBe("Conectar WhatsApp")
+    expect(es.whatsappSignup.connect).toBe("Conectar WhatsApp")
     // No se puede prometer una consecuencia concreta antes de que el usuario
     // elija dentro del diálogo, pero sí decir que hay elección y que no da
     // lo mismo cuál.
-    expect(WHATSAPP_CONNECT_DESCRIPTION).toMatch(/eliges|elijas/)
-    expect(WHATSAPP_CONNECT_DESCRIPTION).toMatch(/no da lo mismo/i)
+    expect(es.whatsappSignup.description).toMatch(/eliges|elijas/)
+    expect(es.whatsappSignup.description).toMatch(/no da lo mismo/i)
   })
 
   it("cada modo tiene su advertencia, para decirla al cerrarse la ventana", () => {
     // Estándar: lo que se pierde. Coexistence: el techo y el reloj.
-    expect(WHATSAPP_MODE_CAVEAT.standard).toContain(
+    expect(es.connections.whatsappModeCaveat.standard).toContain(
       "deja de poder usarse desde la app de WhatsApp Business"
     )
-    expect(WHATSAPP_MODE_CAVEAT.coexistence).toContain(
+    expect(es.connections.whatsappModeCaveat.coexistence).toContain(
       "20 mensajes por segundo"
     )
-    expect(WHATSAPP_MODE_CAVEAT.coexistence).toContain("24 horas")
+    expect(es.connections.whatsappModeCaveat.coexistence).toContain("24 horas")
+  })
+})
+
+describe("el mismo copy en inglés", () => {
+  it("dice la elección antes del clic y la consecuencia después", () => {
+    expect(en.whatsappSignup.connect).toBe("Connect WhatsApp")
+    expect(en.whatsappSignup.description).toMatch(/choose/i)
+    // Los dos datos duros de Coexistence sobreviven a la traducción: son el
+    // techo y el reloj, y quien no los lee se entera cuando ya es tarde.
+    expect(en.connections.whatsappModeCaveat.coexistence).toContain(
+      "20 messages per second"
+    )
+    expect(en.connections.whatsappModeCaveat.coexistence).toContain("24 hours")
+    expect(en.connections.whatsappModeCaveat.standard).toContain(
+      "can no longer be used from the WhatsApp Business app"
+    )
   })
 })

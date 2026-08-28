@@ -1,5 +1,6 @@
 import { ExternalLink, Eye, TriangleAlert } from "lucide-react"
 
+import type { AppDict } from "@/content/i18n/app"
 import type { CommentBubbleView } from "@/lib/comments/display"
 import { Badge } from "@workspace/ui/components/badge"
 import { cn } from "@workspace/ui/lib/utils"
@@ -23,9 +24,11 @@ export type CommentThreadHeaderView = {
 export function CommentThread({
   header,
   comments,
+  t,
 }: {
   header: CommentThreadHeaderView
   comments: CommentBubbleView[]
+  t: AppDict
 }) {
   return (
     <section className="flex min-w-0 flex-1 flex-col bg-surface-app">
@@ -44,7 +47,7 @@ export function CommentThread({
               >
                 <span className="truncate">{header.mediaLabel}</span>
                 <ExternalLink className="size-3 shrink-0" aria-hidden />
-                <span className="sr-only">Abrir en Instagram</span>
+                <span className="sr-only">{t.inbox.openInInstagram}</span>
               </a>
             ) : (
               header.mediaLabel
@@ -56,9 +59,9 @@ export function CommentThread({
         </div>
         {/* El badge declara lo que la pantalla no tiene: no hay compositor, las
             respuestas salen por la API externa. */}
-        <Badge variant="info" title="Las respuestas salen por la API externa">
+        <Badge variant="info" title={t.inbox.readOnlyHint}>
           <Eye aria-hidden />
-          solo lectura
+          {t.inbox.readOnly}
         </Badge>
       </header>
 

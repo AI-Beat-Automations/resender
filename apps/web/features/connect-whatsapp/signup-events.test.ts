@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest"
 
+import { es } from "@/content/i18n/app/es"
+
 import {
   describeWhatsappSignupEvent,
   readWhatsappSignupEvent,
@@ -235,14 +237,17 @@ describe("readWhatsappSignupEvent — el modo sale del evento de cierre", () => 
 describe("describeWhatsappSignupEvent", () => {
   it("calla en los dos casos que no son un mensaje para el usuario", () => {
     expect(
-      describeWhatsappSignupEvent({
-        kind: "finished",
-        mode: "standard",
-        assets: { wabaId: "1", phoneNumberId: "2", businessId: null },
-      })
+      describeWhatsappSignupEvent(
+        {
+          kind: "finished",
+          mode: "standard",
+          assets: { wabaId: "1", phoneNumberId: "2", businessId: null },
+        },
+        es
+      )
     ).toBeNull()
     expect(
-      describeWhatsappSignupEvent({ kind: "foreign-origin", origin: "x" })
+      describeWhatsappSignupEvent({ kind: "foreign-origin", origin: "x" }, es)
     ).toBeNull()
   })
 
@@ -257,38 +262,50 @@ describe("describeWhatsappSignupEvent", () => {
   })
 
   it("no dice «error» cuando el usuario terminó bien por otra variante", () => {
-    const message = describeWhatsappSignupEvent({
-      kind: "unsupported-flow",
-      event: "FINISH_OBO_MIGRATION",
-    })
+    const message = describeWhatsappSignupEvent(
+      {
+        kind: "unsupported-flow",
+        event: "FINISH_OBO_MIGRATION",
+      },
+      es
+    )
 
     expect(message).not.toMatch(/error/i)
   })
 
   it("nombra el paso donde el usuario cerró, y lo omite si no lo conoce", () => {
     expect(
-      describeWhatsappSignupEvent({
-        kind: "abandoned",
-        currentStep: "PHONE_NUMBER_VERIFICATION",
-      })
+      describeWhatsappSignupEvent(
+        {
+          kind: "abandoned",
+          currentStep: "PHONE_NUMBER_VERIFICATION",
+        },
+        es
+      )
     ).toContain("la verificación del número")
 
     expect(
-      describeWhatsappSignupEvent({
-        kind: "abandoned",
-        currentStep: "PASO_NUEVO",
-      })
+      describeWhatsappSignupEvent(
+        {
+          kind: "abandoned",
+          currentStep: "PASO_NUEVO",
+        },
+        es
+      )
     ).not.toContain("PASO_NUEVO")
   })
 
   it("cita el código y la sesión del error que reportó Meta", () => {
     expect(
-      describeWhatsappSignupEvent({
-        kind: "reported-error",
-        errorMessage: "no elegible",
-        errorCode: "42",
-        sessionId: "s9",
-      })
+      describeWhatsappSignupEvent(
+        {
+          kind: "reported-error",
+          errorMessage: "no elegible",
+          errorCode: "42",
+          sessionId: "s9",
+        },
+        es
+      )
     ).toBe(
       "Meta rechazó la conexión: no elegible (código 42 · sesión s9 — cítalos si escribes a soporte)."
     )

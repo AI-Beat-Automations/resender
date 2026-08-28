@@ -29,6 +29,8 @@ const CLOSED_CHANNEL_ACCESS: ChannelAccess = {
   instagram: false,
   whatsapp: false,
 }
+import { fmt, type AppDict } from "@/content/i18n/app"
+import { getAppDict } from "@/lib/i18n/app-dict"
 import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
 import { offersChannel } from "@/lib/pages/channel-display"
 import { formatMetaConnectionError } from "@/lib/pages/meta-connection-error"
@@ -40,13 +42,17 @@ type ConnectedPage = { id: string; name: string }
 // muestra el bloqueo y no un «N de ?» inventado (ADR 0005).
 type PageQuotaView = { activePageCount: number; maxPages: number } | null
 
-const dateTimeFormat = new Intl.DateTimeFormat("es-ES", {
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-})
+// El formato de fecha depende del idioma, así que ya no puede ser un módulo
+// suelto: se construye por petición con el `intl` del diccionario.
+function dateTimeFormatFor(intl: string) {
+  return new Intl.DateTimeFormat(intl, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+}
 
 export default async function ConnectionsPage({
   searchParams,
@@ -60,6 +66,7 @@ export default async function ConnectionsPage({
   }>
 }) {
   const { meta, pages, reason, instagram, username } = await searchParams
+  const t = await getAppDict()
   const connected = parseConnectedPages(pages)
   const session = await auth()
   const tenantId = session?.user?.id ?? null
@@ -86,22 +93,22 @@ export default async function ConnectionsPage({
       <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="font-mono text-[11px] tracking-[0.08em] text-[var(--text-subtle)]">
-            {"// conexiones"}
+            {`// ${t.connections.eyebrow}`}
           </p>
           <h1 className="mt-1.5 font-heading text-[26px] font-bold tracking-[-0.02em]">
-            Conexiones
+            {t.connections.title}
           </h1>
           <p className="mt-2 max-w-[620px] text-[14.5px]/[1.6] text-muted-foreground">
-            Conecta tus páginas de Facebook, tus cuentas de Instagram y tus
-            números de WhatsApp, configura un webhook por cuenta y desconecta
-            canales sin borrar el historial.
+            {t.connections.subtitle}
           </p>
         </div>
         {/* En el estado vacío los CTA viven en las tarjetas de abajo, no acá. */}
         {tenantPages.length > 0 && (
           <div className="flex shrink-0 flex-wrap gap-2.5">
-            <ConnectFacebookButton />
-            {offersInstagram && <ConnectInstagramButton />}
+            <ConnectFacebookButton label={t.connections.connectFacebook} />
+            {offersInstagram && (
+              <ConnectInstagramButton label={t.connections.connectInstagram} />
+            )}
             {offersWhatsapp && <ConnectWhatsAppButton />}
           </div>
         )}
@@ -112,11 +119,11 @@ export default async function ConnectionsPage({
           <div className="flex items-center gap-3 rounded-lg border border-success-soft-border bg-success-soft px-4 py-3 text-success-soft-foreground">
             <Check className="size-4 shrink-0" aria-hidden />
             <p className="flex-1 text-[13.5px]">
-              {formatConnectedSummary(connected)}
+              {formatConnectedSummary(connected, t)}
             </p>
             <Link
               href="/connections"
-              aria-label="Descartar el aviso"
+              aria-label={t.common.dismissNotice}
               className="shrink-0 opacity-60 hover:opacity-100"
             >
               <X className="size-[15px]" aria-hidden />
@@ -131,12 +138,12 @@ export default async function ConnectionsPage({
             <Check className="size-4 shrink-0" aria-hidden />
             <p className="flex-1 text-[13.5px]">
               {username
-                ? `Conectado: la cuenta de Instagram @${username} quedó autorizada.`
-                : "Conectado: la cuenta de Instagram quedó autorizada."}
+                ? fmt(t.connections.noticeInstagramNamed, { username })
+                : t.connections.noticeInstagram}
             </p>
             <Link
               href="/connections"
-              aria-label="Descartar el aviso"
+              aria-label={t.common.dismissNotice}
               className="shrink-0 opacity-60 hover:opacity-100"
             >
               <X className="size-[15px]" aria-hidden />
@@ -154,7 +161,7 @@ export default async function ConnectionsPage({
               aria-hidden
             />
             <p className="flex-1 text-[13px]/[1.5]">
-              {formatMetaConnectionError(reason)}
+              {formatMetaConnectionError(reason, t)}
             </p>
           </div>
         )}
@@ -163,19 +170,20 @@ export default async function ConnectionsPage({
           <EmptyState
             offersInstagram={offersInstagram}
             offersWhatsapp={offersWhatsapp}
+            t={t}
           />
         ) : (
           <>
             <div className="mt-0.5 flex flex-wrap items-baseline justify-between gap-2">
               <h2 className="font-mono text-[11px] tracking-[0.08em] text-muted-foreground">
-                CUENTAS CONECTADAS
+                {t.connections.connectedAccountsHeading}
               </h2>
-              <PageQuota quota={quota} />
+              <PageQuota quota={quota} t={t} />
             </div>
             {sortedPages.map((page) => (
               <ConnectedPageCard
                 key={page.id}
-                page={toPageView(page, access)}
+                page={toPageView(page, access, t)}
                 showWebhookHint={page.id === firstActiveId}
               />
             ))}
@@ -194,9 +202,11 @@ export default async function ConnectionsPage({
 function EmptyState({
   offersInstagram,
   offersWhatsapp,
+  t,
 }: {
   offersInstagram: boolean
   offersWhatsapp: boolean
+  t: AppDict
 }) {
   return (
     <>
@@ -208,12 +218,14 @@ function EmptyState({
           <Link2 className="size-5" />
         </span>
         <div className="flex-1">
-          <h2 className="font-heading text-base font-semibold">Facebook</h2>
+          <h2 className="font-heading text-base font-semibold">
+            {t.connections.empty.facebookTitle}
+          </h2>
           <p className="mt-1 text-[13.5px] text-muted-foreground">
-            Autoriza tus páginas desde Meta para empezar a recibir mensajes.
+            {t.connections.empty.facebookBody}
           </p>
         </div>
-        <ConnectFacebookButton />
+        <ConnectFacebookButton label={t.connections.connectFacebook} />
       </section>
 
       {offersInstagram && (
@@ -225,13 +237,14 @@ function EmptyState({
             <AtSign className="size-5" />
           </span>
           <div className="flex-1">
-            <h2 className="font-heading text-base font-semibold">Instagram</h2>
+            <h2 className="font-heading text-base font-semibold">
+              {t.connections.empty.instagramTitle}
+            </h2>
             <p className="mt-1 text-[13.5px] text-muted-foreground">
-              Autoriza tu cuenta profesional para recibir mensajes directos y
-              comentarios. No necesitas una página de Facebook.
+              {t.connections.empty.instagramBody}
             </p>
           </div>
-          <ConnectInstagramButton />
+          <ConnectInstagramButton label={t.connections.connectInstagram} />
         </section>
       )}
 
@@ -244,12 +257,11 @@ function EmptyState({
             <MessageCircle className="size-5" />
           </span>
           <div className="flex-1">
-            <h2 className="font-heading text-base font-semibold">WhatsApp</h2>
+            <h2 className="font-heading text-base font-semibold">
+              {t.connections.empty.whatsappTitle}
+            </h2>
             <p className="mt-1 text-[13.5px] text-muted-foreground">
-              Da de alta un número nuevo, o conecta el que ya usas en WhatsApp
-              Business App sin dejar de usarlo desde el teléfono. Solo se puede
-              responder dentro de las 24 horas posteriores al último mensaje del
-              cliente.
+              {t.connections.empty.whatsappBody}
             </p>
           </div>
           <ConnectWhatsAppButton />
@@ -259,18 +271,16 @@ function EmptyState({
       <section className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-border-strong bg-card p-10 text-center">
         <div className="max-w-[460px]">
           <h3 className="font-heading text-[19px] font-semibold tracking-[-0.02em]">
-            Todavía no hay cuentas conectadas.
+            {t.connections.empty.title}
           </h3>
           <p className="mt-2 text-sm/[1.6] text-muted-foreground">
-            Cuando autorices una cuenta aparecerá acá, con su webhook y su
-            estado. Reconectar actualiza el token y los metadatos sin duplicar
-            cuentas.
+            {t.connections.empty.body}
           </p>
         </div>
         <ol className="flex flex-wrap justify-center gap-x-[22px] gap-y-1.5 font-mono text-[11px] text-[var(--text-subtle)]">
-          <li>1 · autorizas la cuenta</li>
-          <li>2 · apuntas tu webhook</li>
-          <li>3 · llega el primer mensaje</li>
+          <li>{t.connections.empty.step1}</li>
+          <li>{t.connections.empty.step2}</li>
+          <li>{t.connections.empty.step3}</li>
         </ol>
       </section>
     </>
@@ -281,18 +291,21 @@ function EmptyState({
 // cuenta de Instagram ocupa slot igual que una Página de Facebook. El contador
 // dice «conexiones» y no «páginas» justamente para que nadie busque por qué su
 // cuenta de IG no suma —lo hace—.
-function PageQuota({ quota }: { quota: PageQuotaView }) {
+function PageQuota({ quota, t }: { quota: PageQuotaView; t: AppDict }) {
   if (!quota) {
     return (
       <p className="font-mono text-[11px] text-[var(--danger-text)]">
-        cupo sin resolver · escríbenos a info@resender.dev
+        {t.connections.quotaUnresolved}
       </p>
     )
   }
 
   return (
     <p className="font-mono text-[11px] text-muted-foreground">
-      {quota.activePageCount} de {quota.maxPages} conexiones
+      {fmt(t.connections.quota, {
+        activePageCount: quota.activePageCount,
+        maxPages: quota.maxPages,
+      })}
     </p>
   )
 }
@@ -322,8 +335,11 @@ async function resolvePageQuota(tenantId: string): Promise<PageQuotaView> {
 
 function toPageView(
   page: Awaited<ReturnType<typeof listTenantPages>>[number],
-  access: ChannelAccess
+  access: ChannelAccess,
+  t: AppDict
 ): ConnectedPageView {
+  const dateTimeFormat = dateTimeFormatFor(t.intl)
+
   return {
     id: page.id,
     channel: page.channel,
@@ -371,16 +387,24 @@ function parseConnectedPages(pages?: string): ConnectedPage[] {
 
 // Qué páginas quedaron autorizadas al volver de Meta, con su id: es la única
 // confirmación que tiene el usuario de qué acaba de conectar.
-function formatConnectedSummary(connected: ConnectedPage[]): string {
-  if (connected.length === 0) return "Conectado: la autorización se completó."
+function formatConnectedSummary(
+  connected: ConnectedPage[],
+  t: AppDict
+): string {
+  if (connected.length === 0) return t.connections.noticeConnectedGeneric
 
   const names = connected.map((page) => `${page.name} (${page.id})`)
   const list =
     names.length === 1
-      ? names[0]
-      : `${names.slice(0, -1).join(", ")} y ${names[names.length - 1]}`
+      ? (names[0] ?? "")
+      : `${names.slice(0, -1).join(", ")} ${t.connections.listConjunction} ${
+          names[names.length - 1] ?? ""
+        }`
 
-  return `Conectado: ${connected.length} ${
-    connected.length === 1 ? "página autorizada" : "páginas autorizadas"
-  } — ${list}.`
+  return connected.length === 1
+    ? fmt(t.connections.noticeConnectedOne, { list })
+    : fmt(t.connections.noticeConnectedMany, {
+        count: connected.length,
+        list,
+      })
 }

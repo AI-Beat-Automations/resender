@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
+  cookieGet: vi.fn(),
   auth: vi.fn(),
   connectAuthorizedPages: vi.fn(),
   countActivePages: vi.fn(),
@@ -17,6 +18,12 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("next/cache", () => ({
   revalidatePath: mocks.revalidatePath,
+}))
+
+// El idioma de la acción sale de la cookie `lang`; sin cookie cae en español,
+// que es el idioma de las aserciones de abajo.
+vi.mock("next/headers", () => ({
+  cookies: async () => ({ get: mocks.cookieGet }),
 }))
 
 vi.mock("next/navigation", () => ({
@@ -102,6 +109,7 @@ const selection = (...pageIds: string[]) => {
 describe("connectSelectedPagesAction", () => {
   beforeEach(() => {
     for (const mock of Object.values(mocks)) mock.mockReset()
+    mocks.cookieGet.mockReturnValue(undefined)
     mocks.auth.mockResolvedValue({ user: { id: "tenant-1" } })
     mocks.isUserWaitlisted.mockResolvedValue(false)
     mocks.hasActiveSubscription.mockResolvedValue(true)

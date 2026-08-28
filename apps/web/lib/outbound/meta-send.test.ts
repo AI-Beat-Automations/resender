@@ -60,13 +60,11 @@ describe("Meta send helpers", () => {
 
   it("sends each attachment type with Graph's attachment payload", async () => {
     for (const type of ["image", "video", "audio", "file"] as const) {
-      const fetchSpy = vi
-        .spyOn(globalThis, "fetch")
-        .mockResolvedValueOnce(
-          new Response(JSON.stringify({ message_id: "mid.1" }), {
-            status: 200,
-          })
-        )
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+        new Response(JSON.stringify({ message_id: "mid.1" }), {
+          status: 200,
+        })
+      )
 
       const result = await sendMetaMessage({
         pageId: "page-1",
@@ -83,7 +81,10 @@ describe("Meta send helpers", () => {
         recipient: { id: "psid-1" },
         messaging_type: "RESPONSE",
         message: {
-          attachment: { type, payload: { url: "https://cdn.example.com/a.bin" } },
+          attachment: {
+            type,
+            payload: { url: "https://cdn.example.com/a.bin" },
+          },
         },
       })
 
@@ -181,7 +182,9 @@ describe("Meta send helpers", () => {
       expect(explainMetaError(data)).toBe(described?.message)
     }
 
-    expect(explainMetaError({ error: { code: 100, error_subcode: 2018001 } })).toBe(
+    expect(
+      explainMetaError({ error: { code: 100, error_subcode: 2018001 } })
+    ).toBe(
       "No matching user found: the recipient ID (PSID) doesn't belong to this Page."
     )
   })

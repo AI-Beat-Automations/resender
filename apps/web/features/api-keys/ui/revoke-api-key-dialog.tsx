@@ -3,6 +3,8 @@
 import { useState, useTransition } from "react"
 import { LoaderCircle } from "lucide-react"
 
+import { fmt } from "@/content/i18n/app"
+import { useAppDict } from "@/content/i18n/app/provider"
 import { revokeApiKeyAction } from "@/features/api-keys/actions"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -28,6 +30,8 @@ export function RevokeApiKeyDialog({
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
+  const dict = useAppDict()
+  const t = dict.apiKeys
 
   // La acción se invoca a mano en vez de con `useActionState` para poder
   // cerrar el diálogo cuando confirma; la fila ya vuelve como revocada por el
@@ -48,17 +52,13 @@ export function RevokeApiKeyDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button type="button" variant="destructive" size="sm">
-          Revocar
+          {t.revoke}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Revocar «{label}»</DialogTitle>
-          <DialogDescription>
-            El efecto es inmediato: las llamadas que usen esta key empiezan a
-            fallar. La key sigue visible en la lista como revocada, y no se
-            puede volver a activar.
-          </DialogDescription>
+          <DialogTitle>{fmt(t.revokeTitle, { label })}</DialogTitle>
+          <DialogDescription>{t.revokeBody}</DialogDescription>
         </DialogHeader>
         <form action={revoke}>
           <input type="hidden" name="apiKeyId" value={apiKeyId} />
@@ -68,7 +68,7 @@ export function RevokeApiKeyDialog({
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" variant="ghost" size="lg">
-                Cancelar
+                {dict.common.cancel}
               </Button>
             </DialogClose>
             <Button
@@ -80,10 +80,10 @@ export function RevokeApiKeyDialog({
               {pending ? (
                 <>
                   <LoaderCircle className="animate-spin" aria-hidden />
-                  Revocando…
+                  {t.revoking}
                 </>
               ) : (
-                "Sí, revocar"
+                t.revokeConfirm
               )}
             </Button>
           </DialogFooter>

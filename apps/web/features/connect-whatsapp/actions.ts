@@ -3,6 +3,7 @@
 import { cookies } from "next/headers"
 
 import { auth } from "@/auth"
+import { getAppDict } from "@/lib/i18n/app-dict"
 import { resolveWhatsappAccess } from "@/lib/auth/channel-access"
 import { isUserWaitlisted } from "@/lib/auth/waitlist"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
@@ -37,20 +38,21 @@ export type WhatsappSignupNonceState = {
  * clic.
  */
 export async function issueWhatsappSignupNonce(): Promise<WhatsappSignupNonceState> {
+  const t = await getAppDict()
   const session = await auth()
-  if (!session?.user?.id) return { error: "No has iniciado sesión." }
+  if (!session?.user?.id) return { error: t.actions.notSignedIn }
 
   // Los mismos gates que el cierre, y por el mismo motivo: emitir un nonce a
   // quien no puede conectar sería dejarle abrir el diálogo de Meta para que su
   // autorización muera al volver.
   if (await isUserWaitlisted(session.user.id)) {
-    return { error: "Tu cuenta está en la lista de espera." }
+    return { error: t.actions.waitlisted }
   }
   if (!(await hasActiveSubscription(session.user.id))) {
-    return { error: "Tu suscripción no está activa." }
+    return { error: t.actions.noSubscription }
   }
   if (!(await resolveWhatsappAccess(session.user.id))) {
-    return { error: "El canal de WhatsApp no está habilitado para tu cuenta." }
+    return { error: t.actions.whatsappNotEnabled }
   }
 
   const store = await cookies()
@@ -79,13 +81,14 @@ export type WhatsappPinState = {
 export async function revealWhatsappPin(
   connectionId: string
 ): Promise<WhatsappPinState> {
+  const t = await getAppDict()
   const session = await auth()
-  if (!session?.user?.id) return { error: "No has iniciado sesión." }
+  if (!session?.user?.id) return { error: t.actions.notSignedIn }
 
   // El gate de canal también acá: quitarle el permiso a una cuenta tiene que
   // cerrar todas las puertas del canal, no solo la de conectar.
   if (!(await resolveWhatsappAccess(session.user.id))) {
-    return { error: "El canal de WhatsApp no está habilitado para tu cuenta." }
+    return { error: t.actions.whatsappNotEnabled }
   }
 
   try {
@@ -95,8 +98,7 @@ export async function revealWhatsappPin(
       // tú»: distinguirlos le contaría a quien prueba ids ajenos cuáles
       // existen.
       return {
-        error:
-          "Este número no tiene un PIN generado por Resender. Si lo elegiste tú, revísalo en WhatsApp Manager.",
+        error: t.actions.whatsappNoPin,
       }
     }
 

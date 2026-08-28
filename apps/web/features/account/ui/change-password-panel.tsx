@@ -12,6 +12,7 @@ import {
   SettingsCard,
   SettingsCardTitle,
 } from "@/features/settings/ui/settings-card"
+import { useAppDict } from "@/content/i18n/app/provider"
 import { isPostHogEnabled } from "@/lib/posthog-client"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
@@ -19,6 +20,8 @@ import { Label } from "@workspace/ui/components/label"
 
 export function ChangePasswordPanel() {
   const posthog = usePostHog()
+  const dict = useAppDict()
+  const t = dict.account
 
   // El `reset()` va ANTES de la acción: en el camino feliz `changePasswordAction`
   // termina en `signOut`, que lanza un redirect, y ya no vuelve nada que
@@ -44,17 +47,16 @@ export function ChangePasswordPanel() {
 
   return (
     <SettingsCard>
-      <SettingsCardTitle>Cambiar contraseña</SettingsCardTitle>
+      <SettingsCardTitle>{t.passwordTitle}</SettingsCardTitle>
       {/* El cierre de sesión se avisa antes, no después: `changePasswordAction`
           termina en `signOut({ redirectTo: "/login?passwordChanged=1" })`. */}
       <p className="mt-1 max-w-140 text-[13.5px]/[1.55] text-muted-foreground">
-        Define una contraseña nueva. Al guardarla cerramos tu sesión y tendrás
-        que iniciar de nuevo.
+        {t.passwordBody}
       </p>
       <form action={action} className="mt-4 max-w-140">
         <div className="grid gap-3.5 sm:grid-cols-2">
           <div className="grid gap-2">
-            <Label htmlFor="newPassword">Contraseña nueva</Label>
+            <Label htmlFor="newPassword">{t.newPassword}</Label>
             <Input
               id="newPassword"
               name="newPassword"
@@ -62,11 +64,11 @@ export function ChangePasswordPanel() {
               autoComplete="new-password"
               required
               minLength={8}
-              placeholder="Al menos 8 caracteres"
+              placeholder={t.newPasswordPlaceholder}
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="confirmPassword">Repetir contraseña</Label>
+            <Label htmlFor="confirmPassword">{t.confirmPassword}</Label>
             <Input
               id="confirmPassword"
               name="confirmPassword"
@@ -74,21 +76,21 @@ export function ChangePasswordPanel() {
               autoComplete="new-password"
               required
               minLength={8}
-              placeholder="Repite la contraseña nueva"
+              placeholder={t.confirmPasswordPlaceholder}
             />
           </div>
         </div>
         <p className="mt-2 text-[12.5px] text-muted-foreground">
-          Mínimo 8 caracteres.
+          {t.passwordHint}
         </p>
         <Button type="submit" size="lg" className="mt-4" disabled={pending}>
           {pending ? (
             <>
               <LoaderCircle className="animate-spin" aria-hidden />
-              Guardando…
+              {dict.common.saving}
             </>
           ) : (
-            "Cambiar contraseña"
+            t.passwordSubmit
           )}
         </Button>
         {state.error ? (

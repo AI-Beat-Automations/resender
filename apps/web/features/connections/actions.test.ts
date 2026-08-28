@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   auth: vi.fn(),
+  cookieGet: vi.fn(),
   disconnectPage: vi.fn(),
   getActivePageWithTokenByConnectionId: vi.fn(),
   revalidatePath: vi.fn(),
@@ -11,6 +12,13 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("next/cache", () => ({
   revalidatePath: mocks.revalidatePath,
+}))
+
+// El idioma de la acción sale de la cookie `lang`. Sin store —que es lo que
+// devuelve este mock por defecto— cae en español, que es el idioma en el que
+// están escritas las aserciones de abajo.
+vi.mock("next/headers", () => ({
+  cookies: async () => ({ get: mocks.cookieGet }),
 }))
 
 vi.mock("@/auth", () => ({
@@ -24,7 +32,12 @@ vi.mock("@/lib/pages/channel-webhook", () => ({
 }))
 
 vi.mock("@/lib/pages/page-registry", () => {
-  class InvalidWebhookUrlError extends Error {}
+  // El doble tiene que llevar el `code`, que es lo que la acción traduce.
+  class InvalidWebhookUrlError extends Error {
+    constructor(readonly code: string) {
+      super(code)
+    }
+  }
 
   return {
     disconnectPage: mocks.disconnectPage,
@@ -40,12 +53,14 @@ vi.mock("@/lib/posthog", () => ({
 }))
 
 import { InvalidWebhookUrlError } from "@/lib/pages/page-registry"
+import { es } from "@/content/i18n/app/es"
 
 import { disconnectPageAction, saveWebhookUrlAction } from "./actions"
 
 describe("disconnectPageAction", () => {
   beforeEach(() => {
     for (const mock of Object.values(mocks)) mock.mockReset()
+    mocks.cookieGet.mockReturnValue(undefined)
     mocks.auth.mockResolvedValue({ user: { id: "tenant-1" } })
     mocks.disconnectPage.mockResolvedValue({
       id: "connection-1",
@@ -190,6 +205,7 @@ describe("disconnectPageAction", () => {
 describe("saveWebhookUrlAction", () => {
   beforeEach(() => {
     for (const mock of Object.values(mocks)) mock.mockReset()
+    mocks.cookieGet.mockReturnValue(undefined)
     mocks.auth.mockResolvedValue({ user: { id: "tenant-1" } })
     mocks.updatePageWebhookUrl.mockResolvedValue({
       id: "connection-1",
@@ -217,16 +233,30 @@ describe("saveWebhookUrlAction", () => {
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/connections")
   })
 
-  it("propagates the rule that the domain module already states in Spanish", async () => {
+  it("translates the code that the domain module returns", async () => {
+    // El módulo de dominio devuelve un código —lo comparte con la entrega de
+    // webhooks, que corre sin idioma—; el texto se resuelve acá.
     mocks.updatePageWebhookUrl.mockRejectedValue(
-      new InvalidWebhookUrlError("La URL tiene que usar https.")
+      new InvalidWebhookUrlError("not_https")
     )
 
     await expect(
       saveWebhookUrlAction({}, webhookForm("http://localhost:5678/webhook"))
-    ).resolves.toEqual({ error: "La URL tiene que usar https." })
+    ).resolves.toEqual({ error: es.actions.webhookUrlNotHttps })
 
     expect(mocks.revalidatePath).not.toHaveBeenCalled()
+  })
+
+  it("distinguishes a URL that is not https from one that is not a URL", async () => {
+    // Es la mitad útil del error: «pon https» y «eso no es una URL» se arreglan
+    // distinto.
+    mocks.updatePageWebhookUrl.mockRejectedValue(
+      new InvalidWebhookUrlError("invalid_url")
+    )
+
+    await expect(
+      saveWebhookUrlAction({}, webhookForm("no-es-una-url"))
+    ).resolves.toEqual({ error: es.actions.webhookUrlInvalid })
   })
 
   it("re-throws anything that is not a webhook URL error", async () => {

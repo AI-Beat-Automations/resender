@@ -32,15 +32,10 @@ import {
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 import {
-  CONNECTION_STATUS_BADGE,
+  CONNECTION_STATUS_VARIANT,
   resolveConnectionStatus,
 } from "@/lib/pages/channel-display"
 import {
-  CHANNEL_LABEL,
-  CHANNEL_NOUN,
-  COEXISTENCE_LIMITS,
-  ONBOARDING_MODE_LABEL,
-  TOKEN_INVALID_BODY,
   formatConnectionIdentity,
   resolveHistorySyncNotice,
   resolveReconnectHref,
@@ -50,6 +45,8 @@ import {
   type HistorySyncStatus,
   type WhatsappOnboardingMode,
 } from "@/lib/pages/connection-display"
+import { fmt, type AppDict } from "@/content/i18n/app"
+import { useAppDict } from "@/content/i18n/app/provider"
 import type { ChannelAccess } from "@/lib/auth/channel-access"
 import type { PageChannel } from "@/lib/pages/page-registry"
 
@@ -109,6 +106,7 @@ export function ConnectedPageCard({
     FormData
   >(rotateWebhookSecretAction, {})
 
+  const t = useAppDict()
   // El secreto se muestra una sola vez, venga de haber guardado la URL (que lo
   // genera si faltaba) o de una rotación explícita. No se guarda en ningún lado:
   // si el usuario recarga, se fue.
@@ -121,7 +119,7 @@ export function ConnectedPageCard({
   // El tercer eje (ADR 0010): la cuenta puede estar activa y con el token
   // válido, y aun así no tener el canal habilitado.
   const status = resolveConnectionStatus(page)
-  const statusBadge = CONNECTION_STATUS_BADGE[status]
+  const statusVariant = CONNECTION_STATUS_VARIANT[status]
   const noAccess = status === "no-access"
   const messenger = page.channel === "messenger"
   // Nada de `channel === "instagram" ? … : …`: con el ternario, el canal nuevo
@@ -130,7 +128,7 @@ export function ConnectedPageCard({
   // catálogos exhaustivos de `connection-display.ts`.
   const identity = formatConnectionIdentity(page)
   const reconnectHref = resolveReconnectHref(page)
-  const historySync = resolveHistorySyncNotice(page)
+  const historySync = resolveHistorySyncNotice(page, t)
   const coexistence = showsCoexistenceLimits(page)
   const pinReveal = offersPinReveal(page)
 
@@ -153,13 +151,17 @@ export function ConnectedPageCard({
                 lista es el dato que ordena todo lo demás —qué diálogo la
                 reconecta, qué endpoint le envía— y sin él las tarjetas son
                 indistinguibles salvo por el id. */}
-            <Badge variant="outline">{CHANNEL_LABEL[page.channel]}</Badge>
+            <Badge variant="outline">{t.channels.label[page.channel]}</Badge>
             {/* Los dos badges conviven en lugar de pisarse: este describe el
                 tráfico —«sin acceso» es tráfico cortado por el permiso del
                 canal—, y el de al lado describe el token. */}
-            <Badge variant={statusBadge.variant}>{statusBadge.label}</Badge>
+            <Badge variant={statusVariant}>
+              {t.channels.statusBadge[status]}
+            </Badge>
             {tokenInvalid && (
-              <Badge variant="destructive">token inválido</Badge>
+              <Badge variant="destructive">
+                {t.connectionCard.tokenInvalidBadge}
+              </Badge>
             )}
           </div>
           <p className="mt-1 font-mono text-[11.5px] text-[var(--text-subtle)]">
@@ -167,26 +169,28 @@ export function ConnectedPageCard({
                 Instagram, y el WABA junto al `phone_number_id` en WhatsApp —un
                 WABA puede tener varios números, así que sin él dos tarjetas del
                 mismo negocio son indistinguibles. */}
-            {identity.identity} · conectada el{" "}
+            {identity.identity} · {t.connectionCard.connectedOn}{" "}
             <time dateTime={page.connectedAt}>{page.connectedAtLabel}</time>
           </p>
         </div>
 
         {active ? (
-          <DisconnectDialog page={page} />
+          <DisconnectDialog page={page} t={t} />
         ) : messenger ? (
           // Una página desconectada del mismo tenant vuelve a `selectable`
           // (page-selection.ts:75), así que reconectarla es elegirla otra vez.
           // Es el único canal con pantalla de selección.
           <Button asChild variant="outline" size="sm">
-            <Link href="/connections/select">Volver a conectar</Link>
+            <Link href="/connections/select">
+              {t.connectionCard.reconnectAgain}
+            </Link>
           </Button>
         ) : (
           // Instagram y WhatsApp no tienen pantalla de selección —el diálogo
           // autoriza assets concretos—, así que reconectar es volver a
           // autorizar directo, cada uno por su propio flujo.
           <Button asChild variant="outline" size="sm">
-            <a href={reconnectHref}>Volver a conectar</a>
+            <a href={reconnectHref}>{t.connectionCard.reconnectAgain}</a>
           </Button>
         )}
       </div>
@@ -199,13 +203,12 @@ export function ConnectedPageCard({
           <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
           <div className="min-w-0 flex-1">
             <p className="text-[13.5px] font-medium">
-              El canal de {CHANNEL_LABEL[page.channel]} no está habilitado para
-              tu cuenta.
+              {fmt(t.connectionCard.noAccessTitle, {
+                channel: t.channels.label[page.channel],
+              })}
             </p>
             <p className="mt-1 text-[13px]/[1.55]">
-              La conexión sigue en pie y su historial disponible, pero no recibe
-              mensajes nuevos y no puede responder. Escríbenos a
-              info@resender.dev para habilitarlo.
+              {t.connectionCard.noAccessBody}
             </p>
           </div>
         </div>
@@ -216,17 +219,21 @@ export function ConnectedPageCard({
           <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
           <div className="min-w-0 flex-1">
             <p className="text-[13.5px] font-medium">
-              Hay que reconectar {CHANNEL_NOUN[page.channel]}.
+              {fmt(t.connectionCard.tokenInvalidTitle, {
+                noun: t.channels.noun[page.channel],
+              })}
             </p>
             <p className="mt-1 text-[13px]/[1.55]">
-              {TOKEN_INVALID_BODY[page.channel]}
+              {t.channels.tokenInvalidBody[page.channel]}
             </p>
             {(page.tokenError || page.tokenErrorAtLabel) && (
               <p className="mt-2 font-mono text-[11px] opacity-85">
                 {[
                   page.tokenError,
                   page.tokenErrorAtLabel
-                    ? `detectado el ${page.tokenErrorAtLabel}`
+                    ? fmt(t.connectionCard.tokenErrorDetectedOn, {
+                        date: page.tokenErrorAtLabel,
+                      })
                     : null,
                 ]
                   .filter(Boolean)
@@ -242,7 +249,7 @@ export function ConnectedPageCard({
             size="sm"
             className="shrink-0 self-start sm:self-center"
           >
-            <a href={reconnectHref}>Reconectar</a>
+            <a href={reconnectHref}>{t.connectionCard.reconnect}</a>
           </Button>
         </div>
       )}
@@ -255,25 +262,36 @@ export function ConnectedPageCard({
         <div className="mt-4 grid gap-3">
           <dl className="flex flex-wrap gap-x-6 gap-y-1.5 font-mono text-[11.5px] text-muted-foreground">
             <div className="flex gap-1.5">
-              <dt className="text-[var(--text-subtle)]">alta:</dt>
+              <dt className="text-[var(--text-subtle)]">
+                {t.connectionCard.whatsappOnboardingLabel}
+              </dt>
               <dd>
                 {page.onboardingMode
-                  ? ONBOARDING_MODE_LABEL[page.onboardingMode]
-                  : "sin registrar"}
+                  ? t.channels.onboardingMode[page.onboardingMode]
+                  : t.connectionCard.whatsappOnboardingUnknown}
               </dd>
             </div>
             <div className="flex gap-1.5">
-              <dt className="text-[var(--text-subtle)]">token:</dt>
+              <dt className="text-[var(--text-subtle)]">
+                {t.connectionCard.whatsappTokenLabel}
+              </dt>
               <dd>
-                {page.tokenStatus === "valid" ? "válido" : "rechazado por Meta"}
+                {page.tokenStatus === "valid"
+                  ? t.connectionCard.whatsappTokenValid
+                  : t.connectionCard.whatsappTokenRejected}
               </dd>
             </div>
             {/* La suscripción del WABA es lo que decide si llegan webhooks, y es
                 independiente del token: un número puede tener el token bien y no
                 estar suscrito, y ahí el silencio no tiene ninguna otra pista. */}
             <div className="flex gap-1.5">
-              <dt className="text-[var(--text-subtle)]">suscripción:</dt>
-              <dd>{page.coexistenceStatus ?? "sin datos"}</dd>
+              <dt className="text-[var(--text-subtle)]">
+                {t.connectionCard.whatsappSubscriptionLabel}
+              </dt>
+              <dd>
+                {page.coexistenceStatus ??
+                  t.connectionCard.whatsappSubscriptionUnknown}
+              </dd>
             </div>
           </dl>
 
@@ -284,13 +302,15 @@ export function ConnectedPageCard({
             />
           )}
 
-          {pinReveal && <WhatsappPinPanel connectionId={page.id} />}
+          {pinReveal && <WhatsappPinPanel connectionId={page.id} t={t} />}
 
           {coexistence && (
             <div className="rounded-lg border border-border bg-surface-sunken px-3.5 py-3">
-              <p className="text-[13px] font-medium">Límites de Coexistence</p>
+              <p className="text-[13px] font-medium">
+                {t.connectionCard.coexistenceLimitsTitle}
+              </p>
               <ul className="mt-1.5 grid gap-1 text-[12.5px]/[1.55] text-muted-foreground">
-                {COEXISTENCE_LIMITS.map((limit) => (
+                {t.channels.coexistenceLimits.map((limit) => (
                   <li key={limit} className="flex gap-2">
                     <span aria-hidden>·</span>
                     <span>{limit}</span>
@@ -306,14 +326,16 @@ export function ConnectedPageCard({
         <>
           <form action={saveAction} className="mt-4 grid gap-2">
             <input type="hidden" name="connectionId" value={page.id} />
-            <Label htmlFor={`webhook-${page.id}`}>Webhook URL</Label>
+            <Label htmlFor={`webhook-${page.id}`}>
+              {t.connectionCard.webhookLabel}
+            </Label>
             <div className="flex flex-col gap-2.5 sm:flex-row">
               <Input
                 id={`webhook-${page.id}`}
                 name="webhookUrl"
                 type="url"
                 defaultValue={page.webhookUrl ?? ""}
-                placeholder="https://tu-automatizacion.example/webhook"
+                placeholder={t.connectionCard.webhookPlaceholder}
                 aria-invalid={saveState.error ? true : undefined}
                 className="flex-1 font-mono"
               />
@@ -321,7 +343,7 @@ export function ConnectedPageCard({
                 {savePending && (
                   <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
                 )}
-                {savePending ? "Guardando…" : "Guardar"}
+                {savePending ? t.common.saving : t.common.save}
               </Button>
             </div>
             {saveState.error ? (
@@ -335,7 +357,7 @@ export function ConnectedPageCard({
               </p>
             ) : showWebhookHint ? (
               <p className="text-[12.5px] text-muted-foreground">
-                Cada mensaje entrante se reenvía con un POST a esta URL.
+                {t.connectionCard.webhookHint}
               </p>
             ) : null}
           </form>
@@ -346,7 +368,7 @@ export function ConnectedPageCard({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <Label className="flex items-center gap-1.5">
                 <KeyRound className="size-3.5" aria-hidden />
-                Secreto de firma
+                {t.connectionCard.signingSecretLabel}
               </Label>
               <form action={rotateAction}>
                 <input type="hidden" name="connectionId" value={page.id} />
@@ -363,10 +385,10 @@ export function ConnectedPageCard({
                     />
                   )}
                   {rotatePending
-                    ? "Rotando…"
+                    ? t.connectionCard.rotating
                     : page.hasSigningSecret
-                      ? "Rotar"
-                      : "Generar"}
+                      ? t.connectionCard.rotate
+                      : t.connectionCard.generate}
                 </Button>
               </form>
             </div>
@@ -374,7 +396,7 @@ export function ConnectedPageCard({
             {revealedSecret ? (
               <div className="grid gap-1.5 rounded-lg border border-[var(--warning-border,var(--border))] bg-surface-sunken px-3.5 py-3">
                 <p className="text-[12.5px] font-medium">
-                  Cópialo ahora: no vuelve a mostrarse.
+                  {t.connectionCard.secretRevealTitle}
                 </p>
                 <code className="block overflow-x-auto rounded bg-background px-2.5 py-2 font-mono text-[12.5px] select-all">
                   {revealedSecret}
@@ -387,8 +409,8 @@ export function ConnectedPageCard({
             ) : (
               <p className="text-[12.5px] text-muted-foreground">
                 {page.hasSigningSecret
-                  ? "Cada POST lleva las cabeceras resender-signature, resender-event-id y resender-timestamp. Rotar invalida el secreto anterior."
-                  : "Todavía sin firma: el receptor no puede verificar que el POST venga de Resender."}
+                  ? t.connectionCard.secretWithBody
+                  : t.connectionCard.secretWithoutBody}
               </p>
             )}
           </div>
@@ -398,9 +420,11 @@ export function ConnectedPageCard({
         // usuario duda de si perdió algo.
         <p className="mt-3.5 rounded-lg bg-surface-sunken px-3.5 py-3 text-[13px] text-muted-foreground">
           {page.disconnectedAtLabel
-            ? `Desconectada el ${page.disconnectedAtLabel}. `
-            : "Desconectada. "}
-          El historial sigue disponible en el log de mensajes.
+            ? fmt(t.connectionCard.disconnectedOn, {
+                date: page.disconnectedAtLabel,
+              })
+            : t.connectionCard.disconnectedNoDate}
+          {t.connectionCard.disconnectedHistoryKept}
         </p>
       )}
     </article>
@@ -439,7 +463,13 @@ const HISTORY_SYNC_TONE: Record<HistorySyncNotice["tone"], string> = {
 //
 // Se puede volver a ocultar a propósito: es un secreto que se lee, se anota y se
 // guarda, no algo que tenga que quedar a la vista del resto de la sesión.
-function WhatsappPinPanel({ connectionId }: { connectionId: string }) {
+function WhatsappPinPanel({
+  connectionId,
+  t,
+}: {
+  connectionId: string
+  t: AppDict
+}) {
   const [pin, setPin] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
@@ -455,19 +485,16 @@ function WhatsappPinPanel({ connectionId }: { connectionId: string }) {
       setError(
         "error" in result && result.error
           ? result.error
-          : "No pudimos recuperar el PIN ahora mismo. Vuelve a intentarlo."
+          : t.connectionCard.pinError
       )
     })
   }
 
   return (
     <div className="rounded-lg border border-border bg-surface-sunken px-3.5 py-3">
-      <p className="text-[13px] font-medium">Verificación en dos pasos</p>
+      <p className="text-[13px] font-medium">{t.connectionCard.pinTitle}</p>
       <p className="mt-1 text-[12.5px]/[1.55] text-muted-foreground">
-        Al registrar este número le activamos la verificación en dos pasos con
-        un PIN que generamos nosotros. Meta no vuelve a mostrarlo: necesitas
-        este PIN para volver a registrar el número, aquí o en cualquier otra
-        plataforma.
+        {t.connectionCard.pinBody}
       </p>
 
       {pin ? (
@@ -476,7 +503,7 @@ function WhatsappPinPanel({ connectionId }: { connectionId: string }) {
             {pin}
           </code>
           <Button variant="ghost" size="sm" onClick={() => setPin(null)}>
-            Ocultar
+            {t.connectionCard.pinHide}
           </Button>
         </div>
       ) : (
@@ -490,7 +517,7 @@ function WhatsappPinPanel({ connectionId }: { connectionId: string }) {
           {pending && (
             <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
           )}
-          {pending ? "Recuperando…" : "Ver PIN"}
+          {pending ? t.connectionCard.pinRevealing : t.connectionCard.pinReveal}
         </Button>
       )}
 
@@ -534,7 +561,13 @@ function HistorySyncPanel({
   )
 }
 
-function DisconnectDialog({ page }: { page: ConnectedPageView }) {
+function DisconnectDialog({
+  page,
+  t,
+}: {
+  page: ConnectedPageView
+  t: AppDict
+}) {
   const [state, action, pending] = useActionState<
     ConnectionActionState,
     FormData
@@ -550,7 +583,7 @@ function DisconnectDialog({ page }: { page: ConnectedPageView }) {
           size="sm"
           className="shrink-0 text-[var(--danger-text)]"
         >
-          Desconectar
+          {t.connectionCard.disconnect}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
@@ -562,11 +595,10 @@ function DisconnectDialog({ page }: { page: ConnectedPageView }) {
             <Unplug className="size-[17px]" />
           </span>
           <DialogTitle className="mt-3.5 text-[17px] tracking-[-0.02em]">
-            ¿Desconectar {page.name}?
+            {fmt(t.connectionCard.disconnectTitle, { name: page.name })}
           </DialogTitle>
           <DialogDescription className="mt-2 text-[13.5px]/[1.6]">
-            Dejará de recibir tráfico nuevo, pero el historial se conserva.
-            Puedes volver a conectarla más adelante.
+            {t.connectionCard.disconnectBody}
           </DialogDescription>
         </DialogHeader>
         <form action={action}>
@@ -579,7 +611,7 @@ function DisconnectDialog({ page }: { page: ConnectedPageView }) {
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" variant="ghost" size="lg">
-                Cancelar
+                {t.common.cancel}
               </Button>
             </DialogClose>
             <Button
@@ -591,7 +623,9 @@ function DisconnectDialog({ page }: { page: ConnectedPageView }) {
               {pending && (
                 <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
               )}
-              {pending ? "Desconectando…" : "Sí, desconectar"}
+              {pending
+                ? t.connectionCard.disconnecting
+                : t.connectionCard.disconnectConfirm}
             </Button>
           </DialogFooter>
         </form>

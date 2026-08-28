@@ -10,18 +10,14 @@ import {
   loadFacebookSdk,
   type FacebookSdk,
 } from "@/features/connect-whatsapp/facebook-sdk"
-import {
-  buildFacebookLoginOptions,
-  WHATSAPP_CONNECT_DESCRIPTION,
-  WHATSAPP_CONNECT_LABEL,
-  WHATSAPP_MODE_CAVEAT,
-} from "@/features/connect-whatsapp/signup-launch"
+import { buildFacebookLoginOptions } from "@/features/connect-whatsapp/signup-launch"
 import {
   describeWhatsappSignupEvent,
   readWhatsappSignupEvent,
   type WhatsappSignupFinish,
 } from "@/features/connect-whatsapp/signup-events"
 import { decideWhatsappSubmission } from "@/features/connect-whatsapp/signup-submission"
+import { useAppDict } from "@/content/i18n/app/provider"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
@@ -130,6 +126,18 @@ export function ConnectWhatsAppButton() {
   // Antes del clic no se puede saber cuál de las dos es, así que se dice al
   // cerrarse la ventana y no en la descripción del botón.
   const [modeCaveat, setModeCaveat] = useState<string | null>(null)
+  const t = useAppDict()
+  // El diccionario en un ref: los callbacks de abajo lo leen desde `useCallback`
+  // y desde el listener de `message`, y meterlo en las dependencias volvería a
+  // crear el listener —y a reemitir el nonce— en cada render.
+  const dictRef = useRef(t)
+  // Se sincroniza en un efecto y no durante el render: escribir un ref mientras
+  // se renderiza es lo que prohíbe `react-hooks/refs`. No hay carrera —los
+  // callbacks que lo leen corren por interacción del usuario, siempre después
+  // del montaje— y el valor inicial ya lo pone el `useRef`.
+  useEffect(() => {
+    dictRef.current = t
+  }, [t])
 
   const sdkRef = useRef<FacebookSdk | null>(null)
   const nonceRef = useRef<string | null>(null)
@@ -180,8 +188,7 @@ export function ConnectWhatsAppButton() {
     setNonceError(
       result.nonce
         ? null
-        : (result.error ??
-            "No se pudo preparar la conexión con WhatsApp. Recarga la página e inténtalo de nuevo.")
+        : (result.error ?? dictRef.current.whatsappSignup.nonceFailed)
     )
 
     // El cierre que se quedó esperando este nonce (ver `settle`). Si la emisión
@@ -220,13 +227,10 @@ export function ConnectWhatsAppButton() {
 
         setPinRequired(result.pinRequired === true)
         setActionError(
-          result.error ??
-            "No se pudo conectar. Vuelve a intentarlo; si se repite, escríbenos a info@resender.dev."
+          result.error ?? dictRef.current.whatsappSignup.submitFailed
         )
       } catch {
-        setActionError(
-          "No pudimos hablar con el servidor para terminar la conexión. Revisa tu conexión y vuelve a lanzarla."
-        )
+        setActionError(dictRef.current.whatsappSignup.networkFailed)
       } finally {
         setSubmitting(false)
         // Cada intento **consume** el nonce en el servidor, salga bien o mal:
@@ -257,9 +261,7 @@ export function ConnectWhatsAppButton() {
         pairingTimerRef.current = window.setTimeout(() => {
           pairingTimerRef.current = null
           if (noticeRef.current) return
-          showNotice(
-            "La autorización de Meta volvió incompleta y no se conectó ningún número. Vuelve a lanzarla; si se repite, escríbenos a info@resender.dev."
-          )
+          showNotice(dictRef.current.whatsappSignup.pairingIncomplete)
         }, PAIRING_TIMEOUT_MS)
       }
       return
@@ -334,9 +336,7 @@ export function ConnectWhatsAppButton() {
       })
       .catch(() => {
         if (!active) return
-        setSdkError(
-          "No se pudo cargar el SDK de Facebook, que es lo que abre la ventana de Meta. Suele ser un bloqueador de anuncios o de rastreadores: permítelo para este sitio y recarga la página."
-        )
+        setSdkError(dictRef.current.whatsappSignup.sdkBlocked)
       })
     return () => {
       active = false
@@ -372,14 +372,16 @@ export function ConnectWhatsAppButton() {
         // Recién acá se sabe qué eligió el usuario dentro del diálogo, así que
         // recién acá se le puede decir qué implica: el número queda registrado y
         // deja de abrir en la app, o hay techo de 20 mps y reloj de 24 h.
-        setModeCaveat(WHATSAPP_MODE_CAVEAT[signup.mode])
+        setModeCaveat(
+          dictRef.current.connections.whatsappModeCaveat[signup.mode]
+        )
         settle()
         return
       }
 
       // Todo lo demás terminó sin número conectado. El texto lo decide el módulo
       // puro; acá solo se pinta y se cuenta.
-      const message = describeWhatsappSignupEvent(signup)
+      const message = describeWhatsappSignupEvent(signup, dictRef.current)
       if (message) showNotice(message)
       // Sin `mode`: un cierre que no completó no eligió flujo, y mandar el del
       // botón sería inventar justo el dato que este cambio dejó de inventar.
@@ -429,9 +431,7 @@ export function ConnectWhatsAppButton() {
         // secas. Si el `postMessage` ya explicó qué pasó (un error reportado,
         // por ejemplo), ese mensaje es mejor que este y se respeta.
         if (!noticeRef.current) {
-          showNotice(
-            "La ventana de Meta se cerró sin completar la autorización, así que no se conectó ningún número. Si no llegaste a verla, permite las ventanas emergentes para este sitio y vuelve a intentarlo."
-          )
+          showNotice(dictRef.current.whatsappSignup.popupClosed)
         }
         return
       }
@@ -441,9 +441,7 @@ export function ConnectWhatsAppButton() {
     }, buildFacebookLoginOptions(CONFIG_ID))
   }
 
-  const configError = CONFIGURED
-    ? null
-    : "Conectar WhatsApp no está disponible en este despliegue: falta configurar NEXT_PUBLIC_WHATSAPP_CONFIG_ID. Escríbenos a info@resender.dev."
+  const configError = CONFIGURED ? null : t.whatsappSignup.notConfigured
 
   // Un solo renglón de error, por orden de qué impide qué: sin configuración no
   // hay botón, sin SDK no hay popup, sin nonce no hay cierre, y solo después
@@ -467,21 +465,20 @@ export function ConnectWhatsAppButton() {
           // Un botón deshabilitado sin explicación es indistinguible de uno
           // roto.
           title={
-            configError ??
-            (sdkReady ? undefined : "Preparando la conexión con Meta…")
+            configError ?? (sdkReady ? undefined : t.whatsappSignup.preparing)
           }
           aria-describedby="whatsapp-entry-description"
         >
           {submitting && (
             <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
           )}
-          {submitting ? "Conectando…" : WHATSAPP_CONNECT_LABEL}
+          {submitting ? t.whatsappSignup.connecting : t.whatsappSignup.connect}
         </Button>
         <p
           id="whatsapp-entry-description"
           className="max-w-[420px] text-[12.5px]/[1.5] text-muted-foreground"
         >
-          {WHATSAPP_CONNECT_DESCRIPTION}
+          {t.whatsappSignup.description}
         </p>
         {/* La consecuencia concreta, ya con el modo real en la mano. Es la
             mitad que antes vivía en la descripción de cada botón y que con un
@@ -500,18 +497,18 @@ export function ConnectWhatsAppButton() {
           siguiente envío. */}
       {pinRequired && (
         <div className="grid w-full max-w-[320px] gap-1.5">
-          <Label htmlFor="whatsapp-pin">PIN de verificación en dos pasos</Label>
+          <Label htmlFor="whatsapp-pin">{t.whatsappSignup.pinLabel}</Label>
           <Input
             id="whatsapp-pin"
             ref={pinInputRef}
             inputMode="numeric"
             autoComplete="one-time-code"
             maxLength={6}
-            placeholder="6 dígitos"
+            placeholder={t.whatsappSignup.pinPlaceholder}
             className="font-mono"
           />
           <p className="text-[12px]/[1.5] text-muted-foreground">
-            Escribe el PIN actual del número y vuelve a lanzar la conexión.
+            {t.whatsappSignup.pinHint}
           </p>
         </div>
       )}

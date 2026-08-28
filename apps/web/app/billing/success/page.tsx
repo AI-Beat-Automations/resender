@@ -8,7 +8,10 @@ import { AccessCard, AccessShell } from "@/features/auth/ui/access-shell"
 import { getStripe } from "@/lib/billing/stripe"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
 import { privatePageMetadata } from "@/lib/seo"
+import { getAppI18n } from "@/lib/i18n/app-dict"
 
+// Estática y en español por el mismo motivo que en `/billing`: es el `<title>`
+// de una página `noindex` que dura unos segundos.
 export const metadata = privatePageMetadata("Activando tu suscripción")
 
 type BillingSuccessPageProps = {
@@ -24,7 +27,11 @@ type BillingSuccessPageProps = {
 export default async function BillingSuccessPage({
   searchParams,
 }: BillingSuccessPageProps) {
-  const [session, params] = await Promise.all([auth(), searchParams])
+  const [session, params, { lang, t }] = await Promise.all([
+    auth(),
+    searchParams,
+    getAppI18n(),
+  ])
   if (!session?.user?.id) redirect("/login")
   if (await hasActiveSubscription(session.user.id)) redirect("/connections")
 
@@ -33,35 +40,33 @@ export default async function BillingSuccessPage({
   }
 
   return (
-    <AccessShell>
+    <AccessShell lang={lang}>
       <AccessCard className="max-w-130 p-7.5">
         <span className="flex size-11 items-center justify-center rounded-full bg-primary-soft text-primary-soft-foreground">
           <LoaderCircle className="size-5 animate-spin" aria-hidden />
         </span>
         <h1 className="mt-4.5 font-heading text-[22px] font-bold tracking-tight">
-          Activando tu suscripción…
+          {t.billing.successTitle}
         </h1>
         <p className="mt-2.5 text-[14.5px]/[1.6] text-muted-foreground">
-          Gracias por suscribirte. Estamos confirmando el pago con Stripe: suele
-          tomar unos segundos y esta página te lleva adentro sola. No hace falta
-          que recargues ni que vuelvas a pagar.
+          {t.billing.successBody}
         </p>
         <p className="mt-4.5 text-[13px]/[1.6] text-muted-foreground">
-          ¿Tarda más de lo esperado?{" "}
+          {t.billing.successSlowBefore}
           <Link
             href="/connections"
             className="font-medium text-foreground underline-offset-4 hover:underline"
           >
-            Abre la app
-          </Link>{" "}
-          o escríbenos a{" "}
+            {t.billing.successSlowLink}
+          </Link>
+          {t.billing.successSlowMiddle}
           <a
-            href="mailto:info@resender.dev"
+            href={`mailto:${t.common.contactEmail}`}
             className="font-medium text-foreground underline-offset-4 hover:underline"
           >
-            info@resender.dev
+            {t.common.contactEmail}
           </a>
-          .
+          {t.billing.successSlowAfter}
         </p>
       </AccessCard>
       <ActivationPoller />

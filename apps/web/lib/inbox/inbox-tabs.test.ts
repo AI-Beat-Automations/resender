@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest"
 
+import { es } from "@/content/i18n/app/es"
+import { en } from "@/content/i18n/app/en"
+
 import {
   DEFAULT_INBOX_TAB,
   INBOX_TABS,
@@ -35,10 +38,17 @@ describe("firstParam", () => {
 
 describe("INBOX_TABS", () => {
   it("declara los dos modos en orden, con mensajes por defecto", () => {
-    expect(INBOX_TABS.map((tab) => tab.id)).toEqual(["mensajes", "comentarios"])
-    expect(INBOX_TABS.map((tab) => tab.label)).toEqual([
+    // Los ids siguen en español: son contrato de URL (`?tab=comentarios` está
+    // en enlaces ya guardados) y no se traducen. La etiqueta visible sí, y vive
+    // en el diccionario.
+    expect(INBOX_TABS).toEqual(["mensajes", "comentarios"])
+    expect(INBOX_TABS.map((tab) => es.inbox.tabs[tab])).toEqual([
       "Mensajes",
       "Comentarios",
+    ])
+    expect(INBOX_TABS.map((tab) => en.inbox.tabs[tab])).toEqual([
+      "Messages",
+      "Comments",
     ])
     expect(DEFAULT_INBOX_TAB).toBe("mensajes")
   })

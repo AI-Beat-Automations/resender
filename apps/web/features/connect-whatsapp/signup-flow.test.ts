@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 
+import { es } from "@/content/i18n/app/es"
+
 import {
   WhatsappApiError,
   WHATSAPP_COEXISTENCE_WEBHOOK_FIELDS,
@@ -447,10 +449,14 @@ describe("checkWhatsappPlanSlot", () => {
 
   it("deja pasar cuando queda hueco", async () => {
     expect(
-      await checkWhatsappPlanSlot(slotDeps(), {
-        tenantId: "tenant-1",
-        phoneNumberId: "phone-1",
-      })
+      await checkWhatsappPlanSlot(
+        slotDeps(),
+        {
+          tenantId: "tenant-1",
+          phoneNumberId: "phone-1",
+        },
+        es
+      )
     ).toEqual({ ok: true })
   })
 
@@ -461,10 +467,14 @@ describe("checkWhatsappPlanSlot", () => {
     })
 
     expect(
-      await checkWhatsappPlanSlot(d, {
-        tenantId: "tenant-1",
-        phoneNumberId: "phone-1",
-      })
+      await checkWhatsappPlanSlot(
+        d,
+        {
+          tenantId: "tenant-1",
+          phoneNumberId: "phone-1",
+        },
+        es
+      )
     ).toEqual({ ok: true })
   })
 
@@ -473,10 +483,14 @@ describe("checkWhatsappPlanSlot", () => {
     // el que fallar: un mensaje de cupo, y no una fila de más.
     const d = slotDeps({ countActivePages: vi.fn(async () => 2) })
 
-    const result = await checkWhatsappPlanSlot(d, {
-      tenantId: "tenant-1",
-      phoneNumberId: null,
-    })
+    const result = await checkWhatsappPlanSlot(
+      d,
+      {
+        tenantId: "tenant-1",
+        phoneNumberId: null,
+      },
+      es
+    )
 
     expect(result.ok).toBe(false)
     expect(d.resolveOwnership).not.toHaveBeenCalled()
@@ -485,7 +499,8 @@ describe("checkWhatsappPlanSlot", () => {
   it("falla cerrado si el plan no se puede resolver", async () => {
     const result = await checkWhatsappPlanSlot(
       slotDeps({ resolveMaxPages: vi.fn(async () => null) }),
-      { tenantId: "tenant-1", phoneNumberId: "phone-1" }
+      { tenantId: "tenant-1", phoneNumberId: "phone-1" },
+      es
     )
 
     expect(result).toMatchObject({ ok: false, reason: "plan_restricted" })
@@ -498,7 +513,8 @@ describe("checkWhatsappPlanSlot", () => {
           throw new Error("neon is down")
         }),
       }),
-      { tenantId: "tenant-1", phoneNumberId: "phone-1" }
+      { tenantId: "tenant-1", phoneNumberId: "phone-1" },
+      es
     )
 
     expect(result).toMatchObject({ ok: false, reason: "internal_error" })

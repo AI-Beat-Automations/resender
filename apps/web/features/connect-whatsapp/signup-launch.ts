@@ -98,24 +98,11 @@ export function buildFacebookLoginOptions(
   }
 }
 
-// El copy del único punto de entrada. Antes del clic no se puede decir la
-// consecuencia concreta —todavía no está elegida—, así que se dice lo único
-// cierto: que adentro hay una elección y que no da lo mismo cuál.
-export const WHATSAPP_CONNECT_LABEL = "Conectar WhatsApp"
-
-export const WHATSAPP_CONNECT_DESCRIPTION =
-  "Meta abre su ventana y ahí eliges: dar de alta un número nuevo, o conectar el que ya usas en la app de WhatsApp Business. No da lo mismo cuál —cada opción deja el número de una manera distinta— y te contamos qué implica la que elijas en cuanto la ventana se cierre."
-
-// La consecuencia concreta, **después** del cierre y según lo que el usuario
-// eligió de verdad. Vive acá y no en el `.tsx` para que sea texto con test: es
-// lo que le explica a alguien por qué su número dejó de abrir en el teléfono, o
-// por qué tiene 24 horas para pedir el historial.
-export const WHATSAPP_MODE_CAVEAT: Record<WhatsappOnboardingMode, string> = {
-  standard:
-    "Diste de alta un número nuevo en la API de WhatsApp: queda registrado para la API y deja de poder usarse desde la app de WhatsApp Business.",
-  coexistence:
-    "Conectaste el número que ya usas en la app de WhatsApp Business: sigue funcionando ahí y además llega a Resender. Meta decide la elegibilidad y el número queda con un techo fijo de 20 mensajes por segundo. El historial hay que sincronizarlo dentro de las 24 horas siguientes.",
-}
+// El copy del único punto de entrada vive en el diccionario
+// (`t.whatsappSignup` y `t.connections.whatsappModeCaveat`). Antes del clic no
+// se puede decir la consecuencia concreta —todavía no está elegida—, así que se
+// dice lo único cierto: que adentro hay una elección y que no da lo mismo cuál;
+// la consecuencia se dice al cerrarse la ventana, con el modo real en la mano.
 
 // El modo que el launcher reenvía al servidor en el cierre. **Todo lo que no
 // sea exactamente `coexistence` es el flujo estándar**, y no un error: un cuerpo

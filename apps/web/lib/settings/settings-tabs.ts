@@ -5,23 +5,21 @@
 
 export type SettingsTab = "cuenta" | "api-keys" | "suscripcion"
 
-export type SettingsTabDescriptor = {
-  id: SettingsTab
-  label: string
-}
-
 export const DEFAULT_SETTINGS_TAB: SettingsTab = "cuenta"
 
-// Orden y etiqueta visible de las tres pestañas; la UI las lee de aquí en vez
-// de redeclararlas.
-export const SETTINGS_TABS: readonly SettingsTabDescriptor[] = [
-  { id: "cuenta", label: "Cuenta" },
-  { id: "api-keys", label: "API keys" },
-  { id: "suscripcion", label: "Suscripción" },
+// Orden de las tres pestañas; la UI lo lee de aquí en vez de redeclararlo. La
+// **etiqueta** vive en `t.settings.tabs`, que es un `Record<SettingsTab,
+// string>`: el id es contrato de URL —la franja de cuota enlaza a
+// `/settings?tab=suscripcion`— y por eso sigue en español aunque la etiqueta se
+// traduzca.
+export const SETTINGS_TABS: readonly SettingsTab[] = [
+  "cuenta",
+  "api-keys",
+  "suscripcion",
 ]
 
 export function isSettingsTab(value: unknown): value is SettingsTab {
-  return SETTINGS_TABS.some((tab) => tab.id === value)
+  return SETTINGS_TABS.some((tab) => tab === value)
 }
 
 // `searchParams` de Next puede entregar `string`, `string[]` (`?tab=a&tab=b`)
