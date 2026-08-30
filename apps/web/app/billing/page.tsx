@@ -27,9 +27,9 @@ const RECOMMENDED_PLAN = "pro_monthly"
 // `(product)` a propósito: ese layout rebota aquí a los tenants sin
 // suscripción, así que esta página no puede estar envuelta por él.
 //
-// Los dos rebotes de abajo son el resto del gate de acceso, que la ADR 0007
-// dejó vivo pero inerte (`users.waitlisted` ya nace en `false`). Se separan
-// porque se arreglan distinto: una sesión huérfana necesita volver a
+// Los dos rebotes de abajo son el gate de acceso, que volvió a morder con la
+// 0019 (`users.waitlisted` nace otra vez en `true`). Se separan porque se
+// arreglan distinto: una sesión huérfana necesita volver a
 // autenticarse, y una cuenta en lista de espera necesita que alguien le levante
 // la bandera.
 export default async function BillingPage() {
