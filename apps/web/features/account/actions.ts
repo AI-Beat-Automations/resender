@@ -1,6 +1,10 @@
 "use server"
 
-import { auth, signOut } from "@/auth"
+import { headers } from "next/headers"
+
+import { getAuth } from "@/lib/auth/auth"
+import { getSession, signOut } from "@/lib/auth/session"
+import { setUserPassword } from "@/lib/auth/set-password"
 import { getAppDict } from "@/lib/i18n/app-dict"
 import {
   accountDeletionConfirmationMatches,
@@ -16,7 +20,6 @@ import {
   insertPendingMediaDeletion,
   tenantMediaPrefix,
 } from "@/lib/account/media-purge"
-import { changeUserPassword, InvalidAuthInputError } from "@/lib/auth/users"
 import {
   validatePasswordChangeInput,
   type AuthInputError,
@@ -55,21 +58,22 @@ export async function changePasswordAction(
   )
   if (!input.ok) return { error: t.actions[AUTH_INPUT_KEY[input.error]] }
 
-  const session = await auth()
+  const session = await getSession()
   if (!session?.user?.id) return { error: t.actions.notSignedIn }
 
-  try {
-    const user = await changeUserPassword(session.user.id, input.value.password)
-    if (!user) return { error: t.actions.accountNotFound }
-  } catch (error) {
-    if (error instanceof InvalidAuthInputError) {
-      return { error: t.actions[AUTH_INPUT_KEY[error.code]] }
-    }
-    throw error
-  }
+  // No pide la contraseña anterior: es la regla de siempre (CONTEXT.md →
+  // [Usuario MVP]) y por qué no se puede usar `auth.api.setPassword` está
+  // escrito en `lib/auth/set-password.ts`.
+  await setUserPassword(session.user.id, input.value.password)
 
-  // El password ya cambió; cerramos la sesión actual para que el siguiente
-  // acceso use la credencial nueva.
+  // Lo que la tabla de sesiones hace posible y el JWT no: un dispositivo que ya
+  // no controlas pierde el acceso al cambiar la contraseña. Va **antes** del
+  // signOut, que necesita la sesión actual todavía viva para identificar cuál
+  // es "la otra".
+  await getAuth().api.revokeOtherSessions({ headers: await headers() })
+
+  // Y la actual también, para que el siguiente acceso use la credencial nueva.
+  // `signOut` lanza el redirect, así que lo de abajo no se alcanza.
   await signOut({ redirectTo: "/login?passwordChanged=1" })
   return {}
 }
@@ -79,7 +83,7 @@ export async function deleteAccountAction(
   formData: FormData
 ): Promise<DeleteAccountState> {
   const t = await getAppDict()
-  const session = await auth()
+  const session = await getSession()
   if (!session?.user?.id) return { error: t.actions.notSignedIn }
 
   const context = await loadTenantDeletionContext(session.user.id)
