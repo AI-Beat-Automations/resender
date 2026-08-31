@@ -416,6 +416,18 @@ export const es: AppDict = {
       "Cambia de plan, actualiza tu método de pago o cancela en el portal de clientes de Stripe.",
   },
 
+  accessPending: {
+    eyebrow: "acceso",
+    title: "Ya estás dentro.",
+    body: "Tu cuenta quedó creada y tu lugar en la lista guardado. Estamos abriendo el acceso de a poco, cuenta por cuenta: te escribimos en cuanto te toque y no tienes que hacer nada más.",
+    emailLabel: "Te escribimos a",
+    helpBefore: "Mientras tanto puedes leer la ",
+    helpDocsLink: "documentación",
+    helpMiddle: " o escribirnos a ",
+    helpAfter: ".",
+    signOut: "Cerrar sesión",
+  },
+
   billing: {
     metaTitle: "Suscripción",
     eyebrow: "pricing",

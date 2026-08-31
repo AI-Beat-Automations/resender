@@ -365,6 +365,24 @@ export type AppDict = {
     portalHint: string
   }
 
+  /**
+   * Pantalla autenticada del gate de acceso (`/pending`): el aterrizaje de la
+   * cuenta que acaba de registrarse y todavía no está aprobada. No es la lista
+   * de espera pública de `/waitlist`, que es marketing y vive en el otro
+   * diccionario.
+   */
+  accessPending: {
+    eyebrow: string
+    title: string
+    body: string
+    emailLabel: string
+    helpBefore: string
+    helpDocsLink: string
+    helpMiddle: string
+    helpAfter: string
+    signOut: string
+  }
+
   billing: {
     metaTitle: string
     eyebrow: string

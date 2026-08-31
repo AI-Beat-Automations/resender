@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
     return gate("not_authenticated", "/login")
   }
   if (access === "waitlisted") {
-    return gate("waitlisted", "/waitlist")
+    return gate("waitlisted", "/pending")
   }
 
   if (!(await hasActiveSubscription(session.user.id))) {
