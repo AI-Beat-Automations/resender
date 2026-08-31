@@ -490,3 +490,122 @@ describe("migración 0017: WhatsApp como tercer canal", () => {
     expect(rows.rows.every((row) => row.whatsapp_enabled === false)).toBe(true)
   })
 })
+
+// Migración 0020: el esquema de Better Auth (ADR 0014).
+//
+// Es puramente aditiva y todavía no la lee nadie —Auth.js sigue siendo la
+// autoridad de sesión—, así que lo único que hay que probar es que pasa sobre
+// una base con datos previos y que las propiedades de las que va a depender el
+// escalón 2 están: el backfill de `email_verified`, el default para las altas
+// futuras, y que las credenciales y sesiones cuelgan del tenant con cascade.
+describe("migración 0020: el esquema de Better Auth", () => {
+  it("verifica a las cuentas que ya existían y deja el default en false", async () => {
+    // `tenantId` se sembró antes de la 0016, así que es una fila anterior a
+    // esta migración: el backfill tiene que haberla alcanzado.
+    const existing = await db.query<{ email_verified: boolean; name: string }>(
+      `select email_verified, name from users where id = $1`,
+      [tenantId]
+    )
+    expect(existing.rows[0]?.email_verified).toBe(true)
+    expect(existing.rows[0]?.name).toBe("")
+
+    // Una cuenta nueva nace sin verificar: no hay canal de correo, pero el
+    // default correcto para lo que venga después del deploy es `false`.
+    const created = await db.query<{ email_verified: boolean; image: null }>(
+      `insert into users (email, password_hash)
+       values ('nueva@example.com', 'hash')
+       returning email_verified, image`
+    )
+    expect(created.rows[0]?.email_verified).toBe(false)
+    expect(created.rows[0]?.image).toBeNull()
+  })
+
+  it("no acepta una credencial de un usuario que no existe", async () => {
+    await expect(
+      db.query(
+        `insert into auth_accounts (id, user_id, account_id, provider_id)
+         values ('acc_huerfana', '00000000-0000-0000-0000-000000000000',
+                 'cuenta_1', 'credential')`
+      )
+    ).rejects.toThrow(/auth_accounts_user_id_fkey/)
+  })
+
+  it("guarda una credencial sin contraseña, como la de un proveedor social", async () => {
+    await expect(
+      db.query(
+        `insert into auth_accounts (id, user_id, account_id, provider_id, scope)
+         values ('acc_social', $1, 'google_1', 'google', 'email profile')`,
+        [tenantId]
+      )
+    ).resolves.toBeTruthy()
+  })
+
+  it("no vincula dos veces la misma identidad de un proveedor", async () => {
+    await expect(
+      db.query(
+        `insert into auth_accounts (id, user_id, account_id, provider_id)
+         values ('acc_duplicada', $1, 'google_1', 'google')`,
+        [tenantId]
+      )
+    ).rejects.toThrow(/provider_id/)
+  })
+
+  // Borrar un tenant es `delete from users` (0002) y tiene que llevarse sus
+  // credenciales y sus sesiones. Sin el cascade, el borrado de cuenta fallaría
+  // contra la foreign key y el producto perdería la baja.
+  it("borrar la cuenta se lleva sus sesiones y sus credenciales", async () => {
+    const user = await db.query<{ id: string }>(
+      `insert into users (email, password_hash)
+       values ('cascade@example.com', 'hash') returning id`
+    )
+    const doomed = user.rows[0]!.id
+
+    await db.query(
+      `insert into auth_sessions (id, user_id, token, expires_at)
+       values ('ses_1', $1, 'token_1', now() + interval '7 days')`,
+      [doomed]
+    )
+    await db.query(
+      `insert into auth_accounts (id, user_id, account_id, provider_id, password)
+       values ('acc_1', $1, 'cascade@example.com', 'credential', 'scrypt_hash')`,
+      [doomed]
+    )
+
+    await db.query(`delete from users where id = $1`, [doomed])
+
+    const sessions = await db.query(
+      `select id from auth_sessions where user_id = $1`,
+      [doomed]
+    )
+    const accounts = await db.query(
+      `select id from auth_accounts where user_id = $1`,
+      [doomed]
+    )
+    expect(sessions.rows).toHaveLength(0)
+    expect(accounts.rows).toHaveLength(0)
+  })
+
+  it("no admite dos sesiones con el mismo token", async () => {
+    const insertSession = (id: string) =>
+      db.query(
+        `insert into auth_sessions (id, user_id, token, expires_at)
+         values ($1, $2, 'token_repetido', now() + interval '7 days')`,
+        [id, tenantId]
+      )
+
+    await expect(insertSession("ses_a")).resolves.toBeTruthy()
+    await expect(insertSession("ses_b")).rejects.toThrow(/token/)
+  })
+
+  // `auth_verifications` no tiene foreign key a propósito: el `identifier`
+  // puede ser un email sin cuenta todavía, o un state de OAuth previo al alta.
+  it("guarda una verificación de un identificador sin cuenta", async () => {
+    await expect(
+      db.query(
+        `insert into auth_verifications (id, identifier, value, expires_at)
+         values ('ver_1', 'todavia-no-existe@example.com', 'token',
+                 now() + interval '1 hour')`
+      )
+    ).resolves.toBeTruthy()
+  })
+})
