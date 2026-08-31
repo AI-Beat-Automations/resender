@@ -29,6 +29,8 @@ const db = new PGlite({ extensions: { pgcrypto } })
 let tenantId: string
 let pageId: string
 let conversationId: string
+// Cuántas filas tenía `api_keys` justo antes de que la 0023 la dropeara.
+let apiKeyRowsBeforeDrop = 0
 
 async function insertMessage(input: {
   text: string | null
@@ -106,6 +108,21 @@ beforeAll(async () => {
          values ($1, $2, $3, 'psid_1', 'inbound', 'received', 'hola legacy')`,
         [tenantId, conversationId, pageId]
       )
+    }
+
+    // Antes de la 0023 se siembran dos filas en `api_keys` —una activa y una
+    // revocada, como las que existen en producción— para probar que el `drop
+    // table` pasa sobre una tabla **con datos** y no solo sobre una vacía.
+    if (file.startsWith("0023")) {
+      await db.query(
+        `insert into api_keys (tenant_id, label, visible_prefix, secret_hash,
+                               status)
+         values ($1, 'N8N', 'pk_live_aaaaaaaa', 'hash_activa', 'active'),
+                ($1, 'vieja', 'pk_live_bbbbbbbb', 'hash_revocada', 'revoked')`,
+        [tenantId]
+      )
+      const seeded = await db.query(`select id from api_keys`)
+      apiKeyRowsBeforeDrop = seeded.rows.length
     }
 
     await db.exec(readFileSync(join(MIGRATIONS_DIR, file), "utf8"))
@@ -715,6 +732,8 @@ describe("migración 0021: la contraseña sale de users", () => {
     )
     expect(tables.rows.map((row) => row.table_name).sort()).toEqual([
       "auth_accounts",
+      // La suma la 0022, que corre después en la misma cadena.
+      "auth_api_keys",
       "auth_sessions",
       "auth_verifications",
     ])
@@ -740,5 +759,179 @@ describe("migración 0021: la contraseña sale de users", () => {
     )
     expect(found.rows[0]?.user_id).toBe(tenantId)
     expect(found.rows[0]?.password).toBe("salthex:keyhex")
+  })
+})
+
+// Migraciones 0022 y 0023: las API keys pasan al plugin `apiKey` (ADR 0014).
+//
+// Las dos viajan en el mismo deploy —`deploy.yml` corre `db:migrate` una vez— y
+// por eso se prueban juntas: al terminar la cadena, `auth_api_keys` existe y
+// `api_keys` ya no. Lo que hay que probar es lo que puede romper de verdad:
+//
+//   - Que la tabla nueva cuelga de `users` con el mismo cascade que la 0002, o
+//     sea que borrar una cuenta se lleva sus keys en vez de fallar contra la FK
+//     y perder la baja de cuenta.
+//   - Que el `drop` de la vieja pasa sobre una tabla **con filas**, que es el
+//     único caso que importa: en producción las hay.
+describe("migración 0022: auth_api_keys", () => {
+  it("crea la tabla con las columnas que el plugin mapea", async () => {
+    const columns = await db.query<{ column_name: string }>(
+      `select column_name from information_schema.columns
+       where table_name = 'auth_api_keys'`
+    )
+    const names = columns.rows.map((row) => row.column_name).sort()
+
+    // Los cuatro nombres traducidos —`label`, `visible_prefix`, `secret_hash` y
+    // `last_used_at`— son los que `lib/auth/auth.ts` mapea a `name`, `start`,
+    // `key` y `lastRequest`. Si alguien renombra uno de los dos lados sin el
+    // otro, el INSERT del plugin revienta en runtime y esto lo ve antes.
+    expect(names).toEqual(
+      expect.arrayContaining([
+        "config_id",
+        "created_at",
+        "enabled",
+        "expires_at",
+        "id",
+        "label",
+        "last_used_at",
+        "secret_hash",
+        "updated_at",
+        "user_id",
+        "visible_prefix",
+      ])
+    )
+  })
+
+  // `id` es texto porque `advanced.database.generateId` devuelve un uuid que
+  // entra como texto en las tablas `auth_*` (0020); `user_id` es uuid porque es
+  // el tenant. Son dos tipos distintos en la misma fila y confundirlos es un
+  // error silencioso hasta el primer insert real.
+  it("guarda el id como texto y el tenant como uuid", async () => {
+    const types = await db.query<{ column_name: string; data_type: string }>(
+      `select column_name, data_type from information_schema.columns
+       where table_name = 'auth_api_keys'
+         and column_name in ('id', 'user_id')`
+    )
+    const byName = Object.fromEntries(
+      types.rows.map((row) => [row.column_name, row.data_type])
+    )
+    expect(byName.id).toBe("text")
+    expect(byName.user_id).toBe("uuid")
+  })
+
+  it("rechaza una key cuyo tenant no existe", async () => {
+    await expect(
+      db.query(
+        `insert into auth_api_keys (id, user_id, secret_hash)
+         values ('key_huerfana', gen_random_uuid(), 'hash_huerfano')`
+      )
+    ).rejects.toThrow(/user_id|foreign key/i)
+  })
+
+  it("no admite dos keys con el mismo hash", async () => {
+    const insertKey = (id: string) =>
+      db.query(
+        `insert into auth_api_keys (id, user_id, label, visible_prefix,
+                                    secret_hash)
+         values ($1, $2, 'repetida', 'pk_live_cccccccc', 'hash_repetido')`,
+        [id, tenantId]
+      )
+
+    await expect(insertKey("key_hash_a")).resolves.toBeTruthy()
+    await expect(insertKey("key_hash_b")).rejects.toThrow(/secret_hash/)
+  })
+
+  // El cascade de la 0002, extendido a la tabla nueva: borrar la cuenta es
+  // `delete from users` y tiene que llevarse sus keys. Sin esto, el borrado de
+  // cuenta fallaría contra la foreign key.
+  it("borrar la cuenta se lleva sus API keys", async () => {
+    const user = await db.query<{ id: string }>(
+      `insert into users (email) values ('con-keys@example.com') returning id`
+    )
+    const doomed = user.rows[0]!.id
+
+    // El id de la key es `text` y el del tenant es `uuid`: van en dos
+    // placeholders distintos a propósito.
+    await db.query(
+      `insert into auth_api_keys (id, user_id, label, visible_prefix,
+                                  secret_hash)
+       values ($1, $2, 'la suya', 'pk_live_dddddddd', 'hash_a_borrar')`,
+      ["key_de_la_cuenta_borrada", doomed]
+    )
+
+    await db.query(`delete from users where id = $1`, [doomed])
+
+    const remaining = await db.query(
+      `select id from auth_api_keys where user_id = $1`,
+      [doomed]
+    )
+    expect(remaining.rows).toHaveLength(0)
+  })
+
+  // Los valores por defecto son los que el producto promete: la key nace activa,
+  // sin expiración y sin cupo. Ver `apiKeyPlugin()` en `lib/auth/auth.ts`.
+  it("una key nace activa, sin expiración y sin cupo", async () => {
+    const created = await db.query<{
+      config_id: string
+      enabled: boolean
+      expires_at: string | null
+      remaining: number | null
+      request_count: number
+    }>(
+      `insert into auth_api_keys (id, user_id, label, visible_prefix,
+                                  secret_hash)
+       values ($1, $2, 'recien nacida', 'pk_live_eeeeeeee', 'hash_default')
+       returning config_id, enabled, expires_at, remaining, request_count`,
+      ["key_defaults", tenantId]
+    )
+    const row = created.rows[0]!
+    expect(row.config_id).toBe("default")
+    expect(row.enabled).toBe(true)
+    expect(row.expires_at).toBeNull()
+    expect(row.remaining).toBeNull()
+    expect(row.request_count).toBe(0)
+  })
+})
+
+describe("migración 0023: se va api_keys", () => {
+  it("dropea la tabla que tenía filas", async () => {
+    // La siembra del `beforeAll` metió dos filas justo antes del drop: lo que se
+    // prueba es que la migración pasa sobre datos, no sobre una tabla vacía.
+    expect(apiKeyRowsBeforeDrop).toBe(2)
+
+    const tables = await db.query<{ table_name: string }>(
+      `select table_name from information_schema.tables
+       where table_schema = 'public' and table_name = 'api_keys'`
+    )
+    expect(tables.rows).toHaveLength(0)
+  })
+
+  // El drop no puede llevarse por delante la tabla nueva ni el resto del
+  // esquema de Better Auth: son las que a partir de este deploy guardan la
+  // sesión, la credencial y las API keys.
+  it("no toca el esquema de Better Auth", async () => {
+    const tables = await db.query<{ table_name: string }>(
+      `select table_name from information_schema.tables
+       where table_schema = 'public' and table_name like 'auth_%'`
+    )
+    expect(tables.rows.map((row) => row.table_name).sort()).toEqual([
+      "auth_accounts",
+      "auth_api_keys",
+      "auth_sessions",
+      "auth_verifications",
+    ])
+  })
+
+  // Borrar una cuenta seguía dependiendo de `api_keys` hasta la 0002; ahora que
+  // la tabla no existe, la baja tiene que seguir funcionando entera.
+  it("deja el borrado de cuenta funcionando sin la tabla vieja", async () => {
+    const user = await db.query<{ id: string }>(
+      `insert into users (email) values ('baja@example.com') returning id`
+    )
+    const doomed = user.rows[0]!.id
+
+    await expect(
+      db.query(`delete from users where id = $1`, [doomed])
+    ).resolves.toBeTruthy()
   })
 })
