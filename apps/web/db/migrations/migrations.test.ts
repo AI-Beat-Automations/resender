@@ -540,14 +540,24 @@ describe("migración 0020: el esquema de Better Auth", () => {
     ).resolves.toBeTruthy()
   })
 
+  // El caso siembra su propia identidad —con un `account_id` propio, para no
+  // chocar con las filas que dejan los otros casos en la instancia compartida—
+  // en vez de apoyarse en la que insertó el `it` anterior: así sigue pasando
+  // con `it.only` o con el orden barajado.
   it("no vincula dos veces la misma identidad de un proveedor", async () => {
+    await db.query(
+      `insert into auth_accounts (id, user_id, account_id, provider_id)
+       values ('acc_original', $1, 'google_dup_1', 'google')`,
+      [tenantId]
+    )
+
     await expect(
       db.query(
         `insert into auth_accounts (id, user_id, account_id, provider_id)
-         values ('acc_duplicada', $1, 'google_1', 'google')`,
+         values ('acc_duplicada', $1, 'google_dup_1', 'google')`,
         [tenantId]
       )
-    ).rejects.toThrow(/provider_id/)
+    ).rejects.toThrow(/auth_accounts_provider_id_account_id_key/)
   })
 
   // Borrar un tenant es `delete from users` (0002) y tiene que llevarse sus
