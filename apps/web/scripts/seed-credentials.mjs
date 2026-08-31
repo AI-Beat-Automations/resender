@@ -28,12 +28,21 @@ import { loadEnvFile } from "./load-env.mjs"
 // Las contraseñas entran por variable de entorno, **nunca escritas en este
 // archivo**, con una variable por cuenta:
 //
-//   SEED_CREDENTIAL_1="alguien@ejemplo.com:contraseñaNueva:Nombre Apellido" \
-//   SEED_CREDENTIAL_2="otro@ejemplo.com:otraContraseña:Otro Nombre" \
+//   SEED_CREDENTIAL_1="alguien@ejemplo.com:contraseñaNueva" \
+//   SEED_CREDENTIAL_1_NAME="Nombre Apellido" \
+//   SEED_CREDENTIAL_2="otro@ejemplo.com:otraContraseña" \
 //     node scripts/seed-credentials.mjs
 //
-// El nombre es opcional (tercer campo): si no viene, el `name` de esa cuenta
-// queda como está. La contraseña no puede contener `:`.
+// El valor se parte **en el primer `:` y nada más**: el email no puede
+// contenerlo y la contraseña sí, así que todo lo que sigue al primero es la
+// contraseña, entera y literal.
+//
+// El nombre salió del valor y vive en su propia variable, `<VAR>_NAME`, que es
+// opcional: si no viene, el `name` de esa cuenta queda como está. Antes era un
+// tercer campo del mismo string y el parseo partía por todos los `:`, así que
+// una contraseña con `:` se sembraba truncada —y la cola se iba al nombre— sin
+// un solo aviso; con el nombre aparte el formato deja de ser ambiguo y no hace
+// falta escapar nada.
 //
 // Es idempotente: si la cuenta ya tiene credencial, la reescribe en vez de
 // insertar una segunda —`(issuer, account_id)` es unique—.
@@ -55,19 +64,43 @@ if (!databaseUrl) {
 const PROVIDER_ID = "credential"
 const ISSUER = "local:credential"
 
+const NAME_SUFFIX = "_NAME"
+
 const entries = Object.entries(process.env)
-  .filter(([key]) => key.startsWith("SEED_CREDENTIAL_"))
+  .filter(
+    ([key]) => key.startsWith("SEED_CREDENTIAL_") && !key.endsWith(NAME_SUFFIX)
+  )
   .sort(([a], [b]) => a.localeCompare(b))
   .map(([key, raw]) => {
-    const [email, password, ...nameParts] = String(raw).split(":")
+    const value = String(raw)
+
+    // Se corta en el primer `:`, que es el único separador. Nada de `split`:
+    // partir por todos los `:` truncaba en silencio cualquier contraseña que
+    // llevara uno.
+    const separator = value.indexOf(":")
+    const email = separator === -1 ? "" : value.slice(0, separator).trim()
+    const password = separator === -1 ? "" : value.slice(separator + 1)
+
+    // Falla ruidosamente y sin sembrar nada: una credencial mal parseada se
+    // descubre cuando alguien no puede entrar, que es el peor momento posible.
     if (!email || !password) {
-      console.error(`${key}: se espera "email:contraseña[:nombre]"`)
+      console.error(
+        `${key}: se espera "email:contraseña" (el email antes del primer ':', ` +
+          `la contraseña entera después). El nombre va aparte, en ` +
+          `${key}${NAME_SUFFIX}.`
+      )
       process.exit(1)
     }
+
+    if (!email.includes("@")) {
+      console.error(`${key}: "${email}" no parece un email.`)
+      process.exit(1)
+    }
+
     return {
-      email: email.trim().toLowerCase(),
+      email: email.toLowerCase(),
       password,
-      name: nameParts.join(":").trim(),
+      name: String(process.env[`${key}${NAME_SUFFIX}`] ?? "").trim(),
     }
   })
 
