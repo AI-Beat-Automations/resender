@@ -270,7 +270,7 @@ describe("migración 0016: adjuntos en messages", () => {
         coexistenceStatus: null,
         historySyncStatus: null,
         whatsappPinGenerated: false,
-    hasSigningSecret: false,
+        hasSigningSecret: false,
         connectedAt: new Date(),
         disconnectedAt: null,
         createdAt: new Date(),
@@ -452,8 +452,7 @@ describe("migración 0017: WhatsApp como tercer canal", () => {
   // de R2 deja de tener de dónde salir y este test es el que lo delata.
   it("pending_media_deletions sobrevive al borrado de la cuenta", async () => {
     const user = await db.query<{ id: string }>(
-      `insert into users (email, password_hash)
-       values ('borrame@example.com', 'hash') returning id`
+      `insert into users (email) values ('borrame@example.com') returning id`
     )
     const doomed = user.rows[0]!.id
 
@@ -512,8 +511,7 @@ describe("migración 0020: el esquema de Better Auth", () => {
     // Una cuenta nueva nace sin verificar: no hay canal de correo, pero el
     // default correcto para lo que venga después del deploy es `false`.
     const created = await db.query<{ email_verified: boolean; image: null }>(
-      `insert into users (email, password_hash)
-       values ('nueva@example.com', 'hash')
+      `insert into users (email) values ('nueva@example.com')
        returning email_verified, image`
     )
     expect(created.rows[0]?.email_verified).toBe(false)
@@ -614,8 +612,7 @@ describe("migración 0020: el esquema de Better Auth", () => {
   // contra la foreign key y el producto perdería la baja.
   it("borrar la cuenta se lleva sus sesiones y sus credenciales", async () => {
     const user = await db.query<{ id: string }>(
-      `insert into users (email, password_hash)
-       values ('cascade@example.com', 'hash') returning id`
+      `insert into users (email) values ('cascade@example.com') returning id`
     )
     const doomed = user.rows[0]!.id
 
@@ -668,5 +665,80 @@ describe("migración 0020: el esquema de Better Auth", () => {
                  now() + interval '1 hour')`
       )
     ).resolves.toBeTruthy()
+  })
+})
+
+// Migración 0021: la contraseña se va de `users` (ADR 0014).
+//
+// Es la única parte destructiva del cutover y va en el mismo deploy. Lo que
+// hay que probar es exactamente lo que un `drop column` puede romper: que pasa
+// sobre una base **con filas** —la cuenta legacy sembrada antes de la 0016
+// sigue viva— y que no se lleva por delante nada del esquema de Better Auth,
+// que es lo que a partir de acá guarda las credenciales.
+describe("migración 0021: la contraseña sale de users", () => {
+  it("deja la cuenta legacy entera, sin la columna", async () => {
+    const columns = await db.query<{ column_name: string }>(
+      `select column_name from information_schema.columns
+       where table_name = 'users'`
+    )
+    const names = columns.rows.map((row) => row.column_name)
+    expect(names).not.toContain("password_hash")
+    // Lo que sí tiene que seguir estando: el uuid es el tenant y 13 foreign
+    // keys cuelgan de él.
+    expect(names).toEqual(expect.arrayContaining(["id", "email", "name"]))
+
+    const legacy = await db.query<{ id: string; email: string }>(
+      `select id, email from users where id = $1`,
+      [tenantId]
+    )
+    expect(legacy.rows[0]?.email).toBe("legacy@example.com")
+  })
+
+  // El alta de Better Auth inserta `users` sin `password_hash`. Con la columna
+  // todavía ahí —`not null` y sin default, desde la 0001— reventaría contra el
+  // not-null en runtime, que es por qué esta migración no puede ir después.
+  it("acepta el alta que hace Better Auth, sin contraseña en users", async () => {
+    const created = await db.query<{ id: string; name: string }>(
+      `insert into users (id, email, name, email_verified)
+       values (gen_random_uuid(), 'better-auth@example.com', 'Ada Lovelace', true)
+       returning id, name`
+    )
+    expect(created.rows[0]?.name).toBe("Ada Lovelace")
+  })
+
+  // El drop no puede tocar las tablas `auth_*`: son las que a partir de este
+  // deploy guardan la sesión y la credencial.
+  it("no toca las tablas de Better Auth", async () => {
+    const tables = await db.query<{ table_name: string }>(
+      `select table_name from information_schema.tables
+       where table_schema = 'public' and table_name like 'auth_%'`
+    )
+    expect(tables.rows.map((row) => row.table_name).sort()).toEqual([
+      "auth_accounts",
+      "auth_sessions",
+      "auth_verifications",
+    ])
+  })
+
+  // La credencial de una cuenta que ya existía —lo que siembra
+  // `scripts/seed-credentials.mjs` después del deploy— entra con el uuid
+  // intacto y con los cuatro valores por los que `sign-in/email` la busca.
+  it("guarda la credencial reemitida conservando el uuid del tenant", async () => {
+    await db.query(
+      `insert into auth_accounts (id, user_id, account_id, issuer, provider_id,
+                                  password)
+       values ('acc_reemitida', $1, $2, 'local:credential', 'credential',
+               'salthex:keyhex')`,
+      [tenantId, tenantId]
+    )
+
+    const found = await db.query<{ user_id: string; password: string }>(
+      `select user_id, password from auth_accounts
+       where provider_id = 'credential' and issuer = 'local:credential'
+         and account_id = $1`,
+      [tenantId]
+    )
+    expect(found.rows[0]?.user_id).toBe(tenantId)
+    expect(found.rows[0]?.password).toBe("salthex:keyhex")
   })
 })
