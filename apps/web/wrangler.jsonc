@@ -156,14 +156,15 @@
       "simple": { "limit": 10, "period": 60 },
     },
   ],
-  // Los secretos (DATABASE_URL, BETTER_AUTH_SECRET, AUTH_SECRET, etc.) NO van
-  // aquí: se cargan con `wrangler secret put <NAME>` en producción y en
-  // `.dev.vars` para preview local.
+  // Los secretos (DATABASE_URL, BETTER_AUTH_SECRET, etc.) NO van aquí: se cargan
+  // con `wrangler secret put <NAME>` en producción y en `.dev.vars` para preview
+  // local.
   //
-  // `BETTER_AUTH_SECRET` y `AUTH_SECRET` conviven **a propósito** y con valores
-  // distintos: el primero firma y cifra la sesión de Better Auth; el segundo
-  // sigue siendo el pepper de las API keys (`lib/api-keys/*`) hasta el escalón 3
-  // del stack, y borrarlo invalidaría todas las keys emitidas sin recuperación.
+  // `BETTER_AUTH_SECRET` es el único secreto de autenticación que queda.
+  // `AUTH_SECRET` y `API_KEY_PEPPER` **se borran a mano** después de desplegar y
+  // reemitir las keys: desde el escalón 3 de la ADR 0014 no los lee nadie —el
+  // plugin `apiKey` hashea con SHA-256 sin pepper— y el paso está escrito en
+  // `docs/api-cloudflare-manual-runbook.md`.
 
   "env": {
     // Worker separado `web-staging`, mismo código y distinto estado: branch de

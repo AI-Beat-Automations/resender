@@ -19,6 +19,7 @@ Borrar la fila deja fuera a esa sesion en cuanto vence el cache, como mucho cinc
 ### Credencial
 Lo que prueba que alguien es quien dice: una fila de `auth_accounts`. Hoy solo existe la del proveedor `credential`, que guarda el hash de la contraseña. Cuando haya proveedores sociales, cada uno suma su propia fila para el mismo usuario.
 **No confundir con [Cuenta conectada]**, que es otra cosa entera: una pagina de Facebook, una cuenta de Instagram o un numero de WhatsApp del cliente.
+La credencial de una maquina, en cambio, es el [API Token]: la misma idea —probar quien sos— para la integracion externa, que no reutiliza la sesion web.
 
 ### Landing
 La ruta `/` sigue siendo una landing pública simple con la propuesta de valor y accesos a `Login` y `Register`.
@@ -61,14 +62,16 @@ La columna `unsubscribed_at` existe desde el inicio aunque no haya canal de corr
 Es la primera escritura anonima a base de datos del repo: todo lo demas exige sesion, API key opaca o firma HMAC. Tres capas: validacion de formato de correo, campo trampa (honeypot) oculto, y rate limit por IP con el binding nativo `ratelimits` de Cloudflare en el worker de `web`. Cloudflare Turnstile queda descartado por ahora —suma un paso que puede fallarle a un usuario real justo cuando esta delante en un evento— y se agrega si aparece basura real.
 
 ### API Token
-La integración externa (N8N/IA) no reutiliza la sesión web. Se autentica con una API key opaca separada emitida por Resender para el tenant.
+La integración externa (N8N/IA) **no reutiliza la sesión web**. Se autentica con una API key opaca separada, emitida por Resender para el tenant.
+Es la otra forma de la misma idea que la [Credencial]: las dos prueban quién sos, pero la [Credencial] es de una persona delante de un formulario y la API key es de una máquina llamando a la API. Desde la ADR 0014 las dos las emite y verifica [Better Auth]: la sesión con su núcleo, las API keys con el plugin `apiKey`.
+El formato visible es `pk_live_<secreto>`: un prefijo legible más 64 caracteres aleatorios. En base de datos —tabla `auth_api_keys`— solo vive el hash SHA-256 del secreto, nunca la credencial completa, y junto a él los primeros 16 caracteres (`pk_live_` + 8) como prefijo visible.
+Para la API externa no se usan JWTs; la única credencial aceptada es una API key opaca tipo `Bearer pk_live_<secreto>`.
 
 ### API Tokens en Settings
-Las API keys opacas se crean y gestionan desde `Settings`. En el MVP puede haber múltiples tokens por tenant y cada uno tiene un `label` descriptivo elegido por el usuario.
-Los tokens viven hasta revocación manual; no expiran automáticamente en el MVP.
-La persistencia de tokens API debe ser con hash, no guardando la credencial completa en texto claro.
-El formato visible recomendado es `pk_live_<secretoAleatorio>` o equivalente: un prefijo legible más un secreto aleatorio. En base de datos solo se guarda el hash del secreto.
-Para la API externa del MVP no se usan JWTs; la unica credencial aceptada es una API key opaca tipo `Bearer pk_live_<secreto>`.
+Las API keys opacas se crean y gestionan desde `Settings`. Puede haber múltiples keys por tenant y cada una tiene un `label` descriptivo elegido por el usuario, de hasta 80 caracteres.
+Las keys viven hasta revocación manual: **no expiran solas** y no tienen cupo de usos. Tampoco distinguen permisos ni tienen límite de tasa propio; el plugin ofrece las tres cosas y las tres están apagadas a propósito (`lib/auth/auth.ts`).
+La emisión, el hashing y la verificación las hace el plugin `apiKey` de [Better Auth], no una implementación propia. Es la razón por la que `AUTH_SECRET` dejó de tener consumidores y se pudo borrar: el plugin hashea con SHA-256 sin pepper.
+Revocar es apagar la key, no borrarla: la fila queda con su estado y deja de autenticar en la verificación siguiente.
 
 ### Tenant
 En el MVP, `tenantId = userId` de nuestra autenticación.
@@ -236,10 +239,11 @@ La `webhookUrl` se guarda con accion explicita mediante boton `Guardar`.
 Desconectar una pagina requiere confirmacion explicita y debe advertir que se conserva el historial.
 
 ### Gestion de API keys en Settings
-Cada API key tiene `label` y su valor secreto se muestra una sola vez al momento de crearla; despues solo queda visible su metadata no secreta.
+Cada API key tiene `label` y su valor secreto se muestra **una sola vez, en el momento de crearla**; despues solo queda visible su metadata no secreta.
 La lista de API keys muestra `label`, prefijo visible corto, `createdAt`, `lastUsedAt` y estado.
-Una API key revocada sigue visible en la lista con estado `revoked`; deja de autenticar, pero no desaparece del historial operativo.
-Cada API key del MVP autentica acceso a todas las paginas del tenant; no existen restricciones por pagina en esta version.
+Una API key revocada sigue visible en la lista con estado `revoked`; deja de autenticar, pero no desaparece del historial operativo. La lista **no muestra cuando se revoco**: el plugin `apiKey` no guarda esa fecha y mostrar cualquier otra seria inventarla.
+Una key solo se puede revocar **dentro del tenant que la emitio**: pedir la revocacion de una key ajena responde "no encontrada" y no la toca.
+Cada API key autentica acceso a todas las paginas del tenant; no existen restricciones por pagina en esta version.
 
 ### Cuenta de revision
 Para Meta App Review, Resender usa una cuenta de revision preconfigurada en lugar de pedirle al revisor que haga onboarding desde cero. Esta cuenta representa un tenant de Resender y debe tener una pagina de Facebook de prueba ya conectada, una `webhookUrl` configurada y una automatizacion demo activa que responda por la API externa de salida. Las credenciales compartidas con Meta son solo de Resender; no se comparten credenciales personales de Meta/Facebook.
