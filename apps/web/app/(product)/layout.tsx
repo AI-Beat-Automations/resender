@@ -33,7 +33,7 @@ export default async function ProductLayout({
   // vuelta porque comprueba lo mismo antes de mandar al producto.
   const access = await resolveProductAccess(session.user.id)
   if (access === "unknown_user") redirect("/login")
-  if (access === "waitlisted") redirect("/waitlist")
+  if (access === "waitlisted") redirect("/pending")
   if (!(await hasActiveSubscription(session.user.id))) redirect("/billing")
 
   // El aviso no debe poder tirar el dashboard: si el entitlement no se puede
