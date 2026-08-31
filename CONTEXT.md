@@ -5,9 +5,9 @@
 ### Better Auth
 La autenticación web de Resender en Next.js se implementa con `Better Auth`, que es la unica autoridad de [Sesion] y de [Credencial] de la aplicacion. Reemplazo a Auth.js: decisiones y alternativas descartadas en `docs/adr/0014-better-auth-reemplaza-authjs.md`.
 El MVP expone páginas separadas de autenticación: `/login` y `/register`.
-Tras `login` o `register`, el usuario aterriza en `/connections` para continuar el onboarding conectando Facebook.
+Tras `login` o `register` la sesion queda abierta y el destino lo decide el [Gate de acceso], no la autenticacion: una cuenta aprobada aterriza en `/connections` para continuar el onboarding conectando Facebook, y una cuenta bloqueada —que es como nace toda cuenta nueva desde la `0019`— aterriza en `/pending`.
 Las rutas protegidas redirigen a `/login` cuando el usuario no esta autenticado.
-Si un usuario autenticado entra a `/login` o `/register`, se redirige a `/connections`.
+Si un usuario autenticado entra a `/login` o `/register`, se redirige a `/connections`, pero **solo si su cuenta puede entrar al producto**: una sesion que el gate rechazaria se queda viendo el formulario, para que las dos rutas no se reboten entre si para siempre.
 Los intentos de acceso y de alta tienen limite por IP: diez por minuto, contados por el binding nativo de Cloudflare. Se aplica en los server actions y tambien en `POST /api/auth/*`, que queda publicamente expuesto y se puede martillar salteandose los actions.
 
 ### Sesion
