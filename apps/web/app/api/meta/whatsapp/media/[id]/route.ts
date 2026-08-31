@@ -1,4 +1,4 @@
-import { auth } from "@/auth"
+import { getSession } from "@/lib/auth/session"
 import { authenticateApiKey } from "@/lib/api-keys/api-keys"
 import {
   getMediaBucket,
@@ -28,7 +28,7 @@ async function resolveTenantId(request: Request): Promise<string | null> {
     if (apiKey) return apiKey.tenantId
   }
 
-  const session = await auth()
+  const session = await getSession()
   return session?.user?.id ?? null
 }
 

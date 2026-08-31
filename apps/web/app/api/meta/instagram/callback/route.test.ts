@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
-  auth: vi.fn(),
+  getSession: vi.fn(),
   resolveProductAccess: vi.fn(),
   resolveInstagramAccess: vi.fn(),
   hasActiveSubscription: vi.fn(),
@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => ({
   log: vi.fn(),
 }))
 
-vi.mock("@/auth", () => ({ auth: mocks.auth }))
+vi.mock("@/lib/auth/session", () => ({ getSession: mocks.getSession }))
 
 vi.mock("@/lib/auth/waitlist", () => ({
   resolveProductAccess: mocks.resolveProductAccess,
@@ -105,7 +105,7 @@ const reasonOf = (response: Response) =>
 describe("GET /api/meta/instagram/callback", () => {
   beforeEach(() => {
     for (const mock of Object.values(mocks)) mock.mockReset()
-    mocks.auth.mockResolvedValue({ user: { id: "tenant-1" } })
+    mocks.getSession.mockResolvedValue({ user: { id: "tenant-1" } })
     mocks.resolveProductAccess.mockResolvedValue("allowed")
     mocks.hasActiveSubscription.mockResolvedValue(true)
     mocks.resolveInstagramAccess.mockResolvedValue(true)

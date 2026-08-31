@@ -15,7 +15,7 @@ import {
   ConnectedPageCard,
   type ConnectedPageView,
 } from "@/features/connections/ui/connected-page-card"
-import { auth } from "@/auth"
+import { getSession } from "@/lib/auth/session"
 import {
   resolveChannelAccess,
   type ChannelAccess,
@@ -68,7 +68,7 @@ export default async function ConnectionsPage({
   const { meta, pages, reason, instagram, username } = await searchParams
   const t = await getAppDict()
   const connected = parseConnectedPages(pages)
-  const session = await auth()
+  const session = await getSession()
   const tenantId = session?.user?.id ?? null
   const tenantPages = tenantId ? await listTenantPages(tenantId) : []
   const quota = tenantId ? await resolvePageQuota(tenantId) : null

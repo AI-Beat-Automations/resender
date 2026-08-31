@@ -4,7 +4,7 @@ import { Link2, TriangleAlert } from "lucide-react"
 
 import { ConnectFacebookButton } from "@/features/connect-meta/ui/connect-facebook-button"
 import { PageSelectionForm } from "@/features/connect-meta/ui/page-selection-form"
-import { auth } from "@/auth"
+import { getSession } from "@/lib/auth/session"
 import { resolvePlanLimits } from "@/lib/billing/entitlements"
 import { getSubscriptionByTenantId } from "@/lib/billing/subscription"
 import { listAuthorizedPages, type ConnectedPage } from "@/lib/meta"
@@ -21,7 +21,7 @@ import { getAppDict } from "@/lib/i18n/app-dict"
 // visual de B1/B2 y sus cuatro estados propios — sin autorización de Meta,
 // plan sin resolver, lista clasificada y error de validación al confirmar.
 export default async function SelectPagesPage() {
-  const session = await auth()
+  const session = await getSession()
   if (!session?.user?.id) redirect("/login")
   const tenantId = session.user.id
   const t = await getAppDict()

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation"
 
-import { auth } from "@/auth"
+import { getSession } from "@/lib/auth/session"
 import { AccountIdentityPanel } from "@/features/account/ui/account-identity-panel"
 import { ChangePasswordPanel } from "@/features/account/ui/change-password-panel"
 import { DeleteAccountPanel } from "@/features/account/ui/delete-account-panel"
@@ -35,7 +35,7 @@ export default async function SettingsPage({
   searchParams,
 }: SettingsPageProps) {
   const [session, params, { lang, t }] = await Promise.all([
-    auth(),
+    getSession(),
     searchParams,
     getAppI18n(),
   ])

@@ -2,7 +2,7 @@ import Link from "next/link"
 import { redirect } from "next/navigation"
 import { LoaderCircle } from "lucide-react"
 
-import { auth } from "@/auth"
+import { getSession } from "@/lib/auth/session"
 import { ActivationPoller } from "@/features/billing/ui/activation-poller"
 import { AccessCard, AccessShell } from "@/features/auth/ui/access-shell"
 import { getStripe } from "@/lib/billing/stripe"
@@ -28,7 +28,7 @@ export default async function BillingSuccessPage({
   searchParams,
 }: BillingSuccessPageProps) {
   const [session, params, { lang, t }] = await Promise.all([
-    auth(),
+    getSession(),
     searchParams,
     getAppI18n(),
   ])

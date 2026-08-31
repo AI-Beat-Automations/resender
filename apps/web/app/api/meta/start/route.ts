@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server"
 
-import { auth } from "@/auth"
+import { getSession } from "@/lib/auth/session"
 import { resolveProductAccess } from "@/lib/auth/waitlist"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
 import { log, type LogReason } from "@/lib/observability/logger"
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL(to, request.url))
   }
 
-  const session = await auth()
+  const session = await getSession()
   if (!session?.user?.id) {
     return gate("not_authenticated", "/login")
   }

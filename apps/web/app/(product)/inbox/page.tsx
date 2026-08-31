@@ -2,7 +2,7 @@ import Link from "next/link"
 import type { ReactNode } from "react"
 import { MessageSquare } from "lucide-react"
 
-import { auth } from "@/auth"
+import { getSession } from "@/lib/auth/session"
 import { CommentThread } from "@/features/comments/ui/comment-thread"
 import { PublicationLogList } from "@/features/comments/ui/publication-log-list"
 import { EmptyPane } from "@/features/inbox/ui/empty-pane"
@@ -52,7 +52,7 @@ export default async function InboxPage({
   }>
 }) {
   const [session, params, t] = await Promise.all([
-    auth(),
+    getSession(),
     searchParams,
     getAppDict(),
   ])

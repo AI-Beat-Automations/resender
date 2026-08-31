@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server"
 
-import { auth } from "@/auth"
+import { getSession } from "@/lib/auth/session"
 import { resolveInstagramAccess } from "@/lib/auth/channel-access"
 import { resolveProductAccess } from "@/lib/auth/waitlist"
 import { resolvePlanLimits } from "@/lib/billing/entitlements"
@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL(to, APP_URL))
   }
 
-  const session = await auth()
+  const session = await getSession()
   if (!session?.user?.id) {
     return gate("not_authenticated", "/login")
   }
