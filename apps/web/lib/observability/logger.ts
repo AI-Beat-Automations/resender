@@ -53,6 +53,10 @@ export type LogAction =
   // cuenta y credenciales
   | "password_change" // la persona cambió su contraseña desde Ajustes
   | "session_revoke" // cierre de las demás sesiones tras cambiar la contraseña
+  // Verificación del `Bearer` de la API externa. **Solo se escribe cuando la
+  // verificación no pudo completarse**, no en cada request: una key inválida es
+  // un 401 normal y ya lo cuenta el log de la ruta. Ver `lib/auth/api-keys.ts`.
+  | "api_key_verify"
   // efectos de borde que hoy solo dejan un `console.error` suelto
   | "label_resolve" // @handle del contacto y permalink de la publicación
   | "token_exchange"

@@ -42,9 +42,34 @@ const auth = betterAuth({
   plugins: [apiKeyPlugin()],
 })
 
+// La misma configuración, pero con un adaptador que no contesta: es el blip de
+// Neon del escenario real. `findOne` es lo primero que toca `verifyApiKey` al
+// buscar el hash de la key, así que romperlo ahí rompe la verificación entera
+// sin tocar nada más.
+const brokenMemoryAdapter: ReturnType<typeof memoryAdapter> = (options) => ({
+  ...memoryAdapter(db)(options),
+  findOne: async () => {
+    throw new Error("la base no contesta")
+  },
+})
+
+const brokenAuth = betterAuth({
+  secret: "test-secret-para-el-adaptador-en-memoria-0123456789",
+  baseURL: "http://localhost:3000",
+  database: brokenMemoryAdapter,
+  emailAndPassword: { enabled: true },
+  advanced: { database: { generateId: () => crypto.randomUUID() } },
+  plugins: [apiKeyPlugin()],
+})
+
+// Mutable para que un solo test pueda cambiar la instancia bajo los pies del
+// módulo, que es la única forma de ejercitar el fallo de base sin mockear
+// `verifyApiKey` y dejar de probar el plugin real.
+let currentAuth = auth
+
 vi.mock("@/lib/auth/auth", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/auth/auth")>()
-  return { ...actual, getAuth: () => auth }
+  return { ...actual, getAuth: () => currentAuth }
 })
 
 // `next/headers` solo lo usa `listApiKeys`, que no se ejercita acá: listar pide
@@ -52,8 +77,12 @@ vi.mock("@/lib/auth/auth", async (importOriginal) => {
 // que importar el módulo no arrastre el runtime de request de Next.
 vi.mock("next/headers", () => ({ headers: async () => new Headers() }))
 
-const { authenticateApiKey, createApiKey, revokeApiKey } =
-  await import("@/lib/auth/api-keys")
+const {
+  ApiKeyVerificationFailedError,
+  authenticateApiKey,
+  createApiKey,
+  revokeApiKey,
+} = await import("@/lib/auth/api-keys")
 
 let tenantId: string
 let otherTenantId: string
@@ -123,6 +152,53 @@ describe("authenticateApiKey", () => {
     await expect(authenticateApiKey("")).resolves.toBeNull()
     await expect(authenticateApiKey(undefined)).resolves.toBeNull()
     await expect(authenticateApiKey({ key: "x" })).resolves.toBeNull()
+  })
+
+  // **El caso que este bloque existe para proteger.** `verifyApiKey` colapsa
+  // cualquier excepción a `valid: false`, así que sin el corte de
+  // `isVerificationInfrastructureFailure` un blip de base saldría como
+  // `401 unauthorized` y el operador se iría a buscar una key revocada que nunca
+  // se revocó. Tiene que ser un 500, que es lo que la ruta emite cuando esto
+  // propaga.
+  //
+  // El test corre contra el plugin real y no contra un mock de su respuesta: lo
+  // que distingue las dos ramas es la forma de `error.message` que arma el
+  // propio plugin, y mockearla sería probar la suposición en vez del hecho. Si
+  // un bump del paquete cambia esa forma, esto se pone rojo.
+  it("propaga un fallo de base en vez de disfrazarlo de 401", async () => {
+    const created = await createApiKey(tenantId, "victima del blip")
+
+    currentAuth = brokenAuth
+    try {
+      await expect(authenticateApiKey(created.apiKey)).rejects.toBeInstanceOf(
+        ApiKeyVerificationFailedError
+      )
+    } finally {
+      currentAuth = auth
+    }
+
+    // Y la key nunca estuvo mal: con la base de vuelta autentica igual que antes.
+    await expect(authenticateApiKey(created.apiKey)).resolves.toMatchObject({
+      tenantId,
+    })
+  })
+
+  // La otra mitad del corte: una key que de verdad no vale sigue siendo `null`.
+  // Las dos ramas comparten el `code` `INVALID_API_KEY`, así que si el criterio
+  // se escribiera solo con el `code` este test se pondría rojo.
+  it("no confunde una key inexistente con un fallo de base", async () => {
+    await expect(
+      authenticateApiKey("pk_live_estanoexisteperotieneelprefijo")
+    ).resolves.toBeNull()
+  })
+
+  // Y una revocada tampoco: el plugin la rechaza con `KEY_DISABLED`, que es un
+  // 401 legítimo.
+  it("no confunde una key revocada con un fallo de base", async () => {
+    const created = await createApiKey(tenantId, "revocada, no rota")
+    await revokeApiKey(tenantId, created.record.id)
+
+    await expect(authenticateApiKey(created.apiKey)).resolves.toBeNull()
   })
 })
 

@@ -3,6 +3,7 @@ import { headers } from "next/headers"
 import { isAPIError } from "better-auth/api"
 
 import { getAuth } from "@/lib/auth/auth"
+import { log } from "@/lib/observability/logger"
 
 // **El único lugar del repositorio que le habla al plugin `apiKey`.** Igual que
 // `lib/auth/session.ts` con la sesión: los consumidores —las cinco rutas de la
@@ -125,8 +126,16 @@ export async function revokeApiKey(
  * de otro.
  *
  * Devuelve `null` para toda key que no autentica —inexistente, revocada,
- * malformada—: el contrato hacia afuera es un 401 sin detalle, igual que antes.
- * Los errores del plugin se traducen a ese `null` y no se propagan.
+ * expirada, malformada—: el contrato hacia afuera es un 401 sin detalle, igual
+ * que antes.
+ *
+ * **Un fallo de infraestructura no es un 401.** `verifyApiKey` colapsa cualquier
+ * excepción a `valid: false`, así que un blip de Neon durante la verificación
+ * saldría, sin este corte, como `401 {"error":"unauthorized"}`: N8N dejaría de
+ * funcionar y el operador se iría a buscar una key revocada que nunca se revocó.
+ * Eso se distingue (ver `isVerificationInfrastructureFailure`) y se propaga como
+ * `ApiKeyVerificationFailedError`, que las rutas no atrapan y que Next convierte
+ * en el mismo 500 que emitía esta función cuando la implementación era propia.
  */
 export async function authenticateApiKey(
   apiKey: unknown
@@ -136,9 +145,74 @@ export async function authenticateApiKey(
   if (!isApiKeyFormat(apiKey)) return null
 
   const result = await getAuth().api.verifyApiKey({ body: { key: apiKey } })
+
+  if (isVerificationInfrastructureFailure(result.error)) {
+    // La causa real ya se perdió: el plugin la escribe en su propio logger y no
+    // la devuelve. Lo que se registra acá es la señal de que hubo un fallo de
+    // verificación —no de que la key sea mala—, que es lo que hoy no existía.
+    log({
+      entrypoint: "route",
+      action: "api_key_verify",
+      outcome: "failed",
+      reason: "internal_error",
+      errorMessage: VERIFICATION_FAILED_MESSAGE,
+    })
+    throw new ApiKeyVerificationFailedError()
+  }
+
   if (!result.valid || !result.key) return null
 
   return { id: result.key.id, tenantId: result.key.referenceId }
+}
+
+const VERIFICATION_FAILED_MESSAGE =
+  "verifyApiKey no pudo completar la verificacion (fallo de infraestructura, no key invalida)"
+
+/**
+ * La verificación no se pudo completar. **No significa que la key sea mala**: es
+ * el 500 que la API externa tiene que ver para que un blip de base no se lea
+ * como una credencial revocada.
+ */
+export class ApiKeyVerificationFailedError extends Error {
+  constructor() {
+    super(VERIFICATION_FAILED_MESSAGE)
+    this.name = "ApiKeyVerificationFailedError"
+  }
+}
+
+/**
+ * Separa "esta key no vale" de "no pude averiguarlo".
+ *
+ * `verifyApiKey` devuelve `valid: false` en los dos casos, pero **no** devuelve
+ * el mismo `error`. El endpoint tiene dos ramas de fallo y se delatan por la
+ * forma de `error.message`, que es tipada y distinta en cada una:
+ *
+ *   - Rechazo del plugin (`isAPIError`): copia el cuerpo del `APIError`, así que
+ *     `message` es el **texto** (`"Invalid API key."`) y `code` el motivo real
+ *     —`INVALID_API_KEY` si no existe, `KEY_DISABLED` si está revocada,
+ *     `KEY_EXPIRED`, `USAGE_EXCEEDED`—. Todo esto es un 401 legítimo.
+ *   - Excepción cualquiera (el `catch` de última instancia, que es donde cae que
+ *     la base no conteste): arma el error a mano con
+ *     `message: API_KEY_ERROR_CODES.INVALID_API_KEY`, que **no es el texto sino
+ *     el objeto entero** `{ code, message }` de `defineErrorCodes`, y `code:
+ *     "INVALID_API_KEY"`.
+ *
+ * De ahí la condición: el `code` genérico **y** un `message` que no es un
+ * string. Las dos juntas, porque el `code` solo no alcanza —lo comparte con la
+ * key inexistente, que es el 401 más común— y el `message` solo tampoco.
+ *
+ * Sí, se apoya en un descuido del plugin (la rama de excepción se olvidó de
+ * desenvolver `.message`), y por eso está escrito acá y no repartido. La
+ * versión está fijada (`@better-auth/api-key` 1.7.2, `package.json` sin rango) y
+ * `lib/auth/api-keys.test.ts` cubre las dos ramas contra el plugin real, así que
+ * un bump que lo corrija rompe el test en vez de romper producción en silencio.
+ * Y si igual se colara: la degradación es al 401 de siempre, nunca a un 500 de
+ * más para una key que sí es inválida.
+ */
+function isVerificationInfrastructureFailure(
+  error: { code: string; message: unknown } | null
+): boolean {
+  return error?.code === "INVALID_API_KEY" && typeof error.message !== "string"
 }
 
 function isApiKeyFormat(value: unknown): value is string {
@@ -166,7 +240,9 @@ function normalizeLabel(labelInput: unknown) {
 // **No hay `revokedAt`.** El plugin no guarda cuándo se revocó una key y su
 // `update` no toca `updated_at`, así que no existe ninguna columna de la que
 // salga esa fecha sin inventarla. La lista dice que la key está revocada y no
-// dice cuándo; el detalle está en la ADR 0014 y en el PR del escalón 3.
+// dice cuándo; el detalle está escrito en CONTEXT.md → [Gestion de API keys en
+// Settings] y en el PR del escalón 3. **No está en la ADR 0014**, que decide el
+// cambio de librería y no llega a este nivel.
 function mapApiKey(apiKey: {
   id: string
   name?: string | null
