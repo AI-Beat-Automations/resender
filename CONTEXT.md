@@ -13,13 +13,15 @@ Si un usuario autenticado entra a `/login` o `/register`, se redirige a `/connec
 La ruta `/` sigue siendo una landing pública simple con la propuesta de valor y accesos a `Login` y `Register`.
 
 ### Registro MVP
-En el MVP, el registro con email y password deja entrar al usuario inmediatamente. No se exige verificación de email antes de usar la app.
+En el MVP, el registro con email y password crea la cuenta y abre sesion inmediatamente. No se exige verificación de email antes de usar la app. Entrar al producto es otra cosa: eso lo decide el [Gate de acceso], que hoy esta encendido.
 
-### Gate de acceso (apagado)
-Existio un gate de lanzamiento: el registro estaba abierto pero el acceso al producto cerrado por una bandera `users.waitlisted`, con aprobacion manual por SQL. **Ese gate esta apagado** (migracion `0011_disable_access_gate.sql`: `default false` + `update users set waitlisted = false`). Toda cuenta nueva entra directo al producto y el unico filtro que queda es el [Gate de suscripcion].
-La columna `users.waitlisted` y `lib/auth/waitlist.ts` siguen en el codigo a proposito: `isUserWaitlisted` es fail-closed y vive en el hot path de `POST /api/meta/send`, asi que con el default en `false` queda inerte y se remueve en una entrega aparte. La pantalla autenticada `/waitlist` se borro; esa ruta ahora es la [Lista de espera].
-Decision en `docs/adr/0007-public-waitlist-and-access-gate-shutdown.md`.
-No confundir con el [Permiso de Instagram]: aquel gate era del producto entero y esta apagado; el permiso de Instagram es por canal, esta vivo y se opera igual —por SQL, sin pantalla—.
+### Gate de acceso
+El registro esta abierto, el acceso al producto no: la bandera `users.waitlisted` cierra la puerta y se aprueba a mano, cuenta por cuenta, con `update users set waitlisted = false where email = '...'`. Se lee viva contra la base en cada request —nunca del JWT—, es fail-closed y se aplica en el layout de `(product)`, en `/billing` y en los `start`, `callback` y `send` de los tres canales.
+El gate nacio con la `0004`, se apago con la `0011` (ADR 0007, para que el CTA de registro de la [Lista de espera] publica no fuera mentira) y **volvio a encenderse con la `0019_reenable_access_gate.sql`**: `default true` otra vez. La `0019` solo cambia el default y **no toca a los usuarios existentes**, que la `0011` habia dejado en `false` y son cuentas operando, varias pagando: solo nacen bloqueadas las cuentas nuevas.
+Una cuenta recien registrada queda con sesion abierta y aterriza en `/pending`, la pantalla autenticada del gate: confirma que el registro salio bien, muestra a que correo se le va a escribir y ofrece cerrar sesion. **No** es `/waitlist`: esa ruta es la [Lista de espera] publica y pide un correo que esta persona ya dio.
+Aprobar una cuenta pega en la siguiente request, sin re-login. Despues del gate de acceso todavia falta el [Gate de suscripcion].
+Decisiones en `docs/adr/0007-public-waitlist-and-access-gate-shutdown.md` (el apagado); la reactivacion todavia no tiene ADR propia.
+No confundir con el [Permiso de Instagram]: este gate es del producto entero; el permiso de Instagram es por canal y se opera igual —por SQL, sin pantalla—.
 
 ### Lista de espera
 Lista publica de captacion, sin relacion con el gate anterior. Su unico proposito es guardar el correo de alguien que hoy no puede comprar —porque solo existe Messenger— para avisarle cuando salgan Instagram o WhatsApp. Esta pensada para repartir en conferencias y contactos cara a cara, ademas de la landing.
@@ -101,9 +103,9 @@ Desconectar una página elimina o desactiva la conexión para futuros envíos y 
 La baja del webhook en Meta se despacha **por canal**: una cuenta de Instagram se da de baja contra `graph.instagram.com` y no contra el Graph de Facebook. Mandar el token de Instagram al endpoint de Facebook no da un error claro, da un `400` que se registra como "Meta no confirmó" y deja la cuenta recibiendo eventos.
 
 ### Permiso de Instagram
-El canal Instagram esta cerrado por cuenta detras de la bandera `users.instagram_enabled`: `true` es acceso, `false` no. Se opera **por SQL** (`update users set instagram_enabled = true where email = '...'`), no hay pantalla de administracion y nadie se anota en ninguna parte. **No** es una lista de espera: no confundir con el [Gate de acceso (apagado)] ni con la [Lista de espera] publica.
+El canal Instagram esta cerrado por cuenta detras de la bandera `users.instagram_enabled`: `true` es acceso, `false` no. Se opera **por SQL** (`update users set instagram_enabled = true where email = '...'`), no hay pantalla de administracion y nadie se anota en ninguna parte. **No** es una lista de espera: no confundir con el [Gate de acceso] ni con la [Lista de espera] publica.
 Existe porque Instagram esta implementado pero todavia no tiene el Advanced Access de Meta, asi que el canal solo sirve para cuentas propias o de prueba.
-El permiso apaga el canal **entero y en el acto**, no solo la puerta de entrada: sin el no se conecta, no se envia, no se responden comentarios y los entrantes se descartan sin persistir, incluida una cuenta que ya estaba conectada. Se lee vivo contra la base en cada request, nunca del JWT, y es fail-closed. Vive en `lib/auth/channel-access.ts`, no en `lib/auth/waitlist.ts`, que esta marcado para borrarse.
+El permiso apaga el canal **entero y en el acto**, no solo la puerta de entrada: sin el no se conecta, no se envia, no se responden comentarios y los entrantes se descartan sin persistir, incluida una cuenta que ya estaba conectada. Se lee vivo contra la base en cada request, nunca del JWT, y es fail-closed. Vive en `lib/auth/channel-access.ts`, no en `lib/auth/waitlist.ts`, que volvio a estar en uso con la `0019`.
 La migracion `0015` habilita a **todas las cuentas que existian**, igual que hizo la `0004`: el permiso no filtra a ningun cliente actual y solo aplica a los registros posteriores.
 Decision en `docs/adr/0010-permiso-de-instagram-por-cuenta.md`.
 
@@ -320,7 +322,7 @@ A partir del **80%** del consumo del período aparece una barra de alerta **glob
 No hay email transaccional en esta entrega (no existe canal de correo en el repo). Pendiente: la FAQ pública promete "Te avisamos cuando te acercás al límite" dos veces en `content/i18n/es.ts`, que un cliente lee como email; hay que reescribirla para que apunte al dashboard.
 
 ### Gate de suscripcion
-Con el [Gate de acceso (apagado)] fuera de juego, este es el **unico** gate: el registro esta abierto para cualquiera y la suscripcion decide quien puede usar. Un usuario sin suscripcion activa aterriza en la pagina de pricing. El acceso existe solo con status `active` en la tabla `subscriptions`; cualquier otro estado es **bloqueo total**: dashboard, OAuth de Meta y `POST /api/meta/send` (403) quedan cerrados, y los webhooks entrantes de Meta del tenant se descartan sin persistir (respondiendo `200` a Meta para no degradar la app). Mismo patron que usaba el gate de acceso: se lee de base de datos en cada request, fail-closed, nunca del JWT ni de la API de Stripe en el hot path.
+Es el **segundo** gate, detras del [Gate de acceso]: una cuenta aprobada a mano todavia tiene que pagar. La suscripcion decide quien puede usar. Un usuario sin suscripcion activa aterriza en la pagina de pricing. El acceso existe solo con status `active` en la tabla `subscriptions`; cualquier otro estado es **bloqueo total**: dashboard, OAuth de Meta y `POST /api/meta/send` (403) quedan cerrados, y los webhooks entrantes de Meta del tenant se descartan sin persistir (respondiendo `200` a Meta para no degradar la app). Mismo patron que usaba el gate de acceso: se lee de base de datos en cada request, fail-closed, nunca del JWT ni de la API de Stripe en el hot path.
 
 ### Sin trial
 No hay periodo de prueba: para usar el producto hay que pagar. El primer cobro ocurre dentro del propio Stripe Checkout y no existe logica de trial en ninguna capa (ni `trial_period_days` en Checkout ni flags propios en base de datos).

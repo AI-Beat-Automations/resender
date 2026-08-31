@@ -30,14 +30,15 @@ export async function GET(request: NextRequest) {
     return gate("not_authenticated", "/login")
   }
 
-  // Una sesión huérfana vuelve a `/login` y no a `/waitlist`: esa ruta dejó de
-  // ser la pantalla del gate (ADR 0007) y no permite reautenticarse.
+  // Una sesión huérfana vuelve a `/login` y no a `/pending`: la pantalla del
+  // gate da por buena la sesión y de una credencial rota solo se sale
+  // volviendo a autenticarse.
   const access = await resolveProductAccess(session.user.id)
   if (access === "unknown_user") {
     return gate("not_authenticated", "/login")
   }
   if (access === "waitlisted") {
-    return gate("waitlisted", "/waitlist")
+    return gate("waitlisted", "/pending")
   }
 
   if (!(await hasActiveSubscription(session.user.id))) {

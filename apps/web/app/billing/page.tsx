@@ -39,7 +39,7 @@ export default async function BillingPage() {
   if (!session?.user?.id) redirect("/login")
   const access = await resolveProductAccess(session.user.id)
   if (access === "unknown_user") redirect("/login")
-  if (access === "waitlisted") redirect("/waitlist")
+  if (access === "waitlisted") redirect("/pending")
   if (await hasActiveSubscription(session.user.id)) redirect("/connections")
 
   async function signOutAction() {
