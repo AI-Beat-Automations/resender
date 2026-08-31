@@ -394,6 +394,8 @@ export const es: Dict = {
     form: {
       email: "Email",
       password: "Contraseña",
+      name: "Nombre",
+      namePlaceholder: "Tu nombre",
       emailPlaceholder: "tu@empresa.com",
       passwordPlaceholder: "Al menos 8 caracteres",
       passwordHint: "Al menos 8 caracteres.",
@@ -412,6 +414,9 @@ export const es: Dict = {
       invalidEmail: "Escribe un email válido.",
       passwordTooShort: "La contraseña debe tener al menos 8 caracteres.",
       passwordsDoNotMatch: "Las contraseñas no coinciden.",
+      nameRequired: "Escribe tu nombre.",
+      tooManyAttempts:
+        "Demasiados intentos. Espera un minuto y vuelve a intentarlo.",
       createdNoSignin:
         "Creamos tu cuenta, pero no pudimos iniciar la sesión. Entra desde Iniciar sesión.",
     },

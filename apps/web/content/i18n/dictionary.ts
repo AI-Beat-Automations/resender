@@ -158,6 +158,10 @@ export type Dict = {
     form: {
       email: string
       password: string
+      // Etiqueta y placeholder del nombre. Solo se renderizan en modo
+      // `register`: Better Auth lo exige en el alta y el login no lo pide.
+      name: string
+      namePlaceholder: string
       emailPlaceholder: string
       passwordPlaceholder: string
       passwordHint: string
@@ -183,6 +187,13 @@ export type Dict = {
       invalidEmail: string
       passwordTooShort: string
       passwordsDoNotMatch: string
+      // El código de `validateNameInput`, con la misma regla: `Record` sobre la
+      // unión en el server action, así que agregar un código nuevo no compila
+      // hasta decidir cómo se dice en los dos idiomas.
+      nameRequired: string
+      // Rate limit por IP del acceso y del alta (`lib/auth/rate-limit.ts`). Es
+      // lo único que ve quien excede los diez intentos por minuto.
+      tooManyAttempts: string
       createdNoSignin: string
     }
   }

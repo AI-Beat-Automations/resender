@@ -33,6 +33,25 @@ export function AuthForm({ action, mode, lang }: AuthFormProps) {
         {/* El server action no ve el pathname: le pasamos el idioma para que
             devuelva sus errores en el idioma de la página. */}
         <input type="hidden" name="locale" value={lang} />
+        {/* Solo en el alta: Better Auth exige `name` al crear el usuario, y el
+            acceso no lo pide. La regla de "no puede estar vacío" vive en
+            `lib/auth/validation`, no acá: vitest no ejecuta `.tsx`. El
+            `required` del input es la primera línea, no la única. */}
+        {!isLogin && (
+          <div className="grid gap-2">
+            <Label htmlFor="name">{t.name}</Label>
+            <Input
+              id="name"
+              name="name"
+              type="text"
+              autoComplete="name"
+              required
+              disabled={pending}
+              aria-invalid={hasError}
+              placeholder={t.namePlaceholder}
+            />
+          </div>
+        )}
         <div className="grid gap-2">
           <Label htmlFor="email">{t.email}</Label>
           <Input
