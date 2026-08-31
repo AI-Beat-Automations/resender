@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   resolveInstagramAccess: vi.fn(),
 }))
 
-vi.mock("@/lib/api-keys/api-keys", () => ({
+vi.mock("@/lib/auth/api-keys", () => ({
   authenticateApiKey: mocks.authenticateApiKey,
 }))
 
@@ -51,6 +51,28 @@ describe("authenticateCommentReplyRequest", () => {
       ok: true,
       value: { tenantId: "tenant-1", idempotencyKey: null },
     })
+  })
+
+  // El contrato hacia afuera de la verificación de API key: 401 con `error:
+  // "unauthorized"` y nada más. Vale igual para una key inventada, una revocada
+  // y una vencida; el plugin distingue esos casos y `lib/auth/api-keys.ts` los
+  // colapsa en `null` a propósito, para no decirle a quien prueba credenciales
+  // cuál de las tres acertó.
+  it("blocks a request without a valid API key", async () => {
+    mocks.authenticateApiKey.mockResolvedValue(null)
+
+    const result = await authenticateCommentReplyRequest(requestWithKey())
+
+    expect(result.ok).toBe(false)
+    if (result.ok) throw new Error("unreachable")
+
+    expect(result.reason).toBe("unauthorized")
+    expect(result.response.status).toBe(401)
+    await expect(result.response.json()).resolves.toEqual({
+      error: "unauthorized",
+    })
+    // Y ni siquiera se consultan los gates que vienen después.
+    expect(mocks.isUserWaitlisted).not.toHaveBeenCalled()
   })
 
   // Es el gate de la ADR 0010 para las dos rutas de comentarios: si se cayera,

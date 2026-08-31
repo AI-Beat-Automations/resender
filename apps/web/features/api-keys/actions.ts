@@ -8,7 +8,7 @@ import {
   createApiKey,
   InvalidApiKeyLabelError,
   revokeApiKey,
-} from "@/lib/api-keys/api-keys"
+} from "@/lib/auth/api-keys"
 import { posthog } from "@/lib/posthog"
 
 export type CreateApiKeyState = {

@@ -1,5 +1,5 @@
 import { getSession } from "@/lib/auth/session"
-import { authenticateApiKey } from "@/lib/api-keys/api-keys"
+import { authenticateApiKey } from "@/lib/auth/api-keys"
 import {
   getMediaBucket,
   lookupMediaForTenant,

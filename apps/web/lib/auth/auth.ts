@@ -1,3 +1,7 @@
+// Ruta dedicada del paquete propio del plugin, **nunca un barril**: desde 1.7
+// `apiKey` no vive más en `better-auth` y tiene su propio paquete, así que
+// importar de acá no arrastra ningún otro plugin al bundle del Worker.
+import { apiKey } from "@better-auth/api-key"
 import { betterAuth } from "better-auth"
 import { nextCookies } from "better-auth/next-js"
 import { NeonDialect } from "kysely-neon"
@@ -34,10 +38,10 @@ export type Auth = ReturnType<typeof createAuth>
 
 function createAuth() {
   return betterAuth({
-    // Better Auth lee `BETTER_AUTH_SECRET` y cae a `AUTH_SECRET`. Se explicita
-    // el primero para que los dos convivan sin pisarse: `AUTH_SECRET` sigue
-    // vivo como pepper de las API keys (`lib/api-keys/*`) hasta el escalón 3, y
-    // borrarlo invalidaría todas las keys emitidas.
+    // Explícito y no por descubrimiento: Better Auth también aceptaría
+    // `AUTH_SECRET` como respaldo, y ese secreto ya no existe en ninguna parte
+    // del repositorio desde que las API keys pasaron al plugin. Nombrar el
+    // único que vale evita que un día alguien lo reviva sin querer.
     secret: process.env.BETTER_AUTH_SECRET,
     baseURL: process.env.BETTER_AUTH_URL,
     trustedOrigins: process.env.BETTER_AUTH_URL
@@ -166,6 +170,95 @@ function createAuth() {
     // `nextCookies()` va **último**: es un hook `after` que copia las cookies
     // que emite la librería al store de Next. Sin él un server action no puede
     // escribir la cookie de sesión, y el login "funciona" sin dejar sesión.
-    plugins: [nextCookies()],
+    // `apiKeyPlugin()` va antes, como cualquier otro plugin.
+    plugins: [apiKeyPlugin(), nextCookies()],
+  })
+}
+
+// Las API keys opacas de la integración externa (`pk_live_*`), única
+// implementación desde el escalón 3 de la ADR 0014. Del plugin se usa lo mínimo
+// —emitir, verificar y revocar— y se apaga todo lo demás: lo que no se apaga acá
+// cambia el comportamiento de las keys sin que nadie lo haya decidido.
+//
+// Sale de `createAuth()` y se exporta **para que `lib/auth/api-keys.test.ts`
+// corra contra esta configuración y no contra una copia**. Lo que ese test
+// protege —que el tenant que resuelve una key sea el `users.id` correcto y que
+// el prefijo visible siga siendo `pk_live_` + 8— depende de estos valores, y una
+// segunda copia en el test los dejaría de cubrir en cuanto divergieran.
+export function apiKeyPlugin() {
+  return apiKey({
+    // Mapeo al estilo del repo, igual que los otros cuatro modelos.
+    // Cuatro campos se traducen y no se calcan, para conservar el
+    // vocabulario que ya usan CONTEXT.md y la pantalla de Ajustes:
+    // `name`→`label`, `start`→`visible_prefix`, `key`→`secret_hash` y
+    // `lastRequest`→`last_used_at`. El `id` no es mapeable, como siempre.
+    schema: {
+      apikey: {
+        modelName: "auth_api_keys",
+        fields: {
+          configId: "config_id",
+          name: "label",
+          start: "visible_prefix",
+          referenceId: "user_id",
+          key: "secret_hash",
+          refillInterval: "refill_interval",
+          refillAmount: "refill_amount",
+          lastRefillAt: "last_refill_at",
+          rateLimitEnabled: "rate_limit_enabled",
+          rateLimitTimeWindow: "rate_limit_time_window",
+          rateLimitMax: "rate_limit_max",
+          requestCount: "request_count",
+          lastRequest: "last_used_at",
+          expiresAt: "expires_at",
+          createdAt: "created_at",
+          updatedAt: "updated_at",
+        },
+      },
+    },
+
+    // El formato visible no cambia: `pk_live_` + 64 caracteres de secreto,
+    // y de eso se guardan los 16 primeros —`pk_live_` + 8— como prefijo
+    // visible, exactamente el mismo largo y la misma forma que emitía
+    // `lib/api-keys/tokens.ts`. Ver [API Token] en CONTEXT.md.
+    defaultPrefix: "pk_live_",
+    defaultKeyLength: 64,
+    startingCharactersConfig: {
+      shouldStore: true,
+      charactersLength: 16,
+    },
+
+    // La etiqueta es obligatoria y llega hasta 80 caracteres, que es el
+    // límite que ya validaba el producto y que declara el `maxLength` del
+    // formulario. El default del plugin son 32 y cortaría etiquetas que hoy
+    // se aceptan.
+    requireName: true,
+    minimumNameLength: 1,
+    maximumNameLength: 80,
+
+    // Las tres cosas que el plugin ofrece y que **están fuera de alcance**
+    // (issue #88). Apagadas explícitamente y no por omisión:
+    //
+    //   - Rate limit por key: el límite real del producto es el binding
+    //     nativo de Cloudflare (`lib/auth/rate-limit.ts`). En `false` el
+    //     plugin igual refresca `last_used_at` en cada verificación, que es
+    //     el dato que la lista de Ajustes muestra.
+    //   - Expiración: las keys viven hasta revocación manual. Sin default y
+    //     con el `expiresIn` del cliente rechazado, `expires_at` es siempre
+    //     null y la barrida de expiradas nunca las toca.
+    //   - Metadata (y, con ella, permisos por key): cada key autentica todo
+    //     el tenant, como hasta ahora.
+    rateLimit: { enabled: false },
+    keyExpiration: {
+      defaultExpiresIn: null,
+      disableCustomExpiresTime: true,
+    },
+    enableMetadata: false,
+
+    // **No** se cambia a `true`. Con esto encendido, una API key en la
+    // cabecera abriría una sesión de Better Auth con el usuario dueño de la
+    // key: la credencial de máquina pasaría a valer como la de la persona en
+    // toda la app, incluidas las pantallas de Ajustes. La API externa
+    // verifica su key contra `lib/auth/api-keys.ts` y nada más.
+    enableSessionForAPIKeys: false,
   })
 }

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation"
 
+import { listApiKeys } from "@/lib/auth/api-keys"
 import { getSession } from "@/lib/auth/session"
 import { AccountIdentityPanel } from "@/features/account/ui/account-identity-panel"
 import { ChangePasswordPanel } from "@/features/account/ui/change-password-panel"
@@ -14,7 +15,6 @@ import {
 } from "@/features/billing/ui/subscription-panel"
 import { LanguagePanel } from "@/features/settings/ui/language-panel"
 import { SettingsTabsNav } from "@/features/settings/ui/settings-tabs-nav"
-import { listApiKeys } from "@/lib/api-keys/api-keys"
 import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
 import type { TenantEntitlement } from "@/lib/billing/entitlements"
 import { getPlanByLookupKey } from "@/lib/billing/plans"
@@ -69,9 +69,7 @@ export default async function SettingsPage({
             t={t}
           />
         ) : null}
-        {tab === "api-keys" ? (
-          <ApiKeysTab tenantId={session.user.id} t={t} />
-        ) : null}
+        {tab === "api-keys" ? <ApiKeysTab t={t} /> : null}
         {tab === "suscripcion" ? (
           <SubscriptionTab tenantId={session.user.id} t={t} />
         ) : null}
@@ -110,8 +108,11 @@ function AccountTab({
   )
 }
 
-async function ApiKeysTab({ tenantId, t }: { tenantId: string; t: AppDict }) {
-  const apiKeys = await listApiKeys(tenantId)
+// Sin `tenantId`: el plugin `apiKey` resuelve el dueño desde la cookie de
+// sesion, asi que la pantalla no puede pedir las keys de otro tenant ni por
+// error de tipeo. Ver `lib/auth/api-keys.ts`.
+async function ApiKeysTab({ t }: { t: AppDict }) {
+  const apiKeys = await listApiKeys()
 
   return (
     <div className="max-w-225">
@@ -181,6 +182,5 @@ function toApiKeyView(
     status: apiKey.status,
     createdAt: apiKey.createdAt.toISOString(),
     lastUsedAt: apiKey.lastUsedAt?.toISOString() ?? null,
-    revokedAt: apiKey.revokedAt?.toISOString() ?? null,
   }
 }

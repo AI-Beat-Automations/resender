@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server"
 
-import { authenticateApiKey } from "@/lib/api-keys/api-keys"
+import { authenticateApiKey } from "@/lib/auth/api-keys"
 import { resolveInstagramAccess } from "@/lib/auth/channel-access"
 import { isUserWaitlisted } from "@/lib/auth/waitlist"
 import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
