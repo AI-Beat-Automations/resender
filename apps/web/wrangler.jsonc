@@ -31,7 +31,16 @@
   // Messenger e Instagram siguen con su `v23.0` inline en `lib/outbound/*` y en
   // `lib/meta.ts`: esta variable **no** los toca, a propósito, para que subir la
   // versión de un canal no arrastre a los otros dos.
-  "vars": { "ENVIRONMENT": "production", "META_GRAPH_VERSION": "v26.0" },
+  //
+  // `BETTER_AUTH_URL` es el origen de confianza de Better Auth (ADR 0014) y de
+  // ahí sale también si la cookie de sesión se emite con `Secure`. Va en `vars`
+  // y no como secreto porque es una URL pública; el secreto que la acompaña es
+  // `BETTER_AUTH_SECRET`, que se carga con `wrangler secret put`.
+  "vars": {
+    "ENVIRONMENT": "production",
+    "META_GRAPH_VERSION": "v26.0",
+    "BETTER_AUTH_URL": "https://resender.dev",
+  },
   // Entrega durable al webhook del tenant. Las colas ya existen en la cuenta
   // (`docs/api-cloudflare-manual-runbook.md`), creadas cuando esto vivía en el
   // Worker `api`; acá se rebindean al Worker que sí está desplegado.
@@ -131,9 +140,30 @@
       "namespace_id": "1003",
       "simple": { "limit": 5, "period": 60 },
     },
+    {
+      // Intentos de acceso y de alta (`lib/auth/rate-limit.ts`, ADR 0014). El
+      // login no tenía límite de ningún tipo hasta el cutover a Better Auth.
+      //
+      // 1005 y no 1004: el 1004 **ya está tomado** por el
+      // `WAITLIST_RATE_LIMITER` del bloque `env.staging` de más abajo, y un id
+      // repetido hace que dos limiters compartan contador — el tráfico de la
+      // lista de espera de staging consumiría la cuota de login de producción.
+      "namespace_id": "1005",
+      "name": "AUTH_RATE_LIMITER",
+      // Por IP, no global: 10 intentos por minuto es holgado para una persona
+      // que se equivoca de contraseña un par de veces —y para una oficina
+      // entera detrás de un NAT— y corta el barrido de credenciales.
+      "simple": { "limit": 10, "period": 60 },
+    },
   ],
-  // Los secretos (DATABASE_URL, AUTH_SECRET, etc.) NO van aquí: se cargan con
-  // `wrangler secret put <NAME>` en producción y en `.dev.vars` para preview local.
+  // Los secretos (DATABASE_URL, BETTER_AUTH_SECRET, AUTH_SECRET, etc.) NO van
+  // aquí: se cargan con `wrangler secret put <NAME>` en producción y en
+  // `.dev.vars` para preview local.
+  //
+  // `BETTER_AUTH_SECRET` y `AUTH_SECRET` conviven **a propósito** y con valores
+  // distintos: el primero firma y cifra la sesión de Better Auth; el segundo
+  // sigue siendo el pepper de las API keys (`lib/api-keys/*`) hasta el escalón 3
+  // del stack, y borrarlo invalidaría todas las keys emitidas sin recuperación.
 
   "env": {
     // Worker separado `web-staging`, mismo código y distinto estado: branch de
@@ -158,7 +188,11 @@
       // `$.environment = "staging"` no devolvía nada, que es exactamente lo que
       // hace falta para verificar la cola y el cron acá.
       // `vars` no se hereda del entorno de arriba: hay que repetirla entera.
-      "vars": { "ENVIRONMENT": "staging", "META_GRAPH_VERSION": "v26.0" },
+      "vars": {
+        "ENVIRONMENT": "staging",
+        "META_GRAPH_VERSION": "v26.0",
+        "BETTER_AUTH_URL": "https://staging.resender.dev",
+      },
       // Colas propias. Compartirlas con producción haría que un job de prueba
       // saliera hacia el webhook real de un cliente que paga.
       "queues": {
@@ -223,6 +257,15 @@
           "name": "WAITLIST_RATE_LIMITER",
           "namespace_id": "1004",
           "simple": { "limit": 5, "period": 60 },
+        },
+        {
+          // Contador propio, por la misma razón que el de arriba: 1005 es el de
+          // producción. `ratelimits` no se hereda entre entornos, así que este
+          // bloque tiene que declarar los dos limiters completos o staging
+          // corre sin ninguno.
+          "namespace_id": "1006",
+          "name": "AUTH_RATE_LIMITER",
+          "simple": { "limit": 10, "period": 60 },
         },
       ],
       "observability": {
