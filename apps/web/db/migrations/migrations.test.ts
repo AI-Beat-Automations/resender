@@ -523,9 +523,9 @@ describe("migración 0020: el esquema de Better Auth", () => {
   it("no acepta una credencial de un usuario que no existe", async () => {
     await expect(
       db.query(
-        `insert into auth_accounts (id, user_id, account_id, provider_id)
+        `insert into auth_accounts (id, user_id, account_id, issuer, provider_id)
          values ('acc_huerfana', '00000000-0000-0000-0000-000000000000',
-                 'cuenta_1', 'credential')`
+                 'cuenta_1', 'local:credential', 'credential')`
       )
     ).rejects.toThrow(/auth_accounts_user_id_fkey/)
   })
@@ -533,8 +533,9 @@ describe("migración 0020: el esquema de Better Auth", () => {
   it("guarda una credencial sin contraseña, como la de un proveedor social", async () => {
     await expect(
       db.query(
-        `insert into auth_accounts (id, user_id, account_id, provider_id, scope)
-         values ('acc_social', $1, 'google_1', 'google', 'email profile')`,
+        `insert into auth_accounts (id, user_id, account_id, issuer, provider_id, scope)
+         values ('acc_social', $1, 'google_1', 'local:oauth:google', 'google',
+                 'email profile')`,
         [tenantId]
       )
     ).resolves.toBeTruthy()
@@ -546,18 +547,66 @@ describe("migración 0020: el esquema de Better Auth", () => {
   // con `it.only` o con el orden barajado.
   it("no vincula dos veces la misma identidad de un proveedor", async () => {
     await db.query(
-      `insert into auth_accounts (id, user_id, account_id, provider_id)
-       values ('acc_original', $1, 'google_dup_1', 'google')`,
+      `insert into auth_accounts (id, user_id, account_id, issuer, provider_id)
+       values ('acc_original', $1, 'google_dup_1', 'local:oauth:google',
+               'google')`,
       [tenantId]
     )
 
     await expect(
       db.query(
-        `insert into auth_accounts (id, user_id, account_id, provider_id)
-         values ('acc_duplicada', $1, 'google_dup_1', 'google')`,
+        `insert into auth_accounts (id, user_id, account_id, issuer, provider_id)
+         values ('acc_duplicada', $1, 'google_dup_1', 'local:oauth:google',
+                 'google')`,
         [tenantId]
       )
     ).rejects.toThrow(/auth_accounts_provider_id_account_id_key/)
+  })
+
+  // `issuer` es obligatoria desde Better Auth 1.7: es la mitad de la clave por
+  // la que la librería busca la credencial. Una fila sin emisor sería una
+  // credencial que el login no puede encontrar, así que la base la rechaza.
+  it("no guarda una credencial sin emisor", async () => {
+    await expect(
+      db.query(
+        `insert into auth_accounts (id, user_id, account_id, provider_id)
+         values ('acc_sin_issuer', $1, 'sin_issuer_1', 'credential')`,
+        [tenantId]
+      )
+    ).rejects.toThrow(/issuer/)
+  })
+
+  // El unique autoritativo para la librería es `(issuer, account_id)`: es por
+  // donde resuelve `findAccountByKey`. El caso usa dos `provider_id` distintos
+  // a propósito, para que lo que rechace sea este único y no el de
+  // `(provider_id, account_id)`.
+  it("no vincula dos veces la misma identidad del mismo emisor", async () => {
+    await db.query(
+      `insert into auth_accounts (id, user_id, account_id, issuer, provider_id)
+       values ('acc_emisor_1', $1, 'emisor_dup_1', 'local:oauth:google',
+               'google')`,
+      [tenantId]
+    )
+
+    await expect(
+      db.query(
+        `insert into auth_accounts (id, user_id, account_id, issuer, provider_id)
+         values ('acc_emisor_2', $1, 'emisor_dup_1', 'local:oauth:google',
+                 'google_legacy')`,
+        [tenantId]
+      )
+    ).rejects.toThrow(/auth_accounts_issuer_account_id_key/)
+  })
+
+  // El cascade de la baja de cuenta borra por `user_id`; sin índice sería un
+  // seq scan sobre toda la tabla de credenciales.
+  it("indexa las credenciales por cuenta", async () => {
+    const indexes = await db.query<{ indexname: string }>(
+      `select indexname from pg_indexes where tablename = 'auth_accounts'`
+    )
+    expect(indexes.rows.map((row) => row.indexname)).toContain(
+      "auth_accounts_user_id_idx"
+    )
   })
 
   // Borrar un tenant es `delete from users` (0002) y tiene que llevarse sus
@@ -576,8 +625,10 @@ describe("migración 0020: el esquema de Better Auth", () => {
       [doomed]
     )
     await db.query(
-      `insert into auth_accounts (id, user_id, account_id, provider_id, password)
-       values ('acc_1', $1, 'cascade@example.com', 'credential', 'scrypt_hash')`,
+      `insert into auth_accounts (id, user_id, account_id, issuer, provider_id,
+                                  password)
+       values ('acc_1', $1, 'cascade@example.com', 'local:credential',
+               'credential', 'scrypt_hash')`,
       [doomed]
     )
 

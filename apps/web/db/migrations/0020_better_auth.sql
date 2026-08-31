@@ -88,13 +88,32 @@ create index if not exists auth_sessions_token_idx on auth_sessions(token);
 -- prefijo `auth_` acota pero no elimina el solapamiento; queda declarado en la
 -- ADR 0014.
 --
--- El unique `(provider_id, account_id)` es lo que impide que la misma identidad
--- de un proveedor quede vinculada dos veces.
+-- `issuer` es **obligatoria** en Better Auth 1.7: es el emisor de la identidad,
+-- y junto con `account_id` forma la clave por la que la librería busca una
+-- credencial. Para el proveedor local `credential` el valor es literalmente
+-- `'local:credential'` (`createLocalAccountIssuer("credential")`), y para un
+-- proveedor social sin issuer propio sería `'local:oauth:<provider>'`. Sin esta
+-- columna el login no encuentra la credencial: `sign-in/email` filtra por
+-- `provider_id = 'credential' and issuer = 'local:credential' and
+-- account_id = users.id`, y `updatePassword` / `findCredentialAccount` usan el
+-- mismo filtro. No tiene default a propósito: quien inserta una credencial
+-- tiene que decir de quién viene.
+--
+-- El unique autoritativo es `(issuer, account_id)`: es el que la librería
+-- declara en su propio esquema y por el que resuelve `findAccountByKey`.
+--
+-- El unique `(provider_id, account_id)` es el que pedía la especificación del
+-- issue #86, anterior a que `issuer` existiera. Se conserva porque hoy no puede
+-- rechazar ninguna fila legítima: el único proveedor que existe es
+-- `credential`, cuyo mapeo a `local:credential` es 1:1, así que las dos claves
+-- separan exactamente las mismas filas. El día que haya un proveedor OIDC con
+-- más de un emisor bajo el mismo `provider_id` habría que revisarlo.
 
 create table if not exists auth_accounts (
   id text primary key,
   user_id uuid not null references users(id) on delete cascade,
   account_id text not null,
+  issuer text not null,
   provider_id text not null,
   password text,
   access_token text,
@@ -105,8 +124,14 @@ create table if not exists auth_accounts (
   scope text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (provider_id, account_id)
+  unique (provider_id, account_id),
+  unique (issuer, account_id)
 );
+
+-- Por `user_id`: la librería lo declara como índice de su modelo `account`, y
+-- además el `on delete cascade` de la baja de cuenta hoy haría seq scan.
+
+create index if not exists auth_accounts_user_id_idx on auth_accounts(user_id);
 
 -- 4. `auth_verifications`: lo efímero con vencimiento.
 --
