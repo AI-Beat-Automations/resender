@@ -4,7 +4,8 @@
   "globalEnv": [
     "APP_URL",
     "AUTH_SECRET",
-    "AUTH_URL",
+    "BETTER_AUTH_SECRET",
+    "BETTER_AUTH_URL",
     "API_KEY_PEPPER",
     "DATABASE_URL",
     "TOKEN_ENCRYPTION_KEY",

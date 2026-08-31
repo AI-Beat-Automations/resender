@@ -30,6 +30,11 @@ Meta dashboard setup, `CONTEXT.md` for the canonical product vocabulary.
 
 ```bash
 APP_URL="https://your-public-origin.example"
+# Sesión y credenciales (Better Auth, ADR 0014).
+BETTER_AUTH_SECRET="generate-a-long-random-secret"
+BETTER_AUTH_URL="https://your-public-origin.example"
+# Pepper de las API keys. Distinto del anterior y NO se borra: sin él, todas
+# las keys emitidas dejan de verificar.
 AUTH_SECRET="generate-a-long-random-secret"
 API_KEY_PEPPER="optional-separate-api-key-pepper"
 DATABASE_URL="postgres://user:password@host:5432/db"
