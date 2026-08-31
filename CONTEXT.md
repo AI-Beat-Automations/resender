@@ -243,6 +243,7 @@ Cada API key tiene `label` y su valor secreto se muestra **una sola vez, en el m
 La lista de API keys muestra `label`, prefijo visible corto, `createdAt`, `lastUsedAt` y estado.
 Una API key revocada sigue visible en la lista con estado `revoked`; deja de autenticar, pero no desaparece del historial operativo. La lista **no muestra cuando se revoco**: el plugin `apiKey` no guarda esa fecha y mostrar cualquier otra seria inventarla.
 Una key solo se puede revocar **dentro del tenant que la emitio**: pedir la revocacion de una key ajena responde "no encontrada" y no la toca.
+A las API keys se les habla **solo desde el servidor**. El plugin `apiKey` monta ademas seis endpoints HTTP bajo `/api/auth/api-key/*` (`create`, `update`, `delete`, `get`, `list`, `delete-all-expired-api-keys`) que el producto no usa y que estan cerrados con 404 en el route handler de `/api/auth/[...all]`. El que obliga es `delete`, que hace **borrado duro** de la fila: dejarlo abierto contradiria la regla de arriba, porque el propio dueño podria hacer desaparecer una key del historial operativo desde la consola del navegador. Los otros cinco se cierran junto con el para que la regla sea una sola y no una excepcion.
 Cada API key autentica acceso a todas las paginas del tenant; no existen restricciones por pagina en esta version.
 
 ### Cuenta de revision
