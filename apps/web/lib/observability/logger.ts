@@ -50,6 +50,9 @@ export type LogAction =
   | "webhook_unsubscribe"
   | "webhook_url_save"
   | "webhook_secret_rotate" // el tenant pidió un secreto de firma nuevo
+  // cuenta y credenciales
+  | "password_change" // la persona cambió su contraseña desde Ajustes
+  | "session_revoke" // cierre de las demás sesiones tras cambiar la contraseña
   // efectos de borde que hoy solo dejan un `console.error` suelto
   | "label_resolve" // @handle del contacto y permalink de la publicación
   | "token_exchange"

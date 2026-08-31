@@ -25,6 +25,7 @@ import {
   type AuthInputError,
 } from "@/lib/auth/validation"
 import { getStripe } from "@/lib/billing/stripe"
+import { describeError, log } from "@/lib/observability/logger"
 import { unsubscribeChannelWebhook } from "@/lib/pages/channel-webhook"
 
 export type DeleteAccountState = {
@@ -61,16 +62,64 @@ export async function changePasswordAction(
   const session = await getSession()
   if (!session?.user?.id) return { error: t.actions.notSignedIn }
 
+  // El orden de los dos pasos que siguen es deliberado y no es reversible:
+  //
+  //   1. se escribe la contraseña nueva,
+  //   2. se cierran las demás sesiones,
+  //   3. se cierra la actual y se redirige a `/login`.
+  //
+  // Al revés —revocar primero— un fallo al escribir dejaría a la persona fuera
+  // de todos sus dispositivos con la contraseña vieja todavía vigente: peor
+  // estado que el que se quería arreglar. Y una vez escrita la contraseña **no
+  // se revierte**: no hay a qué volver (el hash anterior ya no existe) y volver
+  // a la contraseña vieja sería justo lo contrario de lo que la persona pidió.
+
   // No pide la contraseña anterior: es la regla de siempre (CONTEXT.md →
   // [Usuario MVP]) y por qué no se puede usar `auth.api.setPassword` está
   // escrito en `lib/auth/set-password.ts`.
-  await setUserPassword(session.user.id, input.value.password)
+  try {
+    await setUserPassword(session.user.id, input.value.password)
+  } catch (error) {
+    // El caso concreto que esto atrapa: la fila de `users` ya no existe —la
+    // cuenta se dio de baja desde otro dispositivo— pero el caché JWE de cinco
+    // minutos todavía resuelve la sesión, así que `createAccount` viola la FK.
+    // Sin este catch la acción devolvía un 500 donde el resto del archivo ya
+    // sabe decir "no encontramos la cuenta". Nada se escribió: se puede
+    // reintentar sin efectos.
+    log({
+      entrypoint: "action",
+      action: "password_change",
+      outcome: "failed",
+      reason: "internal_error",
+      tenantId: session.user.id,
+      errorMessage: describeError(error),
+    })
+    return { error: t.actions.accountNotFound }
+  }
 
   // Lo que la tabla de sesiones hace posible y el JWT no: un dispositivo que ya
   // no controlas pierde el acceso al cambiar la contraseña. Va **antes** del
   // signOut, que necesita la sesión actual todavía viva para identificar cuál
   // es "la otra".
-  await getAuth().api.revokeOtherSessions({ headers: await headers() })
+  //
+  // A partir de acá la contraseña nueva **ya es la válida**, así que un fallo
+  // revocando no puede terminar en un 500: la persona vería un error sobre un
+  // cambio que sí ocurrió y no sabría con cuál de las dos contraseñas volver a
+  // entrar. Se registra el fallo —las otras sesiones siguen vivas hasta que
+  // caduquen, y eso es una alarma— y el flujo sigue igual: se cierra la sesión
+  // actual y se redirige a `/login`.
+  try {
+    await getAuth().api.revokeOtherSessions({ headers: await headers() })
+  } catch (error) {
+    log({
+      entrypoint: "action",
+      action: "session_revoke",
+      outcome: "failed",
+      reason: "internal_error",
+      tenantId: session.user.id,
+      errorMessage: describeError(error),
+    })
+  }
 
   // Y la actual también, para que el siguiente acceso use la credencial nueva.
   // `signOut` lanza el redirect, así que lo de abajo no se alcanza.
