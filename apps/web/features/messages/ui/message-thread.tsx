@@ -8,6 +8,7 @@ import type {
   ThreadMessageView,
   ThreadReactionView,
 } from "@/lib/messages/display"
+import type { TemplateDisplay } from "@/lib/messages/template-display"
 import type { PageChannel } from "@/lib/pages/page-registry"
 import { Badge } from "@workspace/ui/components/badge"
 import { cn } from "@workspace/ui/lib/utils"
@@ -131,6 +132,13 @@ function MessageBubble({
               <BubbleAttachment attachment={message.attachment} t={t} />
             </div>
           ) : null}
+          {/* Un envío de plantilla llega con `text = ''` y sin adjunto: sin
+              esto la burbuja saldría en blanco (ADR 0014). Qué se lee del
+              jsonb ya lo decidió `toTemplateDisplay`, que sí corre bajo
+              Vitest; acá solo se traduce a markup. */}
+          {message.template ? (
+            <BubbleTemplate template={message.template} t={t} />
+          ) : null}
           {message.text !== "" ? message.text : null}
         </div>
         {/* Las reacciones no son burbujas: cuelgan del mensaje al que apuntan
@@ -208,6 +216,38 @@ function ReactionChips({
         </span>
       ))}
     </p>
+  )
+}
+
+// La plantilla enviada: su identidad arriba, en la tipografía de metadato, y
+// debajo los valores que viajaron, uno por renglón. Se ven como el contenido
+// de la burbuja y no como un chip de metadato porque **son** el contenido: es
+// todo lo que el hilo sabe de ese envío.
+//
+// Lo que falta —la frase aprobada que enlaza los valores— no está porque no se
+// guarda: el texto de la plantilla es de Meta y puede haber cambiado. Eso no
+// cabe en la burbuja y va en el `title`, que es donde el que pregunta lo busca.
+function BubbleTemplate({
+  template,
+  t,
+}: {
+  template: TemplateDisplay
+  t: AppDict
+}) {
+  return (
+    <div title={t.inbox.templateTitle}>
+      <p className="font-mono text-[11px] text-[var(--text-subtle)]">
+        {template.label}
+      </p>
+      {template.values.map((value, index) => (
+        // La key es el índice a propósito: los valores no tienen identidad
+        // —dos variables pueden traer el mismo texto— y la lista es fija,
+        // nunca se reordena ni se filtra después de renderizarse.
+        <p key={index} className="mt-0.5">
+          {value}
+        </p>
+      ))}
+    </div>
   )
 }
 

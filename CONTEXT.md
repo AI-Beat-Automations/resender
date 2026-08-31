@@ -141,6 +141,18 @@ El destinatario **no lo elige el cliente**: el body es `{ pageId, commentId, rep
 `commentId` es el id **de Meta** y no el uuid de Resender: es el que el tenant siempre tiene, porque le llegó en el push y además lo ve en Instagram. Se exige que el comentario esté en la bitácora; si no está, es `404`.
 El límite de una respuesta privada se verifica **contra nuestra propia base antes de llamar a Meta** y se devuelve como `409` con el id del mensaje que ya salió. Meta lo rechaza con un `100/2534025` que junta cuatro causas —pasaron 7 días, ya contestamos, borraron el comentario, esa persona no acepta mensajes— y no dice cuál. Solo cuentan los envíos que Meta aceptó: un intento fallido no consume la única respuesta disponible.
 
+### Ventana de atención
+Las **24 horas** que se abren cuando un contacto le escribe a un número de WhatsApp y durante las cuales el negocio puede responderle con mensajes libres. La abre **sólo un entrante real del cliente final**: no la abre un saliente nuestro, ni un acuse de entrega, ni un mensaje importado del historial, ni un eco de la WhatsApp Business App.
+Cerrada, lo único que WhatsApp acepta es una [Plantilla]. Se resuelve **en local antes de llamar a Meta**, contra la marca del último entrante de la conversación: la respuesta es inmediata, nombra la causa y no gasta una llamada que ya sabemos que iba a fallar.
+Es la regla de envío propia de este canal y no tiene equivalente en los otros dos: la [Respuesta a un comentario] pública de Instagram no tiene ventana, y la privada tiene una de 7 días con una sola respuesta permitida.
+
+### Plantilla
+Un mensaje pre-aprobado por Meta: el único que se puede enviar con la [Ventana de atención] cerrada, y por lo tanto la única forma de que el negocio escriba primero.
+Se identifica por **nombre e idioma**, no por el nombre solo: la misma plantilla en dos idiomas son dos Plantillas distintas, cada una cuenta por separado contra el tope de la WABA, y el par nombre+idioma es también lo único con lo que se la puede invocar al enviar.
+Vive **en la WABA y no en el número**, así que dos conexiones de la misma WABA —incluso de tenants distintos— comparten catálogo y se ven las plantillas entre sí. Resender guarda una copia que **no manda**: sirve para listarlas y para saber si están aprobadas, nunca para decidir qué se envía; una plantilla que la copia no conoce se envía igual y decide Meta.
+Resender además las **crea, edita y borra**, pero sólo administra las que se crearon desde acá: las que ya existían en la WABA se listan y se envían, y se editan en WhatsApp Manager.
+_No confundir con_ el `template` del catálogo de [Adjunto], que es la tarjeta con botones de Messenger y no tiene relación. El nombre colisiona por herencia de Meta y el rename queda pendiente (`docs/adr/0014-plantillas-de-whatsapp.md`).
+
 ### Límite de texto por superficie
 Tres superficies, tres límites, y dos unidades distintas:
 | Superficie | Límite |

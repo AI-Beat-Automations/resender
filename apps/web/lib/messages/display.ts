@@ -14,6 +14,7 @@ import { fmt, type AppDict } from "@/content/i18n/app"
 import { effectiveStatus } from "./media-retention"
 import type { AttachmentStatus, DeliveryStatus } from "./message-enums"
 import type { ConversationListItem, ThreadMessage } from "./read-model"
+import { type TemplateDisplay, toTemplateDisplay } from "./template-display"
 
 // Presentación del log de mensajes (ADR 0005). Módulo puro: sin DB ni red, y
 // todo lo que sale de aquí es serializable para cruzar a los componentes.
@@ -62,6 +63,13 @@ export type ThreadMessageView = {
   text: string
   /** Qué pintar por el adjunto (preview o fila); null si el mensaje no trae. */
   attachment: AttachmentDisplay | null
+  /**
+   * Qué pintar por la [Plantilla] enviada, o null si este mensaje no es un
+   * envío de plantilla. Es también la marca de «esto fue una plantilla»: no
+   * hace falta una bandera aparte, porque un envío de plantilla es exactamente
+   * aquel del que se puede decir algo acá.
+   */
+  template: TemplateDisplay | null
   /** `outbound · 14:02:11 · sent`, con `· respuesta a comentario` si lo es. */
   meta: string
   /** El saliente es la respuesta privada a un comentario de Instagram. */
@@ -142,14 +150,22 @@ export function formatConversationContent(
 ) {
   if (!latestMessage) return t.log.noMessages
   const prefix = latestMessage.direction === "outbound" ? t.log.you : ""
-  // Un mensaje solo-adjunto llega con texto vacío: el renglón muestra el type
-  // entre corchetes (`[image]`) en su lugar. Con texto, el renglón no cambia
-  // — el adjunto se descubre al abrir el hilo.
-  const body =
-    latestMessage.text === "" && latestMessage.attachmentType
-      ? `[${latestMessage.attachmentType}]`
-      : latestMessage.text
-  return `${prefix}${body}`
+  return `${prefix}${conversationBody(latestMessage, t)}`
+}
+
+// Un mensaje solo-adjunto llega con texto vacío: el renglón muestra el type
+// entre corchetes (`[image]`) en su lugar. Un envío de [Plantilla] llega
+// **también** sin adjunto, así que sin la tercera rama el renglón se quedaría
+// en un «Tú: » a secas; ahí muestra la identidad de la plantilla, que es lo
+// mismo que encabeza la burbuja del hilo. Con texto, el renglón no cambia — el
+// adjunto y la plantilla se descubren al abrir el hilo.
+function conversationBody(
+  latestMessage: NonNullable<ConversationListItem["latestMessage"]>,
+  t: AppDict
+): string {
+  if (latestMessage.text !== "") return latestMessage.text
+  if (latestMessage.attachmentType) return `[${latestMessage.attachmentType}]`
+  return toTemplateDisplay(latestMessage.templateMeta, t)?.label ?? ""
 }
 
 export function toConversationRowView(
@@ -357,6 +373,11 @@ export function toThreadMessageViews(
             t
           )
         : null,
+      // La plantilla se resuelve acá por el mismo motivo que el adjunto: la
+      // fila llega con `text = ''` y todo el contenido en un jsonb, y la regla
+      // que decide qué se lee de ese jsonb tiene que estar cubierta por tests
+      // — el componente no corre bajo Vitest (ADR 0014).
+      template: toTemplateDisplay(message.templateMeta, t),
       meta: fromComment
         ? `${formatMessageMeta(message, t)} · ${t.log.fromCommentSuffix}`
         : formatMessageMeta(message, t),

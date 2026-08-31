@@ -3,6 +3,7 @@ import {
   sendWhatsappMessage,
   type WhatsappOutboundMediaType,
   type WhatsappOutboundMessage,
+  type WhatsappOutboundTemplate,
 } from "@/lib/meta/whatsapp-client"
 
 import type { MetaSendResult } from "./meta-send"
@@ -44,13 +45,21 @@ export const WHATSAPP_MEDIA_TYPE_BY_ATTACHMENT: Record<
   file: "document",
 }
 
-// Exactamente una de las dos cosas, que es lo que garantiza
-// `parseOutboundSendInput`. La unión discriminada se repite acá —en vez de
-// aceptar dos opcionales— para que la función sea total y no haga falta un
-// `throw` para el caso imposible.
+// Exactamente una de las tres cosas. Las dos primeras las garantiza
+// `parseOutboundSendInput`; la tercera viene del parser propio de la ruta de
+// plantillas, porque el parser neutral no la conoce y no va a conocerla: es
+// compartido con Messenger e Instagram y meterle un XOR de tres ramas que dos
+// canales no pueden usar era costo permanente para los tres (ADR 0014).
+//
+// La unión discriminada se repite acá —en vez de aceptar opcionales sueltos—
+// para que la función sea total y no haga falta un `throw` para el caso
+// imposible. `template` queda opcional en los dos miembros viejos por una razón
+// concreta y no por comodidad: la ruta de envío libre construye su contenido con
+// dos claves y no tiene por qué aprender una tercera que nunca va a usar.
 export type WhatsappOutboundContent =
-  | { reply: string; attachment: null }
-  | { reply: null; attachment: OutboundAttachment }
+  | { reply: string; attachment: null; template?: null }
+  | { reply: null; attachment: OutboundAttachment; template?: null }
+  | { reply: null; attachment: null; template: WhatsappOutboundTemplate }
 
 /**
  * Traduce el contenido de la request al mensaje de Cloud API.
@@ -62,10 +71,23 @@ export type WhatsappOutboundContent =
  * El adjunto va siempre por `link` y nunca por `id`: subir el archivo primero a
  * la Media API sería hospedar media saliente, que es justo lo que este canal no
  * hace. Sin `caption` ni `filename` porque el body público no los trae todavía.
+ *
+ * La plantilla es la única de las tres que no se traduce: el contrato público
+ * —`{ name, language, components }`— y el de Meta coinciden campo por campo,
+ * porque nombre e idioma es lo único que Cloud API acepta al enviar y exponer
+ * otra cosa habría puesto una traducción obligatoria contra una copia local que
+ * la ADR 0014 declara no autoritativa. La diferencia de forma —`language` como
+ * objeto con `code`— la pone el payload builder, que es donde vive el sobre.
+ * Los `components` pasan derecho y sin mirar: no se valida el conteo de
+ * parámetros, por lo mismo.
  */
 export function toWhatsappOutboundMessage(
   content: WhatsappOutboundContent
 ): WhatsappOutboundMessage {
+  if (content.template) {
+    return { template: content.template }
+  }
+
   if (content.attachment) {
     return {
       media: {
@@ -130,3 +152,9 @@ export {
   isWhatsappExpiredTokenError,
   WHATSAPP_TEXT_MAX_CHARS,
 } from "@/lib/meta/whatsapp-client"
+
+// La forma de la plantilla al enviar, por el mismo motivo de la línea de
+// arriba: la ruta de plantillas arma su `WhatsappOutboundContent` acá y no
+// tiene por qué importar además el cliente de Meta para nombrar el tipo de un
+// campo que este módulo ya expone.
+export type { WhatsappOutboundTemplate } from "@/lib/meta/whatsapp-client"

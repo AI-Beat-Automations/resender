@@ -27,6 +27,14 @@ import type { WhatsappOnboardingMode } from "@/lib/pages/connection-display"
 import type { ConnectionStatus } from "@/lib/pages/channel-display"
 import type { SettingsTab } from "@/lib/settings/settings-tabs"
 import type { InboxTab } from "@/lib/inbox/inbox-tabs"
+import type {
+  WhatsappTemplateErrorKey,
+  WhatsappTemplateLock,
+} from "@/lib/whatsapp-templates/template-console"
+import type {
+  WhatsappTemplateCategory,
+  WhatsappTemplateStatus,
+} from "@/lib/whatsapp-templates/template-registry"
 
 export type ChannelMap<T = string> = Record<PageChannel, T>
 
@@ -49,6 +57,7 @@ export type AppDict = {
     save: string
     saving: string
     cancel: string
+    close: string
     copy: string
     copied: string
     dismissNotice: string
@@ -59,6 +68,7 @@ export type AppDict = {
     home: string
     navConnections: string
     navInbox: string
+    navTemplates: string
     navSettings: string
     navDocs: string
     theme: string
@@ -247,6 +257,13 @@ export type AppDict = {
     reactionInbound: string
     imageAlt: string
     /**
+     * Por qué la burbuja de una [Plantilla] muestra valores sueltos y no la
+     * frase que los enlaza. Es la pregunta que se hace todo el que la ve por
+     * primera vez, y la respuesta —el texto de la plantilla es de Meta, no
+     * nuestro— no cabe en la burbuja (ADR 0014).
+     */
+    templateTitle: string
+    /**
      * Lo que la burbuja dice en cada estado del binario (`attachment_status`,
      * 0017). Los cinco son distintos porque los cinco estados son distintos:
      * colapsar `failed` con `unavailable` en un «no se pudo mostrar» genérico
@@ -267,6 +284,16 @@ export type AppDict = {
     deliveryPrefix: string
     delivery: Record<DeliveryStatus, string>
     fromCommentSuffix: string
+    /**
+     * Identidad de la [Plantilla] enviada: `{name}` y `{language}`, que es el
+     * identificador que usa Meta. Encabeza la burbuja porque el cuerpo de la
+     * plantilla no se guarda y los valores solos no dirían de qué envío son.
+     */
+    templateLabel: string
+    /** `{name}`, cuando el jsonb no trajo idioma legible. */
+    templateLabelNoLanguage: string
+    /** Caída cuando el jsonb tampoco trajo nombre. */
+    templateUnnamed: string
     /** `{author}` */
     replyingTo: string
     commentCountOne: string
@@ -510,5 +537,122 @@ export type AppDict = {
     pinLabel: string
     pinPlaceholder: string
     pinHint: string
+  }
+
+  /**
+   * La pantalla de [Plantilla]s de WhatsApp (ADR 0014).
+   *
+   * Tres mapas por catálogo cerrado —estado, categoría y motivo de bloqueo— en
+   * vez de texto derivado en el JSX: son uniones de TypeScript, así que agregar
+   * un estado al espejo **no compila** hasta que alguien decida cómo se llama y
+   * qué se hace con él en los dos idiomas. Es la misma garantía que da
+   * `STATUS_GUIDANCE` en `template-gate.ts` para la API pública.
+   */
+  templates: {
+    eyebrow: string
+    title: string
+    subtitle: string
+    /** Etiqueta accesible del selector de número. */
+    numberFilterLabel: string
+    listTitle: string
+    /**
+     * Por qué la pantalla no se refresca sola. El estado lo mueve el webhook de
+     * Meta y no hay polling (ADR 0014): sin decirlo, «no cambia» se lee como un
+     * olvido nuestro y no como la decisión que es.
+     */
+    listBody: string
+    headName: string
+    headLanguage: string
+    headCategory: string
+    headStatus: string
+    headActions: string
+    categoryLabel: Record<WhatsappTemplateCategory, string>
+    categoryNone: string
+    /** El estado tal cual lo reporta Meta, con nombre de persona. */
+    statusLabel: Record<WhatsappTemplateStatus, string>
+    /** Qué hacer con ese estado. Se muestra en todo lo que no está aprobado. */
+    statusHelp: Record<WhatsappTemplateStatus, string>
+    /** `{rawStatus}`: el literal de Meta, único dato útil con `unknown`. */
+    statusRaw: string
+    ownBadge: string
+    foreignBadge: string
+    /** Por qué no se puede editar ni borrar. */
+    lock: Record<WhatsappTemplateLock, string>
+    emptyNumbersTitle: string
+    emptyNumbersBody: string
+    emptyNumbersCta: string
+    emptyTitle: string
+    emptyBody: string
+    /** `{name}` */
+    created: string
+    /** `{name}` */
+    createdNotMirrored: string
+    updated: string
+    /** `{name}`, `{language}` */
+    removed: string
+    errors: Record<WhatsappTemplateErrorKey, string>
+
+    /** Los campos que comparten crear y editar. */
+    fields: {
+      bodyLabel: string
+      bodyHint: string
+      bodyPlaceholder: string
+      /** `{count}`, `{max}` */
+      bodyCount: string
+      footerLabel: string
+      footerHint: string
+      footerPlaceholder: string
+      examplesTitle: string
+      examplesBody: string
+      /** `{variable}` */
+      exampleLabel: string
+      examplePlaceholder: string
+      noVariables: string
+    }
+
+    create: {
+      cta: string
+      title: string
+      body: string
+      nameLabel: string
+      nameHint: string
+      namePlaceholder: string
+      languageLabel: string
+      languageHint: string
+      languagePlaceholder: string
+      categoryLabel: string
+      categoryHint: string
+      submit: string
+      submitting: string
+    }
+
+    edit: {
+      cta: string
+      /** `{name}`, `{language}` */
+      title: string
+      /**
+       * Que el espejo no guarda el contenido: lo que se escriba **reemplaza** la
+       * plantilla entera, no la completa (ADR 0014, «el espejo es mínimo»).
+       */
+      body: string
+      /** El aviso que va antes de guardar, no en la respuesta. */
+      approvedWarningTitle: string
+      approvedWarningBody: string
+      categoryKeep: string
+      submit: string
+      submitting: string
+    }
+
+    remove: {
+      cta: string
+      /** `{name}` */
+      title: string
+      /** `{language}`: el borrado alcanza sólo a ese idioma. */
+      body: string
+      /** Los 30 días en los que el nombre queda inutilizable. */
+      burnWarning: string
+      confirm: string
+      removing: string
+    }
   }
 }

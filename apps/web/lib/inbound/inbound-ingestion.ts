@@ -22,6 +22,13 @@ import {
   type ConnectedPageRecord,
   type PageChannel,
 } from "@/lib/pages/page-registry"
+import {
+  normalizeWhatsappTemplateCategory,
+  normalizeWhatsappTemplateLanguage,
+  updateWhatsappTemplateCategory,
+  updateWhatsappTemplateStatus,
+  type WhatsappTemplateCategory,
+} from "@/lib/whatsapp-templates/template-registry"
 
 import {
   insertInboundComment,
@@ -42,7 +49,10 @@ import { extractInstagramComments } from "./instagram-comments"
 import { extractInstagramDirectMessages } from "./instagram-webhook"
 import { extractInboundEvents } from "./meta-webhook"
 import { routeWhatsappWebhook } from "./whatsapp-webhook"
-import type { WhatsappStatusEvent } from "./whatsapp-parsers"
+import type {
+  WhatsappStatusEvent,
+  WhatsappTemplateEvent,
+} from "./whatsapp-parsers"
 import { accountFields, describeError, log } from "@/lib/observability/logger"
 import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { posthog } from "@/lib/posthog"
@@ -193,10 +203,11 @@ export async function ingestWhatsappWebhookPayload(
     requestId
   )
   await applyWhatsappStatuses(routed.statuses, requestId)
+  await applyWhatsappTemplateEvents(routed.templates, requestId)
 
   if (routed.unhandledFields.length > 0) {
     // Un `field` que Meta manda y los parsers no modelan (`account_update`,
-    // `message_template_status_update`, `calls`…) tiene que aparecer en la
+    // `phone_number_quality_update`, `calls`…) tiene que aparecer en la
     // bitácora, no desaparecer: es la señal de que hay algo nuevo que atender.
     //
     // El motivo se reusa del catálogo cerrado de `logger.ts` —el más cercano a
@@ -319,6 +330,207 @@ async function applyWhatsappStatuses(
       ...logSubject,
     })
   }
+}
+
+// Los eventos de plantilla. No son mensajes ni acuses: no hay conversación, no
+// hay contacto y no hay fila de `messages` que tocar. Su efecto es un `update`
+// del espejo del catálogo por `(waba_id, name, language)`, que es lo único que
+// mantiene fresco el `status` contra el que el envío decide si llama a Meta o
+// corta antes (ADR 0014).
+//
+// **No se refetchea el contenido de la plantilla, y eso es una decisión y no un
+// atajo** (ADR 0014): del catálogo sólo el `status` se lee para decidir algo, y
+// sólo el `status` cambia sin que nadie lo toque. El cuerpo cambia únicamente
+// cuando alguien edita la plantilla —lo que dispara su propio evento de estado,
+// porque la edición la devuelve a revisión—, así que traérselo costaría una
+// llamada a Graph por cada webhook para mantener fresco algo que ningún gate
+// consulta.
+//
+// Sin los gates de la mensajería —cuenta conectada, suscripción, permiso de
+// canal—, y no por olvido: la plantilla vive en la WABA y no en el número, así
+// que estos tres webhooks llegan **sin** `phone_number_id` y no hay conexión
+// que resolver ni tenant al que atribuirle el evento. Lo que se escribe tampoco
+// es de nadie: es el estado que Meta le puso a una fila que comparten todos los
+// números de esa WABA. El gate por tenant está río abajo, en el envío.
+async function applyWhatsappTemplateEvents(
+  events: WhatsappTemplateEvent[],
+  requestId: string
+) {
+  for (const event of events) {
+    // La identidad completa en todas las líneas: Meta llavea la plantilla por
+    // `(nombre, idioma)` y el nombre solo es ambiguo en cuanto la misma
+    // plantilla existe en dos idiomas. El nombre se puede loguear —lo eligió el
+    // negocio y es un identificador de catálogo—; lo que nunca aparece acá son
+    // los valores con los que se hidrata, que son del cliente final.
+    const subject = {
+      entrypoint: "route",
+      requestId,
+      channel: "whatsapp",
+      wabaId: event.wabaId,
+      templateName: event.name,
+      // El idioma **en su forma canónica** (`en_US`), no como lo mandó Meta
+      // (`en-US`): la bitácora se lee filtrando por el valor que está en la
+      // base, y la fila que estas líneas describen se llavea con la forma
+      // canónica —el `update` la aplica puertas adentro—. Loguear el crudo
+      // dejaba una bitácora que no matcheaba con nada de lo que registra.
+      //
+      // Se loguea sólo la canónica y no las dos: el crudo no aporta
+      // diagnóstico propio —es una reescritura mecánica y reversible de guion
+      // por guion bajo, no un valor que Meta pueda inventar como sí hace con
+      // el `status`— y el segundo campo sólo daría dos maneras de filtrar lo
+      // mismo. Esto no toca el `update`, que sigue recibiendo `event.language`
+      // crudo y normalizando donde vive esa regla.
+      templateLanguage: normalizeWhatsappTemplateLanguage(event.language),
+    } as const
+
+    if (event.kind === "quality") {
+      // El único de los tres que no escribe: no hay columna para el score y la
+      // ADR 0014 decidió que no la va a haber. Su efecto **es** esta línea, y
+      // el ticket la pide por su nombre —«que el bajón de calidad llegue a
+      // nuestros logs»—: como no hay tope local de plantillas hacia contactos
+      // que nunca contestaron, la calidad que reporta Meta es el único aviso
+      // que tenemos antes de que pause el número.
+      log({
+        ...subject,
+        action: "template_quality",
+        outcome: "ok",
+        level: qualityLogLevel(event.qualityScore),
+        templateQualityScore: event.qualityScore,
+        ...(event.previousQualityScore
+          ? { templatePreviousQualityScore: event.previousQualityScore }
+          : {}),
+      })
+      continue
+    }
+
+    // Lo que Meta reportó, no lo que quedó en la fila: si el `update` no
+    // encuentra nada, esta es la única descripción del evento que queda.
+    const category = normalizeWhatsappTemplateCategory(event.category)
+    // El `rejection_info` no tiene columna en el espejo (la 0018 va literal) y
+    // el `update` de más abajo no lo escribe a ningún lado: sin esto el motivo
+    // del rechazo se perdía en silencio, que es justo lo que este módulo no
+    // permite. Va en `change` y no en `subject` porque solo lo trae el `status`
+    // rechazado, no toda la identidad de la plantilla.
+    const rejection =
+      event.kind === "status" && event.rejection
+        ? {
+            templateRejectionReason: event.rejection.reason,
+            ...(event.rejection.recommendation
+              ? {
+                  templateRejectionRecommendation:
+                    event.rejection.recommendation,
+                }
+              : {}),
+          }
+        : {}
+    const change = {
+      ...(event.kind === "status" ? { templateStatus: event.status } : {}),
+      ...(category ? { templateCategory: category } : {}),
+      ...rejection,
+    }
+
+    // Una categoría que no está en el check de la 0018 no se puede escribir, y
+    // en un evento de categoría —que no trae otra cosa— eso lo deja sin efecto
+    // posible. Se registra en vez de intentarlo: el `update` rebotaría contra la
+    // restricción y dejaría una línea `failed` que se lee como un fallo nuestro,
+    // cuando lo que pasó es que Meta estrenó una categoría que no modelamos. Es
+    // el precio de que esta columna sí tenga check y la de `status` no.
+    if (event.kind === "category" && !category) {
+      log({
+        ...subject,
+        action: "template_sync",
+        outcome: "dropped",
+        reason: "invalid_request",
+        level: "warn",
+      })
+      continue
+    }
+
+    try {
+      const updated =
+        event.kind === "status"
+          ? await updateWhatsappTemplateStatus({
+              wabaId: event.wabaId,
+              name: event.name,
+              language: event.language,
+              // Crudo, tal cual lo dijo Meta: la columna no tiene check (0018
+              // §3) y normalizar de ida convertiría un estado nuevo en
+              // `unknown` para siempre.
+              status: event.status,
+              category,
+              // Rellena `meta_template_id` cuando el espejo lo tenía en null
+              // (issue #79, hallazgo N2); el registry decide con `coalesce` si
+              // hay algo que rellenar, acá sólo se pasa lo que trajo el evento.
+              metaTemplateId: event.metaTemplateId,
+            })
+          : await updateWhatsappTemplateCategoryEvent(event, category)
+
+      if (!updated) {
+        // No es un error y por eso no sube de nivel: el espejo guarda las
+        // plantillas de las WABAs que sincronizamos, y Meta manda estos eventos
+        // por toda la cuenta. Una plantilla de otra WABA, o una creada en
+        // WhatsApp Manager después del último sync, cae acá y **tiene** que
+        // caer acá: fabricar la fila con lo que el webhook trae —sin hsm id y
+        // sin contenido— dejaría el espejo peor que el hueco, y el hueco ya
+        // significa algo (el envío se intenta igual y decide Meta).
+        log({
+          ...subject,
+          ...change,
+          action: "template_sync",
+          outcome: "dropped",
+          reason: "template_not_found",
+        })
+        continue
+      }
+
+      log({ ...subject, ...change, action: "template_sync", outcome: "ok" })
+    } catch (error) {
+      // Un evento no puede llevarse el lote: a Meta ya se le contestó 200 y no
+      // hay reintento que dependa de este throw. Lo que sí hace falta es que no
+      // desaparezca, porque un espejo congelado no se queja solo —el gate del
+      // envío falla abierto, así que se ve igual que una WABA sin plantillas—.
+      log({
+        ...subject,
+        ...change,
+        action: "template_sync",
+        outcome: "failed",
+        reason: "internal_error",
+        errorMessage: describeError(error),
+      })
+    }
+  }
+}
+
+// El `update` de un evento de categoría, con la categoría ya validada contra el
+// catálogo. Existe sólo para que el estrechamiento del tipo viva en un sitio y
+// el bucle no necesite una aserción: en un evento de categoría no hay `status`
+// que escribir, porque Meta recategoriza sin volver a revisar la plantilla.
+function updateWhatsappTemplateCategoryEvent(
+  event: Extract<WhatsappTemplateEvent, { kind: "category" }>,
+  category: WhatsappTemplateCategory | null
+) {
+  if (!category) return null
+
+  return updateWhatsappTemplateCategory({
+    wabaId: event.wabaId,
+    name: event.name,
+    language: event.language,
+    category,
+    // Mismo relleno que en el evento de status: ver el comentario de ahí.
+    metaTemplateId: event.metaTemplateId,
+  })
+}
+
+// `RED` es «Meta está por pausar la plantilla» y `YELLOW` es la última
+// oportunidad de arreglarla antes de eso: las dos tienen que doler más que una
+// línea informativa o quedan enterradas entre los eventos normales, que es
+// exactamente el modo de falla que este canal ya tuvo. Todo lo demás —`GREEN`,
+// la recuperación, y cualquier valor que Meta invente— es información.
+function qualityLogLevel(score: string): "info" | "warn" | "error" {
+  const candidate = score.trim().toUpperCase()
+  if (candidate === "RED") return "error"
+  if (candidate === "YELLOW") return "warn"
+  return "info"
 }
 
 // El `requestId` se genera en la ruta y viaja como parámetro hasta el closure

@@ -423,6 +423,12 @@ export async function getActivePageWithTokenForTenant(
   const [row] = await sql<ConnectedPageWithTokenRow[]>`
     select id, tenant_id, channel, meta_page_id, name, username, status,
       token_status, token_error, token_error_at, token_expires_at, webhook_url,
+      -- La WABA viaja con la fila porque el envío de [Plantilla] la necesita
+      -- para consultar el espejo (ADR 0014): la plantilla vive en la WABA y no
+      -- en el número, así que sin esta columna el gate no tendría con qué
+      -- buscar. En los otros dos canales la columna es null, igual que en la
+      -- base.
+      waba_id,
       (webhook_signing_secret_encrypted is not null) as has_signing_secret,
       connected_at, disconnected_at, created_at, updated_at,
       page_access_token_encrypted

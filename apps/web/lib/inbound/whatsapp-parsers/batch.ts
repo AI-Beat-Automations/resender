@@ -1,14 +1,20 @@
 import { readContactSync } from "./app-state-sync"
 import { readEchoes } from "./echoes"
-import { collectChanges } from "./envelope"
+import { collectChanges, withPhoneNumber } from "./envelope"
 import { readHistory } from "./history"
 import { readInboundMessages } from "./messages"
 import { readStatuses } from "./statuses"
+import {
+  readTemplateCategoryUpdate,
+  readTemplateQualityUpdate,
+  readTemplateStatusUpdate,
+} from "./templates"
 import type {
   WhatsappContactSyncEvent,
   WhatsappHistoryChunk,
   WhatsappMessageEvent,
   WhatsappStatusEvent,
+  WhatsappTemplateEvent,
   WhatsappWebhookBatch,
 } from "./types"
 
@@ -27,26 +33,54 @@ export function parseWhatsappWebhook(value: unknown): WhatsappWebhookBatch {
     history: [],
     contactSync: [],
     echoes: [],
+    templates: [],
     unhandledFields: [],
   }
 
+  const pushTemplate = (event: WhatsappTemplateEvent | null) => {
+    if (event) batch.templates.push(event)
+  }
+
   for (const change of collectChanges(value)) {
+    // El lote mezcla dos ámbitos. Los cuatro campos de mensajería se atribuyen
+    // a un número conectado por `metadata.phone_number_id`, y sin él no hay
+    // tenant al que llevarlos: se descartan. Los tres de plantilla son de la
+    // WABA y llegan sin ese campo (ADR 0014), así que exigírselo los borraría a
+    // todos. `scoped` se calcula una vez y solo lo mira quien lo necesita.
+    const scoped = withPhoneNumber(change)
+
     switch (change.field) {
       case "messages":
+        if (!scoped) break
         // El mismo `field` trae mensajes entrantes y acuses de los que
         // enviamos nosotros, en dos arrays independientes que pueden venir a la
         // vez o faltar los dos (un `value` con solo `errors` es legal).
-        batch.messages.push(...readInboundMessages(change))
-        batch.statuses.push(...readStatuses(change))
+        batch.messages.push(...readInboundMessages(scoped))
+        batch.statuses.push(...readStatuses(scoped))
         break
       case "history":
-        batch.history.push(...readHistory(change))
+        if (!scoped) break
+        batch.history.push(...readHistory(scoped))
         break
       case "smb_app_state_sync":
-        batch.contactSync.push(...readContactSync(change))
+        if (!scoped) break
+        batch.contactSync.push(...readContactSync(scoped))
         break
       case "smb_message_echoes":
-        batch.echoes.push(...readEchoes(change))
+        if (!scoped) break
+        batch.echoes.push(...readEchoes(scoped))
+        break
+      // Los tres desembocan en la misma lista porque río abajo son el mismo
+      // `update` del espejo por `(waba_id, name, language)`. El razonamiento
+      // completo está en `WhatsappTemplateEvent`.
+      case "message_template_status_update":
+        pushTemplate(readTemplateStatusUpdate(change))
+        break
+      case "template_category_update":
+        pushTemplate(readTemplateCategoryUpdate(change))
+        break
+      case "message_template_quality_update":
+        pushTemplate(readTemplateQualityUpdate(change))
         break
       default:
         if (!batch.unhandledFields.includes(change.field)) {
@@ -58,10 +92,10 @@ export function parseWhatsappWebhook(value: unknown): WhatsappWebhookBatch {
   return batch
 }
 
-// Los cinco extractores por tipo de evento existen para que la ingesta (y los
-// tests) puedan pedir una sola cosa sin destructurar el lote entero. Se apoyan
-// en el mismo recorrido para que no haya dos definiciones de qué cuenta como
-// mensaje válido.
+// Los extractores por tipo de evento existen para que la ingesta (y los tests)
+// puedan pedir una sola cosa sin destructurar el lote entero. Se apoyan en el
+// mismo recorrido para que no haya dos definiciones de qué cuenta como mensaje
+// válido.
 
 export function extractWhatsappMessages(
   value: unknown
@@ -85,4 +119,10 @@ export function extractWhatsappContactSync(
 
 export function extractWhatsappEchoes(value: unknown): WhatsappMessageEvent[] {
   return parseWhatsappWebhook(value).echoes
+}
+
+export function extractWhatsappTemplates(
+  value: unknown
+): WhatsappTemplateEvent[] {
+  return parseWhatsappWebhook(value).templates
 }

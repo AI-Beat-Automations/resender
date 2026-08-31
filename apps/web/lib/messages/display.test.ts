@@ -38,6 +38,7 @@ function conversation(
       status: "received",
       createdAt: new Date(2026, 6, 27, 14, 2),
       attachmentType: null,
+      templateMeta: null,
     },
     ...overrides,
   }
@@ -59,6 +60,7 @@ function message(overrides: Partial<ThreadMessage> = {}): ThreadMessage {
     metaMessageId: null,
     replyToMetaMessageId: null,
     deliveryStatus: null,
+    templateMeta: null,
     createdAt: new Date(2026, 6, 27, 14, 1, 29),
     ...overrides,
   }
@@ -176,6 +178,7 @@ describe("toConversationRowView", () => {
           status: "failed",
           createdAt: new Date(2026, 6, 26, 19, 12),
           attachmentType: null,
+          templateMeta: null,
         },
         lastMessageAt: new Date(2026, 6, 26, 19, 12),
       }),
@@ -209,6 +212,7 @@ describe("toConversationRowView", () => {
           status: "received",
           createdAt: new Date(2026, 6, 27, 14, 2),
           attachmentType: "image",
+          templateMeta: null,
         },
       }),
       NOW,
@@ -228,6 +232,7 @@ describe("toConversationRowView", () => {
           status: "sent",
           createdAt: new Date(2026, 6, 27, 14, 2),
           attachmentType: "file",
+          templateMeta: null,
         },
       }),
       NOW,
@@ -246,6 +251,7 @@ describe("toConversationRowView", () => {
           status: "received",
           createdAt: new Date(2026, 6, 27, 14, 2),
           attachmentType: "image",
+          templateMeta: null,
         },
       }),
       NOW,
@@ -254,9 +260,78 @@ describe("toConversationRowView", () => {
 
     expect(row.content).toBe("Mirá la foto")
   })
+
+  it("identifica la plantilla cuando el saliente no trae texto ni adjunto", () => {
+    // Un envío de plantilla no tiene ni texto ni adjunto: sin esta rama el
+    // renglón del log se quedaría en un «Tú: » a secas, que es la versión de
+    // lista de la burbuja vacía que el ticket prohíbe (ADR 0014).
+    const row = toConversationRowView(
+      conversation({
+        latestMessage: {
+          text: "",
+          direction: "outbound",
+          status: "sent",
+          createdAt: new Date(2026, 6, 27, 14, 2),
+          attachmentType: null,
+          templateMeta: {
+            name: "order_update",
+            language: "es",
+            components: [
+              { type: "body", parameters: [{ type: "text", text: "A-1024" }] },
+            ],
+          },
+        },
+      }),
+      NOW,
+      es
+    )
+
+    expect(row.content).toBe("Tú: plantilla · order_update · es")
+  })
 })
 
 describe("toThreadMessageViews", () => {
+  it("no deja en blanco la burbuja de un envío de plantilla", () => {
+    // La fila de un envío de plantilla llega con `text = ''`, sin adjunto y con
+    // todo el contenido en `template_meta` (0018). La vista tiene que traer ya
+    // resuelto qué se pinta: el `.tsx` no corre bajo Vitest, así que si la
+    // regla viviera ahí no habría forma de comprobar esto.
+    const [view] = toThreadMessageViews(
+      [
+        message({
+          channel: "whatsapp",
+          direction: "outbound",
+          status: "sent",
+          text: "",
+          templateMeta: {
+            name: "order_update",
+            language: "es",
+            components: [
+              { type: "body", parameters: [{ type: "text", text: "A-1024" }] },
+            ],
+          },
+        }),
+      ],
+      es
+    )
+
+    expect(view?.text).toBe("")
+    expect(view?.attachment).toBeNull()
+    expect(view?.template).toEqual({
+      label: "plantilla · order_update · es",
+      values: ["A-1024"],
+    })
+  })
+
+  it("deja `template` en null en todo lo que no es un envío de plantilla", () => {
+    // Es la marca de «esto fue una plantilla» y por eso no hay bandera aparte:
+    // un mensaje cualquiera —los tres canales, entrante o saliente— no trae
+    // nada que decir acá.
+    const [view] = toThreadMessageViews([message()], es)
+
+    expect(view?.template).toBeNull()
+  })
+
   it("compone el metadato y solo abre separador al cambiar de día", () => {
     const views = toThreadMessageViews(
       [

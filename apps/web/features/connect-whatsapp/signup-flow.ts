@@ -74,6 +74,20 @@ export type WhatsappSignupDeps = {
   ): Promise<ConnectedPageRecord>
   /** Encola `{ type: "history_sync_request", connectionId }` en `WHATSAPP_JOBS`. */
   enqueueHistorySync(connectionId: string): Promise<void>
+  /**
+   * Encola `{ type: "template_sync", connectionId }` en `WHATSAPP_JOBS`, para
+   * importar al espejo el catálogo de plantillas de la WABA (ADR 0014).
+   *
+   * **Va en los dos flujos**, y en el estándar parece inútil: una WABA recién
+   * creada casi siempre está vacía y el job termina en una sola llamada a
+   * Graph. Se encola igual porque «casi siempre» no alcanza — la plantilla vive
+   * en la WABA y no en el número, así que un alta estándar sobre una WABA que
+   * ya tiene otro número conectado hereda el catálogo entero desde el primer
+   * segundo—, y porque el modo en que esto falla es invisible: el gate del
+   * envío falla abierto, con lo cual un espejo que nunca se llenó se ve igual
+   * que una WABA sin plantillas y nadie lo reporta jamás.
+   */
+  enqueueTemplateSync(connectionId: string): Promise<void>
   /** Deja el estado del import visible cuando el encolado no salió. */
   markHistorySyncStatus(
     connectionId: string,
@@ -104,6 +118,19 @@ export type WhatsappSignupOutcome =
       historySync: HistorySyncStatus | null
       /** Por qué no se pudo encolar la solicitud de historial, si pasó. */
       historySyncError: string | null
+      /**
+       * Por qué no se pudo encolar el sync del catálogo de plantillas, si pasó.
+       *
+       * Sale como dato del resultado y **no** como un fallo de la conexión, a
+       * diferencia del historial: el import de plantillas no tiene columna de
+       * estado ni plazo que se venza, y su ausencia no rompe nada —el gate del
+       * envío falla abierto y la plantilla que el espejo no conoce se manda
+       * igual—. Lo único que se pierde es el listado hasta el próximo sync, y
+       * eso no justifica marcarle al cliente como fallida una conexión que
+       * quedó perfectamente operativa. Viaja para que el llamador lo registre:
+       * un catálogo que no se importó no puede quedar sólo en el silencio.
+       */
+      templateSyncError: string | null
     }
   // El 133005: el número ya tenía verificación en dos pasos con un PIN que no
   // es el nuestro. Sale aparte de `failed` porque el remedio es del cliente y
@@ -130,6 +157,13 @@ export const LOG_REASON_BY_STEP: Record<WhatsappOnboardingStep, LogReason> = {
   // no un problema nuestro de suscripción.
   sync_request: "meta_rejected",
   persist: "internal_error",
+  // `templates` **no ocurre en el onboarding**: entró en
+  // `WhatsappOnboardingStep` porque la administración de plantillas comparte el
+  // `graphRequest` del cliente y ese helper exige un paso (ADR 0014). Está acá
+  // sólo para que el `Record` siga siendo exhaustivo —que es la fricción que
+  // este mapa existe para dar—, con el motivo que le correspondería si algún
+  // día un fallo de plantillas llegara a este camino: es un rechazo de Meta.
+  templates: "meta_rejected",
 }
 
 // De quién es el PIN que se acaba de usar. Se mira lo que **cambia** y no quién
@@ -261,6 +295,10 @@ async function finishStandard(
     historySyncStatus: null,
   })
 
+  // El catálogo de plantillas, también acá. Ver `enqueueTemplateSync` en las
+  // dependencias: un alta estándar sobre una WABA que ya tiene otro número
+  // conectado hereda el catálogo entero, y el flujo que «casi nunca» lo
+  // necesita es exactamente donde no encolarlo pasaría inadvertido.
   return {
     kind: "connected",
     page,
@@ -268,6 +306,7 @@ async function finishStandard(
     pinGenerated: signup.pinGenerated,
     historySync: null,
     historySyncError: null,
+    templateSyncError: await enqueueTemplateSync(deps, page.id),
   }
 }
 
@@ -316,29 +355,49 @@ async function finishCoexistence(
   // ese historial nunca y el plazo se agota igual, así que el estado queda en
   // `failed` —visible en la tarjeta, con su acción— en vez de en
   // `not_requested`, que se lee como «todavía no le tocó».
+  let historySyncError: string | null = null
   try {
     await deps.enqueueHistorySync(page.id)
   } catch (error) {
-    const historySyncError =
-      error instanceof Error ? error.message : "unknown error"
+    historySyncError = error instanceof Error ? error.message : "unknown error"
     await deps.markHistorySyncStatus(page.id, "failed")
-    return {
-      kind: "connected",
-      page,
-      mode: "coexistence",
-      pinGenerated: false,
-      historySync: "failed",
-      historySyncError,
-    }
   }
 
+  // El catálogo va **después** del historial y no antes, aunque el fallo del
+  // primero ya no corte el flujo: el historial es el que tiene el reloj de 24
+  // horas encima, y si sólo una de las dos llamadas a la cola va a entrar antes
+  // de que algo se caiga, tiene que ser esa.
   return {
     kind: "connected",
     page,
     mode: "coexistence",
     pinGenerated: false,
-    historySync: "not_requested",
-    historySyncError: null,
+    historySync: historySyncError ? "failed" : "not_requested",
+    historySyncError,
+    templateSyncError: await enqueueTemplateSync(deps, page.id),
+  }
+}
+
+// El encolado del sync de plantillas, con su fallo convertido en dato.
+//
+// **No comparte el manejo del historial y es deliberado.** Aquel marca la
+// conexión como `failed` porque su encolado perdido es un plazo que se agota en
+// silencio: nadie va a pedir ese historial nunca y a las 24 horas hay que
+// rehacer el alta entera. Este no tiene plazo, ni columna de estado, ni nada
+// que se rompa —el gate del envío falla abierto y una plantilla que el espejo
+// no conoce se manda igual, la decide Meta—, así que degradar por esto una
+// conexión que quedó operativa sería asustar al cliente con un problema que no
+// tiene. Lo que sí es obligatorio es que quede en el log, y de eso se encarga
+// el llamador con el string que devuelve esta función.
+async function enqueueTemplateSync(
+  deps: WhatsappSignupDeps,
+  connectionId: string
+): Promise<string | null> {
+  try {
+    await deps.enqueueTemplateSync(connectionId)
+    return null
+  } catch (error) {
+    return error instanceof Error ? error.message : "unknown error"
   }
 }
 

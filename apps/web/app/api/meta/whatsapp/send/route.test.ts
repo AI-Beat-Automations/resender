@@ -311,6 +311,12 @@ describe("POST /api/meta/whatsapp/send", () => {
   // ---- 8: el gate de la ventana ------------------------------------------
   // **El test que sostiene el diseño entero.** Con la ventana cerrada Meta no
   // se toca: ni una llamada, ni una fila persistida, ni cuota consumida.
+  //
+  // Desde la ADR 0014 el 409 además **apunta a la ruta de plantillas**: el
+  // código y el status no cambian —la causa es la misma— pero
+  // `templateSendingSupported` pasó a `true` y el `message` nombra el endpoint.
+  // Es la única forma que tiene el que integra de descubrir la capacidad sin
+  // leer la doc, así que el texto es contrato y se verifica como tal.
   it("409s with the closed window and never calls Meta", async () => {
     mocks.getConversationById.mockResolvedValue({
       id: "conv-1",
@@ -327,7 +333,8 @@ describe("POST /api/meta/whatsapp/send", () => {
     const body = await response.json()
     expect(body.error).toBe("customer_service_window_closed")
     expect(body.requiresTemplate).toBe(true)
-    expect(body.templateSendingSupported).toBe(false)
+    expect(body.templateSendingSupported).toBe(true)
+    expect(body.message).toContain("POST /api/meta/whatsapp/templates/send")
     expect(mocks.sendWhatsappOutboundMessage).not.toHaveBeenCalled()
     expect(mocks.insertOutboundMessage).not.toHaveBeenCalled()
     expect(mocks.incrementUsage).not.toHaveBeenCalled()

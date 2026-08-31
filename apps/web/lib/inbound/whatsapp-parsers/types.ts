@@ -6,9 +6,10 @@ import type {
 } from "@/lib/messages/message-enums"
 
 // Tipos públicos de los parsers del webhook de WhatsApp Cloud API. Viven en su
-// propio módulo porque los cinco parsers (`messages`, `statuses`, `history`,
-// `smb_app_state_sync`, `smb_message_echoes`) se los pasan entre sí y el
-// barril `index.ts` los reexporta para el que cablea la ingesta.
+// propio módulo porque los parsers de mensajería (`messages`, `statuses`,
+// `history`, `smb_app_state_sync`, `smb_message_echoes`) y los tres de
+// plantilla se los pasan entre sí, y el barril `index.ts` los reexporta para el
+// que cablea la ingesta.
 
 // Error de Meta, ya aplanado. Viaja en tres sitios distintos con la misma
 // forma: colgando de un mensaje `unsupported`, de un status `failed` y de un
@@ -177,15 +178,125 @@ export type WhatsappContactSyncEvent = {
   timestamp: Date
 }
 
+// El texto legible que Meta adjunta cuando rechaza por `INVALID_FORMAT`. Es lo
+// único que explica el rechazo en prosa —el `reason` es una constante de su
+// catálogo— y por tanto lo único que le sirve al cliente para arreglar la
+// plantilla en vez de adivinar.
+export type WhatsappTemplateRejection = {
+  reason: string
+  recommendation: string | null
+}
+
+// Los tres campos de plantilla (`message_template_status_update`,
+// `template_category_update` y `message_template_quality_update`) en **un solo
+// tipo con discriminante**, y no en tres tipos con tres arrays en el lote.
+//
+// El motivo es el efecto río abajo: los tres terminan en el mismo `update` del
+// espejo por `(waba_id, name, language)` (ADR 0014). Tres listas obligarían al
+// consumidor a escribir tres bucles que resuelven la misma fila de tres
+// maneras, que es justo lo que `WhatsappMessageEvent` ya evitó unificando sus
+// tres orígenes en una sola forma. El contraste está en `WhatsappStatusEvent`,
+// que sí vive aparte de los mensajes: ahí los efectos son distintos —uno crea
+// fila y el otro actualiza una columna— y unificarlos habría mentido.
+//
+// La identidad es la clave del espejo, así que **es obligatoria**: sin WABA,
+// nombre e idioma no hay fila que actualizar y el evento no es accionable. Eso
+// no contradice la tolerancia con el `status` de más abajo; son dos cosas
+// distintas, y el parser distingue entre no saber a qué fila apunta un evento
+// (se descarta) y no reconocer el valor que trae (se conserva).
+export type WhatsappTemplateEvent = {
+  // Requerido, al revés que en `WhatsappMessageEvent`, donde el WABA es
+  // decorativo. Aquí es un tercio de la clave.
+  wabaId: string
+  // El `message_template_id` de Meta, que viaja como **número** en el JSON. Es
+  // lo único con lo que se borra una sola versión de idioma —el DELETE por
+  // nombre se lleva todas— y por eso el espejo lo guarda como
+  // `meta_template_id`. Null si el payload no lo trajo: no es clave, es un dato
+  // que se completa cuando aparece.
+  metaTemplateId: string | null
+  // `message_template_name` y `message_template_language`, literales. **No se
+  // normalizan**: son dos tercios de la clave del espejo y reescribirlos aquí
+  // sería inventar una clave que no es la de nadie.
+  //
+  // Aviso para quien escriba el `update`: los ejemplos de estos webhooks traen
+  // el idioma con guion (`en-US`, y también `en` a secas), mientras que Graph
+  // devuelve el catálogo con guion bajo (`en_US`). Si las dos formas son reales
+  // el `update` por clave no encontraría nunca la fila que insertó el sync, y
+  // el espejo se quedaría congelado **en silencio**. La decisión de cómo
+  // comparar es de quien conoce las dos puntas; aquí no se adivina.
+  name: string
+  language: string
+} & (
+  | {
+      kind: "status"
+      // El `event` de Meta, **crudo y sin catálogo**. La columna `status` del
+      // espejo no tiene check constraint a propósito (ADR 0014): la propia
+      // documentación de Meta se contradice entre `PENDING` e `IN_REVIEW` y
+      // añade valores como `LIMIT_EXCEEDED` sin cambiar de versión de API. Un
+      // estado que no reconocemos deja el espejo menos exacto; descartarlo lo
+      // deja **desactualizado**, que es peor, porque el envío decide contra él.
+      //
+      // Por eso este parser no se parece a `statuses.ts`, que sí descarta lo
+      // que no sabe mapear: allí la columna tiene un CHECK y un valor de
+      // relleno rompería el insert del lote entero. Aquí no hay tal CHECK, así
+      // que no hay nada que proteger tirando el dato. La normalización a
+      // `unknown` —si hace falta— es del módulo de lectura, no de aquí.
+      status: string
+      // El `reason` del catálogo de Meta. `NONE` es un valor real suyo —«la
+      // plantilla se pausó»— y no una ausencia, así que se conserva tal cual en
+      // vez de traducirse a null: sustituirlo perdería la diferencia entre «vino
+      // NONE» y «no vino nada».
+      reason: string | null
+      // `message_template_category`, que Meta empezó a incluir en este mismo
+      // evento. Ahorra esperar al `template_category_update` para refrescar la
+      // categoría cuando la aprobación ya la trae.
+      category: string | null
+      rejection: WhatsappTemplateRejection | null
+    }
+  | {
+      kind: "category"
+      // Siempre `new_category`, en las **dos** variantes de este webhook, y no
+      // por casualidad: Meta lo documenta como «the template's new/current
+      // category». En el aviso de recategorización inminente trae la categoría
+      // que la plantilla tiene ahora, y en el de recategorización consumada la
+      // que acaba de estrenar. Escribir esto en el espejo es correcto siempre.
+      //
+      // Es la trampa del campo: `correct_category` **no** es la categoría
+      // actual sino la futura, y guardarla adelantaría un cambio que todavía no
+      // ocurrió.
+      category: string
+      previousCategory: string | null
+      // `correct_category` y `category_update_timestamp`: la categoría a la que
+      // Meta va a mover la plantilla y cuándo. Informativos —para avisar en la
+      // consola, no para escribir el espejo— y null en la variante consumada.
+      pendingCategory: string | null
+      pendingAt: Date | null
+    }
+  | {
+      kind: "quality"
+      // `GREEN` | `YELLOW` | `RED` | `UNKNOWN`, sin catálogo cerrado por el
+      // mismo motivo que `status`.
+      //
+      // No hay columna donde guardar esto y no la va a haber: el valor de este
+      // evento es que una caída de calidad **llegue a la bitácora antes de que
+      // Meta pause el número** (ADR 0014). Como no hay tope local de plantillas
+      // hacia contactos que nunca contestaron, es el único freno del que nos
+      // enteramos, y por eso se emite aunque nadie lo persista.
+      qualityScore: string
+      previousQualityScore: string | null
+    }
+)
+
 export type WhatsappWebhookBatch = {
   messages: WhatsappMessageEvent[]
   statuses: WhatsappStatusEvent[]
   history: WhatsappHistoryChunk[]
   contactSync: WhatsappContactSyncEvent[]
   echoes: WhatsappMessageEvent[]
+  templates: WhatsappTemplateEvent[]
   // `field`s que llegaron y estos parsers no modelan (`account_update`,
-  // `message_template_status_update`, `calls`…). Se listan en vez de tragarse
-  // para que la ingesta los registre: un campo nuevo de Meta debe aparecer en
-  // la bitácora, no desaparecer.
+  // `phone_number_quality_update`, `calls`…). Se listan en vez de tragarse para
+  // que la ingesta los registre: un campo nuevo de Meta debe aparecer en la
+  // bitácora, no desaparecer.
   unhandledFields: string[]
 }

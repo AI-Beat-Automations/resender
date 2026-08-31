@@ -276,6 +276,16 @@ export async function POST(request: NextRequest) {
           connectionId,
         })
       },
+      enqueueTemplateSync: async (connectionId) => {
+        // Misma cola que el historial y por la misma razón. El catálogo de una
+        // WABA de Coexistence llega a las 6.000 plantillas y el job las escribe
+        // una por una: no es trabajo para el hilo que le tiene que contestar al
+        // navegador que el número ya está conectado.
+        await getCloudflareContext().env.WHATSAPP_JOBS.send({
+          type: "template_sync",
+          connectionId,
+        })
+      },
       markHistorySyncStatus: (connectionId, status) =>
         updateWhatsappHistorySyncStatus({ connectionId, status, tenantId }),
     },
@@ -356,6 +366,26 @@ export async function POST(request: NextRequest) {
       tenantId,
       connectionId: page.id,
       errorMessage: `sync_request enqueue: ${outcome.historySyncError}`,
+    })
+  }
+
+  // El sync del catálogo que no se encoló **no** degrada la conexión —el número
+  // quedó operativo y el envío de plantillas falla abierto, así que hasta las
+  // plantillas se pueden mandar—, pero tiene que quedar acá: lo único que se
+  // pierde es el listado, y esa carencia no produce ningún error visible que
+  // alguien vaya a reportar.
+  if (outcome.templateSyncError) {
+    log({
+      entrypoint: "route",
+      action: "template_sync",
+      outcome: "failed",
+      reason: "template_sync_failed",
+      channel: "whatsapp",
+      route: "/api/meta/whatsapp/callback",
+      tenantId,
+      connectionId: page.id,
+      ...(page.wabaId ? { wabaId: page.wabaId } : {}),
+      errorMessage: `template_sync enqueue: ${outcome.templateSyncError}`,
     })
   }
 

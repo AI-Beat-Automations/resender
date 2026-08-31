@@ -13,6 +13,7 @@ export const es: AppDict = {
     save: "Guardar",
     saving: "Guardando…",
     cancel: "Cancelar",
+    close: "Cerrar",
     copy: "Copiar",
     copied: "Copiado",
     dismissNotice: "Descartar el aviso",
@@ -23,6 +24,7 @@ export const es: AppDict = {
     home: "Resender.dev — inicio",
     navConnections: "Conexiones",
     navInbox: "Inbox",
+    navTemplates: "Plantillas",
     navSettings: "Ajustes",
     navDocs: "Documentación",
     theme: "tema",
@@ -284,6 +286,8 @@ export const es: AppDict = {
     reactionOutbound: "Reacción del negocio",
     reactionInbound: "Reacción del contacto",
     imageAlt: "Adjunto de imagen",
+    templateTitle:
+      "Se envió con una plantilla aprobada por WhatsApp. Se muestran el nombre, el idioma y los valores que se enviaron: el texto de la plantilla lo guarda Meta y puede haber cambiado desde entonces.",
     attachmentStatus: {
       pending: "descargando…",
       available: "preview / descarga",
@@ -308,6 +312,9 @@ export const es: AppDict = {
       deleted: "eliminado",
     },
     fromCommentSuffix: "respuesta a comentario",
+    templateLabel: "plantilla · {name} · {language}",
+    templateLabelNoLanguage: "plantilla · {name}",
+    templateUnnamed: "sin nombre",
     replyingTo: "respondiendo a {author}",
     commentCountOne: "1 comentario",
     commentCountMany: "{count} comentarios",
@@ -596,5 +603,168 @@ export const es: AppDict = {
     pinLabel: "PIN de verificación en dos pasos",
     pinPlaceholder: "6 dígitos",
     pinHint: "Escribe el PIN actual del número y vuelve a lanzar la conexión.",
+  },
+  templates: {
+    eyebrow: "whatsapp",
+    title: "Plantillas",
+    subtitle:
+      "Una plantilla es el único mensaje que WhatsApp acepta cuando el contacto no escribe hace más de 24 horas, así que es la única forma de escribir primero. Las aprueba Meta, no nosotros: aquí las escribes, las mandas a revisión y ves en qué estado quedaron.",
+    numberFilterLabel: "Número de WhatsApp",
+    listTitle: "Catálogo del número",
+    listBody:
+      "El catálogo es de la cuenta de WhatsApp Business, así que puede incluir plantillas creadas fuera de Resender. El estado lo mueve Meta cuando termina de revisar y llega solo: esta pantalla no se refresca sola porque no hace falta, basta con volver a entrar.",
+    headName: "NOMBRE",
+    headLanguage: "IDIOMA",
+    headCategory: "CATEGORÍA",
+    headStatus: "ESTADO",
+    headActions: "Acciones",
+    categoryLabel: {
+      utility: "Utilidad",
+      marketing: "Marketing",
+      authentication: "Autenticación",
+    },
+    categoryNone: "sin categoría",
+    statusLabel: {
+      APPROVED: "aprobada",
+      PENDING: "en revisión",
+      IN_REVIEW: "en revisión",
+      IN_APPEAL: "apelada",
+      REJECTED: "rechazada",
+      PAUSED: "pausada",
+      DISABLED: "deshabilitada",
+      PENDING_DELETION: "pendiente de borrado",
+      LIMIT_EXCEEDED: "fuera de cupo",
+      unknown: "estado desconocido",
+    },
+    statusHelp: {
+      APPROVED: "Se puede enviar.",
+      PENDING:
+        "WhatsApp la está revisando; suele tardar hasta 24 horas. Hasta que la apruebe no se puede enviar.",
+      IN_REVIEW:
+        "WhatsApp la está revisando; suele tardar hasta 24 horas. Hasta que la apruebe no se puede enviar.",
+      IN_APPEAL:
+        "Hay una apelación abierta y WhatsApp todavía no ha decidido. Mientras tanto no se puede enviar.",
+      REJECTED:
+        "WhatsApp la rechazó. El motivo exacto no llega hasta aquí: lo escribe en WhatsApp Manager, donde está detallado. Lo más habitual es el texto promocional en una plantilla de utilidad o un valor de ejemplo que no representa lo que se va a enviar. Edítala y vuelve a mandarla a revisión.",
+      PAUSED:
+        "WhatsApp la pausó porque los destinatarios la marcaron como no deseada. Se reactiva sola cuando termina la pausa; si vuelve a pasar, la pausa es más larga.",
+      DISABLED:
+        "WhatsApp la deshabilitó tras repetirse las quejas de los destinatarios. No se va a reactivar: crea una plantilla nueva con otro planteamiento.",
+      PENDING_DELETION: "Está en cola de borrado y ya no se puede enviar.",
+      LIMIT_EXCEEDED:
+        "La cuenta de WhatsApp Business llegó a su tope de plantillas, así que esta no se puede enviar. Borra alguna que ya no uses.",
+      unknown:
+        "WhatsApp reporta un estado que Resender no sabe leer, así que no consta como aprobada y no la vamos a enviar. Compruébala en WhatsApp Manager.",
+    },
+    statusRaw: "Meta lo llama {rawStatus}.",
+    ownBadge: "creada aquí",
+    foreignBadge: "solo lectura",
+    lock: {
+      foreign:
+        "Esta plantilla no se creó desde Resender. El catálogo es de la cuenta de WhatsApp Business y puede tener números de otros negocios, así que solo se administra desde WhatsApp Manager.",
+      missing_meta_id:
+        "No tenemos el identificador que Meta le dio a esta plantilla, y sin él borrarla se llevaría todas sus versiones de idioma. Adminístrala desde WhatsApp Manager.",
+    },
+    emptyNumbersTitle: "Todavía no tienes ningún número de WhatsApp",
+    emptyNumbersBody:
+      "Las plantillas viven en la cuenta de WhatsApp Business del número, así que primero hay que conectar uno.",
+    emptyNumbersCta: "Ir a Conexiones",
+    emptyTitle: "Este número no tiene plantillas",
+    emptyBody:
+      "Crea la primera y Meta la revisará. Mientras esté en revisión no se puede enviar; en cuanto la apruebe aparece aquí como aprobada.",
+    created:
+      "«{name}» se creó y está en revisión. WhatsApp suele tardar hasta 24 horas.",
+    createdNotMirrored:
+      "«{name}» se creó en WhatsApp, pero no pudimos guardar nuestra copia. La plantilla existe y se puede enviar; hasta que la recuperemos aparece aquí como de solo lectura.",
+    updated:
+      "Guardada. WhatsApp vuelve a revisar toda plantilla editada, así que no se puede enviar hasta que la apruebe de nuevo.",
+    removed: "«{name}» ({language}) se borró.",
+    errors: {
+      invalid_request: "Faltan datos del formulario. Vuelve a intentarlo.",
+      invalid_template_name:
+        "El nombre solo admite minúsculas, números y guiones bajos. Lo impone WhatsApp, no Resender.",
+      invalid_template_language:
+        "Falta el idioma. Es parte de la identidad de la plantilla: la misma plantilla en dos idiomas son dos plantillas.",
+      invalid_template_category:
+        "La categoría tiene que ser utilidad o marketing. Las de autenticación se crean en WhatsApp Manager.",
+      invalid_template_components:
+        "El cuerpo es obligatorio (hasta 1024 caracteres) y el pie no puede pasar de 60.",
+      missing_variable_examples:
+        "Falta un valor de ejemplo para alguna variable. WhatsApp rechaza sin revisar las plantillas a las que les faltan.",
+      page_not_connected:
+        "Ese número de WhatsApp ya no está conectado. Revísalo en Conexiones.",
+      waba_not_resolved:
+        "No consta a qué cuenta de WhatsApp Business pertenece este número. Vuelve a conectarlo desde Conexiones.",
+      template_not_found:
+        "Esa plantilla ya no existe en este número. Recarga la pantalla.",
+      template_not_owned:
+        "Esta plantilla no se creó desde Resender, así que aquí es de solo lectura. Se administra en WhatsApp Manager.",
+      template_missing_meta_id:
+        "No tenemos el identificador que Meta le dio a esta plantilla, y sin él borrarla se llevaría todas sus versiones de idioma. Adminístrala desde WhatsApp Manager.",
+      template_create_failed: "WhatsApp no aceptó crear la plantilla.",
+      template_update_failed: "WhatsApp no aceptó guardar los cambios.",
+      template_delete_failed: "WhatsApp no aceptó borrar la plantilla.",
+      unexpected: "No se pudo completar la operación.",
+    },
+
+    fields: {
+      bodyLabel: "Cuerpo",
+      bodyHint:
+        "Escribe {{1}}, {{2}}… donde vaya un dato que cambia en cada envío. Numéralas por orden.",
+      bodyPlaceholder: "Hola {{1}}, tu pedido {{2}} ya salió.",
+      bodyCount: "{count} de {max}",
+      footerLabel: "Pie (opcional)",
+      footerHint:
+        "Texto fijo que WhatsApp muestra en gris al final. No admite variables.",
+      footerPlaceholder: "Resender",
+      examplesTitle: "Valores de ejemplo",
+      examplesBody:
+        "WhatsApp revisa la plantilla con estos valores, así que tienen que parecerse a los reales. Sin ellos el rechazo es automático y no llega a revisarse.",
+      exampleLabel: "Ejemplo de {variable}",
+      examplePlaceholder: "Ana",
+      noVariables:
+        "Este cuerpo no tiene variables, así que no hacen falta ejemplos.",
+    },
+
+    create: {
+      cta: "Nueva plantilla",
+      title: "Nueva plantilla",
+      body: "La revisa WhatsApp, no Resender. Suele tardar hasta 24 horas y hasta entonces no se puede enviar.",
+      nameLabel: "Nombre",
+      nameHint:
+        "Minúsculas, números y guiones bajos. No se puede cambiar después, y si borras la plantilla el nombre queda inutilizable 30 días.",
+      namePlaceholder: "aviso_de_envio",
+      languageLabel: "Idioma",
+      languageHint:
+        "El código de idioma de WhatsApp: es, en_US, pt_BR. La misma plantilla en dos idiomas son dos plantillas distintas.",
+      languagePlaceholder: "es",
+      categoryLabel: "Categoría",
+      categoryHint:
+        "Utilidad para lo que el cliente espera —un pedido, una cita—; marketing para lo que no. Meta puede recategorizarla y cada una se factura distinto.",
+      submit: "Crear y mandar a revisión",
+      submitting: "Creando…",
+    },
+
+    edit: {
+      cta: "Editar",
+      title: "Editar «{name}» ({language})",
+      body: "Resender no guarda una copia del contenido —de eso es dueño WhatsApp—, así que lo que escribas aquí reemplaza la plantilla entera. El nombre y el idioma no se pueden cambiar: son su identidad.",
+      approvedWarningTitle: "Esta plantilla está aprobada.",
+      approvedWarningBody:
+        "WhatsApp vuelve a revisar toda plantilla editada, así que en cuanto guardes deja de poder enviarse hasta que la apruebe otra vez. Suele tardar hasta 24 horas.",
+      categoryKeep: "Dejar la que tiene",
+      submit: "Guardar y volver a revisión",
+      submitting: "Guardando…",
+    },
+
+    remove: {
+      cta: "Borrar",
+      title: "Borrar «{name}»",
+      body: "Se borra solo la versión en {language}. Las demás versiones de idioma de esta plantilla, si las hay, se quedan como están.",
+      burnWarning:
+        "El nombre queda inutilizable 30 días: WhatsApp no deja volver a crear una plantilla que se llame igual hasta que pase ese plazo.",
+      confirm: "Sí, borrar",
+      removing: "Borrando…",
+    },
   },
 }

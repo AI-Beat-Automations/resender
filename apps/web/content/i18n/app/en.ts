@@ -11,6 +11,7 @@ export const en: AppDict = {
     save: "Save",
     saving: "Saving…",
     cancel: "Cancel",
+    close: "Close",
     copy: "Copy",
     copied: "Copied",
     dismissNotice: "Dismiss this notice",
@@ -21,6 +22,7 @@ export const en: AppDict = {
     home: "Resender.dev — home",
     navConnections: "Connections",
     navInbox: "Inbox",
+    navTemplates: "Templates",
     navSettings: "Settings",
     navDocs: "Documentation",
     theme: "theme",
@@ -280,6 +282,8 @@ export const en: AppDict = {
     reactionOutbound: "Reaction from the business",
     reactionInbound: "Reaction from the contact",
     imageAlt: "Image attachment",
+    templateTitle:
+      "Sent with a template approved by WhatsApp. What you see is the name, the language and the values that were sent: the template's own text lives in Meta and may have changed since.",
     attachmentStatus: {
       pending: "downloading…",
       available: "preview / download",
@@ -304,6 +308,9 @@ export const en: AppDict = {
       deleted: "deleted",
     },
     fromCommentSuffix: "reply to comment",
+    templateLabel: "template · {name} · {language}",
+    templateLabelNoLanguage: "template · {name}",
+    templateUnnamed: "unnamed",
     replyingTo: "replying to {author}",
     commentCountOne: "1 comment",
     commentCountMany: "{count} comments",
@@ -588,5 +595,167 @@ export const en: AppDict = {
     pinLabel: "Two-step verification PIN",
     pinPlaceholder: "6 digits",
     pinHint: "Type the number's current PIN and run the connection again.",
+  },
+  templates: {
+    eyebrow: "whatsapp",
+    title: "Templates",
+    subtitle:
+      "A template is the only message WhatsApp accepts when the contact hasn't written in over 24 hours, so it is the only way to write first. Meta approves them, not us: here you write them, send them for review and see where they ended up.",
+    numberFilterLabel: "WhatsApp number",
+    listTitle: "This number's catalogue",
+    listBody:
+      "The catalogue belongs to the WhatsApp Business Account, so it can include templates created outside Resender. Meta moves the status when it finishes reviewing and it reaches us on its own: this screen doesn't refresh itself because it doesn't need to, just come back to it.",
+    headName: "NAME",
+    headLanguage: "LANGUAGE",
+    headCategory: "CATEGORY",
+    headStatus: "STATUS",
+    headActions: "Actions",
+    categoryLabel: {
+      utility: "Utility",
+      marketing: "Marketing",
+      authentication: "Authentication",
+    },
+    categoryNone: "no category",
+    statusLabel: {
+      APPROVED: "approved",
+      PENDING: "in review",
+      IN_REVIEW: "in review",
+      IN_APPEAL: "appealed",
+      REJECTED: "rejected",
+      PAUSED: "paused",
+      DISABLED: "disabled",
+      PENDING_DELETION: "pending deletion",
+      LIMIT_EXCEEDED: "over the limit",
+      unknown: "unknown status",
+    },
+    statusHelp: {
+      APPROVED: "It can be sent.",
+      PENDING:
+        "WhatsApp is reviewing it; this usually takes up to 24 hours. It cannot be sent until it is approved.",
+      IN_REVIEW:
+        "WhatsApp is reviewing it; this usually takes up to 24 hours. It cannot be sent until it is approved.",
+      IN_APPEAL:
+        "An appeal is open and WhatsApp hasn't decided yet. It cannot be sent in the meantime.",
+      REJECTED:
+        "WhatsApp rejected it. The exact reason doesn't reach us: Meta spells it out in WhatsApp Manager. The usual causes are promotional copy in a utility template, or example values that don't represent what you will actually send. Edit it and submit it for review again.",
+      PAUSED:
+        "WhatsApp paused it because recipients flagged it as unwanted. It comes back on its own when the pause ends; if it happens again the pause gets longer.",
+      DISABLED:
+        "WhatsApp disabled it after repeated complaints from recipients. It will not come back: create a new template with a different approach.",
+      PENDING_DELETION: "It is queued for deletion and can no longer be sent.",
+      LIMIT_EXCEEDED:
+        "The WhatsApp Business Account reached its template limit, so this one cannot be sent. Delete templates you no longer use.",
+      unknown:
+        "WhatsApp reports a status Resender can't read, so it is not known to be approved and we will not send it. Check it in WhatsApp Manager.",
+    },
+    statusRaw: "Meta calls it {rawStatus}.",
+    ownBadge: "created here",
+    foreignBadge: "read-only",
+    lock: {
+      foreign:
+        "This template wasn't created from Resender. The catalogue belongs to the WhatsApp Business Account and it can hold other businesses' numbers, so it is only managed from WhatsApp Manager.",
+      missing_meta_id:
+        "We don't have the id Meta gave this template, and without it deleting would take every language version with it. Manage it from WhatsApp Manager.",
+    },
+    emptyNumbersTitle: "You don't have a WhatsApp number yet",
+    emptyNumbersBody:
+      "Templates live in the number's WhatsApp Business Account, so a number has to be connected first.",
+    emptyNumbersCta: "Go to Connections",
+    emptyTitle: "This number has no templates",
+    emptyBody:
+      "Create the first one and Meta will review it. It cannot be sent while it is in review; as soon as Meta approves it, it shows up here as approved.",
+    created:
+      "“{name}” was created and is in review. WhatsApp usually takes up to 24 hours.",
+    createdNotMirrored:
+      "“{name}” was created in WhatsApp, but we couldn't save our copy. The template exists and can be sent; until we pick it up again it shows here as read-only.",
+    updated:
+      "Saved. WhatsApp reviews every edited template again, so it cannot be sent until it is approved once more.",
+    removed: "“{name}” ({language}) was deleted.",
+    errors: {
+      invalid_request: "The form is missing data. Please try again.",
+      invalid_template_name:
+        "The name only takes lowercase letters, digits and underscores. That's WhatsApp's rule, not Resender's.",
+      invalid_template_language:
+        "The language is missing. It is part of the template's identity: the same template in two languages is two templates.",
+      invalid_template_category:
+        "The category has to be utility or marketing. Authentication templates are created in WhatsApp Manager.",
+      invalid_template_components:
+        "The body is required (up to 1024 characters) and the footer cannot go over 60.",
+      missing_variable_examples:
+        "An example value is missing for one of the variables. WhatsApp rejects templates with missing examples without reviewing them.",
+      page_not_connected:
+        "That WhatsApp number is no longer connected. Check it in Connections.",
+      waba_not_resolved:
+        "We have no record of which WhatsApp Business Account this number belongs to. Reconnect it from Connections.",
+      template_not_found:
+        "That template no longer exists on this number. Reload the screen.",
+      template_not_owned:
+        "This template wasn't created from Resender, so it is read-only here. It is managed in WhatsApp Manager.",
+      template_missing_meta_id:
+        "We don't have the id Meta gave this template, and without it deleting would take every language version with it. Manage it from WhatsApp Manager.",
+      template_create_failed: "WhatsApp wouldn't create the template.",
+      template_update_failed: "WhatsApp wouldn't save the changes.",
+      template_delete_failed: "WhatsApp wouldn't delete the template.",
+      unexpected: "The operation couldn't be completed.",
+    },
+
+    fields: {
+      bodyLabel: "Body",
+      bodyHint:
+        "Write {{1}}, {{2}}… wherever a value changes on every send. Number them in order.",
+      bodyPlaceholder: "Hi {{1}}, your order {{2}} is on its way.",
+      bodyCount: "{count} of {max}",
+      footerLabel: "Footer (optional)",
+      footerHint:
+        "Fixed text WhatsApp shows in grey at the end. It takes no variables.",
+      footerPlaceholder: "Resender",
+      examplesTitle: "Example values",
+      examplesBody:
+        "WhatsApp reviews the template with these values, so they have to look like the real ones. Without them the rejection is automatic and it never gets reviewed.",
+      exampleLabel: "Example for {variable}",
+      examplePlaceholder: "Ana",
+      noVariables: "This body has no variables, so no examples are needed.",
+    },
+
+    create: {
+      cta: "New template",
+      title: "New template",
+      body: "WhatsApp reviews it, not Resender. It usually takes up to 24 hours and it cannot be sent until then.",
+      nameLabel: "Name",
+      nameHint:
+        "Lowercase letters, digits and underscores. It cannot be changed later, and if you delete the template the name stays unusable for 30 days.",
+      namePlaceholder: "shipping_update",
+      languageLabel: "Language",
+      languageHint:
+        "WhatsApp's language code: es, en_US, pt_BR. The same template in two languages is two different templates.",
+      languagePlaceholder: "en_US",
+      categoryLabel: "Category",
+      categoryHint:
+        "Utility for what the customer expects —an order, an appointment—; marketing for what they don't. Meta can recategorise it and each one is billed differently.",
+      submit: "Create and submit for review",
+      submitting: "Creating…",
+    },
+
+    edit: {
+      cta: "Edit",
+      title: "Edit “{name}” ({language})",
+      body: "Resender doesn't keep a copy of the content —WhatsApp owns it— so what you write here replaces the whole template. Name and language cannot change: they are its identity.",
+      approvedWarningTitle: "This template is approved.",
+      approvedWarningBody:
+        "WhatsApp reviews every edited template again, so the moment you save it stops being sendable until Meta approves it once more. This usually takes up to 24 hours.",
+      categoryKeep: "Keep the current one",
+      submit: "Save and send back to review",
+      submitting: "Saving…",
+    },
+
+    remove: {
+      cta: "Delete",
+      title: "Delete “{name}”",
+      body: "Only the {language} version is deleted. This template's other language versions, if any, stay as they are.",
+      burnWarning:
+        "The name stays unusable for 30 days: WhatsApp won't let you create another template with the same name until then.",
+      confirm: "Yes, delete",
+      removing: "Deleting…",
+    },
   },
 }

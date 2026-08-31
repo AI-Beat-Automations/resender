@@ -41,6 +41,29 @@ export type LogAction =
   | "outbound_send" // DM (Messenger o Instagram)
   | "comment_reply" // respuesta pública debajo del comentario
   | "comment_private_reply" // DM al autor del comentario
+  // plantillas de WhatsApp (ADR 0014). El envío va aparte de `outbound_send`
+  // aunque comparta helper y forma de respuesta: son dos rutas con reglas
+  // distintas —la plantilla es justamente la que **no** se frena con la ventana
+  // de 24 h— y con la acción separada «cuántos envíos de plantilla se
+  // rechazaron» es un filtro por `action` y no una resta contra los `reason`.
+  | "template_send"
+  // Administración del catálogo. Son cuatro y no una porque cada una deja un
+  // efecto distinto en la WABA del cliente —y tres de ellas son permanentes:
+  // el nombre de una plantilla borrada queda quemado 30 días—, así que
+  // «alguien borró algo» tiene que ser una consulta y no una lectura de
+  // `reason`.
+  | "template_list"
+  | "template_create"
+  | "template_update"
+  | "template_delete"
+  | "template_sync" // importa o refresca el espejo: el job de la cola y el webhook de estado
+  // La calidad que Meta le pone a una plantilla. Acción propia y no un
+  // `template_sync` más porque no escribe nada —no hay columna para el score ni
+  // la va a haber— y porque el punto entero de la línea es encontrarla: «¿qué
+  // plantillas se están cayendo de calidad?» tiene que ser un filtro por
+  // `action` y no una lectura de las que sí movieron el espejo. Es el aviso más
+  // temprano que tenemos de que Meta va a pausar el número (ADR 0014).
+  | "template_quality"
   // conexión de cuentas
   | "oauth_start"
   | "oauth_callback"
@@ -112,6 +135,22 @@ export type LogReason =
   // WhatsApp: el contacto no escribió en las últimas 24 h, así que Meta sólo
   // aceptaría una plantilla. Se corta acá y no se llama a Cloud API.
   | "customer_service_window_closed"
+  // WhatsApp: el espejo de plantillas tiene la fila y **no** está `APPROVED`,
+  // así que Meta la rechazaría igual. Se corta acá sin gastar la llamada.
+  // El caso simétrico —la fila no está— no tiene motivo propio a propósito:
+  // el gate **falla abierto** (ADR 0014) y un hueco del espejo no descarta
+  // nada, así que no hay descarte que registrar.
+  | "template_not_approved"
+  // WhatsApp: **el gate del espejo no se pudo consultar** y el envío siguió
+  // igual. Se emite en `/templates/send` cuando la lectura de
+  // `whatsapp_templates` lanza —la base caída, la conexión cortada—, y nunca
+  // cuando el espejo simplemente no tiene la fila: eso es un hueco legítimo y
+  // no se registra. La acción es la del envío (`template_send`), porque de eso
+  // se trata la request, y el motivo es lo que la separa de la línea terminal:
+  // acá no falló el envío sino nuestra consulta previa, y el envío se intentó
+  // igual porque el gate falla abierto (ADR 0014). Sin esta línea una base
+  // caída se vería exactamente igual que un catálogo todavía sin sincronizar.
+  | "template_mirror_unavailable"
   | "plan_restricted"
   | "invalid_request"
   | "idempotent_replay"
@@ -137,6 +176,23 @@ export type LogReason =
   // Se agotaron los reintentos del pedido de sync de Coexistence. Importa que
   // sea visible: sin el sync, la conexión muere sola a las 24 h.
   | "history_sync_failed"
+  // Administración de plantillas (ADR 0014). Los tres son rechazos **nuestros**,
+  // anteriores a Graph, y están separados porque cada uno lleva a una acción
+  // distinta del cliente: la ajena se administra en WhatsApp Manager, la que no
+  // está en el espejo se resuelve esperando el sync, y la que no tiene `hsm_id`
+  // no se puede borrar sin llevarse todas las versiones de idioma —que es
+  // exactamente lo que el borrado por nombre haría y por lo que no se cae a él—.
+  | "template_not_owned"
+  | "template_not_found"
+  | "template_missing_meta_id"
+  // El job `template_sync` no pudo importar el catálogo de la WABA: falló la
+  // llamada a Graph o se cortó a mitad de la paginación. Importa que sea
+  // visible porque el espejo hueco no se queja solo: el gate del envío falla
+  // abierto, así que un sync que nunca corrió se ve igual que una WABA sin
+  // plantillas. Los demás modos de falla del job reusan motivos que ya existen
+  // —`missing_waba_id` cuando la conexión no tiene WABA, `page_not_connected`
+  // cuando la conexión ya no está—, que es la razón de que acá haya uno solo.
+  | "template_sync_failed"
   | "account_owned_by_other_tenant"
   | "page_limit_reached"
   | "configuration_failed"
@@ -160,6 +216,13 @@ type AccountFields = {
   // desconectó y su WABA sigue mandando eventos?». Es un conteo, no contenido:
   // no dice de quién son ni qué mandaron.
   remainingConnections?: number
+  // La WABA. Sólo la escriben las líneas de plantilla, que son de ámbito cuenta
+  // y no de ámbito número: sus webhooks llegan **sin** `phone_number_id`, así
+  // que `accountId` no se puede completar y sin este campo no habría forma de
+  // saber a qué catálogo apunta la línea. Es justo lo que distingue el descarte
+  // benigno —una plantilla de una WABA que nunca sincronizamos— del que
+  // importa. Es un id de Meta, no contenido.
+  wabaId?: string
 }
 
 type SubjectFields = {
@@ -176,6 +239,47 @@ type SubjectFields = {
   // descartaron cuando el contacto mandó varios de una vez.
   attachmentType?: string
   droppedCount?: number
+  // La [Plantilla] que se envió o se administró, por su identidad completa:
+  // Meta la llavea por `(nombre, idioma)` y el nombre solo es ambiguo cuando la
+  // misma plantilla existe en cinco idiomas.
+  //
+  // **El nombre y el idioma se loguean; los `components` no, y por eso no hay
+  // campo por el cual pudieran entrar.** Los `components` son los valores con
+  // los que se hidrató la plantilla —nombres, importes, códigos de un cliente
+  // final— y valen exactamente lo mismo que el texto de un mensaje, que este
+  // módulo no escribe: la redacción es el tipo. El nombre, en cambio, lo
+  // eligió el negocio, es un identificador de catálogo (`[a-z0-9_]`) y sin él
+  // «qué plantilla se está rechazando» no se puede contestar.
+  templateName?: string
+  templateLanguage?: string
+  // El estado **crudo** de Meta (`APPROVED`, `REJECTED`, `LIMIT_EXCEEDED`…),
+  // que es lo que se escribe en la columna. Va sin normalizar a propósito: la
+  // lista de estados de Meta crece sin cambiar de versión de API, y la única
+  // manera de enterarnos de uno nuevo es verlo en la bitácora antes de
+  // modelarlo. Es una constante de su catálogo, no contenido del cliente.
+  templateStatus?: string
+  // La categoría que Meta le atribuye a la plantilla (`utility`, `marketing`,
+  // `authentication`), ya normalizada al vocabulario de la 0018. Importa
+  // registrarla porque no es cosmética: Meta recategoriza plantillas por su
+  // cuenta y una que pasa de `utility` a `marketing` **se factura distinto**,
+  // así que «cuándo cambió y a qué» es una pregunta que se hace con una factura
+  // en la mano.
+  templateCategory?: string
+  // La calidad que Meta le atribuye a la plantilla y la que tenía antes
+  // (`GREEN` | `YELLOW` | `RED` | `UNKNOWN`). Van los dos porque el dato que
+  // sirve es el **movimiento**: un `YELLOW` suelto no dice si la plantilla está
+  // empeorando o recuperándose, y lo que hay que atender antes de que Meta
+  // pause el número es la caída.
+  templateQualityScore?: string
+  templatePreviousQualityScore?: string
+  // El `rejection_info` que Meta manda con un `REJECTED` (ADR 0014). Es
+  // catálogo del negocio y no contenido del cliente final —lo que nunca se
+  // loguea son los `components` con los que se hidrata un envío—, así que el
+  // motivo en prosa y la recomendación para corregir la plantilla se pueden
+  // escribir tal cual. No hay columna del espejo para esto (la 0018 va literal)
+  // y sin esta línea el rechazo desaparecería sin dejar rastro de por qué.
+  templateRejectionReason?: string
+  templateRejectionRecommendation?: string
 }
 
 type ContextFields = {

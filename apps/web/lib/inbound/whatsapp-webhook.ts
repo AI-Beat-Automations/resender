@@ -5,6 +5,7 @@ import type {
   WhatsappHistoryChunk,
   WhatsappMessageEvent,
   WhatsappStatusEvent,
+  WhatsappTemplateEvent,
 } from "./whatsapp-parsers"
 
 // El enrutado del webhook de WhatsApp y el puente entre los tipos de los
@@ -38,6 +39,13 @@ export type WhatsappRoutedWebhook = {
   // Los chunks completos, no solo sus mensajes: `progress === 100` es la única
   // señal documentada de que la sincronización terminó y viaja en el chunk.
   history: WhatsappHistoryChunk[]
+  // Lo que Meta cuenta sobre las plantillas de la WABA: aprobaciones, rechazos,
+  // recategorizaciones y caídas de calidad, en una sola lista discriminada por
+  // `kind`. No son mensajes ni tocan una conversación —su efecto es un `update`
+  // del espejo por `(waba_id, name, language)` (ADR 0014)—, pero sí son eventos
+  // de este webhook, así que atraviesan este módulo en vez de leerse aparte del
+  // batch: el que cablea la ingesta ya recibe todo lo del sobre por acá.
+  templates: WhatsappTemplateEvent[]
   // `field`s que Meta manda y estos parsers no modelan. Se propagan para que la
   // ruta los registre: un campo nuevo tiene que aparecer en la bitácora, no
   // desaparecer.
@@ -61,6 +69,7 @@ export function routeWhatsappWebhook(body: unknown): WhatsappRoutedWebhook {
     statuses: batch.statuses,
     contactSync: batch.contactSync,
     history: batch.history,
+    templates: batch.templates,
     unhandledFields: batch.unhandledFields,
   }
 }

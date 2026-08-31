@@ -1,6 +1,7 @@
 import { handleMediaPurgeJob } from "@/lib/account/media-purge"
 import { getMediaBucket } from "@/lib/messages/media-access"
 import { log } from "@/lib/observability/logger"
+import { syncWhatsappTemplateCatalog } from "@/lib/whatsapp-templates/template-sync"
 
 import { markHistorySyncFailed, requestHistorySync } from "./history-sync"
 import { downloadMediaToR2, markAttachmentFailed } from "./media-download"
@@ -25,7 +26,8 @@ function parseJob(value: unknown): WhatsappJobMessage | null {
     type !== "history_sync_request" &&
     type !== "history_chunk" &&
     type !== "media_download" &&
-    type !== "media_purge"
+    type !== "media_purge" &&
+    type !== "template_sync"
   ) {
     return null
   }
@@ -73,6 +75,12 @@ export async function consumeWhatsappQueue(
         await markHistorySyncFailed(job.connectionId)
       }
 
+      // `template_sync` no tiene nada que marcar y es a propósito: el espejo
+      // no lleva columna de estado del import y no la va a llevar. Un catálogo
+      // que no se importó es indistinguible de una WABA sin plantillas —el
+      // gate del envío falla abierto—, así que no hay ningún estado derivado
+      // que corregir, y la línea genérica de abajo es toda la constancia que
+      // este caso admite.
       log({
         entrypoint: "queue",
         action: "queue_consume",
@@ -133,6 +141,16 @@ async function runJob(
       // esto; si acá no se llamara a Meta, no llegaría ningún `history` y la
       // conexión se perdería sola a las 24 h sin que nada fallara a la vista.
       await requestHistorySync({ connectionId: job.connectionId })
+      return
+
+    case "template_sync":
+      // El catálogo de plantillas de la WABA, al espejo (ADR 0014). Se encola
+      // al conectar un número en los **dos** flujos: en el estándar suele
+      // terminar en una llamada contra una WABA vacía, y en Coexistence puede
+      // traer miles. El job no lanza si Graph falla —lo registra— porque un
+      // espejo hueco no bloquea ningún envío; sí deja subir un fallo de la
+      // base, que es lo que este reintento repara.
+      await syncWhatsappTemplateCatalog({ connectionId: job.connectionId })
       return
 
     case "history_chunk":

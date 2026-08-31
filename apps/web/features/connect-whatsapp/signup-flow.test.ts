@@ -102,6 +102,7 @@ function deps(overrides: Partial<WhatsappSignupDeps> = {}) {
       return page()
     },
     enqueueHistorySync: async () => {},
+    enqueueTemplateSync: async () => {},
     markHistorySyncStatus: async () => {},
     ...overrides,
   }
@@ -135,6 +136,7 @@ describe("runWhatsappSignup — flujo A (estándar)", () => {
       "resolveOwnership",
       "finishStandard",
       "connect",
+      "enqueueTemplateSync",
     ])
     expect(connected[0]).toMatchObject({
       onboardingMode: "standard",
@@ -236,7 +238,7 @@ describe("runWhatsappSignup — flujo B (Coexistence)", () => {
     expect(calls).not.toContain("finishStandard")
   })
 
-  it("suscribe los tres campos antes de persistir, y en ese orden", async () => {
+  it("suscribe la lista explícita antes de persistir, y en ese orden", async () => {
     const { deps: d, calls, connected } = coexistenceDeps()
 
     await runWhatsappSignup(d, request({ mode: "coexistence" }))
@@ -244,17 +246,17 @@ describe("runWhatsappSignup — flujo B (Coexistence)", () => {
     expect(d.subscribe).toHaveBeenCalledWith("EAAtoken", "waba-1", {
       subscribedFields: WHATSAPP_COEXISTENCE_WEBHOOK_FIELDS,
     })
-    expect(WHATSAPP_COEXISTENCE_WEBHOOK_FIELDS).toEqual([
-      "history",
-      "smb_app_state_sync",
-      "smb_message_echoes",
-    ])
+    // Lo que importa acá es que se suscribe **con la lista** y antes de
+    // persistir; los nombres exactos de los campos los fija el test del cliente
+    // de Meta, que es donde vive la constante.
+    expect(WHATSAPP_COEXISTENCE_WEBHOOK_FIELDS).toContain("history")
     expect(calls).toEqual([
       "begin",
       "resolveOwnership",
       "subscribe",
       "connect",
       "enqueueHistorySync",
+      "enqueueTemplateSync",
     ])
     expect(connected[0]).toMatchObject({
       onboardingMode: "coexistence",
@@ -302,6 +304,33 @@ describe("runWhatsappSignup — flujo B (Coexistence)", () => {
       historySync: "failed",
       historySyncError: "queue unavailable",
     })
+  })
+
+  // El historial es el que tiene el reloj de 24 h encima: su encolado no puede
+  // quedar detrás del de plantillas, que no vence nunca.
+  it("encola el historial antes que el catálogo de plantillas", async () => {
+    const { deps: d, calls } = coexistenceDeps()
+
+    await runWhatsappSignup(d, request({ mode: "coexistence" }))
+
+    expect(calls.indexOf("enqueueHistorySync")).toBeLessThan(
+      calls.indexOf("enqueueTemplateSync")
+    )
+  })
+
+  // Que el historial se caiga no puede llevarse puesto el catálogo: son dos
+  // trabajos independientes y el segundo no depende de que el primero saliera.
+  it("encola el catálogo aunque el historial no se haya podido encolar", async () => {
+    const { deps: d } = coexistenceDeps({
+      enqueueHistorySync: vi.fn(async () => {
+        throw new Error("queue unavailable")
+      }),
+    })
+
+    const outcome = await runWhatsappSignup(d, request({ mode: "coexistence" }))
+
+    expect(d.enqueueTemplateSync).toHaveBeenCalledWith("conn-1")
+    expect(outcome).toMatchObject({ historySync: "failed" })
   })
 
   it("sigue adelante sin phone_number_id: Graph resuelve el número vinculado", async () => {
@@ -392,6 +421,10 @@ describe("runWhatsappSignup — propiedad y fallos", () => {
       "register",
       "subscribe",
       "sync_request",
+      // No es un paso del onboarding: `templates` entró en la unión porque la
+      // administración de plantillas comparte el `graphRequest` del cliente
+      // (ADR 0014). Aparece acá porque el mapa es exhaustivo a propósito.
+      "templates",
     ])
   })
 })
@@ -599,5 +632,77 @@ describe("del postMessage a /register — el modo sale del evento de cierre", ()
 
     expect(d.finishStandard).toHaveBeenCalled()
     expect(connected[0]).toMatchObject({ onboardingMode: "standard" })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// El sync del catálogo de plantillas (ADR 0014)
+// ---------------------------------------------------------------------------
+
+describe("runWhatsappSignup — sync del catálogo de plantillas", () => {
+  const coexistence = (overrides: Partial<WhatsappSignupDeps> = {}) =>
+    deps({
+      begin: vi.fn(async () =>
+        target({
+          mode: "coexistence",
+          phone: { ...target().phone, isOnBizApp: true },
+        })
+      ),
+      ...overrides,
+    })
+
+  // El caso que hay que fijar con nombre y todo: en el flujo estándar el
+  // catálogo suele estar vacío y el job termina en una llamada, así que es
+  // justo el encolado que alguien borraría por parecer inútil. No lo es — la
+  // plantilla vive en la WABA, y un número estándar puede entrar a una WABA que
+  // ya tiene catálogo— y su ausencia no produce ningún error visible.
+  it("se encola también en el flujo estándar, donde el catálogo suele estar vacío", async () => {
+    const { deps: d } = deps()
+
+    await runWhatsappSignup(d, request())
+
+    expect(d.enqueueTemplateSync).toHaveBeenCalledWith("conn-1")
+  })
+
+  it("se encola en Coexistence, que es donde puede traer miles", async () => {
+    const { deps: d } = coexistence()
+
+    await runWhatsappSignup(d, request({ mode: "coexistence" }))
+
+    expect(d.enqueueTemplateSync).toHaveBeenCalledWith("conn-1")
+  })
+
+  // A diferencia del historial, esto **no** degrada la conexión: no hay plazo
+  // que se venza ni estado que corregir, y el número quedó operativo. Lo único
+  // que se pierde es el listado hasta el próximo sync.
+  it.each(["standard", "coexistence"] as const)(
+    "un encolado fallido no rompe la conexión en el flujo %s",
+    async (mode) => {
+      const failing = {
+        enqueueTemplateSync: vi.fn(async () => {
+          throw new Error("queue unavailable")
+        }),
+      }
+      const { deps: d } =
+        mode === "coexistence" ? coexistence(failing) : deps(failing)
+
+      const outcome = await runWhatsappSignup(d, request({ mode }))
+
+      expect(outcome).toMatchObject({
+        kind: "connected",
+        templateSyncError: "queue unavailable",
+      })
+      // Nada se marca como fallido por esto: no hay columna de estado del
+      // import de plantillas, y la del historial es de otro trabajo.
+      expect(d.markHistorySyncStatus).not.toHaveBeenCalled()
+    }
+  )
+
+  it("no reporta error cuando el encolado salió", async () => {
+    const { deps: d } = deps()
+
+    const outcome = await runWhatsappSignup(d, request())
+
+    expect(outcome).toMatchObject({ templateSyncError: null })
   })
 })

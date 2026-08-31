@@ -21,6 +21,31 @@ export type ConversationRecord = {
   lastInboundAt: Date | null
 }
 
+/**
+ * Lo que se le mandó al contacto en un envío de [Plantilla] (ADR 0014): el par
+ * `(nombre, idioma)` con el que Meta identifica la plantilla, y los
+ * `components` **de ese envío** —los valores con los que se hidrataron las
+ * variables—.
+ *
+ * Se guarda el mensaje y no la plantilla a propósito. El espejo de plantillas
+ * no es autoritativo y su contenido puede haber derivado —Meta es el dueño, una
+ * edición no se resincroniza—, así que reconstruir la burbuja del Inbox desde
+ * el espejo mostraría lo que la plantilla dice **hoy** y no lo que el contacto
+ * recibió aquel día.
+ *
+ * El tipo se declara acá y no se importa del cliente de Meta: la capa de
+ * persistencia no tiene por qué hablar el vocabulario de Graph, y atarla a él
+ * haría que un cambio de forma en el cliente llegue hasta una columna. Por lo
+ * mismo `components` queda en `unknown`: no lo validamos ni lo interpretamos
+ * —la ADR 0014 decide explícitamente no validar el conteo de parámetros—, se
+ * pasa tal cual a Meta y se guarda tal cual.
+ */
+export type OutboundTemplateMeta = {
+  name: string
+  language: string
+  components?: unknown
+}
+
 export type MessageDirection = "inbound" | "outbound"
 export type MessageStatus = "received" | "sent" | "failed"
 
@@ -72,6 +97,17 @@ export type MessageRecord = {
   // El wamid al que este mensaje responde. Se guarda como lo manda Meta y no
   // como uuid nuestro: el mensaje citado puede ser anterior a la conexión.
   replyToMetaMessageId?: string | null
+  // Qué plantilla se envió y con qué valores (migración 0018). Null en todo lo
+  // que no sea un envío de plantilla, que es la enorme mayoría de las filas.
+  // Es lo que el Inbox lee para renderizar la burbuja: sin esto un envío de
+  // plantilla se vería vacío, porque su `text` es la cadena vacía.
+  //
+  // **Una plantilla no es un [Adjunto]**, así que convive con `attachmentType`
+  // y `attachmentUrl` en null en vez de ocupar el `template` del catálogo de
+  // adjuntos: ese valor es la tarjeta con botones de Messenger y no tiene
+  // ninguna relación con una plantilla de WhatsApp. El nombre colisiona por
+  // herencia de Meta y el rename es deuda declarada en la ADR 0014.
+  templateMeta?: OutboundTemplateMeta | null
   error: string | null
   providerResponse: unknown | null
   createdAt: Date
@@ -108,6 +144,8 @@ type MessageRow = {
   attachment_status: AttachmentStatus | null
   attachment_r2_key: string | null
   reply_to_meta_message_id: string | null
+  // jsonb: lo escribe sólo `insertOutboundMessage` en un envío de plantilla.
+  template_meta: unknown | null
   error: string | null
   provider_response: unknown | null
   created_at: Date
@@ -268,7 +306,7 @@ async function findByMetaMessageId(input: {
       instagram_source_comment_id, attachment_type, attachment_url,
       attachment_meta, origin, historical, delivery_status,
       attachment_status, attachment_r2_key, reply_to_meta_message_id,
-      error, provider_response, created_at
+      template_meta, error, provider_response, created_at
     from messages
     where connected_page_id = ${input.connectedPageId}
       and meta_message_id = ${input.metaMessageId}
@@ -372,7 +410,7 @@ export async function insertInboundMessage(input: ProviderMessageInput) {
       instagram_source_comment_id, attachment_type, attachment_url,
       attachment_meta, origin, historical, delivery_status,
       attachment_status, attachment_r2_key, reply_to_meta_message_id,
-      error, provider_response, created_at
+      template_meta, error, provider_response, created_at
   `
 
   if (row) return { message: mapMessage(row), inserted: true }
@@ -475,7 +513,7 @@ export async function insertCoexistenceMessage(input: ProviderMessageInput) {
       instagram_source_comment_id, attachment_type, attachment_url,
       attachment_meta, origin, historical, delivery_status,
       attachment_status, attachment_r2_key, reply_to_meta_message_id,
-      error, provider_response, created_at
+      template_meta, error, provider_response, created_at
   `
 
   if (row) return { message: mapMessage(row), inserted: true }
@@ -570,6 +608,13 @@ export async function insertOutboundMessage(input: {
   // WhatsApp Business App (`business_app`), que llega como saliente pero no lo
   // enviamos nosotros.
   origin?: MessageOrigin | null
+  // Envío de [Plantilla] (ADR 0014). Va acompañado de `text: ''` y **sin**
+  // `attachment`: la plantilla no se persiste como adjunto (ver `templateMeta`
+  // en `MessageRecord`). El resto de la fila es la de cualquier otro saliente
+  // de la API —`origin: 'resender_api'`, el wamid en `metaMessageId`— porque
+  // para todo lo demás es un saliente más: cuenta cuota, se contesta síncrono y
+  // se le mueven los estados de entrega igual.
+  templateMeta?: OutboundTemplateMeta | null
   error: string | null
   providerResponse: unknown
   createdAt: Date
@@ -579,6 +624,11 @@ export async function insertOutboundMessage(input: {
     input.providerResponse == null
       ? null
       : JSON.stringify(input.providerResponse)
+  // Se serializa acá y no en el llamador por el mismo motivo que
+  // `providerResponse`: el driver HTTP de Neon manda el parámetro como texto y
+  // el `::jsonb` de la consulta es el que lo convierte.
+  const templateMeta =
+    input.templateMeta == null ? null : JSON.stringify(input.templateMeta)
 
   // Batch atómico (driver HTTP de Neon): las queries se crean sin await y se
   // ejecutan juntas en una transacción no interactiva.
@@ -597,6 +647,7 @@ export async function insertOutboundMessage(input: {
       attachment_type,
       attachment_url,
       origin,
+      template_meta,
       error,
       provider_response,
       created_at
@@ -615,6 +666,7 @@ export async function insertOutboundMessage(input: {
       ${input.attachment?.type ?? null},
       ${input.attachment?.url ?? null},
       ${input.origin ?? null},
+      ${templateMeta}::jsonb,
       ${input.error},
       ${providerResponse}::jsonb,
       ${input.createdAt}
@@ -624,7 +676,7 @@ export async function insertOutboundMessage(input: {
       instagram_source_comment_id, attachment_type, attachment_url,
       attachment_meta, origin, historical, delivery_status,
       attachment_status, attachment_r2_key, reply_to_meta_message_id,
-      error, provider_response, created_at
+      template_meta, error, provider_response, created_at
   `
 
   const touchConversation = sql`
@@ -655,7 +707,7 @@ export async function getOutboundMessageByIdempotencyKey(
       instagram_source_comment_id, attachment_type, attachment_url,
       attachment_meta, origin, historical, delivery_status,
       attachment_status, attachment_r2_key, reply_to_meta_message_id,
-      error, provider_response, created_at
+      template_meta, error, provider_response, created_at
     from messages
     where tenant_id = ${tenantId}
       and idempotency_key = ${idempotencyKey}
@@ -685,7 +737,7 @@ export async function getPrivateReplyForComment(input: {
       instagram_source_comment_id, attachment_type, attachment_url,
       attachment_meta, origin, historical, delivery_status,
       attachment_status, attachment_r2_key, reply_to_meta_message_id,
-      error, provider_response, created_at
+      template_meta, error, provider_response, created_at
     from messages
     where tenant_id = ${input.tenantId}
       and instagram_source_comment_id = ${input.igCommentId}
@@ -737,6 +789,10 @@ function mapMessage(row: MessageRow): MessageRecord {
     attachmentStatus: row.attachment_status ?? null,
     attachmentR2Key: row.attachment_r2_key ?? null,
     replyToMetaMessageId: row.reply_to_meta_message_id ?? null,
+    // Mismo criterio que `attachmentMeta`: el driver ya deserializó el jsonb y
+    // el cast sólo fija la forma con la que lo escribió `insertOutboundMessage`,
+    // que es el único que llena esta columna.
+    templateMeta: (row.template_meta ?? null) as OutboundTemplateMeta | null,
     error: row.error,
     providerResponse: row.provider_response,
     createdAt: row.created_at,
