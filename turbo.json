@@ -3,9 +3,8 @@
   "ui": "stream",
   "globalEnv": [
     "APP_URL",
-    "AUTH_SECRET",
-    "AUTH_URL",
-    "API_KEY_PEPPER",
+    "BETTER_AUTH_SECRET",
+    "BETTER_AUTH_URL",
     "DATABASE_URL",
     "TOKEN_ENCRYPTION_KEY",
     "META_APP_SECRET",

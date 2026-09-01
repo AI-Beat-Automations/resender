@@ -14,9 +14,12 @@
 // call sites de `lib/meta.ts` en la misma entrega.
 
 // Interfaz que `@opennextjs/cloudflare` declara global y que se amplía por
-// merging, igual que `types/next-auth.d.ts` amplía `Session`.
+// merging.
 interface CloudflareEnv {
   WAITLIST_RATE_LIMITER: RateLimit
+  // Rate limit por IP del acceso y del alta (`lib/auth/rate-limit.ts`). Cuenta
+  // aparte del de la lista de espera: comparten el mecanismo, no la cuota.
+  AUTH_RATE_LIMITER: RateLimit
   // Productor de la cola de entregas. La ingesta escribe el job en
   // `external_webhook_jobs` y encola su id; el consumidor vive en `worker.ts`.
   WEBHOOK_DELIVERIES: Queue<WebhookDeliveryMessage>

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 
-import { auth } from "@/auth"
+import { getSession } from "@/lib/auth/session"
 import { getAppDict } from "@/lib/i18n/app-dict"
 import {
   disconnectPage,
@@ -30,7 +30,7 @@ export async function saveWebhookUrlAction(
   formData: FormData
 ): Promise<ConnectionActionState> {
   const t = await getAppDict()
-  const session = await auth()
+  const session = await getSession()
   if (!session?.user?.id) return { error: t.actions.notSignedIn }
 
   const connectionId = formData.get("connectionId")
@@ -104,7 +104,7 @@ export async function disconnectPageAction(
   formData: FormData
 ): Promise<ConnectionActionState> {
   const t = await getAppDict()
-  const session = await auth()
+  const session = await getSession()
   if (!session?.user?.id) return { error: t.actions.notSignedIn }
 
   const connectionId = formData.get("connectionId")
@@ -191,7 +191,7 @@ export async function rotateWebhookSecretAction(
   formData: FormData
 ): Promise<ConnectionActionState> {
   const t = await getAppDict()
-  const session = await auth()
+  const session = await getSession()
   if (!session?.user?.id) return { error: t.actions.notSignedIn }
 
   const connectionId = formData.get("connectionId")

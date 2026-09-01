@@ -3,7 +3,7 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 
-import { auth } from "@/auth"
+import { getSession } from "@/lib/auth/session"
 import { isUserWaitlisted } from "@/lib/auth/waitlist"
 import { isPlanLookupKey } from "@/lib/billing/plans"
 import { getStripe } from "@/lib/billing/stripe"
@@ -33,7 +33,7 @@ async function getAppUrl(): Promise<string> {
 export async function startCheckout(lookupKey: string): Promise<void> {
   if (!isPlanLookupKey(lookupKey)) redirect("/billing")
 
-  const session = await auth()
+  const session = await getSession()
   if (!session?.user?.id) redirect("/login")
   if (await isUserWaitlisted(session.user.id)) redirect("/waitlist")
 
@@ -81,7 +81,7 @@ export async function startCheckout(lookupKey: string): Promise<void> {
 // Abre el Customer Portal de Stripe, donde vive toda la gestión posterior:
 // cambio de plan, método de pago y cancelación (al fin del período).
 export async function openPortal(): Promise<void> {
-  const session = await auth()
+  const session = await getSession()
   if (!session?.user?.id) redirect("/login")
 
   const customerId = await getStripeCustomerId(session.user.id)

@@ -2,22 +2,34 @@
 
 ## Canonical Terms
 
-### Auth.js
-La autenticación web de Resender en Next.js se implementa con `Auth.js`.
+### Better Auth
+La autenticación web de Resender en Next.js se implementa con `Better Auth`, que es la unica autoridad de [Sesion] y de [Credencial] de la aplicacion. Reemplazo a Auth.js: decisiones y alternativas descartadas en `docs/adr/0014-better-auth-reemplaza-authjs.md`.
 El MVP expone páginas separadas de autenticación: `/login` y `/register`.
-Tras `login` o `register`, el usuario aterriza en `/connections` para continuar el onboarding conectando Facebook.
+Tras `login` o `register` la sesion queda abierta y el destino lo decide el [Gate de acceso], no la autenticacion: una cuenta aprobada aterriza en `/connections` para continuar el onboarding conectando Facebook, y una cuenta bloqueada —que es como nace toda cuenta nueva desde la `0019`— aterriza en `/pending`.
 Las rutas protegidas redirigen a `/login` cuando el usuario no esta autenticado.
-Si un usuario autenticado entra a `/login` o `/register`, se redirige a `/connections`.
+Si un usuario autenticado entra a `/login` o `/register`, se redirige a `/connections`, pero **solo si su cuenta puede entrar al producto**: una sesion que el gate rechazaria se queda viendo el formulario, para que las dos rutas no se reboten entre si para siempre.
+Los intentos de acceso y de alta tienen limite por IP: diez por minuto, contados por el binding nativo de Cloudflare. Se aplica en los server actions y tambien en `POST /api/auth/*`, que queda publicamente expuesto y se puede martillar salteandose los actions.
+
+### Sesion
+La sesion vive en la tabla `auth_sessions` y **esa fila es la fuente de verdad**. La cookie que lleva el navegador es un cache cifrado (JWE) con cinco minutos de vida, y es lo que resuelve la mayoria de los requests sin tocar la base.
+Dura siete dias de inactividad y se extiende sola cada veinticuatro horas de uso: quien entra seguido no se desloguea nunca.
+Borrar la fila deja fuera a esa sesion en cuanto vence el cache, como mucho cinco minutos. Es lo que el JWT de Auth.js no permitia: antes una cookie filtrada valia hasta su vencimiento y la unica salida era cambiar el secreto para todos.
+**Ninguna bandera de acceso viaja en la sesion ni en su cache** — ver [Gate de acceso].
+
+### Credencial
+Lo que prueba que alguien es quien dice: una fila de `auth_accounts`. Hoy solo existe la del proveedor `credential`, que guarda el hash de la contraseña. Cuando haya proveedores sociales, cada uno suma su propia fila para el mismo usuario.
+**No confundir con [Cuenta conectada]**, que es otra cosa entera: una pagina de Facebook, una cuenta de Instagram o un numero de WhatsApp del cliente.
+La credencial de una maquina, en cambio, es el [API Token]: la misma idea —probar quien sos— para la integracion externa, que no reutiliza la sesion web.
 
 ### Landing
 La ruta `/` sigue siendo una landing pública simple con la propuesta de valor y accesos a `Login` y `Register`.
 
 ### Registro MVP
-En el MVP, el registro con email y password crea la cuenta y abre sesion inmediatamente. No se exige verificación de email antes de usar la app. Entrar al producto es otra cosa: eso lo decide el [Gate de acceso], que hoy esta encendido.
+En el MVP, el registro pide nombre, email y password, crea la cuenta y abre sesion inmediatamente. No se exige verificación de email antes de usar la app. Entrar al producto es otra cosa: eso lo decide el [Gate de acceso], que hoy esta encendido.
 
 ### Gate de acceso
-El registro esta abierto, el acceso al producto no: la bandera `users.waitlisted` cierra la puerta y se aprueba a mano, cuenta por cuenta, con `update users set waitlisted = false where email = '...'`. Se lee viva contra la base en cada request —nunca del JWT—, es fail-closed y se aplica en el layout de `(product)`, en `/billing` y en los `start`, `callback` y `send` de los tres canales.
-El gate nacio con la `0004`, se apago con la `0011` (ADR 0007, para que el CTA de registro de la [Lista de espera] publica no fuera mentira) y **volvio a encenderse con la `0019_reenable_access_gate.sql`**: `default true` otra vez. La `0019` solo cambia el default y **no toca a los usuarios existentes**, que la `0011` habia dejado en `false` y son cuentas operando, varias pagando: solo nacen bloqueadas las cuentas nuevas.
+El registro esta abierto, el acceso al producto no: la bandera `users.waitlisted` cierra la puerta y se aprueba a mano, cuenta por cuenta, con `update users set waitlisted = false where email = '...'`. Se lee viva contra la base en cada request —**nunca de la [Sesion] ni de su cache**—, es fail-closed y se aplica en el layout de `(product)`, en `/billing` y en los `start`, `callback` y `send` de los tres canales. Meterla en la sesion la meteria en el cache de cinco minutos: aprobar o revocar una cuenta dejaria de pegar en la siguiente request.
+El gate nacio con la `0004`, se apago con la `0011` (ADR 0007, para que el CTA de registro de la [Lista de espera] publica no fuera mentira) y **volvio a encenderse con la `0019_reenable_access_gate.sql`**: `default true` otra vez. La `0019` solo cambia el default y **no toca a los usuarios existentes**, que la `0011` habia dejado en `false`. No hay terceros en produccion: las cuentas que existen son propias y de prueba. Solo nacen bloqueadas las cuentas nuevas.
 Una cuenta recien registrada queda con sesion abierta y aterriza en `/pending`, la pantalla autenticada del gate: confirma que el registro salio bien, muestra a que correo se le va a escribir y ofrece cerrar sesion. **No** es `/waitlist`: esa ruta es la [Lista de espera] publica y pide un correo que esta persona ya dio.
 Aprobar una cuenta pega en la siguiente request, sin re-login. Despues del gate de acceso todavia falta el [Gate de suscripcion].
 Decisiones en `docs/adr/0007-public-waitlist-and-access-gate-shutdown.md` (el apagado); la reactivacion todavia no tiene ADR propia.
@@ -50,23 +62,26 @@ La columna `unsubscribed_at` existe desde el inicio aunque no haya canal de corr
 Es la primera escritura anonima a base de datos del repo: todo lo demas exige sesion, API key opaca o firma HMAC. Tres capas: validacion de formato de correo, campo trampa (honeypot) oculto, y rate limit por IP con el binding nativo `ratelimits` de Cloudflare en el worker de `web`. Cloudflare Turnstile queda descartado por ahora —suma un paso que puede fallarle a un usuario real justo cuando esta delante en un evento— y se agrega si aparece basura real.
 
 ### API Token
-La integración externa (N8N/IA) no reutiliza la sesión web. Se autentica con una API key opaca separada emitida por Resender para el tenant.
+La integración externa (N8N/IA) **no reutiliza la sesión web**. Se autentica con una API key opaca separada, emitida por Resender para el tenant.
+Es la otra forma de la misma idea que la [Credencial]: las dos prueban quién sos, pero la [Credencial] es de una persona delante de un formulario y la API key es de una máquina llamando a la API. Desde la ADR 0014 las dos las emite y verifica [Better Auth]: la sesión con su núcleo, las API keys con el plugin `apiKey`.
+El formato visible es `pk_live_<secreto>`: un prefijo legible más 64 caracteres aleatorios. En base de datos —tabla `auth_api_keys`— solo vive el hash SHA-256 del secreto, nunca la credencial completa, y junto a él los primeros 16 caracteres (`pk_live_` + 8) como prefijo visible.
+Para la API externa no se usan JWTs; la única credencial aceptada es una API key opaca tipo `Bearer pk_live_<secreto>`.
 
 ### API Tokens en Settings
-Las API keys opacas se crean y gestionan desde `Settings`. En el MVP puede haber múltiples tokens por tenant y cada uno tiene un `label` descriptivo elegido por el usuario.
-Los tokens viven hasta revocación manual; no expiran automáticamente en el MVP.
-La persistencia de tokens API debe ser con hash, no guardando la credencial completa en texto claro.
-El formato visible recomendado es `pk_live_<secretoAleatorio>` o equivalente: un prefijo legible más un secreto aleatorio. En base de datos solo se guarda el hash del secreto.
-Para la API externa del MVP no se usan JWTs; la unica credencial aceptada es una API key opaca tipo `Bearer pk_live_<secreto>`.
+Las API keys opacas se crean y gestionan desde `Settings`. Puede haber múltiples keys por tenant y cada una tiene un `label` descriptivo elegido por el usuario, de hasta 80 caracteres.
+Las keys viven hasta revocación manual: **no expiran solas** y no tienen cupo de usos. Tampoco distinguen permisos ni tienen límite de tasa propio; el plugin ofrece las tres cosas y las tres están apagadas a propósito (`lib/auth/auth.ts`).
+La emisión, el hashing y la verificación las hace el plugin `apiKey` de [Better Auth], no una implementación propia. Es la razón por la que `AUTH_SECRET` dejó de tener consumidores y se pudo borrar: el plugin hashea con SHA-256 sin pepper.
+Revocar es apagar la key, no borrarla: la fila queda con su estado y deja de autenticar en la verificación siguiente.
 
 ### Tenant
 En el MVP, `tenantId = userId` de nuestra autenticación.
 
 ### Usuario MVP
-El usuario del MVP tiene un modelo mínimo: `id`, `email`, `passwordHash` y `createdAt`, salvo los campos extra estrictamente necesarios para integrar `Auth.js`.
-El registro MVP valida email y exige solo password con longitud minima de 8 caracteres; el cambio de password usa la misma politica minima.
+El usuario del MVP tiene un modelo mínimo: `id`, `email`, `name`, `email_verified` y `createdAt`, salvo los campos extra estrictamente necesarios para integrar `Better Auth`. **Ya no incluye `passwordHash`**: la contraseña vive hasheada en la [Credencial], no en `users`.
+`name` lo pide el alta y es lo que dibuja las iniciales del avatar del sidebar, con el email como respaldo para las filas que lo tengan vacio. No hay pantalla para editarlo. `email_verified` existe porque la libreria lo pide; hoy no lo exige nadie y no hay canal de correo para verificarlo.
+El registro MVP valida email, exige nombre no vacio y password con longitud minima de 8 caracteres; el cambio de password usa la misma politica minima.
 El MVP no incluye recuperacion de password.
-El usuario autenticado puede cambiar su password desde `Settings` definiendo un password nuevo; esto no exige conocer el password anterior y no equivale a recuperacion de password. Tras cambiarlo, Resender cierra la sesion actual, lo envia a `login` y le indica que debe iniciar sesion con el password nuevo.
+El usuario autenticado puede cambiar su password desde `Settings` definiendo un password nuevo; esto no exige conocer el password anterior y no equivale a recuperacion de password. Tras cambiarlo, Resender **cierra todas las demas [Sesion]es** ademas de la actual —un dispositivo que ya no controlas pierde el acceso—, lo envia a `login` y le indica que debe iniciar sesion con el password nuevo.
 En `login`, los errores son genericos. En `register`, el email duplicado se informa de forma explicita.
 
 ### Canal
@@ -105,7 +120,7 @@ La baja del webhook en Meta se despacha **por canal**: una cuenta de Instagram s
 ### Permiso de Instagram
 El canal Instagram esta cerrado por cuenta detras de la bandera `users.instagram_enabled`: `true` es acceso, `false` no. Se opera **por SQL** (`update users set instagram_enabled = true where email = '...'`), no hay pantalla de administracion y nadie se anota en ninguna parte. **No** es una lista de espera: no confundir con el [Gate de acceso] ni con la [Lista de espera] publica.
 Existe porque Instagram esta implementado pero todavia no tiene el Advanced Access de Meta, asi que el canal solo sirve para cuentas propias o de prueba.
-El permiso apaga el canal **entero y en el acto**, no solo la puerta de entrada: sin el no se conecta, no se envia, no se responden comentarios y los entrantes se descartan sin persistir, incluida una cuenta que ya estaba conectada. Se lee vivo contra la base en cada request, nunca del JWT, y es fail-closed. Vive en `lib/auth/channel-access.ts`, no en `lib/auth/waitlist.ts`, que volvio a estar en uso con la `0019`.
+El permiso apaga el canal **entero y en el acto**, no solo la puerta de entrada: sin el no se conecta, no se envia, no se responden comentarios y los entrantes se descartan sin persistir, incluida una cuenta que ya estaba conectada. Se lee vivo contra la base en cada request, nunca de la [Sesion] ni de su cache, y es fail-closed. Vive en `lib/auth/channel-access.ts`, no en `lib/auth/waitlist.ts`, que volvio a estar en uso con la `0019`.
 La migracion `0015` habilita a **todas las cuentas que existian**, igual que hizo la `0004`: el permiso no filtra a ningun cliente actual y solo aplica a los registros posteriores.
 Decision en `docs/adr/0010-permiso-de-instagram-por-cuenta.md`.
 
@@ -224,10 +239,12 @@ La `webhookUrl` se guarda con accion explicita mediante boton `Guardar`.
 Desconectar una pagina requiere confirmacion explicita y debe advertir que se conserva el historial.
 
 ### Gestion de API keys en Settings
-Cada API key tiene `label` y su valor secreto se muestra una sola vez al momento de crearla; despues solo queda visible su metadata no secreta.
+Cada API key tiene `label` y su valor secreto se muestra **una sola vez, en el momento de crearla**; despues solo queda visible su metadata no secreta.
 La lista de API keys muestra `label`, prefijo visible corto, `createdAt`, `lastUsedAt` y estado.
-Una API key revocada sigue visible en la lista con estado `revoked`; deja de autenticar, pero no desaparece del historial operativo.
-Cada API key del MVP autentica acceso a todas las paginas del tenant; no existen restricciones por pagina en esta version.
+Una API key revocada sigue visible en la lista con estado `revoked`; deja de autenticar, pero no desaparece del historial operativo. La lista **no muestra cuando se revoco**: el plugin `apiKey` no guarda esa fecha y mostrar cualquier otra seria inventarla.
+Una key solo se puede revocar **dentro del tenant que la emitio**: pedir la revocacion de una key ajena responde "no encontrada" y no la toca.
+A las API keys se les habla **solo desde el servidor**. El plugin `apiKey` monta ademas seis endpoints HTTP bajo `/api/auth/api-key/*` (`create`, `update`, `delete`, `get`, `list`, `delete-all-expired-api-keys`) que el producto no usa y que estan cerrados con 404 en el route handler de `/api/auth/[...all]`. El que obliga es `delete`, que hace **borrado duro** de la fila: dejarlo abierto contradiria la regla de arriba, porque el propio dueño podria hacer desaparecer una key del historial operativo desde la consola del navegador. Los otros cinco se cierran junto con el para que la regla sea una sola y no una excepcion.
+Cada API key autentica acceso a todas las paginas del tenant; no existen restricciones por pagina en esta version.
 
 ### Cuenta de revision
 Para Meta App Review, Resender usa una cuenta de revision preconfigurada en lugar de pedirle al revisor que haga onboarding desde cero. Esta cuenta representa un tenant de Resender y debe tener una pagina de Facebook de prueba ya conectada, una `webhookUrl` configurada y una automatizacion demo activa que responda por la API externa de salida. Las credenciales compartidas con Meta son solo de Resender; no se comparten credenciales personales de Meta/Facebook.
@@ -322,7 +339,7 @@ A partir del **80%** del consumo del período aparece una barra de alerta **glob
 No hay email transaccional en esta entrega (no existe canal de correo en el repo). Pendiente: la FAQ pública promete "Te avisamos cuando te acercás al límite" dos veces en `content/i18n/es.ts`, que un cliente lee como email; hay que reescribirla para que apunte al dashboard.
 
 ### Gate de suscripcion
-Es el **segundo** gate, detras del [Gate de acceso]: una cuenta aprobada a mano todavia tiene que pagar. La suscripcion decide quien puede usar. Un usuario sin suscripcion activa aterriza en la pagina de pricing. El acceso existe solo con status `active` en la tabla `subscriptions`; cualquier otro estado es **bloqueo total**: dashboard, OAuth de Meta y `POST /api/meta/send` (403) quedan cerrados, y los webhooks entrantes de Meta del tenant se descartan sin persistir (respondiendo `200` a Meta para no degradar la app). Mismo patron que usaba el gate de acceso: se lee de base de datos en cada request, fail-closed, nunca del JWT ni de la API de Stripe en el hot path.
+Es el **segundo** gate, detras del [Gate de acceso]: una cuenta aprobada a mano todavia tiene que pagar. La suscripcion decide quien puede usar. Un usuario sin suscripcion activa aterriza en la pagina de pricing. El acceso existe solo con status `active` en la tabla `subscriptions`; cualquier otro estado es **bloqueo total**: dashboard, OAuth de Meta y `POST /api/meta/send` (403) quedan cerrados, y los webhooks entrantes de Meta del tenant se descartan sin persistir (respondiendo `200` a Meta para no degradar la app). Mismo patron que usaba el gate de acceso: se lee de base de datos en cada request, fail-closed, nunca de la [Sesion] ni de su cache ni de la API de Stripe en el hot path.
 
 ### Sin trial
 No hay periodo de prueba: para usar el producto hay que pagar. El primer cobro ocurre dentro del propio Stripe Checkout y no existe logica de trial en ninguna capa (ni `trial_period_days` en Checkout ni flags propios en base de datos).

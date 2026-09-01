@@ -337,8 +337,6 @@ export type AppDict = {
     statusActive: string
     statusRevoked: string
     never: string
-    /** `{date}` */
-    revokedOn: string
     revoke: string
     revoking: string
     /** `{label}` */

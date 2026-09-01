@@ -1,0 +1,25 @@
+-- migration 0021: la contraseña se va de `users` (ADR 0014)
+--
+-- Escalón 2 de 3 del reemplazo de Auth.js por Better Auth, y la única parte
+-- destructiva del cambio. Va **en el mismo deploy que el cutover**, ni antes ni
+-- después, y las dos direcciones importan:
+--
+--   - Antes no puede ir: hasta este PR `lib/auth/users.ts` lee `password_hash`
+--     para autenticar. Dropearla dejaría el login sin credencial que verificar.
+--   - Después tampoco: `users.password_hash` es `not null` **sin default**
+--     (`0001_mvp_foundation.sql`), y el INSERT que hace Better Auth al crear un
+--     usuario no la setea. Con la columna todavía ahí, el alta revienta en
+--     runtime contra el not-null.
+--
+-- Desde acá la contraseña vive hasheada en `auth_accounts.password`, en la
+-- [Credencial] del proveedor `credential`. Los hashes que se pierden con este
+-- drop **no eran migrables**: el formato del repo era
+-- `scrypt$<salt b64url>$<key b64url>` con `r=8`, y el de Better Auth es
+-- `<salt hex>:<key hex>` con `r=16`. No hay conversión posible sin la
+-- contraseña en claro.
+--
+-- Por eso, después de desplegar, hay que correr `scripts/seed-credentials.mjs`
+-- o nadie puede entrar. Es esperado y está escrito en la ADR: sin terceros en
+-- producción, el costo es re-emitir tres contraseñas propias.
+
+alter table users drop column if exists password_hash;

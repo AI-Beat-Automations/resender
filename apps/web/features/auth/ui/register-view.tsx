@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation"
 
-import { auth } from "@/auth"
+import { getSession } from "@/lib/auth/session"
 import { HtmlLang } from "@/components/html-lang"
 import { getDictionary, type Locale } from "@/content/i18n"
 import { registerAction } from "@/features/auth/actions"
@@ -18,7 +18,7 @@ import { resolveProductAccess } from "@/lib/auth/waitlist"
 export async function RegisterView({ lang }: { lang: Locale }) {
   // Mismo criterio que `login-view`: rebota solo la sesión que puede entrar al
   // producto, para que una sesión huérfana no rebote contra el gate.
-  const session = await auth()
+  const session = await getSession()
   if (
     session?.user?.id &&
     (await resolveProductAccess(session.user.id)) === "allowed"

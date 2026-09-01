@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 
-import { auth } from "@/auth"
+import { getSession } from "@/lib/auth/session"
 import { isUserWaitlisted } from "@/lib/auth/waitlist"
 import { resolvePlanLimits } from "@/lib/billing/entitlements"
 import {
@@ -69,7 +69,7 @@ export async function connectSelectedPagesAction(
   formData: FormData
 ): Promise<ConnectMetaActionState> {
   const t = await getAppDict()
-  const session = await auth()
+  const session = await getSession()
   if (!session?.user?.id) return { error: t.actions.notSignedIn }
 
   // Los mismos gates que protegen `/api/meta/start` y `/api/meta/callback`. El

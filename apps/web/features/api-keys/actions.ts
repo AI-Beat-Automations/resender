@@ -2,13 +2,13 @@
 
 import { revalidatePath } from "next/cache"
 
-import { auth } from "@/auth"
+import { getSession } from "@/lib/auth/session"
 import { getAppDict } from "@/lib/i18n/app-dict"
 import {
   createApiKey,
   InvalidApiKeyLabelError,
   revokeApiKey,
-} from "@/lib/api-keys/api-keys"
+} from "@/lib/auth/api-keys"
 import { posthog } from "@/lib/posthog"
 
 export type CreateApiKeyState = {
@@ -27,7 +27,7 @@ export async function createApiKeyAction(
   formData: FormData
 ): Promise<CreateApiKeyState> {
   const t = await getAppDict()
-  const session = await auth()
+  const session = await getSession()
   if (!session?.user?.id) return { error: t.actions.notSignedIn }
 
   try {
@@ -68,7 +68,7 @@ export async function revokeApiKeyAction(
   formData: FormData
 ): Promise<RevokeApiKeyState> {
   const t = await getAppDict()
-  const session = await auth()
+  const session = await getSession()
   if (!session?.user?.id) return { error: t.actions.notSignedIn }
 
   const apiKeyId = formData.get("apiKeyId")

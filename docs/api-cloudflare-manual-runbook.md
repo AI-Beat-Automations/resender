@@ -92,10 +92,41 @@ npx wrangler secret put STRIPE_SECRET_KEY
 npx wrangler secret put STRIPE_WEBHOOK_SECRET
 ```
 
-Repeat with `--env staging`. `API_KEY_PEPPER`, password hashing, and
-`TOKEN_ENCRYPTION_KEY` must be compatible with the values used by `web` or
-existing credentials/tokens cannot be read. Use a direct Neon URL for schema
-migrations and the approved runtime URL for the Worker.
+Repeat with `--env staging`. `TOKEN_ENCRYPTION_KEY` must be compatible with the
+value used by `web` or existing tokens cannot be read. Use a direct Neon URL for
+schema migrations and the approved runtime URL for the Worker.
+
+### Baja de `AUTH_SECRET` y `API_KEY_PEPPER` (ADR 0014, escalón 3)
+
+Los dos secretos de arriba **ya no los lee nadie**. `AUTH_SECRET` firmaba la
+sesión de Auth.js —reemplazada por `BETTER_AUTH_SECRET` en el escalón 2— y hacía
+además de pepper de las API keys propias; `API_KEY_PEPPER` era ese mismo pepper,
+explícito. Desde el escalón 3 las API keys las emite, hashea y verifica el plugin
+`apiKey` de Better Auth, con SHA-256 **sin pepper**, y `lib/api-keys/*` no
+existe. Ningún camino del Worker `web` los referencia.
+
+**El borrado se hace a mano y va último**, sobre el Worker `web` (el `api` ya no
+existe). El orden no es negociable: borrarlos antes de reemitir y verificar deja
+las integraciones caídas sin señal de por qué.
+
+1. Desplegar (`db:migrate` aplica la `0022` y la `0023` en el mismo paso).
+2. Reemitir las API keys desde `Settings → API keys` y pegarlas en N8N.
+3. Verificar los cinco caminos: los `send` de Messenger, Instagram y WhatsApp,
+   la descarga de media de WhatsApp y la respuesta a comentarios.
+4. Recién entonces:
+
+```bash
+cd apps/web
+npx wrangler secret delete AUTH_SECRET
+npx wrangler secret delete API_KEY_PEPPER
+npx wrangler secret delete AUTH_SECRET --env staging
+npx wrangler secret delete API_KEY_PEPPER --env staging
+```
+
+5. Volver a verificar los cinco caminos. Es la comprobación de que no quedó
+   ningún consumidor del pepper viejo.
+
+Sacarlos también de `.dev.vars` local, si estaban.
 
 ## Validate before deployment
 

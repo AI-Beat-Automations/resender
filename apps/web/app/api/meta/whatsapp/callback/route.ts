@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache"
 import { cookies } from "next/headers"
 import { NextResponse, type NextRequest } from "next/server"
 
-import { auth } from "@/auth"
+import { getSession } from "@/lib/auth/session"
 import { resolveWhatsappAccess } from "@/lib/auth/channel-access"
 import { resolveProductAccess } from "@/lib/auth/waitlist"
 import { resolvePlanLimits } from "@/lib/billing/entitlements"
@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json<CallbackResponse>({ ok: false, error }, { status })
   }
 
-  const session = await auth()
+  const session = await getSession()
   if (!session?.user?.id) {
     return gate("not_authenticated", t.actions.notSignedIn, 401)
   }

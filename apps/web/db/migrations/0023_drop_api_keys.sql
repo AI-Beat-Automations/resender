@@ -1,0 +1,29 @@
+-- migration 0023: se va la tabla de la implementación propia de API keys
+--
+-- Cierre del escalón 3 (ADR 0014). Desde la 0022 las API keys viven en
+-- `auth_api_keys` y las emite, hashea y verifica el plugin `apiKey`; `api_keys`
+-- no la lee ni la escribe nadie, porque `lib/api-keys/*` se borró entero en este
+-- mismo PR.
+--
+-- **Va en el mismo deploy que la 0022, a propósito.** `deploy.yml` corre
+-- `db:migrate` antes de desplegar y aplica las dos juntas, así que no existe una
+-- ventana en la que la tabla vieja siga consultable después del cutover. El
+-- issue #88 pedía esa ventana; separarla en dos deploys habría exigido un deploy
+-- intermedio con una tabla muerta y un PR de solo-drop, que es más ceremonia que
+-- la que el dato justifica: son tres keys propias, sin terceros en producción.
+--
+-- La consecuencia hay que asumirla de frente: **el operador tiene que anotar las
+-- keys y sus etiquetas ANTES de desplegar**, porque después no queda de dónde
+-- sacar qué reemitir.
+--
+--   select id, label, created_at from api_keys order by created_at;
+--
+-- Las filas que se pierden acá no eran migrables por ningún camino:
+-- `secret_hash` era un HMAC-SHA256 con pepper y el secreto en claro nunca se
+-- guardó. Reemitir a mano desde Ajustes es la única salida, y está escrito en la
+-- ADR 0014.
+--
+-- La FK `api_keys.tenant_id -> users(id)` se va con la tabla; ninguna otra tabla
+-- referencia a `api_keys`, así que el drop no necesita `cascade`.
+
+drop table if exists api_keys;
