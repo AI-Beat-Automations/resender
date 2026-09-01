@@ -47,6 +47,19 @@
     "ENVIRONMENT": "production",
     "META_GRAPH_VERSION": "v26.0",
     "BETTER_AUTH_URL": "https://resender.dev",
+    // `APP_URL` es el origen público con el que se arma el `redirect_uri` de
+    // los OAuth de Meta (`lib/meta.ts`, `lib/instagram.ts`) y las URLs
+    // absolutas de `lib/inbound/external-push.ts`. Faltaba acá: en el Worker
+    // `process.env.APP_URL` era `undefined` y el diálogo de Facebook se abría
+    // con `redirect_uri=undefined/api/meta/callback`, que Meta rechaza con
+    // "El dominio de esta URL no está incluido en los dominios de la
+    // aplicación". Vive en `.env*` para el túnel de dev, y `vars` es lo único
+    // que llega al Worker desplegado.
+    //
+    // Mismo valor que `BETTER_AUTH_URL` **hoy**, pero no es lo mismo y por eso
+    // son dos: `BETTER_AUTH_URL` es el origen de confianza de la sesión (ADR
+    // 0014) y `APP_URL` es a dónde vuelve Meta. En dev divergen.
+    "APP_URL": "https://resender.dev",
     "EMAIL_FROM": "Resender <no-reply@resender.dev>",
     "RESEND_TEMPLATE_PASSWORD_RESET": "ee224341-7e08-4c4d-84e0-cdb14228a424",
   },
@@ -202,6 +215,10 @@
         "ENVIRONMENT": "staging",
         "META_GRAPH_VERSION": "v26.0",
         "BETTER_AUTH_URL": "https://staging.resender.dev",
+        // Ver la nota de `APP_URL` en producción. Acá apunta al host de
+        // staging, y ese origen tiene que estar registrado en la app de Meta
+        // de desarrollo, no en la de producción.
+        "APP_URL": "https://staging.resender.dev",
         "EMAIL_FROM": "Resender staging <no-reply@staging.resender.dev>",
         // TODO(infra): la plantilla equivalente de staging todavía no existe.
         // Hasta que se cree y se anote su id acá, `sendPasswordResetEmail`
