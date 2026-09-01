@@ -36,10 +36,19 @@
   // ahí sale también si la cookie de sesión se emite con `Secure`. Va en `vars`
   // y no como secreto porque es una URL pública; el secreto que la acompaña es
   // `BETTER_AUTH_SECRET`, que se carga con `wrangler secret put`.
+  //
+  // `EMAIL_FROM` y `RESEND_TEMPLATE_PASSWORD_RESET` son del [Canal de correo].
+  // Van como `var` y no hardcodeadas por el mismo criterio que
+  // `BETTER_AUTH_URL`: el entorno las decide sin recompilar, y staging manda
+  // desde otro dominio y contra otra plantilla. El id de plantilla no es un
+  // secreto —sin la API key no sirve de nada—; el secreto que las acompaña es
+  // `RESEND_API_KEY`, que se carga con `wrangler secret put`.
   "vars": {
     "ENVIRONMENT": "production",
     "META_GRAPH_VERSION": "v26.0",
     "BETTER_AUTH_URL": "https://resender.dev",
+    "EMAIL_FROM": "Resender <no-reply@resender.dev>",
+    "RESEND_TEMPLATE_PASSWORD_RESET": "ee224341-7e08-4c4d-84e0-cdb14228a424",
   },
   // Entrega durable al webhook del tenant. Las colas ya existen en la cuenta
   // (`docs/api-cloudflare-manual-runbook.md`), creadas cuando esto vivía en el
@@ -193,6 +202,12 @@
         "ENVIRONMENT": "staging",
         "META_GRAPH_VERSION": "v26.0",
         "BETTER_AUTH_URL": "https://staging.resender.dev",
+        "EMAIL_FROM": "Resender staging <no-reply@staging.resender.dev>",
+        // TODO(infra): la plantilla equivalente de staging todavía no existe.
+        // Hasta que se cree y se anote su id acá, `sendPasswordResetEmail`
+        // devuelve `not_configured` y lo deja en el log: staging no manda
+        // correo, pero tampoco lanza. El checklist del issue #93 lo pide.
+        "RESEND_TEMPLATE_PASSWORD_RESET": "",
       },
       // Colas propias. Compartirlas con producción haría que un job de prueba
       // saliera hacia el webhook real de un cliente que paga.

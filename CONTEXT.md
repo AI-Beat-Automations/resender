@@ -4,7 +4,7 @@
 
 ### Better Auth
 La autenticación web de Resender en Next.js se implementa con `Better Auth`, que es la unica autoridad de [Sesion] y de [Credencial] de la aplicacion. Reemplazo a Auth.js: decisiones y alternativas descartadas en `docs/adr/0014-better-auth-reemplaza-authjs.md`.
-El MVP expone páginas separadas de autenticación: `/login` y `/register`.
+El MVP expone páginas separadas de autenticación: `/login`, `/register`, `/forgot-password` y `/reset-password`. Las dos últimas son la [Recuperacion de password].
 Tras `login` o `register` la sesion queda abierta y el destino lo decide el [Gate de acceso], no la autenticacion: una cuenta aprobada aterriza en `/connections` para continuar el onboarding conectando Facebook, y una cuenta bloqueada —que es como nace toda cuenta nueva desde la `0019`— aterriza en `/pending`.
 Las rutas protegidas redirigen a `/login` cuando el usuario no esta autenticado.
 Si un usuario autenticado entra a `/login` o `/register`, se redirige a `/connections`, pero **solo si su cuenta puede entrar al producto**: una sesion que el gate rechazaria se queda viendo el formulario, para que las dos rutas no se reboten entre si para siempre.
@@ -38,7 +38,7 @@ No confundir con el [Permiso de Instagram]: este gate es del producto entero; el
 ### Lista de espera
 Lista publica de captacion, sin relacion con el gate anterior. Su unico proposito es guardar el correo de alguien que hoy no puede comprar —porque solo existe Messenger— para avisarle cuando salgan Instagram o WhatsApp. Esta pensada para repartir en conferencias y contactos cara a cara, ademas de la landing.
 **No** es una lista de interes por canal: la persona no elige que espera. Deja el correo y recibe los anuncios de producto; el copy promete "updates", no un canal concreto.
-Vive en la tabla propia `waitlist_signups` (Postgres, no un proveedor externo), con `unique index` sobre `lower(email)`. La salida es el script `npm run waitlist:export` (CSV): no hay panel de administracion. Hoy no existe canal de correo en el repo, asi que la lista se acumula pero todavia no se puede accionar.
+Vive en la tabla propia `waitlist_signups` (Postgres, no un proveedor externo), con `unique index` sobre `lower(email)`. La salida es el script `npm run waitlist:export` (CSV): no hay panel de administracion. El [Canal de correo] ya existe, pero **manda un solo tipo de correo** y no hay envio masivo ni enlace de baja, asi que la lista se sigue acumulando sin poder accionarse.
 Un correo repetido es un **exito idempotente**: no se inserta nada, la persona ve el mismo mensaje que la primera vez y la atribucion del primer registro queda intacta (first-touch). No se revela si un correo esta en la lista.
 
 ### Campos de la lista de espera
@@ -50,7 +50,7 @@ El formulario pide dos cosas, y las dos son obligatorias:
 
 ### Consentimiento de la lista de espera
 El checkbox de consentimiento es **bloqueante**: sin marcarlo no se envia, porque una fila sin consentimiento seria una fila a la que no se le puede escribir. Se persisten `consent_at` y `consent_version` para saber que texto acepto cada persona cuando la redaccion cambie.
-La columna `unsubscribed_at` existe desde el inicio aunque no haya canal de correo: se promete baja, y el aviso que se mande el dia del lanzamiento va a necesitar un enlace real.
+La columna `unsubscribed_at` existe desde el inicio: se promete baja, y el aviso que se mande el dia del lanzamiento va a necesitar un enlace real. El [Canal de correo] existe, pero ese enlace de baja todavia no se construyo.
 `/privacy` suma un bloque **Waitlist data**. Las dos categorias que declaraba —*Account data* y *Messenger end-user data*— no cubren el correo de alguien que no es cliente guardado para mandarle un anuncio.
 
 ### Donde aparece la lista de espera
@@ -78,11 +78,27 @@ En el MVP, `tenantId = userId` de nuestra autenticación.
 
 ### Usuario MVP
 El usuario del MVP tiene un modelo mínimo: `id`, `email`, `name`, `email_verified` y `createdAt`, salvo los campos extra estrictamente necesarios para integrar `Better Auth`. **Ya no incluye `passwordHash`**: la contraseña vive hasheada en la [Credencial], no en `users`.
-`name` lo pide el alta y es lo que dibuja las iniciales del avatar del sidebar, con el email como respaldo para las filas que lo tengan vacio. No hay pantalla para editarlo. `email_verified` existe porque la libreria lo pide; hoy no lo exige nadie y no hay canal de correo para verificarlo.
+`name` lo pide el alta y es lo que dibuja las iniciales del avatar del sidebar, con el email como respaldo para las filas que lo tengan vacio. No hay pantalla para editarlo. `email_verified` existe porque la libreria lo pide y hoy no lo exige nadie: lo unico que lo pone en `true` es completar una [Recuperacion de password], porque el enlace probo que el buzon es suyo. **Eso no cumple la precondicion de proveedores sociales** de `docs/adr/0014`: esa precondicion es sobre el alta, y el alta sigue sin verificar nada.
 El registro MVP valida email, exige nombre no vacio y password con longitud minima de 8 caracteres; el cambio de password usa la misma politica minima.
-El MVP no incluye recuperacion de password.
+La recuperacion de password vive en su propia entrada: [Recuperacion de password].
 El usuario autenticado puede cambiar su password desde `Settings` definiendo un password nuevo; esto no exige conocer el password anterior y no equivale a recuperacion de password. Tras cambiarlo, Resender **cierra todas las demas [Sesion]es** ademas de la actual —un dispositivo que ya no controlas pierde el acceso—, lo envia a `login` y le indica que debe iniciar sesion con el password nuevo.
 En `login`, los errores son genericos. En `register`, el email duplicado se informa de forma explicita.
+
+### Recuperacion de password
+Quien olvido su password la recupera sin ayuda: desde `login` pide un [Enlace de recuperacion] a su correo, elige una password nueva y vuelve a `login` a entrar con ella. **Resender nunca dice si un correo tiene cuenta**: la pantalla responde lo mismo exista o no, igual que los errores genericos de `login`.
+Al completarla se cierran **todas** las [Sesion]es de esa cuenta —no solo las otras, como en el cambio desde Settings— y el correo queda marcado como verificado, porque el enlace probo que el buzon es suyo. **Eso no habilita proveedores sociales**: esa precondicion es sobre el alta.
+No confundir con el cambio de password de Settings, que exige [Sesion] abierta y no manda correo ([Usuario MVP]).
+
+### Enlace de recuperacion
+El enlace que viaja en el correo. **Vive una hora y sirve una sola vez**: usarlo lo consume, y pedir otro no invalida el anterior.
+Su idioma es el de la pantalla donde se lo pidio, no el de la cuenta —no existe idioma por cuenta ([Preferencia de idioma])—.
+Un enlace vencido o ya usado no es un error del formulario: es una pantalla propia que ofrece pedir uno nuevo, y se decide **antes** de mostrar el formulario para que nadie pierda el trabajo de elegir una password.
+
+### Canal de correo
+Resender envia correo transaccional con **Resend**, desde `no-reply@resender.dev`, con respuestas a `info@resender.dev`.
+La maqueta del correo vive como plantilla en Resend; **las palabras siguen en el diccionario del repositorio** (ADR 0006), y llegan a la plantilla como variables. La copia del HTML que se pego en el editor de Resend esta versionada en `docs/email/password-reset.html`.
+Hoy manda un solo tipo de correo: el de [Recuperacion de password].
+Un envio fallido **no se le informa a quien lo pidio** —decirlo revelaria que la cuenta existe—: se registra y la persona reintenta.
 
 ### Canal
 Resender opera dos canales: `messenger` (páginas de Facebook) e `instagram` (cuentas profesionales de Instagram). El canal es un campo propio, **no** un valor de `provider`: Instagram es Meta —comparten la app, el sobre de error de Graph, la firma del webhook— y lo que cambia es la superficie. `provider` sigue valiendo `"meta"` en los dos.
@@ -336,7 +352,7 @@ Cada uno con `message` legible. Se suman al contrato de errores `snake_case` de 
 
 ### Aviso de cuota
 A partir del **80%** del consumo del período aparece una barra de alerta **global en el dashboard**, no solo en `Connections`: quien no entra a esa pantalla no se entera.
-No hay email transaccional en esta entrega (no existe canal de correo en el repo). Pendiente: la FAQ pública promete "Te avisamos cuando te acercás al límite" dos veces en `content/i18n/es.ts`, que un cliente lee como email; hay que reescribirla para que apunte al dashboard.
+El aviso no sale por correo en esta entrega: el [Canal de correo] existe, pero el aviso de cuota no se construyo. Pendiente: la FAQ pública promete "Te avisamos cuando te acercás al límite" dos veces en `content/i18n/es.ts`, que un cliente lee como email; hay que reescribirla para que apunte al dashboard.
 
 ### Gate de suscripcion
 Es el **segundo** gate, detras del [Gate de acceso]: una cuenta aprobada a mano todavia tiene que pagar. La suscripcion decide quien puede usar. Un usuario sin suscripcion activa aterriza en la pagina de pricing. El acceso existe solo con status `active` en la tabla `subscriptions`; cualquier otro estado es **bloqueo total**: dashboard, OAuth de Meta y `POST /api/meta/send` (403) quedan cerrados, y los webhooks entrantes de Meta del tenant se descartan sin persistir (respondiendo `200` a Meta para no degradar la app). Mismo patron que usaba el gate de acceso: se lee de base de datos en cada request, fail-closed, nunca de la [Sesion] ni de su cache ni de la API de Stripe en el hot path.
@@ -356,11 +372,11 @@ Resender es bilingue **espanol e ingles** en las dos superficies: el sitio publi
 El registro de voz sigue siendo distinto a proposito (landing en voseo, producto en tuteo neutro, ADR 0005); ser bilingue no unifica las voces.
 
 ### Preferencia de idioma
-Vive en dos sitios con roles distintos: la cookie `NEXT_LOCALE` **gobierna el sitio publico** (y es lo unico que tiene un anonimo) y `users.locale` **gobierna el producto**, que no se rutea por idioma: `/settings` e `/inbox` no tienen gemela `/en`.
-Los dos selectores —el del header publico (`components/language-toggle.tsx`) y el de `Settings > Language`— escriben **las dos cosas** a la vez, asi que en el uso normal coinciden.
-Discrepan solo cuando entras por un enlace ajeno: el proxy de next-intl escribe la cookie al navegar a `/en/...`, y entonces **el sitio queda en ingles y el dashboard sigue en espanol**. Eso es correcto, no un defecto: en el producto **gana la cuenta**, y tocar cualquiera de los dos selectores realinea todo.
+**No existe idioma por cuenta.** La cookie `NEXT_LOCALE` es lo unico que hay: gobierna el producto —que no se rutea por idioma, `/settings` e `/inbox` no tienen gemela `/en`— y la resuelve `lib/i18n/app-locale.ts`, que lee esa cookie y nada mas. En el sitio publico manda la URL, y la cookie solo decide a donde aterriza quien entra por la raiz `/`.
+Los dos selectores —el del header publico (`components/language-toggle.tsx`) y el de `Settings > Language`— escriben esa misma cookie.
 La raiz `/` si respeta la cookie y el `accept-language`: un visitante con el navegador en ingles aterriza en `/en`. El precio es que `/` deja de ser cacheable igual para todos.
-Al registrarse, la cookie siembra `users.locale`: quien eligio ingles en la landing estrena la cuenta en ingles.
+Que la preferencia sea de navegador y no de cuenta tiene una consecuencia que se ve en el [Enlace de recuperacion]: su idioma es el de la pantalla donde se lo pidio, y quien pide el enlace desde otro dispositivo lo recibe en el idioma de ese otro dispositivo.
+**Deuda declarada:** hasta esta entrega, esta seccion afirmaba que existia una columna `users.locale` que gobernaba el producto y que el alta la sembraba. Nunca existio —no esta en ninguna migracion y ningun codigo la lee—. Crearla de verdad es una feature aparte: migracion, alta, selector de Ajustes y una query por request.
 
 ### Paginas legales
 `/privacy`, `/terms` y `/data-deletion` son **unicas y en ingles**: quedan fuera del segmento de idioma, sin gemela `/en`, como ya las trata `app/sitemap.ts` (`SHARED_ROUTES`). Un documento legal traducido son dos documentos que mantener sincronizados, y una divergencia entre ellos es un problema juridico, no un typo.

@@ -6,7 +6,27 @@ import { betterAuth } from "better-auth"
 import { nextCookies } from "better-auth/next-js"
 import { NeonDialect } from "kysely-neon"
 
-import { getNeonClient } from "@/lib/db"
+import { localeFromPathname, localePath, type Locale } from "@/content/i18n"
+import { getNeonClient, getSql } from "@/lib/db"
+import { sendPasswordResetEmail } from "@/lib/email/password-reset-email"
+import { describeError, log } from "@/lib/observability/logger"
+import { posthog } from "@/lib/posthog"
+
+// El idioma del [Enlace de recuperacion] es el de la pantalla donde se lo
+// pidió, no el de la cuenta: no existe idioma por cuenta (CONTEXT.md →
+// [Preferencia de idioma]). Viaja como el `callbackURL` que el server action le
+// pasó a `forgetPassword`, que es lo único que el callback de la librería
+// recibe además del usuario.
+function localeFromResetUrl(url: string): Locale {
+  try {
+    const callbackUrl = new URL(url, "http://localhost").searchParams.get(
+      "callbackURL"
+    )
+    return localeFromPathname(callbackUrl ?? "/")
+  } catch {
+    return "es"
+  }
+}
 
 // Configuración única de Better Auth, la autoridad de sesión y credenciales de
 // `apps/web` (ADR 0014). Nadie más en el repositorio llama a `betterAuth()`.
@@ -153,7 +173,125 @@ function createAuth() {
 
     // Sin `password.hash`/`verify` custom: scrypt nativo de la librería. Borrar
     // la criptografía propia es la mitad del motivo de la ADR 0014.
-    emailAndPassword: { enabled: true },
+    emailAndPassword: {
+      enabled: true,
+
+      // El canal de correo que la ADR 0014 no tenía, y con el que existe la
+      // [Recuperacion de password] (issue #93).
+      //
+      // ⚠️ **Canal lateral de tiempo, asumido a sabiendas.** El envío es
+      // inline, así que un email que existe tarda ~300 ms más que uno que no.
+      // La librería mitiga el *lookup* con un id falso y una consulta dummy,
+      // pero no el envío. Es medible por alguien paciente; la alternativa
+      // (`advanced.backgroundTasks.handler` con `waitUntil`) es una bandera
+      // **global** que cambiaría toda tarea de fondo que la librería corra hoy
+      // o mañana, y `getCloudflareContext()` lanza fuera del Worker.
+      sendResetPassword: async ({ user, url, token }) => {
+        // El idioma llega **dentro de `url`**: el server action pasa
+        // `redirectTo: localePath("/reset-password", lang)` y acá se recupera
+        // leyendo el parámetro `callbackURL` de esa URL. **Nadie navega a
+        // `url`**: se le parsea el querystring y se descarta, porque el enlace
+        // que viaja en el correo lo arma este mismo callback contra
+        // `BETTER_AUTH_URL`. No es código muerto: borrar esto rompe el inglés
+        // y ningún test de UI lo nota (vitest no ejecuta `.tsx`).
+        const locale = localeFromResetUrl(url)
+
+        // `BETTER_AUTH_URL` y **nunca `APP_URL`**: `APP_URL` apunta a un túnel
+        // ngrok porque es el `redirect_uri` que Meta exige, mientras que
+        // `BETTER_AUTH_URL` ya vale el origen real en los dos entornos y es
+        // además el de `trustedOrigins`. Usarlo mantiene el enlace y la cookie
+        // en el mismo origen por construcción.
+        // El `url` que arma la librería (`<baseURL>/reset-password/<token>?
+        // callbackURL=…`) **no se usa como enlace**: el correo lleva una URL
+        // propia del producto. La nativa parece phishing justo donde la
+        // confianza lo es todo, y muere con 403 si `APP_URL` y
+        // `BETTER_AUTH_URL` divergen.
+        const base = process.env.BETTER_AUTH_URL ?? ""
+        const resetUrl = `${base}${localePath("/reset-password", locale)}?token=${encodeURIComponent(token)}`
+
+        const result = await sendPasswordResetEmail({
+          to: user.email,
+          locale,
+          resetUrl,
+        })
+
+        // `sendTemplateEmail` nunca lanza, así que el fallo llega acá como
+        // dato. Se registra —es lo único que hace visible una caída de
+        // Resend— y **no se le informa a quien lo pidió**: decirlo revelaría
+        // que la cuenta existe.
+        if (!result.ok) {
+          log({
+            entrypoint: "action",
+            action: "email_send",
+            outcome: "failed",
+            reason: result.reason ?? "internal_error",
+            status: result.status,
+            errorMessage: result.error ?? undefined,
+          })
+        }
+      },
+
+      // Una hora. Explícito aunque coincida con el default de la librería,
+      // porque es una regla del producto que [Enlace de recuperacion] promete
+      // por escrito, en el correo y en la pantalla de vencido.
+      resetPasswordTokenExpiresIn: 3600,
+
+      // La propiedad de seguridad central: el caso típico de recuperación es
+      // que alguien más entró. Sin esto, recuperar una cuenta robada no la
+      // recupera, y la recuperación quedaría **más débil** que el cambio de
+      // contraseña de Ajustes, que sí revoca.
+      //
+      // ⚠️ **Ventana de cinco minutos, asumida.** Revocar borra las filas de
+      // `auth_sessions`, pero la cookie es un caché JWE con cinco minutos de
+      // vida (ver `session.cookieCache` arriba): quien tenga la sesión abierta
+      // conserva el acceso durante esa ventana. Es un techo del diseño de la
+      // ADR 0014, no de esta entrega, y achicarlo penaliza cada request.
+      revokeSessionsOnPasswordReset: true,
+
+      // Corre **antes** que la revocación de sesiones, así que va envuelto en
+      // `try/catch` completo: una excepción acá se saltearía la revocación y
+      // la feature perdería su parte de seguridad sin que nada falle
+      // visiblemente.
+      onPasswordReset: async ({ user }) => {
+        try {
+          // ⚠️ **`email_verified` queda con población mixta.** Pasa a valer
+          // `true` para quien recuperó y sigue en `false` para todos los
+          // demás, así que **no** responde "¿el alta verificó el correo?".
+          // Alguien va a leerlo como si cumpliera la precondición de
+          // proveedores sociales de `docs/adr/0014:107`, y **no la cumple**:
+          // esa precondición es sobre el alta.
+          if (!user.emailVerified) {
+            await getSql()`
+              update users set email_verified = true where id = ${user.id}
+            `
+          }
+
+          log({
+            entrypoint: "action",
+            action: "password_reset",
+            outcome: "ok",
+            tenantId: user.id,
+          })
+
+          if (posthog) {
+            posthog.capture({
+              distinctId: user.id,
+              event: "user reset password",
+            })
+            await posthog.flush()
+          }
+        } catch (error) {
+          log({
+            entrypoint: "action",
+            action: "password_reset",
+            outcome: "failed",
+            reason: "internal_error",
+            tenantId: user.id,
+            errorMessage: describeError(error),
+          })
+        }
+      },
+    },
 
     // Vacío hasta que el alta con contraseña exija verificación de email. Es la
     // precondición bloqueante de la ADR 0014: sin verificación, cualquiera

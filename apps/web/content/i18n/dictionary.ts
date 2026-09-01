@@ -155,6 +155,51 @@ export type Dict = {
     login: { eyebrow: string; title: string; subtitle: string }
     register: { eyebrow: string; title: string; subtitle: string }
     passwordChanged: string
+    // Pedir el [Enlace de recuperacion]. Los cuatro estados de la
+    // recuperación viven dentro de la misma tarjeta, así que el copy de
+    // «revisá tu buzón» va acá y no en una pantalla aparte.
+    forgot: {
+      eyebrow: string
+      title: string
+      subtitle: string
+      submit: string
+      // Enlace desde `/login`, debajo del campo de contraseña.
+      link: string
+      backToLogin: string
+      // Estado «pedido»: el mismo texto exista o no la cuenta. **No puede
+      // nombrar el correo destinatario ni decir «te enviamos»**: es la
+      // pantalla que no revela si un correo tiene cuenta.
+      sentTitle: string
+      sentBody: string
+      resend: string
+    }
+    // Elegir la contraseña nueva, y la pantalla de enlace vencido.
+    reset: {
+      eyebrow: string
+      title: string
+      subtitle: string
+      password: string
+      confirmPassword: string
+      submit: string
+      expiredTitle: string
+      expiredBody: string
+      requestAnother: string
+    }
+    // Las nueve variables de la plantilla de Resend, más el asunto. El copy
+    // vive acá y no en la plantilla para que quede bajo control de versiones y
+    // para que `dictionary.test.ts` obligue a la paridad ES/EN (ADR 0006).
+    // `RESET_URL` no está: es el href, no copy.
+    resetEmail: {
+      subject: string
+      preheader: string
+      heading: string
+      intro: string
+      ctaLabel: string
+      expiryNote: string
+      fallbackLabel: string
+      ignoreNote: string
+      footerNote: string
+    }
     form: {
       email: string
       password: string
@@ -195,6 +240,11 @@ export type Dict = {
       // lo único que ve quien excede los diez intentos por minuto.
       tooManyAttempts: string
       createdNoSignin: string
+      // El [Enlace de recuperacion] venció o ya se usó. No es un error del
+      // formulario: es la pantalla propia de `auth.reset.expired*`, y este
+      // texto es el que traduce el `INVALID_TOKEN` de la librería cuando el
+      // token muere entre el peek y el submit.
+      resetLinkExpired: string
     }
   }
   // Lista de espera pública de captación (ADR 0007). Va después de `auth`

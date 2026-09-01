@@ -391,6 +391,46 @@ export const es: Dict = {
       subtitle: "Email y contraseña. No hay verificación por correo en el MVP.",
     },
     passwordChanged: "Contraseña actualizada. Inicia sesión con la nueva.",
+    forgot: {
+      eyebrow: "recuperación",
+      title: "Recuperar contraseña",
+      subtitle:
+        "Escribe tu email y te enviamos un enlace para elegir una contraseña nueva.",
+      submit: "Enviar enlace",
+      link: "¿Olvidaste tu contraseña?",
+      backToLogin: "Volver a iniciar sesión",
+      // Deliberadamente en condicional y sin nombrar el email: si dijera "te
+      // enviamos un correo a X", la pantalla confirmaría que X tiene cuenta.
+      sentTitle: "Revisa tu correo",
+      sentBody:
+        "Si ese email tiene una cuenta, va a recibir un enlace para elegir una contraseña nueva. El enlace vive una hora. Revisa también la carpeta de spam.",
+      resend: "Enviar de nuevo",
+    },
+    reset: {
+      eyebrow: "recuperación",
+      title: "Elegir contraseña nueva",
+      subtitle: "Al guardarla se cierran todas las sesiones de tu cuenta.",
+      password: "Contraseña nueva",
+      confirmPassword: "Repite la contraseña",
+      submit: "Guardar contraseña",
+      expiredTitle: "El enlace ya no sirve",
+      expiredBody:
+        "Los enlaces de recuperación viven una hora y se usan una sola vez. Pide uno nuevo y vuelve a intentarlo.",
+      requestAnother: "Pedir un enlace nuevo",
+    },
+    resetEmail: {
+      subject: "Recupera tu contraseña de Resender",
+      preheader: "Elige una contraseña nueva. El enlace vive una hora.",
+      heading: "Recupera tu contraseña",
+      intro:
+        "Alguien pidió recuperar la contraseña de esta cuenta de Resender. Si fuiste tú, elige una nueva desde el botón.",
+      ctaLabel: "Elegir contraseña nueva",
+      expiryNote: "El enlace vive una hora y sirve una sola vez.",
+      fallbackLabel: "¿No funciona el botón? Copia esta dirección:",
+      ignoreNote:
+        "Si no pediste esto, ignora este mensaje: tu contraseña no cambia hasta que uses el enlace.",
+      footerNote: "Resender · resender.dev",
+    },
     form: {
       email: "Email",
       password: "Contraseña",
@@ -419,6 +459,8 @@ export const es: Dict = {
         "Demasiados intentos. Espera un minuto y vuelve a intentarlo.",
       createdNoSignin:
         "Creamos tu cuenta, pero no pudimos iniciar la sesión. Entra desde Iniciar sesión.",
+      resetLinkExpired:
+        "Ese enlace ya no sirve. Pide uno nuevo y vuelve a intentarlo.",
     },
   },
 
