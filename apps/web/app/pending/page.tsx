@@ -2,7 +2,7 @@ import Link from "next/link"
 import { redirect } from "next/navigation"
 import { CircleCheck } from "lucide-react"
 
-import { auth, signOut } from "@/auth"
+import { getSession, signOut } from "@/lib/auth/session"
 import { PostHogIdentify } from "@/components/posthog-identify"
 import { SignOutForm } from "@/components/sign-out-form"
 import {
@@ -30,7 +30,7 @@ export const metadata = privatePageMetadata("Lista de espera")
 // cuentas en lista de espera, así que esta página no puede ir envuelta por él.
 export default async function PendingPage() {
   const { lang, t } = await getAppI18n()
-  const session = await auth()
+  const session = await getSession()
   if (!session?.user?.id) redirect("/login")
 
   // Las tres respuestas del gate, cada una a su salida. `unknown_user` no cae

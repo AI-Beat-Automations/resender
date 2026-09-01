@@ -50,6 +50,19 @@ export type LogAction =
   | "webhook_unsubscribe"
   | "webhook_url_save"
   | "webhook_secret_rotate" // el tenant pidió un secreto de firma nuevo
+  // cuenta y credenciales
+  | "password_change" // la persona cambió su contraseña desde Ajustes
+  | "session_revoke" // cierre de las demás sesiones tras cambiar la contraseña
+  | "password_reset" // la persona recuperó su contraseña por correo
+  // Un envío del [Canal de correo] (`lib/email/send-email.ts`). Es su propio
+  // verbo y no un `outcome` del anterior porque el envío puede fallar solo:
+  // el token se emitió igual y la persona se queda esperando un correo que no
+  // llegó. Filtrar por `action=email_send` es «¿está vivo Resend?».
+  | "email_send"
+  // Verificación del `Bearer` de la API externa. **Solo se escribe cuando la
+  // verificación no pudo completarse**, no en cada request: una key inválida es
+  // un 401 normal y ya lo cuenta el log de la ruta. Ver `lib/auth/api-keys.ts`.
+  | "api_key_verify"
   // efectos de borde que hoy solo dejan un `console.error` suelto
   | "label_resolve" // @handle del contacto y permalink de la publicación
   | "token_exchange"
@@ -143,6 +156,9 @@ export type LogReason =
   // efectos de borde
   | "usage_counter_failed"
   | "internal_error"
+  // El [Canal de correo] no tiene `RESEND_API_KEY`. No es un fallo del
+  // proveedor: es `next dev` o vitest, donde el secreto no existe a propósito.
+  | "not_configured"
 
 // **La redacción es el tipo.** No hay campo para el texto del mensaje, ni para
 // el body de Meta, ni para un token, ni para la firma, y no hay ningún campo de

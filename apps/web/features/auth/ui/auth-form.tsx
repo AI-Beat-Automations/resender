@@ -26,6 +26,7 @@ export function AuthForm({ action, mode, lang }: AuthFormProps) {
   const isLogin = mode === "login"
   const hasError = Boolean(state.error)
   const t = getDictionary(lang).auth.form
+  const forgot = getDictionary(lang).auth.forgot
 
   return (
     <>
@@ -33,6 +34,25 @@ export function AuthForm({ action, mode, lang }: AuthFormProps) {
         {/* El server action no ve el pathname: le pasamos el idioma para que
             devuelva sus errores en el idioma de la página. */}
         <input type="hidden" name="locale" value={lang} />
+        {/* Solo en el alta: Better Auth exige `name` al crear el usuario, y el
+            acceso no lo pide. La regla de "no puede estar vacío" vive en
+            `lib/auth/validation`, no acá: vitest no ejecuta `.tsx`. El
+            `required` del input es la primera línea, no la única. */}
+        {!isLogin && (
+          <div className="grid gap-2">
+            <Label htmlFor="name">{t.name}</Label>
+            <Input
+              id="name"
+              name="name"
+              type="text"
+              autoComplete="name"
+              required
+              disabled={pending}
+              aria-invalid={hasError}
+              placeholder={t.namePlaceholder}
+            />
+          </div>
+        )}
         <div className="grid gap-2">
           <Label htmlFor="email">{t.email}</Label>
           <Input
@@ -65,6 +85,21 @@ export function AuthForm({ action, mode, lang }: AuthFormProps) {
           {!isLogin && (
             <p id="password-hint" className="text-[13px] text-muted-foreground">
               {t.passwordHint}
+            </p>
+          )}
+          {/* Único cambio de este formulario por la recuperación: la entrada
+              al flujo. `AuthForm` **no** gana un modo `forgot`/`reset` —esos
+              dos tienen formularios propios— porque sumarle modos convierte
+              el único formulario que autentica en el más difícil de auditar,
+              y vitest no ejecuta `.tsx`. */}
+          {isLogin && (
+            <p className="text-[13px]">
+              <Link
+                href={localePath("/forgot-password", lang)}
+                className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+              >
+                {forgot.link}
+              </Link>
             </p>
           )}
         </div>

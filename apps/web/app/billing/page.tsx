@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation"
 
-import { auth, signOut } from "@/auth"
+import { getSession, signOut } from "@/lib/auth/session"
 import { PostHogIdentify } from "@/components/posthog-identify"
 import { SignOutForm } from "@/components/sign-out-form"
 import { AccessEyebrow, AccessShell } from "@/features/auth/ui/access-shell"
@@ -35,7 +35,7 @@ const RECOMMENDED_PLAN = "pro_monthly"
 export default async function BillingPage() {
   const { lang, t } = await getAppI18n()
   const numberFormat = new Intl.NumberFormat(t.intl)
-  const session = await auth()
+  const session = await getSession()
   if (!session?.user?.id) redirect("/login")
   const access = await resolveProductAccess(session.user.id)
   if (access === "unknown_user") redirect("/login")

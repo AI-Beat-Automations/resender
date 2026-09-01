@@ -1,6 +1,6 @@
 import { KeyRound } from "lucide-react"
 
-import { fmt, type AppDict } from "@/content/i18n/app"
+import type { AppDict } from "@/content/i18n/app"
 import { CreateApiKeyForm } from "@/features/api-keys/ui/create-api-key-form"
 import { RevokeApiKeyDialog } from "@/features/api-keys/ui/revoke-api-key-dialog"
 import {
@@ -24,7 +24,6 @@ export type ApiKeyView = {
   status: "active" | "revoked"
   createdAt: string
   lastUsedAt: string | null
-  revokedAt: string | null
 }
 
 // Cabeceras de tabla en mono MAYÚSCULAS (spec C.5).
@@ -123,13 +122,12 @@ function ApiKeyRow({ apiKey, t }: { apiKey: ApiKeyView; t: AppDict }) {
       </TableCell>
       <TableCell className="px-3 py-3 pr-5 text-right">
         {revoked ? (
-          // Una key revocada sigue en la lista, sin acción (CONTEXT.md).
+          // Una key revocada sigue en la lista, sin acción y **sin fecha de
+          // revocación**: el plugin `apiKey` no guarda cuándo se revocó y
+          // mostrar `updated_at` sería mostrar la fecha de creación disfrazada
+          // (CONTEXT.md → [Gestion de API keys en Settings]).
           <span className="font-mono text-[11.5px] text-[var(--text-subtle)]">
-            {apiKey.revokedAt
-              ? fmt(t.apiKeys.revokedOn, {
-                  date: formatShortDay(apiKey.revokedAt, t.intl),
-                })
-              : t.apiKeys.statusRevoked}
+            {t.apiKeys.statusRevoked}
           </span>
         ) : (
           <RevokeApiKeyDialog apiKeyId={apiKey.id} label={apiKey.label} />
@@ -144,13 +142,6 @@ function formatDay(iso: string, intl: string): string {
     day: "numeric",
     month: "short",
     year: "numeric",
-  })
-}
-
-function formatShortDay(iso: string, intl: string): string {
-  return new Date(iso).toLocaleDateString(intl, {
-    day: "numeric",
-    month: "short",
   })
 }
 

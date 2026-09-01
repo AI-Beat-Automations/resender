@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
   upsertConversation: vi.fn(),
 }))
 
-vi.mock("@/lib/api-keys/api-keys", () => ({
+vi.mock("@/lib/auth/api-keys", () => ({
   authenticateApiKey: mocks.authenticateApiKey,
 }))
 
@@ -119,6 +119,22 @@ describe("POST /api/meta/send", () => {
       reason: null,
       code: null,
     })
+  })
+
+  // El contrato hacia afuera de la verificación de API key: 401 con `error:
+  // "unauthorized"` y nada más. Vale igual para una key inventada, una revocada
+  // y una vencida; el plugin distingue esos casos y `lib/auth/api-keys.ts` los
+  // colapsa en `null` a propósito, para no decirle a quien prueba credenciales
+  // cuál de las tres acertó.
+  it("rejects a request without a valid API key", async () => {
+    mocks.authenticateApiKey.mockResolvedValue(null)
+
+    const response = await POST(sendRequest({ reply: "hola" }))
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toEqual({ error: "unauthorized" })
+    expect(mocks.sendMetaMessage).not.toHaveBeenCalled()
+    expect(mocks.insertOutboundMessage).not.toHaveBeenCalled()
   })
 
   // El XOR del parser: `reply` y `attachment` juntos es un 400 con código

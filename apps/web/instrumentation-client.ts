@@ -5,6 +5,7 @@ import {
   POSTHOG_HOST,
   POSTHOG_KEY,
 } from "@/lib/posthog-client"
+import { redactEventUrls } from "@/lib/posthog-redact"
 
 // Convención `instrumentation-client.ts` de Next: corre en el navegador después
 // de cargar el HTML y ANTES de la hidratación de React. Es el único sitio donde
@@ -29,6 +30,10 @@ if (isPostHogEnabled) {
     // el default del SDK, explícito aquí para que no lo cambie una subida de
     // versión.
     person_profiles: "identified_only",
+    // El `?token=` del [Enlace de recuperacion] es una credencial viva durante
+    // una hora, y `$current_url` lo llevaría entero a PostHog. La lógica vive
+    // en `lib/posthog-redact.ts` porque vitest no ejecuta este archivo.
+    before_send: redactEventUrls,
     // `disable_session_recording` se deja sin tocar a propósito: quien manda
     // sobre el replay es el panel del proyecto en PostHog, no el código.
   })

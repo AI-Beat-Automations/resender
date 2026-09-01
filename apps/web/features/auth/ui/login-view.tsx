@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation"
 import { Check } from "lucide-react"
 
-import { auth } from "@/auth"
+import { getSession } from "@/lib/auth/session"
 import { HtmlLang } from "@/components/html-lang"
 import { getDictionary, type Locale } from "@/content/i18n"
 import { loginAction } from "@/features/auth/actions"
@@ -28,8 +28,8 @@ export async function LoginView({
   // una sesión huérfana (cookie de otra base, cuenta borrada) entraba acá, se
   // iba a `/connections`, el gate la devolvía y el navegador quedaba recargando
   // entre las dos rutas para siempre. Mostrar el formulario rompe el ciclo y
-  // además lo arregla: autenticarse otra vez reemplaza el JWT inservible.
-  const session = await auth()
+  // además lo arregla: autenticarse otra vez reemplaza la sesión inservible.
+  const session = await getSession()
   if (
     session?.user?.id &&
     (await resolveProductAccess(session.user.id)) === "allowed"

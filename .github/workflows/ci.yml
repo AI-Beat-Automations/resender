@@ -49,8 +49,6 @@ jobs:
           # Valores dummy solo para que `next build` no falle en CI.
           # Los reales viven como secretos del Worker (wrangler secret).
           DATABASE_URL: postgres://ci:ci@localhost:5432/ci
-          AUTH_SECRET: ci-only-dummy-secret
-          API_KEY_PEPPER: ci-only-dummy-pepper
           TOKEN_ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
           META_APP_ID: "0"
           META_APP_SECRET: ci-dummy

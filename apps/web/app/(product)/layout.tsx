@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation"
 
-import { auth, signOut } from "@/auth"
+import { getSession, signOut } from "@/lib/auth/session"
 import { PostHogIdentify } from "@/components/posthog-identify"
 import {
   QuotaNoticeBar,
@@ -22,7 +22,7 @@ export const metadata = privatePageMetadata("Resender")
 export default async function ProductLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  const session = await auth()
+  const session = await getSession()
   if (!session?.user?.id) redirect("/login")
   // El idioma se resuelve una sola vez por petición y baja por contexto: los
   // componentes cliente del shell (el sidebar) y de cada pantalla lo leen de
@@ -61,7 +61,8 @@ export default async function ProductLayout({
           email={session.user.email}
         />
         <AppSidebar
-          email={session.user.email ?? ""}
+          name={session.user.name}
+          email={session.user.email}
           signOutAction={signOutAction}
         />
         <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">

@@ -15,7 +15,7 @@ import {
 import { SignOutForm } from "@/components/sign-out-form"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { useAppDict } from "@/content/i18n/app/provider"
-import { initialsFromEmail } from "@/lib/account/initials"
+import { accountInitials } from "@/lib/account/initials"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 
@@ -40,9 +40,12 @@ const NAV_ITEMS: NavItem[] = [
 ]
 
 export function AppSidebar({
+  name,
   email,
   signOutAction,
 }: {
+  /** Puede venir vacío: las cuentas anteriores al alta con nombre. */
+  name: string
   email: string
   signOutAction: () => Promise<void>
 }) {
@@ -114,7 +117,7 @@ export function AppSidebar({
             className="flex size-[30px] shrink-0 items-center justify-center rounded-full bg-primary font-heading text-[12px] font-semibold text-primary-foreground"
             aria-hidden
           >
-            {initialsFromEmail(email)}
+            {accountInitials(name, email)}
           </span>
           <span
             className="min-w-0 flex-1 truncate text-[12px] text-muted-foreground"

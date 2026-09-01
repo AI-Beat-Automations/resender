@@ -388,7 +388,6 @@ export const es: AppDict = {
     statusActive: "activa",
     statusRevoked: "revocada",
     never: "nunca",
-    revokedOn: "revocada el {date}",
     revoke: "Revocar",
     revoking: "Revocando…",
     revokeTitle: "Revocar «{label}»",

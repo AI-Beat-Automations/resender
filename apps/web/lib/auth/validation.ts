@@ -23,6 +23,21 @@ export type AuthInputError =
   | "password_too_short"
   | "passwords_do_not_match"
 
+/**
+ * El nombre tiene unión propia y **no** entra en `AuthInputError`. La razón es
+ * concreta: `features/account/actions.ts` mapea `AuthInputError` entero a
+ * `Record` contra el diccionario del producto, y el cambio de contraseña de
+ * Ajustes no tiene campo de nombre. Sumar el código ahí obligaría a inventar un
+ * texto para un error que esa pantalla no puede producir. La regla del `Record`
+ * sobre la unión se conserva: quien consume esto es `features/auth/actions.ts`,
+ * que sí lo mapea completo contra los dos idiomas.
+ */
+export type NameInputError = "name_required"
+
+export type NameInputResult =
+  | { ok: true; value: string }
+  | { ok: false; error: NameInputError }
+
 export type AuthInputResult =
   | { ok: true; value: AuthInput }
   | { ok: false; error: AuthInputError }
@@ -60,6 +75,23 @@ export function validateAuthInput(
   if (!password.ok) return password
 
   return { ok: true, value: { email, password: password.value } }
+}
+
+// Better Auth exige `name` en el alta (`signUpEmail`), así que el registro lo
+// pide. Se valida acá y no dentro del componente porque vitest corre con
+// `include: **/*.{test,spec}.ts` y no ejecuta `.tsx`: una regla dentro del
+// formulario sería una regla sin test.
+//
+// La única regla es que no esté vacío una vez recortado. No hay tope de
+// longitud ni catálogo de caracteres: el nombre no se usa para nada más que
+// saludar y sacar las iniciales del avatar, y una validación más estricta
+// rechazaría nombres reales antes que ataques.
+export function validateNameInput(nameInput: unknown): NameInputResult {
+  const name = typeof nameInput === "string" ? nameInput.trim() : ""
+
+  if (!name) return { ok: false, error: "name_required" }
+
+  return { ok: true, value: name }
 }
 
 export function validatePasswordInput(

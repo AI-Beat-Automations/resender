@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
-  auth: vi.fn(),
+  getSession: vi.fn(),
   cookieGet: vi.fn(),
   disconnectPage: vi.fn(),
   getActivePageWithTokenByConnectionId: vi.fn(),
@@ -21,8 +21,8 @@ vi.mock("next/headers", () => ({
   cookies: async () => ({ get: mocks.cookieGet }),
 }))
 
-vi.mock("@/auth", () => ({
-  auth: mocks.auth,
+vi.mock("@/lib/auth/session", () => ({
+  getSession: mocks.getSession,
 }))
 
 // Se mockea el despachador por canal y no `@/lib/meta`: la acción ya no elige
@@ -61,7 +61,7 @@ describe("disconnectPageAction", () => {
   beforeEach(() => {
     for (const mock of Object.values(mocks)) mock.mockReset()
     mocks.cookieGet.mockReturnValue(undefined)
-    mocks.auth.mockResolvedValue({ user: { id: "tenant-1" } })
+    mocks.getSession.mockResolvedValue({ user: { id: "tenant-1" } })
     mocks.disconnectPage.mockResolvedValue({
       id: "connection-1",
       metaPageId: "meta-page-1",
@@ -182,12 +182,12 @@ describe("disconnectPageAction", () => {
   // Estados de la acción en español (ADR 0005): son el texto que se pinta
   // debajo del botón, no logs.
   it("answers in Spanish when the session or the page id are missing", async () => {
-    mocks.auth.mockResolvedValue(null)
+    mocks.getSession.mockResolvedValue(null)
     await expect(disconnectPageAction({}, new FormData())).resolves.toEqual({
       error: "No has iniciado sesión.",
     })
 
-    mocks.auth.mockResolvedValue({ user: { id: "tenant-1" } })
+    mocks.getSession.mockResolvedValue({ user: { id: "tenant-1" } })
     await expect(disconnectPageAction({}, new FormData())).resolves.toEqual({
       error: "Página inválida.",
     })
@@ -206,7 +206,7 @@ describe("saveWebhookUrlAction", () => {
   beforeEach(() => {
     for (const mock of Object.values(mocks)) mock.mockReset()
     mocks.cookieGet.mockReturnValue(undefined)
-    mocks.auth.mockResolvedValue({ user: { id: "tenant-1" } })
+    mocks.getSession.mockResolvedValue({ user: { id: "tenant-1" } })
     mocks.updatePageWebhookUrl.mockResolvedValue({
       id: "connection-1",
       metaPageId: "meta-page-1",
@@ -268,12 +268,12 @@ describe("saveWebhookUrlAction", () => {
   })
 
   it("answers in Spanish when the session, the page id or the page are missing", async () => {
-    mocks.auth.mockResolvedValue(null)
+    mocks.getSession.mockResolvedValue(null)
     await expect(saveWebhookUrlAction({}, new FormData())).resolves.toEqual({
       error: "No has iniciado sesión.",
     })
 
-    mocks.auth.mockResolvedValue({ user: { id: "tenant-1" } })
+    mocks.getSession.mockResolvedValue({ user: { id: "tenant-1" } })
     await expect(saveWebhookUrlAction({}, new FormData())).resolves.toEqual({
       error: "Página inválida.",
     })

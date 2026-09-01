@@ -2,7 +2,7 @@
 
 import { cookies } from "next/headers"
 
-import { auth } from "@/auth"
+import { getSession } from "@/lib/auth/session"
 import { getAppDict } from "@/lib/i18n/app-dict"
 import { resolveWhatsappAccess } from "@/lib/auth/channel-access"
 import { isUserWaitlisted } from "@/lib/auth/waitlist"
@@ -39,7 +39,7 @@ export type WhatsappSignupNonceState = {
  */
 export async function issueWhatsappSignupNonce(): Promise<WhatsappSignupNonceState> {
   const t = await getAppDict()
-  const session = await auth()
+  const session = await getSession()
   if (!session?.user?.id) return { error: t.actions.notSignedIn }
 
   // Los mismos gates que el cierre, y por el mismo motivo: emitir un nonce a
@@ -82,7 +82,7 @@ export async function revealWhatsappPin(
   connectionId: string
 ): Promise<WhatsappPinState> {
   const t = await getAppDict()
-  const session = await auth()
+  const session = await getSession()
   if (!session?.user?.id) return { error: t.actions.notSignedIn }
 
   // El gate de canal también acá: quitarle el permiso a una cuenta tiene que

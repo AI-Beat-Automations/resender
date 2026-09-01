@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
   upsertConversation: vi.fn(),
 }))
 
-vi.mock("@/lib/api-keys/api-keys", () => ({
+vi.mock("@/lib/auth/api-keys", () => ({
   authenticateApiKey: mocks.authenticateApiKey,
 }))
 

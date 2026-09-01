@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   cookieGet: vi.fn(),
-  auth: vi.fn(),
+  getSession: vi.fn(),
   connectAuthorizedPages: vi.fn(),
   countActivePages: vi.fn(),
   getMetaUserAccessToken: vi.fn(),
@@ -30,8 +30,8 @@ vi.mock("next/navigation", () => ({
   redirect: mocks.redirect,
 }))
 
-vi.mock("@/auth", () => ({
-  auth: mocks.auth,
+vi.mock("@/lib/auth/session", () => ({
+  getSession: mocks.getSession,
 }))
 
 vi.mock("@/lib/auth/waitlist", () => ({
@@ -110,7 +110,7 @@ describe("connectSelectedPagesAction", () => {
   beforeEach(() => {
     for (const mock of Object.values(mocks)) mock.mockReset()
     mocks.cookieGet.mockReturnValue(undefined)
-    mocks.auth.mockResolvedValue({ user: { id: "tenant-1" } })
+    mocks.getSession.mockResolvedValue({ user: { id: "tenant-1" } })
     mocks.isUserWaitlisted.mockResolvedValue(false)
     mocks.hasActiveSubscription.mockResolvedValue(true)
     mocks.getMetaUserAccessToken.mockResolvedValue("user-token")
