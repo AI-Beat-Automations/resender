@@ -26,6 +26,7 @@ export function AuthForm({ action, mode, lang }: AuthFormProps) {
   const isLogin = mode === "login"
   const hasError = Boolean(state.error)
   const t = getDictionary(lang).auth.form
+  const forgot = getDictionary(lang).auth.forgot
 
   return (
     <>
@@ -84,6 +85,21 @@ export function AuthForm({ action, mode, lang }: AuthFormProps) {
           {!isLogin && (
             <p id="password-hint" className="text-[13px] text-muted-foreground">
               {t.passwordHint}
+            </p>
+          )}
+          {/* Único cambio de este formulario por la recuperación: la entrada
+              al flujo. `AuthForm` **no** gana un modo `forgot`/`reset` —esos
+              dos tienen formularios propios— porque sumarle modos convierte
+              el único formulario que autentica en el más difícil de auditar,
+              y vitest no ejecuta `.tsx`. */}
+          {isLogin && (
+            <p className="text-[13px]">
+              <Link
+                href={localePath("/forgot-password", lang)}
+                className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+              >
+                {forgot.link}
+              </Link>
             </p>
           )}
         </div>

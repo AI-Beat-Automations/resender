@@ -376,6 +376,46 @@ export const en: Dict = {
       subtitle: "Email and password. No email verification in the MVP.",
     },
     passwordChanged: "Password updated. Sign in with the new one.",
+    forgot: {
+      eyebrow: "recovery",
+      title: "Reset your password",
+      subtitle:
+        "Enter your email and we'll send you a link to choose a new password.",
+      submit: "Send link",
+      link: "Forgot your password?",
+      backToLogin: "Back to sign in",
+      // Conditional on purpose and never naming the address: saying "we sent
+      // an email to X" would confirm that X has an account.
+      sentTitle: "Check your email",
+      sentBody:
+        "If that email has an account, it will get a link to choose a new password. The link lasts one hour. Check your spam folder too.",
+      resend: "Send it again",
+    },
+    reset: {
+      eyebrow: "recovery",
+      title: "Choose a new password",
+      subtitle: "Saving it signs out every session on your account.",
+      password: "New password",
+      confirmPassword: "Repeat the password",
+      submit: "Save password",
+      expiredTitle: "This link no longer works",
+      expiredBody:
+        "Recovery links last one hour and work only once. Request a new one and try again.",
+      requestAnother: "Request a new link",
+    },
+    resetEmail: {
+      subject: "Reset your Resender password",
+      preheader: "Choose a new password. The link lasts one hour.",
+      heading: "Reset your password",
+      intro:
+        "Someone asked to reset the password for this Resender account. If it was you, choose a new one with the button below.",
+      ctaLabel: "Choose a new password",
+      expiryNote: "The link lasts one hour and works only once.",
+      fallbackLabel: "Button not working? Copy this address:",
+      ignoreNote:
+        "If you didn't ask for this, ignore this message: your password doesn't change until you use the link.",
+      footerNote: "Resender · resender.dev",
+    },
     form: {
       email: "Email",
       password: "Password",
@@ -403,6 +443,8 @@ export const en: Dict = {
       tooManyAttempts: "Too many attempts. Wait a minute and try again.",
       createdNoSignin:
         "We created your account, but couldn't sign you in. Sign in from Log in.",
+      resetLinkExpired:
+        "This link no longer works. Request a new one and try again.",
     },
   },
 
