@@ -206,7 +206,29 @@ function createAuth() {
         // propia del producto. La nativa parece phishing justo donde la
         // confianza lo es todo, y muere con 403 si `APP_URL` y
         // `BETTER_AUTH_URL` divergen.
-        const base = process.env.BETTER_AUTH_URL ?? ""
+        const base = process.env.BETTER_AUTH_URL
+        // Sin origen **no se manda nada**. Es la misma regla que la plantilla
+        // aplica a `RESET_URL` al no darle `fallback_value`: un enlace roto es
+        // peor que un fallo. Con un `?? ""` el href salía relativo
+        // (`/reset-password?token=…`) y el cliente de correo lo mostraba como
+        // `http:///reset-password?token=…` — un correo inservible, con un
+        // token vivo adentro, y ni una línea en el log.
+        //
+        // En producción y en staging la variable está en `wrangler.jsonc`; en
+        // local hay que ponerla en `.env`, o `next dev` no manda correo y dice
+        // por qué.
+        if (!base) {
+          log({
+            entrypoint: "action",
+            action: "email_send",
+            outcome: "failed",
+            reason: "not_configured",
+            errorMessage:
+              "BETTER_AUTH_URL is not set: no origin for the reset link",
+          })
+          return
+        }
+
         const resetUrl = `${base}${localePath("/reset-password", locale)}?token=${encodeURIComponent(token)}`
 
         const result = await sendPasswordResetEmail({
