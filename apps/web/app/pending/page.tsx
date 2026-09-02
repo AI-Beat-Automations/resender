@@ -1,15 +1,20 @@
 import Link from "next/link"
 import { redirect } from "next/navigation"
-import { CircleCheck } from "lucide-react"
+import { CircleCheck, MailCheck } from "lucide-react"
 
 import { getSession, signOut } from "@/lib/auth/session"
 import { PostHogIdentify } from "@/components/posthog-identify"
+import { ResendVerificationForm } from "@/components/resend-verification-form"
 import { SignOutForm } from "@/components/sign-out-form"
+import { fmt } from "@/content/i18n/app"
+import { resendVerificationEmailAction } from "@/features/auth/actions"
 import {
   AccessCard,
   AccessEyebrow,
   AccessShell,
 } from "@/features/auth/ui/access-shell"
+import { isEmailVerified } from "@/lib/auth/email-verified"
+import { classifyVerificationError } from "@/lib/auth/oauth-errors"
 import { resolveProductAccess } from "@/lib/auth/waitlist"
 import { getAppI18n } from "@/lib/i18n/app-dict"
 import { privatePageMetadata } from "@/lib/seo"
@@ -28,9 +33,16 @@ export const metadata = privatePageMetadata("Lista de espera")
 //
 // Vive fuera del grupo `(product)` a propósito: ese layout rebota aquí a las
 // cuentas en lista de espera, así que esta página no puede ir envuelta por él.
-export default async function PendingPage() {
-  const { lang, t } = await getAppI18n()
-  const session = await getSession()
+type PendingPageProps = {
+  searchParams: Promise<{ error?: string }>
+}
+
+export default async function PendingPage({ searchParams }: PendingPageProps) {
+  const [{ lang, t }, session, params] = await Promise.all([
+    getAppI18n(),
+    getSession(),
+    searchParams,
+  ])
   if (!session?.user?.id) redirect("/login")
 
   // Las tres respuestas del gate, cada una a su salida. `unknown_user` no cae
@@ -40,6 +52,14 @@ export default async function PendingPage() {
   const access = await resolveProductAccess(session.user.id)
   if (access === "unknown_user") redirect("/login")
   if (access === "allowed") redirect("/connections")
+
+  // [Verificacion de correo], leída **viva** y no de `session.user`: la cookie
+  // de caché la trae vieja hasta cinco minutos, y quien acaba de confirmar
+  // seguiría viendo «sin confirmar». `?error=` es lo que agrega
+  // `GET /api/auth/verify-email` cuando el [Enlace de verificacion] no sirve;
+  // solo «venció / no es válido» se dice, cualquier otro valor se ignora.
+  const verified = await isEmailVerified(session.user.id)
+  const linkExpired = classifyVerificationError(params.error) === "link_expired"
 
   async function signOutAction() {
     "use server"
@@ -65,6 +85,38 @@ export default async function PendingPage() {
         email={session.user.email}
       />
       <AccessCard className="max-w-130 p-7.5">
+        {/* Bloque de confirmación **por encima** del mensaje de aprobación y
+            solo si el correo no está confirmado. Confirmar no da acceso y no
+            confirmar no lo quita: lo único que habilita es vincular Google.
+            Una cuenta aprobada no llega a leer esto —`/pending` la rebota—,
+            así que confirma y reenvía desde Settings. */}
+        {!verified ? (
+          <div className="mb-6 rounded-lg border border-border bg-surface-sunken px-4 py-3.5">
+            <p className="flex items-center gap-2 text-[14px] font-semibold">
+              <MailCheck className="size-4 shrink-0" aria-hidden />
+              {t.accessPending.verify.title}
+            </p>
+            <p className="mt-1.5 text-[13px]/[1.6] text-muted-foreground">
+              {fmt(t.accessPending.verify.body, { email: session.user.email })}
+            </p>
+            {linkExpired ? (
+              <p
+                role="alert"
+                className="mt-2 text-[13px] text-destructive-soft-foreground"
+              >
+                {t.accessPending.verify.linkExpired}
+              </p>
+            ) : null}
+            <ResendVerificationForm
+              action={resendVerificationEmailAction}
+              lang={lang}
+              label={t.accessPending.verify.resend}
+              sentLabel={t.accessPending.verify.sent}
+              size="sm"
+              className="mt-3"
+            />
+          </div>
+        ) : null}
         {/* Palomita sobre `primary-soft`, el mismo tratamiento que la espera de
             /billing/success: el registro SÍ terminó bien y la pantalla confirma
             eso primero. Un reloj o un candado leerían como error. */}

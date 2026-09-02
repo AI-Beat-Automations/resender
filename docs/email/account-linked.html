@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="es" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
+<title>{{{HEADING}}}</title>
+<style>
+  /* Gmail, Apple Mail e iOS respetan <style> en <head>. Outlook de escritorio no,
+     por eso TODO lo imprescindible va tambien inline en cada elemento. Lo de aqui
+     son solo mejoras: modo oscuro y movil. */
+  body { margin:0 !important; padding:0 !important; width:100% !important; }
+  table { border-collapse:collapse !important; }
+  img { border:0; line-height:100%; outline:none; text-decoration:none; -ms-interpolation-mode:bicubic; }
+  a { text-decoration:none; }
+
+  /* Clientes que respetan prefers-color-scheme (Apple Mail, iOS, Outlook.com).
+     Gmail invierte por su cuenta y no lee esto: por eso los colores inline
+     ya son legibles aunque el cliente los invierta a la fuerza. */
+  @media (prefers-color-scheme: dark) {
+    .rs-page  { background-color:#242029 !important; }
+    .rs-card  { background-color:#2e2a35 !important; border-color:#3d3845 !important; }
+    .rs-ink   { color:#f3ede1 !important; }
+    .rs-muted { color:#a09bab !important; }
+    .rs-rule  { background-color:#3d3845 !important; }
+    .rs-url   { background-color:#35303d !important; border-color:#3d3845 !important; color:#a09bab !important; }
+  }
+
+  @media only screen and (max-width:620px) {
+    .rs-shell { width:100% !important; }
+    .rs-pad   { padding-left:24px !important; padding-right:24px !important; }
+    .rs-h1    { font-size:24px !important; line-height:32px !important; }
+    .rs-btn a { display:block !important; }
+  }
+</style>
+</head>
+
+<body class="rs-page" style="margin:0; padding:0; background-color:#f3ede1;">
+
+  <!-- Preheader: lo que se lee en la bandeja debajo del asunto. Los espacios
+       invisibles evitan que el cliente rellene con el texto del cuerpo. -->
+  <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#f3ede1; opacity:0;">
+    {{{PREHEADER}}}&#8203;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;
+  </div>
+
+  <table role="presentation" class="rs-page" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3ede1;">
+    <tr>
+      <td align="center" style="padding:40px 12px;">
+
+        <table role="presentation" class="rs-shell" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px; max-width:600px;">
+
+          <!-- Marca. Texto y no imagen a proposito: casi todos los clientes
+               bloquean imagenes por defecto, y un correo de seguridad que llega
+               sin logotipo se parece a uno falsificado. -->
+          <tr>
+            <td class="rs-pad" align="left" style="padding:0 8px 20px 8px;">
+              <span class="rs-ink" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:17px; font-weight:700; letter-spacing:-0.01em; color:#242029;">Resender</span>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="rs-card" style="background-color:#ffffff; border:1px solid #d4cfc7; border-radius:10px;">
+
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+
+                <tr>
+                  <td class="rs-pad" style="padding:36px 40px 0 40px;">
+                    <h1 class="rs-h1 rs-ink" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:26px; line-height:34px; font-weight:700; letter-spacing:-0.02em; color:#242029;">{{{HEADING}}}</h1>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td class="rs-pad" style="padding:14px 40px 0 40px;">
+                    <p class="rs-muted" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; line-height:24px; color:#6b6780;">{{{INTRO}}}</p>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td class="rs-pad" style="padding:14px 40px 0 40px;">
+                    <p class="rs-muted" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; line-height:24px; color:#6b6780;">{{{BODY}}}</p>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td class="rs-pad" style="padding:28px 40px 0 40px;">
+                    <div class="rs-rule" style="height:1px; line-height:1px; font-size:0; background-color:#e1dace;">&nbsp;</div>
+                  </td>
+                </tr>
+
+                <!-- "Si no fuiste tu, cambia tu contrasena". Va a
+                     /forgot-password y no a un buzon de soporte: la
+                     recuperacion ya revoca todas las sesiones, asi que quien
+                     recibe esto sin haberlo pedido se defiende solo. -->
+                <tr>
+                  <td class="rs-pad" style="padding:20px 40px 0 40px;">
+                    <p class="rs-ink" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:14px; line-height:22px; font-weight:600; color:#242029;">{{{WARNING_LABEL}}}</p>
+                  </td>
+                </tr>
+
+                <!-- Boton. Sin VML de Outlook a proposito: el editor del dashboard
+                     puede limpiar los comentarios condicionales, y perderlos deja
+                     un boton roto en vez de uno con esquinas cuadradas. En Outlook
+                     de escritorio se ve rectangular; en todo lo demas, redondeado. -->
+                <tr>
+                  <td class="rs-pad rs-btn" style="padding:16px 40px 36px 40px;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td align="center" bgcolor="#7773a5" style="background-color:#7773a5; border-radius:8px;">
+                          <a href="{{{FORGOT_URL}}}" target="_blank" rel="noopener" style="display:inline-block; padding:13px 26px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; font-weight:600; line-height:20px; color:#ffffff; text-decoration:none; border-radius:8px;">{{{CTA_LABEL}}}</a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="rs-pad" align="left" style="padding:20px 8px 0 8px;">
+              <p class="rs-muted" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:12px; line-height:18px; color:#6b6780;">{{{FOOTER_NOTE}}}</p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>

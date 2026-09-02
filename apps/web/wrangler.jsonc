@@ -62,6 +62,16 @@
     "APP_URL": "https://resender.dev",
     "EMAIL_FROM": "Resender <no-reply@resender.dev>",
     "RESEND_TEMPLATE_PASSWORD_RESET": "ee224341-7e08-4c4d-84e0-cdb14228a424",
+    // Las dos plantillas del issue #98: [Verificacion de correo] y el aviso
+    // de [Cuenta vinculada]. Mismo criterio que la de arriba. Mientras estén
+    // vacías, `sendVerifyEmail` y `sendAccountLinkedEmail` devuelven
+    // `not_configured` y lo dejan en el log: no se manda, pero tampoco lanza.
+    // TODO(infra): pegar el id cuando exista la plantilla en Resend
+    // (`docs/email/verify-email.html`).
+    "RESEND_TEMPLATE_VERIFY_EMAIL": "",
+    // TODO(infra): pegar el id cuando exista la plantilla en Resend
+    // (`docs/email/account-linked.html`).
+    "RESEND_TEMPLATE_ACCOUNT_LINKED": "",
   },
   // Entrega durable al webhook del tenant. Las colas ya existen en la cuenta
   // (`docs/api-cloudflare-manual-runbook.md`), creadas cuando esto vivía en el
@@ -182,6 +192,13 @@
   // con `wrangler secret put <NAME>` en producción y en `.dev.vars` para preview
   // local.
   //
+  // `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET` (issue #98) son secretos y van
+  // por `wrangler secret put`, en producción y con `--env staging`. Un único
+  // cliente OAuth de Google sirve a los tres entornos con tres `redirect_uri`
+  // (`<BETTER_AUTH_URL>/api/auth/callback/google`); sin las dos variables el
+  // Worker arranca igual y simplemente no dibuja el botón de Google
+  // (`lib/auth/google.ts`).
+  //
   // `BETTER_AUTH_SECRET` es el único secreto de autenticación que queda.
   // `AUTH_SECRET` y `API_KEY_PEPPER` **se borran a mano** después de desplegar y
   // reemitir las keys: desde el escalón 3 de la ADR 0014 no los lee nadie —el
@@ -225,6 +242,11 @@
         // devuelve `not_configured` y lo deja en el log: staging no manda
         // correo, pero tampoco lanza. El checklist del issue #93 lo pide.
         "RESEND_TEMPLATE_PASSWORD_RESET": "",
+        // TODO(infra): mismas dos plantillas del bloque de producción, con la
+        // misma regla: vacías hasta que existan en Resend, y mientras tanto
+        // `not_configured` en el log.
+        "RESEND_TEMPLATE_VERIFY_EMAIL": "",
+        "RESEND_TEMPLATE_ACCOUNT_LINKED": "",
       },
       // Colas propias. Compartirlas con producción haría que un job de prueba
       // saliera hacia el webhook real de un cliente que paga.

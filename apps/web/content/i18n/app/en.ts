@@ -359,6 +359,25 @@ export const en: AppDict = {
     deleteConfirmAfter: " to confirm",
     deleteConfirm: "Yes, delete my account",
     deleting: "Deleting…",
+    signInMethods: {
+      title: "How you sign in to Resender",
+      body: "Each way in is independent: linking Google doesn't remove your password.",
+      emailUnverified: "Email not confirmed",
+      emailUnverifiedHint: "Confirm it to be able to link Google.",
+      resend: "Resend confirmation",
+      resendSent: "Done, we sent it again.",
+      password: "Password",
+      passwordConfigured: "Set",
+      passwordMissing: "Not set",
+      google: "Google",
+      googleNotLinked: "Not linked",
+      link: "Link",
+      linkRequiresVerified: "Confirm your email first",
+      unlink: "Unlink",
+      unlinkHint: "Unlinking requires a recent session.",
+      lastCredentialHint: "It's your only way in; it can't be removed.",
+      linked: "Linked",
+    },
   },
 
   apiKeys: {
@@ -420,6 +439,13 @@ export const en: AppDict = {
     helpMiddle: " or write to us at ",
     helpAfter: ".",
     signOut: "Sign out",
+    verify: {
+      title: "Confirm your email",
+      body: "We emailed {email} to confirm it's yours. You don't need it to wait for approval, but you do need it to sign in with Google.",
+      resend: "Resend confirmation",
+      sent: "Done, we sent it again.",
+      linkExpired: "The link expired. Request a new one.",
+    },
   },
 
   billing: {
@@ -544,6 +570,12 @@ export const en: AppDict = {
       ": you can add {remainingSlots} more page. Uncheck the extra ones, or disconnect a page to free up a slot.",
     pageLimitRemainingMany:
       ": you can add {remainingSlots} more pages. Uncheck the extra ones, or disconnect a page to free up a slot.",
+    googleNotConfigured: "Signing in with Google isn't available right now.",
+    unlinkLastCredential: "You can't remove your only way in.",
+    sessionNotFresh: "To unlink, sign out and sign in again.",
+    linkFailed: "We couldn't link Google. Try again.",
+    oauthAccountNotLinked:
+      "It wasn't linked: confirm your email first and try again.",
   },
 
   whatsappEvents: {

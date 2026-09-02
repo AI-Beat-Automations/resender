@@ -7,8 +7,12 @@ import { nextCookies } from "better-auth/next-js"
 import { NeonDialect } from "kysely-neon"
 
 import { localeFromPathname, localePath, type Locale } from "@/content/i18n"
+import { notifyAccountLinked } from "@/lib/auth/account-linked-notice"
+import { resolveEmailLocale } from "@/lib/auth/email-locale"
+import { socialProviders } from "@/lib/auth/google"
 import { getNeonClient, getSql } from "@/lib/db"
 import { sendPasswordResetEmail } from "@/lib/email/password-reset-email"
+import { sendVerifyEmail } from "@/lib/email/verify-email-email"
 import { describeError, log } from "@/lib/observability/logger"
 import { posthog } from "@/lib/posthog"
 
@@ -40,6 +44,11 @@ function localeFromResetUrl(url: string): Locale {
 // aprobar, revocar o degradar una cuenta dejaría de pegar en la siguiente
 // request. Es la "optimización" natural que alguien va a querer hacer, y es un
 // bug de seguridad, no una mejora. Ver CONTEXT.md → [Gate de acceso].
+//
+// La misma regla vale para `emailVerified`, **aunque la librería lo traiga en
+// `session.user`**: cambia por fuera del login (al confirmar el correo) y la
+// cookie de caché lo sirve viejo hasta cinco minutos, así que `/pending` y
+// Settings lo leen vivo con `lib/auth/email-verified.ts` y no de la sesión.
 
 // El init de Better Auth es **perezoso a propósito**: `betterAuth()` construye
 // su contexto en una promesa que valida `BETTER_AUTH_SECRET` y, con
@@ -276,12 +285,11 @@ function createAuth() {
       // visiblemente.
       onPasswordReset: async ({ user }) => {
         try {
-          // ⚠️ **`email_verified` queda con población mixta.** Pasa a valer
-          // `true` para quien recuperó y sigue en `false` para todos los
-          // demás, así que **no** responde "¿el alta verificó el correo?".
-          // Alguien va a leerlo como si cumpliera la precondición de
-          // proveedores sociales de `docs/adr/0014:107`, y **no la cumple**:
-          // esa precondición es sobre el alta.
+          // Completar una recuperación también confirma el correo: el enlace
+          // probó el buzón igual de bien que el de [Verificacion de correo],
+          // y desde el #98 es una de las tres cosas que lo ponen en `true`
+          // (confirmar, darse de alta con Google, y esto). Lo que habilita es
+          // lo mismo: vincular Google a esa cuenta.
           if (!user.emailVerified) {
             await getSql()`
               update users set email_verified = true where id = ${user.id}
@@ -315,11 +323,116 @@ function createAuth() {
       },
     },
 
-    // Vacío hasta que el alta con contraseña exija verificación de email. Es la
-    // precondición bloqueante de la ADR 0014: sin verificación, cualquiera
-    // registra el email de otro y hereda su tenant cuando esa persona entre por
-    // el proveedor social.
-    socialProviders: {},
+    // [Verificacion de correo] (issue #98). **No bloquea nada**: el alta sigue
+    // abriendo sesión y el destino lo decide el [Gate de acceso]. Lo que
+    // habilita es vincular Google a esa cuenta ([Cuenta vinculada]), porque
+    // la librería se niega a vincular sobre un correo sin confirmar.
+    // `emailAndPassword.requireEmailVerification` **queda apagado**:
+    // encenderlo dejaría afuera a todas las cuentas que existen hoy, que
+    // están en `false`.
+    emailVerification: {
+      // **Explícito, y es el error silencioso más fácil de cometer en esta
+      // entrega**: su default sigue a `requireEmailVerification`, que queda en
+      // `false`, así que sin esta línea el correo no se manda nunca.
+      sendOnSignUp: true,
+
+      // Veinticuatro horas. Explícito aunque haya default, porque es una
+      // promesa del producto que [Enlace de verificacion] hace por escrito.
+      // Dura más que el de recuperación (una hora) porque solo prueba un
+      // buzón, mientras que aquel cambia una credencial.
+      expiresIn: 86400,
+
+      // `autoSignInAfterVerification` no se toca: quien confirma ya tiene
+      // sesión, porque la verificación no bloquea el alta.
+
+      // Recibe `request` cuando la llamada entró por HTTP (el callback de
+      // Google con un perfil raro sin `email_verified`) y `undefined` cuando
+      // nace en un server action (`signUpEmail`, el reenvío): de ahí que el
+      // idioma se resuelva con las tres fuentes de `resolveEmailLocale`.
+      sendVerificationEmail: async ({ user, url }, request) => {
+        // `url` ya viene armada por la librería contra `baseURL`
+        // (`<BETTER_AUTH_URL>/api/auth/verify-email?token=…&callbackURL=…`) y
+        // **no se reconstruye**: a diferencia del reset, acá no hace falta
+        // pantalla propia —el `GET` verifica y redirige solo al `callbackURL`
+        // (`/pending`) que el server action le pasó—. Sin `BETTER_AUTH_URL`
+        // la librería igual arma algo con el origen de la request, así que
+        // acá no hay un `not_configured` que atajar.
+        const locale = await resolveEmailLocale(request)
+
+        const result = await sendVerifyEmail({
+          to: user.email,
+          locale,
+          name: user.name,
+          verifyUrl: url,
+        })
+
+        // `sendTemplateEmail` nunca lanza: el fallo llega como dato. Se
+        // registra —es lo único que hace visible una caída de Resend— y no se
+        // le informa a quien lo pidió: el reenvío responde lo mismo exista o
+        // no el correo, y esto no puede romper esa regla.
+        if (!result.ok) {
+          log({
+            entrypoint: "action",
+            action: "email_send",
+            outcome: "failed",
+            reason: result.reason ?? "internal_error",
+            status: result.status,
+            tenantId: user.id,
+            errorMessage: result.error ?? undefined,
+          })
+        }
+      },
+    },
+
+    // Google (issue #98). La precondición bloqueante de la ADR 0014 —«ningún
+    // proveedor social hasta que el alta exija verificación de email»— quedó
+    // cumplida por esa entrega, con el `emailVerification` de arriba y el
+    // candado nativo de la librería. Se registra solo si `GOOGLE_CLIENT_ID` y
+    // `GOOGLE_CLIENT_SECRET` están las dos: sin ellas el objeto queda vacío,
+    // exactamente como estaba, para que `next build` y los tests sigan
+    // funcionando sin secretos. Es la misma lógica perezosa de `getAuth()`.
+    socialProviders: socialProviders(),
+
+    // **`accountLinking` NO se configura, y eso es el diseño.** Sus defaults
+    // (`enabled: true`, `requireLocalEmailVerified: true`,
+    // `disableImplicitLinking: false`) **son** el candado: Google se vincula a
+    // una cuenta con contraseña solo si los correos coinciden y la cuenta
+    // local ya confirmó el suyo; si no, rebota con `account_not_linked` y se
+    // ofrece confirmarlo. Es lo que cierra el robo de cuenta por registro
+    // anticipado.
+    //
+    // **No agregues `trustedProviders: ["google"]`.** Es lo primero que se va
+    // a querer hacer al leer los docs, y debilita el candado a cambio de cero
+    // beneficio: solo saltea el chequeo del `email_verified` del perfil
+    // **entrante** —que Google siempre reporta— y **no** el de la cuenta
+    // local, que es el que importa (`oauth2/link-account.mjs`).
+
+    // El aviso de [Cuenta vinculada]. Tres cuidados, y cada uno rompe
+    // distinto:
+    //
+    //   1. Dispara en **toda** creación de cuenta: la fila `credential` del
+    //      alta normal, la del `resetPassword`/`setUserPassword` y la de
+    //      Google. La condición —`providerId === "google"` **y** que ya exista
+    //      credencial con contraseña— vive en `account-linked-notice.ts`,
+    //      que es la regla más testeable de la entrega. Sin las dos mitades
+    //      se le manda un aviso a gente que se acaba de registrar.
+    //   2. Corre **antes** de que se acuñe la sesión del login que lo
+    //      disparó: un throw acá revienta el callback de OAuth y deja a la
+    //      persona afuera de un login que ya era exitoso. Por eso
+    //      `notifyAccountLinked` nunca lanza, con `try/catch` completo igual
+    //      que `onPasswordReset`.
+    //   3. Con `transaction: false` (ver `database` arriba) corre inmediato y
+    //      esperado, no diferido. Alcanza para mandar el aviso.
+    //
+    // `ctx` trae `request` solo cuando la llamada entró por HTTP —el callback
+    // de Google sí—, y es de donde sale el idioma del correo.
+    databaseHooks: {
+      account: {
+        create: {
+          after: (account, ctx) => notifyAccountLinked(account, ctx),
+        },
+      },
+    },
 
     // El interno viene **encendido en producción** con storage `"memory"`, que
     // en Workers es un Map por isolate: no limita nada real y gasta CPU en el

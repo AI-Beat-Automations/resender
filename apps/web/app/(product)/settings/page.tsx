@@ -1,10 +1,15 @@
 import { redirect } from "next/navigation"
 
 import { listApiKeys } from "@/lib/auth/api-keys"
+import { isEmailVerified } from "@/lib/auth/email-verified"
+import { isGoogleEnabled } from "@/lib/auth/google"
 import { getSession } from "@/lib/auth/session"
+import { listSignInMethods } from "@/lib/auth/sign-in-methods"
 import { AccountIdentityPanel } from "@/features/account/ui/account-identity-panel"
 import { ChangePasswordPanel } from "@/features/account/ui/change-password-panel"
 import { DeleteAccountPanel } from "@/features/account/ui/delete-account-panel"
+import { SignInMethodsPanel } from "@/features/account/ui/sign-in-methods-panel"
+import { resendVerificationEmailAction } from "@/features/auth/actions"
 import {
   ApiKeysPanel,
   type ApiKeyView,
@@ -26,7 +31,9 @@ import { getAppI18n } from "@/lib/i18n/app-dict"
 import { Separator } from "@workspace/ui/components/separator"
 
 type SettingsPageProps = {
-  searchParams: Promise<{ tab?: string | string[] }>
+  // `error` es el rebote del flujo de Google lanzado desde «Vincular»
+  // (`errorCallbackURL: /settings?tab=cuenta`), crudo: lo clasifica el panel.
+  searchParams: Promise<{ tab?: string | string[]; error?: string }>
 }
 
 // Ajustes en tres pestañas con el estado en la URL (ADR 0005). Cada pestaña
@@ -67,6 +74,7 @@ export default async function SettingsPage({
             tenantId={session.user.id}
             lang={lang}
             t={t}
+            oauthError={params.error}
           />
         ) : null}
         {tab === "api-keys" ? <ApiKeysTab t={t} /> : null}
@@ -78,17 +86,27 @@ export default async function SettingsPage({
   )
 }
 
-function AccountTab({
+// Async por el panel de credenciales: `email_verified` se lee **vivo** (nunca
+// de la sesión, que lo cachea cinco minutos) y las credenciales salen de
+// `listUserAccounts`. Las dos consultas son el costo aceptado en el issue #98.
+async function AccountTab({
   email,
   tenantId,
   lang,
   t,
+  oauthError,
 }: {
   email: string
   tenantId: string
   lang: Locale
   t: AppDict
+  oauthError?: string
 }) {
+  const [verified, methods] = await Promise.all([
+    isEmailVerified(tenantId),
+    listSignInMethods(),
+  ])
+
   return (
     <div className="flex max-w-205 flex-col gap-4">
       <AccountIdentityPanel email={email} tenantId={tenantId} t={t} />
@@ -96,6 +114,19 @@ function AccountTab({
           de lectura de quien entra, como el email con el que entra. */}
       <LanguagePanel lang={lang} t={t} />
       <ChangePasswordPanel />
+      {/* `resendVerificationEmailAction` es de `features/auth`: la página la
+          pasa por prop porque `features/account` no importa a su hermana. Una
+          sola acción para `/login`, `/pending` y acá. */}
+      <SignInMethodsPanel
+        email={email}
+        verified={verified}
+        methods={methods}
+        googleEnabled={isGoogleEnabled()}
+        lang={lang}
+        t={t}
+        resendAction={resendVerificationEmailAction}
+        oauthError={oauthError}
+      />
       {/* La zona de peligro va separada del resto: borrar la cuenta no puede
           leerse a la misma altura que cambiar la contraseña. */}
       {email ? (

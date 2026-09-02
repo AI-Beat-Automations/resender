@@ -361,3 +361,108 @@ Antes de dar el canal por operativo:
   `whatsapp-jobs-dlq`.
 - Borrar una cuenta de prueba deja el prefijo `wa/{tenantId}/` vacío, o un job
   reclamable a la vista.
+
+---
+
+# Google como proveedor social (issue #98)
+
+> Vigente. Recursos del Worker `web`, igual que la sección de WhatsApp. Nada de
+> esto lo crea el deploy: sin `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET` el
+> botón "Continuar con Google" simplemente no se dibuja, así que un deploy sin
+> estos pasos no rompe nada — pero tampoco habilita Google.
+
+## Secretos
+
+Producción, desde `apps/web`:
+
+```bash
+cd apps/web
+npx wrangler secret put GOOGLE_CLIENT_ID
+npx wrangler secret put GOOGLE_CLIENT_SECRET
+```
+
+Staging, por la misma razón que `WHATSAPP_VERIFY_TOKEN` (CI sube versiones de
+`web-staging` sin desplegarlas y `secret put` las rechaza):
+
+```bash
+npx wrangler versions secret put GOOGLE_CLIENT_ID --env staging
+npx wrangler versions secret put GOOGLE_CLIENT_SECRET --env staging
+```
+
+Local: las mismas dos variables en `apps/web/.env`.
+
+**Contra aceptado y documentado.** Hay **un solo** cliente OAuth de Google para
+los tres entornos (ver abajo), así que el secreto de producción de Google vive
+también en el `.env` local de cada máquina de desarrollo. La alternativa
+higiénica —dos clientes, producción separada de no-producción, para que el
+secreto productivo no baje nunca al disco— quedó descartada en el issue #98 a
+favor de la simplicidad de creación y rotación. Si se rota, se rota en los tres
+lugares a la vez.
+
+## Vars de runtime
+
+`RESEND_TEMPLATE_VERIFY_EMAIL` y `RESEND_TEMPLATE_ACCOUNT_LINKED` son IDs de
+plantilla de Resend: **vars**, no secretos, exactamente como
+`RESEND_TEMPLATE_PASSWORD_RESET`. Van en el bloque `vars` de
+`apps/web/wrangler.jsonc` —producción **y** `env.staging`, porque `vars` no se
+hereda— y en `apps/web/.env` para local.
+
+## Cliente OAuth en la consola de Google
+
+Un único cliente OAuth (tipo *Web application*) con **tres** `redirect_uri`:
+
+```
+https://resender.dev/api/auth/callback/google
+https://staging.resender.dev/api/auth/callback/google
+http://localhost:3000/api/auth/callback/google
+```
+
+Better Auth arma el `redirect_uri` desde `BETTER_AUTH_URL`, **no** desde
+`APP_URL`: `APP_URL` es el túnel de ngrok y es de Meta. Si Google devuelve
+`redirect_uri_mismatch`, lo primero a comparar es `BETTER_AUTH_URL` del entorno
+contra esta lista.
+
+La app hay que **publicarla a Production** en la pantalla de consentimiento
+(OAuth consent screen → *Publish app*). En *Testing* hay un tope de 100 usuarios
+y cada uno tiene que estar cargado a mano en una lista. No requiere revisión de
+Google: los únicos scopes que se piden son `openid`, `email` y `profile`, y los
+tres son no sensibles.
+
+## Plantillas en Resend
+
+Crear dos plantillas nuevas en el editor de Resend pegando el HTML versionado en
+el repositorio, y copiar el ID de cada una a las vars de arriba:
+
+| Plantilla | HTML | Var |
+|---|---|---|
+| Confirmación de correo | `docs/email/verify-email.html` | `RESEND_TEMPLATE_VERIFY_EMAIL` |
+| Aviso de vinculación | `docs/email/account-linked.html` | `RESEND_TEMPLATE_ACCOUNT_LINKED` |
+
+Las palabras no viven en la plantilla sino en el diccionario del repositorio y
+llegan como variables (mismo molde que `password-reset`). Antes de dar por buena
+cada plantilla: mandar un correo de prueba a `info@resender.dev` **en cada
+idioma** y comprobar que todas las variables se rellenaron.
+
+## Orden de verificación al desplegar
+
+**Todas las cuentas que existen hoy tienen `email_verified = false`**, incluidas
+las propias, y Google **no le funciona a nadie** hasta que confirme su correo:
+la librería se niega a vincular un proveedor social a una cuenta local sin
+verificar. No es un bug, es el candado haciendo su trabajo, y conviene probarlo
+en este orden:
+
+1. Con la cuenta propia, entrar con contraseña y abrir **Settings**. Las cuentas
+   aprobadas **no llegan a `/pending`** (las rebota a `/connections`), así que
+   el reenvío de confirmación que necesitan está en el panel "Cómo entrás a
+   Resender" de Settings, no en la pantalla de espera.
+2. Antes de confirmar, probar "Continuar con Google" desde `/login` con ese
+   mismo correo: tiene que rebotar con *account_not_linked* y ofrecer reenviar
+   la confirmación. Es la prueba manual del candado.
+3. Reenviar la confirmación desde Settings, abrir el enlace del correo,
+   comprobar que aterriza en `/connections` y que Settings ya no muestra
+   "Correo sin confirmar".
+4. Vincular Google desde Settings (o volver a probar el botón de `/login`):
+   tiene que llegar el aviso de vinculación al buzón y la contraseña tiene que
+   seguir sirviendo.
+5. Con un correo nuevo, probar el alta por Google de punta a punta: la cuenta
+   nace confirmada, sin correo de confirmación, y aterriza en `/pending`.
