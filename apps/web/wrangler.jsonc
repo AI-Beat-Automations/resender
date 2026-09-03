@@ -66,12 +66,10 @@
     // de [Cuenta vinculada]. Mismo criterio que la de arriba. Mientras estén
     // vacías, `sendVerifyEmail` y `sendAccountLinkedEmail` devuelven
     // `not_configured` y lo dejan en el log: no se manda, pero tampoco lanza.
-    // TODO(infra): pegar el id cuando exista la plantilla en Resend
-    // (`docs/email/verify-email.html`).
-    "RESEND_TEMPLATE_VERIFY_EMAIL": "",
-    // TODO(infra): pegar el id cuando exista la plantilla en Resend
-    // (`docs/email/account-linked.html`).
-    "RESEND_TEMPLATE_ACCOUNT_LINKED": "",
+    // Plantilla en Resend: `docs/email/verify-email.html`.
+    "RESEND_TEMPLATE_VERIFY_EMAIL": "a2be1ed8-a821-4916-871d-2a375dc3593b",
+    // Plantilla en Resend: `docs/email/account-linked.html`.
+    "RESEND_TEMPLATE_ACCOUNT_LINKED": "f76d75f9-4b9f-4064-b195-c90a5cb8d0ae",
   },
   // Entrega durable al webhook del tenant. Las colas ya existen en la cuenta
   // (`docs/api-cloudflare-manual-runbook.md`), creadas cuando esto vivía en el
