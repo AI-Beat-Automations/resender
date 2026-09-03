@@ -4,11 +4,11 @@
 
 ### Better Auth
 La autenticación web de Resender en Next.js se implementa con `Better Auth`, que es la unica autoridad de [Sesion] y de [Credencial] de la aplicacion. Reemplazo a Auth.js: decisiones y alternativas descartadas en `docs/adr/0014-better-auth-reemplaza-authjs.md`.
-El MVP expone páginas separadas de autenticación: `/login`, `/register`, `/forgot-password` y `/reset-password`. Las dos últimas son la [Recuperacion de password].
+El MVP expone páginas separadas de autenticación: `/login`, `/register`, `/forgot-password` y `/reset-password`. Las dos últimas son la [Recuperacion de password]. `/login` y `/register` ofrecen tambien "Continuar con Google" ([Cuenta vinculada]); el flujo social entero sigue siendo server actions, como todo lo demas: el repositorio no tiene `authClient` y hay que sostenerlo asi.
 Tras `login` o `register` la sesion queda abierta y el destino lo decide el [Gate de acceso], no la autenticacion: una cuenta aprobada aterriza en `/connections` para continuar el onboarding conectando Facebook, y una cuenta bloqueada —que es como nace toda cuenta nueva desde la `0019`— aterriza en `/pending`.
 Las rutas protegidas redirigen a `/login` cuando el usuario no esta autenticado.
 Si un usuario autenticado entra a `/login` o `/register`, se redirige a `/connections`, pero **solo si su cuenta puede entrar al producto**: una sesion que el gate rechazaria se queda viendo el formulario, para que las dos rutas no se reboten entre si para siempre.
-Los intentos de acceso y de alta tienen limite por IP: diez por minuto, contados por el binding nativo de Cloudflare. Se aplica en los server actions y tambien en `POST /api/auth/*`, que queda publicamente expuesto y se puede martillar salteandose los actions.
+Los intentos de acceso y de alta tienen limite por IP: diez por minuto, contados por el binding nativo de Cloudflare. Se aplica en los server actions y tambien en `POST /api/auth/*`, que queda publicamente expuesto y se puede martillar salteandose los actions. Ese limite cubre el reenvio de la [Verificacion de correo] y **no** cubre el `GET /api/auth/callback/google`, que queda fuera a sabiendas —deuda declarada en el issue #98—: martillarlo sin un `state` valido no produce trabajo caro ni escrituras.
 
 ### Sesion
 La sesion vive en la tabla `auth_sessions` y **esa fila es la fuente de verdad**. La cookie que lleva el navegador es un cache cifrado (JWE) con cinco minutos de vida, y es lo que resuelve la mayoria de los requests sin tocar la base.
@@ -17,15 +17,22 @@ Borrar la fila deja fuera a esa sesion en cuanto vence el cache, como mucho cinc
 **Ninguna bandera de acceso viaja en la sesion ni en su cache** — ver [Gate de acceso].
 
 ### Credencial
-Lo que prueba que alguien es quien dice: una fila de `auth_accounts`. Hoy solo existe la del proveedor `credential`, que guarda el hash de la contraseña. Cuando haya proveedores sociales, cada uno suma su propia fila para el mismo usuario.
+Lo que prueba que alguien es quien dice: una fila de `auth_accounts`. Existen dos proveedores: `credential`, que guarda el hash de la contraseña, y `google`. Cada proveedor suma su propia fila para el mismo usuario: las credenciales se acumulan y ninguna reemplaza a otra ([Cuenta vinculada]).
 **No confundir con [Cuenta conectada]**, que es otra cosa entera: una pagina de Facebook, una cuenta de Instagram o un numero de WhatsApp del cliente.
 La credencial de una maquina, en cambio, es el [API Token]: la misma idea —probar quien sos— para la integracion externa, que no reutiliza la sesion web.
+
+### Cuenta vinculada
+Una cuenta de Resender puede entrar por password, por Google, o por las dos. Cada via es una [Credencial] propia y **las credenciales se acumulan: vincular Google nunca borra la password**, y quien tenia las dos sigue entrando con cualquiera.
+Vincular ocurre solo si los correos coinciden y **la cuenta local ya confirmo el suyo**; si no, no se vincula y se ofrece confirmarlo. Desde `/login` y `/register` esa regla la aplica [Better Auth] con sus defaults, no codigo propio; desde `Settings` la aplica la accion de vincular, porque en ese camino la libreria solo exige que los correos coincidan.
+Cuando Google se suma a una cuenta que **ya tenia** password, sale un aviso al buzon. Es la contrapartida de no borrar nada: no se le quita a nadie una forma de entrar, pero el dueño del correo se entera de que aparecio otra.
+Se ven y se administran en `Settings`, en el panel "Como entras a Resender". Arriba de las credenciales, ese panel muestra el estado del correo: si no esta confirmado dice "Correo sin confirmar" y ofrece reenviar la [Verificacion de correo], y el boton "Vincular" de Google queda deshabilitado —con el motivo al lado— mientras el correo no este confirmado. `Settings` es ademas donde una cuenta aprobada confirma su correo, porque `/pending` la rebota a `/connections` antes de mostrarle nada. No se puede quitar la ultima: una cuenta sin ninguna credencial no podria volver a entrar.
+**No confundir con [Cuenta conectada]**, que es una pagina de Facebook, una cuenta de Instagram o un numero de WhatsApp del cliente.
 
 ### Landing
 La ruta `/` sigue siendo una landing pública simple con la propuesta de valor y accesos a `Login` y `Register`.
 
 ### Registro MVP
-En el MVP, el registro pide nombre, email y password, crea la cuenta y abre sesion inmediatamente. No se exige verificación de email antes de usar la app. Entrar al producto es otra cosa: eso lo decide el [Gate de acceso], que hoy esta encendido.
+En el MVP, el registro pide nombre, email y password, crea la cuenta, abre sesion inmediatamente y manda un correo de [Verificacion de correo]. Hay una segunda via de alta, "Continuar con Google", que no pide password ni manda ese correo: la cuenta nace con el correo confirmado ([Cuenta vinculada]). En ninguna de las dos se exige verificación de email antes de usar la app. Entrar al producto es otra cosa: eso lo decide el [Gate de acceso], que hoy esta encendido.
 
 ### Gate de acceso
 El registro esta abierto, el acceso al producto no: la bandera `users.waitlisted` cierra la puerta y se aprueba a mano, cuenta por cuenta, con `update users set waitlisted = false where email = '...'`. Se lee viva contra la base en cada request —**nunca de la [Sesion] ni de su cache**—, es fail-closed y se aplica en el layout de `(product)`, en `/billing` y en los `start`, `callback` y `send` de los tres canales. Meterla en la sesion la meteria en el cache de cinco minutos: aprobar o revocar una cuenta dejaria de pegar en la siguiente request.
@@ -38,7 +45,7 @@ No confundir con el [Permiso de Instagram]: este gate es del producto entero; el
 ### Lista de espera
 Lista publica de captacion, sin relacion con el gate anterior. Su unico proposito es guardar el correo de alguien que hoy no puede comprar —porque solo existe Messenger— para avisarle cuando salgan Instagram o WhatsApp. Esta pensada para repartir en conferencias y contactos cara a cara, ademas de la landing.
 **No** es una lista de interes por canal: la persona no elige que espera. Deja el correo y recibe los anuncios de producto; el copy promete "updates", no un canal concreto.
-Vive en la tabla propia `waitlist_signups` (Postgres, no un proveedor externo), con `unique index` sobre `lower(email)`. La salida es el script `npm run waitlist:export` (CSV): no hay panel de administracion. El [Canal de correo] ya existe, pero **manda un solo tipo de correo** y no hay envio masivo ni enlace de baja, asi que la lista se sigue acumulando sin poder accionarse.
+Vive en la tabla propia `waitlist_signups` (Postgres, no un proveedor externo), con `unique index` sobre `lower(email)`. La salida es el script `npm run waitlist:export` (CSV): no hay panel de administracion. El [Canal de correo] ya existe, pero **solo manda correos transaccionales de cuenta** y no hay envio masivo ni enlace de baja, asi que la lista se sigue acumulando sin poder accionarse.
 Un correo repetido es un **exito idempotente**: no se inserta nada, la persona ve el mismo mensaje que la primera vez y la atribucion del primer registro queda intacta (first-touch). No se revela si un correo esta en la lista.
 
 ### Campos de la lista de espera
@@ -78,7 +85,7 @@ En el MVP, `tenantId = userId` de nuestra autenticación.
 
 ### Usuario MVP
 El usuario del MVP tiene un modelo mínimo: `id`, `email`, `name`, `email_verified` y `createdAt`, salvo los campos extra estrictamente necesarios para integrar `Better Auth`. **Ya no incluye `passwordHash`**: la contraseña vive hasheada en la [Credencial], no en `users`.
-`name` lo pide el alta y es lo que dibuja las iniciales del avatar del sidebar, con el email como respaldo para las filas que lo tengan vacio. No hay pantalla para editarlo. `email_verified` existe porque la libreria lo pide y hoy no lo exige nadie: lo unico que lo pone en `true` es completar una [Recuperacion de password], porque el enlace probo que el buzon es suyo. **Eso no cumple la precondicion de proveedores sociales** de `docs/adr/0014`: esa precondicion es sobre el alta, y el alta sigue sin verificar nada.
+`name` lo pide el alta y es lo que dibuja las iniciales del avatar del sidebar, con el email como respaldo para las filas que lo tengan vacio. No hay pantalla para editarlo. `email_verified` existe porque la libreria lo pide y nadie lo exige para usar la app. Lo ponen en `true` tres cosas: confirmar el correo ([Verificacion de correo]), darse de alta con Google, y completar una [Recuperacion de password], porque el enlace probo que el buzon es suyo. Lo unico que depende de el es vincular Google ([Cuenta vinculada]). `image` lo puebla solo el alta por Google —no la vinculacion— y todavia no se dibuja en ningun lado: el sidebar sigue con las iniciales.
 El registro MVP valida email, exige nombre no vacio y password con longitud minima de 8 caracteres; el cambio de password usa la misma politica minima.
 La recuperacion de password vive en su propia entrada: [Recuperacion de password].
 El usuario autenticado puede cambiar su password desde `Settings` definiendo un password nuevo; esto no exige conocer el password anterior y no equivale a recuperacion de password. Tras cambiarlo, Resender **cierra todas las demas [Sesion]es** ademas de la actual —un dispositivo que ya no controlas pierde el acceso—, lo envia a `login` y le indica que debe iniciar sesion con el password nuevo.
@@ -86,7 +93,7 @@ En `login`, los errores son genericos. En `register`, el email duplicado se info
 
 ### Recuperacion de password
 Quien olvido su password la recupera sin ayuda: desde `login` pide un [Enlace de recuperacion] a su correo, elige una password nueva y vuelve a `login` a entrar con ella. **Resender nunca dice si un correo tiene cuenta**: la pantalla responde lo mismo exista o no, igual que los errores genericos de `login`.
-Al completarla se cierran **todas** las [Sesion]es de esa cuenta —no solo las otras, como en el cambio desde Settings— y el correo queda marcado como verificado, porque el enlace probo que el buzon es suyo. **Eso no habilita proveedores sociales**: esa precondicion es sobre el alta.
+Al completarla se cierran **todas** las [Sesion]es de esa cuenta —no solo las otras, como en el cambio desde Settings— y el correo queda marcado como verificado, porque el enlace probo que el buzon es suyo. Eso tambien deja la cuenta lista para vincular Google ([Cuenta vinculada]), igual que la [Verificacion de correo].
 No confundir con el cambio de password de Settings, que exige [Sesion] abierta y no manda correo ([Usuario MVP]).
 
 ### Enlace de recuperacion
@@ -94,10 +101,23 @@ El enlace que viaja en el correo. **Vive una hora y sirve una sola vez**: usarlo
 Su idioma es el de la pantalla donde se lo pidio, no el de la cuenta —no existe idioma por cuenta ([Preferencia de idioma])—.
 Un enlace vencido o ya usado no es un error del formulario: es una pantalla propia que ofrece pedir uno nuevo, y se decide **antes** de mostrar el formulario para que nadie pierda el trabajo de elegir una password.
 
+### Verificacion de correo
+El alta con password manda un correo que pide confirmar la direccion. **No bloquea nada**: la sesion se abre igual y el destino lo sigue decidiendo el [Gate de acceso]. Confirmar no da acceso al producto y no confirmar no lo quita.
+Para que sirve entonces: es lo unico que habilita vincular un proveedor social a esa cuenta ([Cuenta vinculada]). Una cuenta sin confirmar no se vincula, y esa es la puerta que cierra el robo de cuenta por registro anticipado.
+Un alta por Google no manda este correo: Google ya dice que el buzon es suyo, y la cuenta nace con `email_verified = true`.
+Completar una [Recuperacion de password] tambien confirma el correo, porque el enlace probo el buzon igual de bien.
+El [Enlace de verificacion] aterriza en `/pending` (es su `callbackURL`), que ya hace lo correcto para todos: a quien tiene acceso lo manda a `/connections` y a quien no le muestra la espera, con el bloque de confirmacion arriba si su correo sigue sin confirmar. Si el enlace vencio, `/pending` lo dice y ofrece reenviar. Una cuenta aprobada no llega a leer nada de eso —`/pending` la rebota—, asi que confirma y reenvia desde `Settings` ([Cuenta vinculada]).
+`email_verified` se lee **vivo** contra la base (`lib/auth/email-verified.ts`), nunca de la [Sesion] ni de su cache, por la misma doctrina que el [Gate de acceso]: la libreria lo trae en `session.user`, pero ese cache dura cinco minutos y le seguiria diciendo "sin confirmar" a quien acaba de confirmar.
+
+### Enlace de verificacion
+El enlace que viaja en el correo de [Verificacion de correo]. **Vive 24 horas y sirve las veces que haga falta hasta que vence.**
+No confundir con el [Enlace de recuperacion], que se le parece y **no tiene las mismas garantias**: aquel es una fila en `auth_verifications` que se consume al usarse y se puede invalidar borrandola; este es un **JWT firmado**, no deja fila en ninguna tabla, y por lo tanto **no se puede invalidar ni revocar**: solo vence. Dura mas justamente porque solo prueba un buzon, mientras que el de recuperacion cambia una credencial y por eso vive una hora.
+Su idioma es el de la pantalla donde nacio, no el de la cuenta —no existe idioma por cuenta ([Preferencia de idioma])—: se resuelve por la cookie `lang` de quien lo pidio, con `es` de respaldo cuando no hay request.
+
 ### Canal de correo
 Resender envia correo transaccional con **Resend**, desde `no-reply@resender.dev`, con respuestas a `info@resender.dev`.
-La maqueta del correo vive como plantilla en Resend; **las palabras siguen en el diccionario del repositorio** (ADR 0006), y llegan a la plantilla como variables. La copia del HTML que se pego en el editor de Resend esta versionada en `docs/email/password-reset.html`.
-Hoy manda un solo tipo de correo: el de [Recuperacion de password].
+La maqueta del correo vive como plantilla en Resend; **las palabras siguen en el diccionario del repositorio** (ADR 0006), y llegan a la plantilla como variables. Las copias del HTML que se pegaron en el editor de Resend estan versionadas en `docs/email/`: `password-reset.html`, `verify-email.html` y `account-linked.html`.
+Manda tres tipos de correo, todos transaccionales: el de [Recuperacion de password], el de [Verificacion de correo] y el aviso de [Cuenta vinculada].
 Un envio fallido **no se le informa a quien lo pidio** —decirlo revelaria que la cuenta existe—: se registra y la persona reintenta.
 
 ### Canal
@@ -372,10 +392,10 @@ Resender es bilingue **espanol e ingles** en las dos superficies: el sitio publi
 El registro de voz sigue siendo distinto a proposito (landing en voseo, producto en tuteo neutro, ADR 0005); ser bilingue no unifica las voces.
 
 ### Preferencia de idioma
-**No existe idioma por cuenta.** La cookie `NEXT_LOCALE` es lo unico que hay: gobierna el producto —que no se rutea por idioma, `/settings` e `/inbox` no tienen gemela `/en`— y la resuelve `lib/i18n/app-locale.ts`, que lee esa cookie y nada mas. En el sitio publico manda la URL, y la cookie solo decide a donde aterriza quien entra por la raiz `/`.
+**No existe idioma por cuenta.** La cookie `lang` es lo unico que hay: gobierna el producto —que no se rutea por idioma, `/settings` e `/inbox` no tienen gemela `/en`— y la resuelve `lib/i18n/app-locale.ts`, que lee esa cookie y nada mas. En el sitio publico manda la URL, y la cookie solo decide a donde aterriza quien entra por la raiz `/`.
 Los dos selectores —el del header publico (`components/language-toggle.tsx`) y el de `Settings > Language`— escriben esa misma cookie.
 La raiz `/` si respeta la cookie y el `accept-language`: un visitante con el navegador en ingles aterriza en `/en`. El precio es que `/` deja de ser cacheable igual para todos.
-Que la preferencia sea de navegador y no de cuenta tiene una consecuencia que se ve en el [Enlace de recuperacion]: su idioma es el de la pantalla donde se lo pidio, y quien pide el enlace desde otro dispositivo lo recibe en el idioma de ese otro dispositivo.
+Que la preferencia sea de navegador y no de cuenta tiene una consecuencia que se ve en el [Enlace de recuperacion]: su idioma es el de la pantalla donde se lo pidio, y quien pide el enlace desde otro dispositivo lo recibe en el idioma de ese otro dispositivo. Lo mismo vale para los correos de [Verificacion de correo] y [Cuenta vinculada]: salen en el idioma de esa cookie, con `es` de respaldo, porque su `callbackURL` es una ruta del producto sin gemela `/en` y no codifica idioma como si lo hace el de recuperacion.
 **Deuda declarada:** hasta esta entrega, esta seccion afirmaba que existia una columna `users.locale` que gobernaba el producto y que el alta la sembraba. Nunca existio —no esta en ninguna migracion y ningun codigo la lee—. Crearla de verdad es una feature aparte: migracion, alta, selector de Ajustes y una query por request.
 
 ### Paginas legales

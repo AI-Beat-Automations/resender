@@ -363,6 +363,25 @@ export const es: AppDict = {
     deleteConfirmAfter: " para confirmar",
     deleteConfirm: "Sí, eliminar mi cuenta",
     deleting: "Eliminando…",
+    signInMethods: {
+      title: "Cómo entras a Resender",
+      body: "Cada forma de entrar es independiente: vincular Google no borra tu contraseña.",
+      emailUnverified: "Correo sin confirmar",
+      emailUnverifiedHint: "Confírmalo para poder vincular Google.",
+      resend: "Reenviar confirmación",
+      resendSent: "Listo, te lo reenviamos.",
+      password: "Contraseña",
+      passwordConfigured: "Configurada",
+      passwordMissing: "Sin configurar",
+      google: "Google",
+      googleNotLinked: "No vinculado",
+      link: "Vincular",
+      linkRequiresVerified: "Confirma tu correo primero",
+      unlink: "Desvincular",
+      unlinkHint: "Desvincular pide una sesión reciente.",
+      lastCredentialHint: "Es tu única forma de entrar; no se puede quitar.",
+      linked: "Vinculado",
+    },
   },
 
   apiKeys: {
@@ -425,6 +444,13 @@ export const es: AppDict = {
     helpMiddle: " o escribirnos a ",
     helpAfter: ".",
     signOut: "Cerrar sesión",
+    verify: {
+      title: "Confirma tu correo",
+      body: "Te escribimos a {email} para confirmar que es tuyo. No hace falta para esperar la aprobación, pero sí para entrar con Google.",
+      resend: "Reenviar confirmación",
+      sent: "Listo, te lo reenviamos.",
+      linkExpired: "El enlace venció, pide uno nuevo.",
+    },
   },
 
   billing: {
@@ -550,6 +576,12 @@ export const es: AppDict = {
       ": puedes añadir {remainingSlots} página más. Desmarca las que sobren o desconecta una página para liberar cupo.",
     pageLimitRemainingMany:
       ": puedes añadir {remainingSlots} páginas más. Desmarca las que sobren o desconecta una página para liberar cupo.",
+    googleNotConfigured: "Entrar con Google no está disponible ahora mismo.",
+    unlinkLastCredential: "No puedes quitar tu única forma de entrar.",
+    sessionNotFresh: "Para desvincular, cierra sesión y vuelve a entrar.",
+    linkFailed: "No pudimos vincular Google. Inténtalo de nuevo.",
+    oauthAccountNotLinked:
+      "No se vinculó: confirma tu correo primero y vuelve a intentarlo.",
   },
 
   whatsappEvents: {

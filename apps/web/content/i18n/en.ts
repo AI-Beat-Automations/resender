@@ -373,7 +373,8 @@ export const en: Dict = {
     register: {
       eyebrow: "sign-up",
       title: "Create account",
-      subtitle: "Email and password. No email verification in the MVP.",
+      subtitle:
+        "Email and password. We'll send you an email to confirm your address.",
     },
     passwordChanged: "Password updated. Sign in with the new one.",
     forgot: {
@@ -416,6 +417,43 @@ export const en: Dict = {
         "If you didn't ask for this, ignore this message: your password doesn't change until you use the link.",
       footerNote: "Resender · resender.dev",
     },
+    google: {
+      continueWith: "Continue with Google",
+      divider: "or",
+    },
+    oauthErrors: {
+      accountNotLinked:
+        "That account already exists with a password. Confirm your email and try again.",
+      generic: "We couldn't sign you in with Google. Try again.",
+      resendCta: "Send me the confirmation",
+      resendEmailPlaceholder: "you@company.com",
+      // Conditional and never naming the address, same rule as
+      // `forgot.sentBody`: the screen doesn't reveal whether an account exists.
+      resendSent: "If that account exists, we've sent you the confirmation.",
+    },
+    verifyEmail: {
+      subject: "Confirm your email",
+      preheader: "Confirm this email is yours. The link expires in 24 hours.",
+      greeting: "Hi {name},",
+      intro: "Confirm this email is yours to finish creating your account.",
+      ctaLabel: "Confirm my email",
+      expiryNote: "The link expires in 24 hours.",
+      fallbackLabel: "Button not working? Copy this address:",
+      ignoreNote: "If you didn't create this account, ignore this message.",
+      footerNote: "Resender · resender.dev",
+    },
+    accountLinkedEmail: {
+      subject: "You can now sign in with Google",
+      preheader:
+        "You linked Google to your Resender account. Your password still works.",
+      heading: "You can now sign in with Google",
+      intro:
+        "You linked your Google account ({googleEmail}) to your Resender account.",
+      body: "From now on you can sign in with Google or with your password: your password still works.",
+      warningLabel: "If this wasn't you, change your password.",
+      ctaLabel: "Change my password",
+      footerNote: "Resender · resender.dev",
+    },
     form: {
       email: "Email",
       password: "Password",
@@ -445,6 +483,7 @@ export const en: Dict = {
         "We created your account, but couldn't sign you in. Sign in from Log in.",
       resetLinkExpired:
         "This link no longer works. Request a new one and try again.",
+      googleNotConfigured: "Signing in with Google isn't available right now.",
     },
   },
 

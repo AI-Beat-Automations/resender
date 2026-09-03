@@ -1,9 +1,18 @@
 "use server"
 
+import { revalidatePath } from "next/cache"
 import { headers } from "next/headers"
+import { redirect } from "next/navigation"
+import { APIError } from "better-auth/api"
 
 import { getAuth } from "@/lib/auth/auth"
+import { isEmailVerified } from "@/lib/auth/email-verified"
+import { isGoogleEnabled } from "@/lib/auth/google"
 import { getSession, signOut } from "@/lib/auth/session"
+import {
+  classifyUnlinkError,
+  type UnlinkError,
+} from "@/lib/auth/sign-in-methods"
 import { setUserPassword } from "@/lib/auth/set-password"
 import { getAppDict } from "@/lib/i18n/app-dict"
 import {
@@ -217,5 +226,127 @@ export async function deleteAccountAction(
   // Cierra la sesión y redirige a la landing pública. signOut lanza el redirect,
   // por lo que el código posterior no se alcanza.
   await signOut({ redirectTo: "/" })
+  return {}
+}
+
+// --- [Cuenta vinculada] (issue #98): vincular y desvincular Google ---
+
+export type SignInMethodState = {
+  error?: string
+}
+
+// A dónde vuelve el flujo de OAuth que se lanza desde Settings, bien o mal.
+// La pestaña Cuenta es la que dibuja el panel y la que lee el `?error=` del
+// rebote (`classifyOAuthError`, en `sign-in-methods-panel`).
+const SETTINGS_ACCOUNT_TAB = "/settings?tab=cuenta"
+
+/**
+ * «Vincular» Google a la cuenta con sesión abierta. Vincular **desde acá**
+ * tampoco borra la contraseña —no se borra en ningún camino— y también manda
+ * el aviso al buzón: lo hace el hook `account.create.after` de
+ * `lib/auth/auth.ts`, no esta acción.
+ */
+// Sin parámetros a propósito: no lee nada del formulario y `useActionState`
+// acepta una acción con menos argumentos de los que le pasa.
+export async function linkGoogleAction(): Promise<SignInMethodState> {
+  const t = await getAppDict()
+  const session = await getSession()
+  if (!session?.user?.id) return { error: t.actions.notSignedIn }
+
+  // No debería verse: sin credenciales la fila de Google no se dibuja.
+  if (!isGoogleEnabled()) return { error: t.actions.googleNotConfigured }
+
+  // **Acá el candado es este `if`, no la librería.** `requireLocalEmailVerified`
+  // vive en `oauth2/link-account.mjs`, el camino de `signInSocial` (el botón
+  // de `/login`); el camino de `linkSocialAccount` pasa por la rama `link` del
+  // callback, que solo exige que los correos coincidan y que el perfil de
+  // Google venga verificado, y **nunca mira** `email_verified` de la cuenta
+  // local. Vincular con el correo sin confirmar no habilita ningún robo —solo
+  // se vincula una cuenta de Google con el mismo correo—, pero rompería la
+  // regla de [Cuenta vinculada]. Se lee viva, por el cache de cinco minutos.
+  if (!(await isEmailVerified(session.user.id))) {
+    return { error: t.actions.oauthAccountNotLinked }
+  }
+
+  let url: string | undefined
+  try {
+    const result = await getAuth().api.linkSocialAccount({
+      body: {
+        provider: "google",
+        callbackURL: SETTINGS_ACCOUNT_TAB,
+        errorCallbackURL: SETTINGS_ACCOUNT_TAB,
+        // La librería devuelve la URL en vez de contestar con `Location`: el
+        // redirect lo hace Next, abajo y fuera del `try`.
+        disableRedirect: true,
+      },
+      // Por acá ve la sesión y escribe la cookie del `state` de OAuth.
+      headers: await headers(),
+    })
+    url = result.url
+  } catch (error) {
+    if (error instanceof APIError) return { error: t.actions.linkFailed }
+    throw error
+  }
+
+  if (!url) return { error: t.actions.linkFailed }
+
+  // Fuera del `try`: `redirect()` funciona lanzando y el catch lo tragaría.
+  redirect(url)
+}
+
+// Código de `lib/auth/sign-in-methods` → clave del diccionario. `Record`
+// sobre la unión: un código nuevo no compila hasta que alguien decida cómo
+// se dice.
+const UNLINK_ERROR_KEY: Record<
+  UnlinkError,
+  "unlinkLastCredential" | "sessionNotFresh" | "accountNotFound" | "linkFailed"
+> = {
+  last_credential: "unlinkLastCredential",
+  session_not_fresh: "sessionNotFresh",
+  account_not_found: "accountNotFound",
+  unknown: "linkFailed",
+}
+
+/**
+ * «Desvincular» Google. Dos cosas que la librería impone y se reflejan en el
+ * copy en vez de pelearlas: exige **sesión fresca** (`freshSessionMiddleware`)
+ * y **se niega a quitar la última credencial**. El panel ya no ofrece el botón
+ * cuando Google es la única; este mapeo cubre la carrera entre dos pestañas.
+ */
+export async function unlinkGoogleAction(
+  _state: SignInMethodState,
+  formData: FormData
+): Promise<SignInMethodState> {
+  const t = await getAppDict()
+  const session = await getSession()
+  if (!session?.user?.id) return { error: t.actions.notSignedIn }
+
+  // Id de la **fila** de `auth_accounts` (`listUserAccounts().id`), que es lo
+  // que `unlinkAccount` compara; no el `sub` de Google.
+  const accountId = formData.get("accountId")
+  if (typeof accountId !== "string" || !accountId) {
+    return { error: t.actions.accountNotFound }
+  }
+
+  try {
+    // El dueño lo resuelve la librería desde la cookie: `accountId` de otra
+    // cuenta no aparece entre las de esta sesión y cae en `ACCOUNT_NOT_FOUND`.
+    await getAuth().api.unlinkAccount({
+      body: { accountId },
+      headers: await headers(),
+    })
+  } catch (error) {
+    if (error instanceof APIError) {
+      return {
+        error:
+          t.actions[UNLINK_ERROR_KEY[classifyUnlinkError(error.body?.code)]],
+      }
+    }
+    throw error
+  }
+
+  // El panel se lee del servidor en cada render: con esto la fila de Google
+  // vuelve a decir «No vinculado» sin recargar a mano.
+  revalidatePath("/settings")
   return {}
 }

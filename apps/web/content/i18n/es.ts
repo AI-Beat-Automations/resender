@@ -388,7 +388,8 @@ export const es: Dict = {
     register: {
       eyebrow: "alta",
       title: "Crear cuenta",
-      subtitle: "Email y contraseña. No hay verificación por correo en el MVP.",
+      subtitle:
+        "Email y contraseña. Te enviamos un correo para confirmar tu dirección.",
     },
     passwordChanged: "Contraseña actualizada. Inicia sesión con la nueva.",
     forgot: {
@@ -431,6 +432,45 @@ export const es: Dict = {
         "Si no pediste esto, ignora este mensaje: tu contraseña no cambia hasta que uses el enlace.",
       footerNote: "Resender · resender.dev",
     },
+    google: {
+      continueWith: "Continuar con Google",
+      divider: "o",
+    },
+    oauthErrors: {
+      accountNotLinked:
+        "Esa cuenta ya existe con contraseña. Confirma tu correo y vuelve a intentarlo.",
+      generic: "No pudimos entrar con Google. Inténtalo de nuevo.",
+      resendCta: "Enviarme la confirmación",
+      resendEmailPlaceholder: "tu@empresa.com",
+      // En condicional y sin nombrar el correo, por la misma regla que
+      // `forgot.sentBody`: la pantalla no revela si una cuenta existe.
+      resendSent: "Si esa cuenta existe, te enviamos la confirmación.",
+    },
+    verifyEmail: {
+      subject: "Confirma tu correo",
+      preheader:
+        "Confirma que este correo es tuyo. El enlace vence en 24 horas.",
+      greeting: "Hola {name},",
+      intro:
+        "Confirma que este correo es tuyo para terminar de crear tu cuenta.",
+      ctaLabel: "Confirmar mi correo",
+      expiryNote: "El enlace vence en 24 horas.",
+      fallbackLabel: "¿No funciona el botón? Copia esta dirección:",
+      ignoreNote: "Si no creaste esta cuenta, ignora este mensaje.",
+      footerNote: "Resender · resender.dev",
+    },
+    accountLinkedEmail: {
+      subject: "Ahora también entras con Google",
+      preheader:
+        "Vinculaste Google a tu cuenta de Resender. Tu contraseña sigue funcionando.",
+      heading: "Ahora también entras con Google",
+      intro:
+        "Vinculaste tu cuenta de Google ({googleEmail}) a tu cuenta de Resender.",
+      body: "Desde ahora puedes entrar con Google o con tu contraseña: tu contraseña sigue funcionando.",
+      warningLabel: "Si no fuiste tú, cambia tu contraseña.",
+      ctaLabel: "Cambiar mi contraseña",
+      footerNote: "Resender · resender.dev",
+    },
     form: {
       email: "Email",
       password: "Contraseña",
@@ -461,6 +501,7 @@ export const es: Dict = {
         "Creamos tu cuenta, pero no pudimos iniciar la sesión. Entra desde Iniciar sesión.",
       resetLinkExpired:
         "Ese enlace ya no sirve. Pide uno nuevo y vuelve a intentarlo.",
+      googleNotConfigured: "Entrar con Google no está disponible ahora mismo.",
     },
   },
 

@@ -6,6 +6,13 @@ export const metadata = privatePageMetadata(
   getDictionary("en").auth.register.title
 )
 
-export default function EnRegisterPage() {
-  return <RegisterView lang="en" />
+type RegisterPageProps = {
+  searchParams: Promise<{ error?: string }>
+}
+
+export default async function EnRegisterPage({
+  searchParams,
+}: RegisterPageProps) {
+  const params = await searchParams
+  return <RegisterView lang="en" oauthError={params.error} />
 }

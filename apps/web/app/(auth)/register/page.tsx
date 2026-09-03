@@ -6,6 +6,15 @@ export const metadata = privatePageMetadata(
   getDictionary("es").auth.register.title
 )
 
-export default function RegisterPage() {
-  return <RegisterView lang="es" />
+type RegisterPageProps = {
+  searchParams: Promise<{ error?: string }>
+}
+
+// `error` es el rebote del flujo de Google (`errorCallbackURL`), crudo: lo
+// clasifica la vista.
+export default async function RegisterPage({
+  searchParams,
+}: RegisterPageProps) {
+  const params = await searchParams
+  return <RegisterView lang="es" oauthError={params.error} />
 }

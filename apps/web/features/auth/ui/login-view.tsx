@@ -12,6 +12,10 @@ import {
   AccessShell,
 } from "@/features/auth/ui/access-shell"
 import { AuthForm } from "@/features/auth/ui/auth-form"
+import { GoogleSignIn } from "@/features/auth/ui/google-sign-in"
+import { OauthErrorNotice } from "@/features/auth/ui/oauth-error-notice"
+import { isGoogleEnabled } from "@/lib/auth/google"
+import { classifyOAuthError } from "@/lib/auth/oauth-errors"
 import { resolveProductAccess } from "@/lib/auth/waitlist"
 
 // Vista de login compartida por `/login` (ES) y `/en/login` (EN). El diseño es
@@ -19,9 +23,12 @@ import { resolveProductAccess } from "@/lib/auth/waitlist"
 export async function LoginView({
   lang,
   passwordChanged = false,
+  oauthError,
 }: {
   lang: Locale
   passwordChanged?: boolean
+  /** El `?error=` crudo con el que Better Auth rebota desde el flujo de OAuth. */
+  oauthError?: string
 }) {
   // Solo rebota al producto quien de verdad puede entrar. Con `session != null`
   // alcanzaba mientras toda sesión firmada correspondiera a un usuario real;
@@ -38,6 +45,11 @@ export async function LoginView({
   }
 
   const t = getDictionary(lang).auth
+  // Las dos decisiones de Google se toman acá, en el servidor: qué dice el
+  // `?error=` (`lib/auth/oauth-errors`) y si el botón existe
+  // (`isGoogleEnabled()`, para que la UI no lea `process.env`).
+  const oauthErrorKind = classifyOAuthError(oauthError)
+  const googleEnabled = isGoogleEnabled()
 
   return (
     <AccessShell lang={lang} topbarEnd={<AccessDocsLink lang={lang} />}>
@@ -54,6 +66,12 @@ export async function LoginView({
             {t.passwordChanged}
           </p>
         ) : null}
+        {oauthErrorKind ? (
+          <OauthErrorNotice kind={oauthErrorKind} lang={lang} />
+        ) : null}
+        {/* Google arriba, separador «o», y el formulario de siempre sin tocar.
+            Sin credenciales no se dibuja ni el botón ni el separador. */}
+        {googleEnabled ? <GoogleSignIn lang={lang} from="login" /> : null}
         <AuthForm action={loginAction} mode="login" lang={lang} />
       </AccessCard>
     </AccessShell>
