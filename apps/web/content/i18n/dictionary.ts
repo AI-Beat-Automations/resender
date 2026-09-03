@@ -200,6 +200,57 @@ export type Dict = {
       ignoreNote: string
       footerNote: string
     }
+    // Google como proveedor social (issue #98). El botón vive **arriba** del
+    // `auth-form` de siempre, con un separador; si `isGoogleEnabled()` es
+    // falso no se dibuja ninguno de los dos.
+    google: {
+      continueWith: string
+      divider: string
+    }
+    // El `?error=` con el que Better Auth rebota al `errorCallbackURL` del
+    // flujo de OAuth, ya clasificado por `lib/auth/oauth-errors.ts`. Solo
+    // `account_not_linked` tiene mensaje y salida propios —el reenvío de la
+    // confirmación—; los otros doce códigos caen en `generic`. La pantalla de
+    // login no tiene sesión, así que el reenvío pide el correo, y la respuesta
+    // es idéntica exista la cuenta o no.
+    oauthErrors: {
+      accountNotLinked: string
+      generic: string
+      resendCta: string
+      resendEmailPlaceholder: string
+      resendSent: string
+    }
+    // El correo de [Verificacion de correo]: las nueve variables de la
+    // plantilla de Resend más el asunto, con la misma regla que `resetEmail`.
+    // `VERIFY_URL` no está: es el href, no copy. `greeting` lleva `{name}`.
+    verifyEmail: {
+      subject: string
+      preheader: string
+      /** `{name}` */
+      greeting: string
+      intro: string
+      ctaLabel: string
+      expiryNote: string
+      fallbackLabel: string
+      // **No es relleno**: es lo que evita que alguien confirme una cuenta
+      // que registró otro con su dirección.
+      ignoreNote: string
+      footerNote: string
+    }
+    // El aviso de [Cuenta vinculada]: sale cuando Google se suma a una cuenta
+    // que ya tenía contraseña. `intro` lleva `{googleEmail}`; `FORGOT_URL` no
+    // está porque es el href.
+    accountLinkedEmail: {
+      subject: string
+      preheader: string
+      heading: string
+      /** `{googleEmail}` */
+      intro: string
+      body: string
+      warningLabel: string
+      ctaLabel: string
+      footerNote: string
+    }
     form: {
       email: string
       password: string
@@ -245,6 +296,10 @@ export type Dict = {
       // texto es el que traduce el `INVALID_TOKEN` de la librería cuando el
       // token muere entre el peek y el submit.
       resetLinkExpired: string
+      // `signInWithGoogleAction` sin `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`.
+      // No debería verse —sin credenciales el botón no se dibuja—, pero la
+      // acción existe igual y tiene que contestar algo.
+      googleNotConfigured: string
     }
   }
   // Lista de espera pública de captación (ADR 0007). Va después de `auth`

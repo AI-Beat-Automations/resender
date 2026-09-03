@@ -314,6 +314,32 @@ export type AppDict = {
     deleteConfirmAfter: string
     deleteConfirm: string
     deleting: string
+    /**
+     * Panel «Cómo entras a Resender» ([Cuenta vinculada], issue #98): la fila
+     * de estado del correo arriba —solo si no está confirmado—, y debajo las
+     * credenciales. `unlink` no se ofrece cuando es la única (la librería
+     * rechaza quitar la última) y `link` va deshabilitado con
+     * `linkRequiresVerified` al lado mientras el correo no esté confirmado.
+     */
+    signInMethods: {
+      title: string
+      body: string
+      emailUnverified: string
+      emailUnverifiedHint: string
+      resend: string
+      resendSent: string
+      password: string
+      passwordConfigured: string
+      passwordMissing: string
+      google: string
+      googleNotLinked: string
+      link: string
+      linkRequiresVerified: string
+      unlink: string
+      unlinkHint: string
+      lastCredentialHint: string
+      linked: string
+    }
   }
 
   apiKeys: {
@@ -379,6 +405,21 @@ export type AppDict = {
     helpMiddle: string
     helpAfter: string
     signOut: string
+    /**
+     * Bloque de [Verificacion de correo], **por encima** del mensaje de
+     * aprobación y solo si `isEmailVerified()` es falso (leído vivo, no de la
+     * sesión: la cookie de caché la trae vieja hasta cinco minutos).
+     * `linkExpired` es lo que dice `/pending?error=TOKEN_EXPIRED` (o
+     * `INVALID_TOKEN`), ya clasificado por `classifyVerificationError`.
+     */
+    verify: {
+      title: string
+      /** `{email}` */
+      body: string
+      resend: string
+      sent: string
+      linkExpired: string
+    }
   }
 
   billing: {
@@ -480,6 +521,16 @@ export type AppDict = {
     pageLimitRemainingOne: string
     /** `{remainingSlots}` */
     pageLimitRemainingMany: string
+    // Las acciones de [Cuenta vinculada] (issue #98). Dos las impone la
+    // librería y se reflejan en vez de pelearlas: `unlinkAccount` se niega a
+    // quitar la última credencial (`FAILED_TO_UNLINK_LAST_ACCOUNT`) y exige
+    // sesión fresca (`freshSessionMiddleware`). `oauthAccountNotLinked` es el
+    // `account_not_linked` del callback cuando se vincula desde Settings.
+    googleNotConfigured: string
+    unlinkLastCredential: string
+    sessionNotFresh: string
+    linkFailed: string
+    oauthAccountNotLinked: string
   }
 
   /**

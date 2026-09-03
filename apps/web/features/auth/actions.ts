@@ -6,7 +6,9 @@ import { APIError } from "better-auth/api"
 
 import { getDictionary, localePath, type Locale } from "@/content/i18n"
 import { getAuth } from "@/lib/auth/auth"
+import { isGoogleEnabled } from "@/lib/auth/google"
 import { allowAuthAttempt } from "@/lib/auth/rate-limit"
+import { getSession } from "@/lib/auth/session"
 import {
   EMAIL_RE,
   normalizeEmail,
@@ -132,11 +134,18 @@ export async function registerAction(
     // `signUpEmail` crea el usuario **y** abre la sesión en una sola llamada,
     // así que ya no existe el estado intermedio «cuenta creada, sesión no».
     // `name` es obligatorio para la librería.
+    //
+    // `callbackURL: "/pending"` es a donde aterriza el [Enlace de verificacion]
+    // que este alta manda (`sendOnSignUp`, ver `lib/auth/auth.ts`). Es la única
+    // ruta que ya hace lo correcto para todos: a quien tiene acceso lo rebota a
+    // `/connections` y a quien no le muestra la espera. Si el enlace venció, la
+    // librería vuelve a esta misma ruta con `?error=`, y `/pending` lo lee.
     const result = await getAuth().api.signUpEmail({
       body: {
         name: name.value,
         email: input.value.email,
         password: input.value.password,
+        callbackURL: "/pending",
       },
       headers: await headers(),
     })
@@ -287,4 +296,139 @@ export async function resetPasswordAction(
   // tragaría. `?passwordChanged=1` ya existe: es el aviso que muestra
   // `login-view` tras el cambio desde Ajustes.
   redirect(`${localePath("/login", locale)}?passwordChanged=1`)
+}
+
+// --- Google (CONTEXT.md → [Cuenta vinculada], issue #98) ---
+
+// Desde qué pantalla salió el botón. Better Auth valida el origen del
+// `errorCallbackURL`, y además el rebote con `?error=` tiene que caer en la
+// pantalla donde estaba la persona, no en la otra.
+function originOf(formData: FormData): "/login" | "/register" {
+  return formData.get("from") === "register" ? "/register" : "/login"
+}
+
+/**
+ * «Continuar con Google». Pide a la librería la URL de autorización y redirige
+ * ahí. **Sin `authClient`**: el repositorio no tiene cliente de Better Auth y
+ * el flujo social entero es server actions, como todo lo demás. Es deliberado
+ * y hay que sostenerlo.
+ */
+export async function signInWithGoogleAction(
+  _state: AuthFormState,
+  formData: FormData
+): Promise<AuthFormState> {
+  const locale = localeOf(formData)
+  const errors = getDictionary(locale).auth.errors
+
+  // El mismo límite por IP que el acceso y el alta, y antes de todo lo demás.
+  if (!(await allowAuthAttempt())) return { error: errors.tooManyAttempts }
+
+  // No debería verse: sin credenciales el botón no se dibuja. Pero la acción
+  // existe igual y alguien puede invocarla a mano; mejor un mensaje que un
+  // `PROVIDER_NOT_FOUND` crudo de la librería.
+  if (!isGoogleEnabled()) return { error: errors.googleNotConfigured }
+
+  let url: string | undefined
+  try {
+    const result = await getAuth().api.signInSocial({
+      body: {
+        provider: "google",
+        // `/connections` es deliberado: **el destino lo decide el [Gate de
+        // acceso], no la autenticación**, igual que en `loginAction` y
+        // `registerAction`. Una cuenta nueva va a rebotar a `/pending` y eso
+        // es correcto.
+        callbackURL: "/connections",
+        // La pantalla de origen con su prefijo de idioma: la librería valida
+        // el origen del callback de error, y el `?error=` se dibuja en la
+        // misma card donde estaba el botón (`lib/auth/oauth-errors.ts`).
+        errorCallbackURL: localePath(originOf(formData), locale),
+        // La librería devuelve la URL en vez de contestar con `Location`: el
+        // redirect lo hace Next, abajo y fuera del `try`.
+        disableRedirect: true,
+      },
+      // Por acá escribe la cookie del `state` de OAuth el plugin
+      // `nextCookies()`; sin `headers` el callback no encontraría el `state`.
+      headers: await headers(),
+    })
+    url = result.url
+  } catch (error) {
+    if (error instanceof APIError) {
+      return { error: errors.googleNotConfigured }
+    }
+    throw error
+  }
+
+  // Sin URL no hay a dónde ir. No pasa con `disableRedirect: true` y un
+  // proveedor registrado, pero el tipo lo admite y hay que contestar algo.
+  if (!url) return { error: errors.googleNotConfigured }
+
+  // Fuera del `try`: `redirect()` funciona lanzando y el catch lo tragaría.
+  redirect(url)
+}
+
+export type ResendVerificationState = {
+  error?: string
+  // `true` = "te lo reenviamos". Es el **mismo** estado exista o no la cuenta:
+  // ver el comentario de `resendVerificationEmailAction`.
+  sent?: boolean
+}
+
+/**
+ * Reenvía el correo de [Verificacion de correo]. Una sola acción para tres
+ * pantallas: el aviso `account_not_linked` de `/login` (sin sesión, pide el
+ * correo), el bloque de `/pending` y el panel de Settings (con sesión, el
+ * correo sale de ahí y el formulario no manda ninguno).
+ *
+ * **Devuelve siempre `{ sent: true }`**, exista o no la cuenta y falle o no
+ * el envío. Sin sesión, el endpoint de la librería ya es anti-enumeración por
+ * diseño —firma un token aunque el correo no exista, para emparejar tiempos—
+ * y esta acción no lo desanda. Es la misma regla que protegen `loginAction` y
+ * `forgotPasswordAction`.
+ */
+export async function resendVerificationEmailAction(
+  _state: ResendVerificationState,
+  formData: FormData
+): Promise<ResendVerificationState> {
+  const locale = localeOf(formData)
+  const errors = getDictionary(locale).auth.errors
+
+  // Antes de tocar la base, igual que las otras. Es la única respuesta
+  // distinta, y es genérica por IP: no dice nada sobre ninguna cuenta.
+  if (!(await allowAuthAttempt())) return { error: errors.tooManyAttempts }
+
+  // Con sesión, el correo es el de la sesión y el del formulario se ignora:
+  // que nadie use una pantalla autenticada para mandarle correos a otro.
+  const session = await getSession()
+  const email = session
+    ? session.user.email
+    : normalizeEmail(formData.get("email"))
+  // Un correo inválido tampoco es un error visible: distinguirlo del que no
+  // tiene cuenta abriría una diferencia observable, como en `forgotPassword`.
+  if (!EMAIL_RE.test(email)) return { sent: true }
+
+  try {
+    // El mismo `callbackURL` que el alta: el [Enlace de verificacion] aterriza
+    // en `/pending`, que decide por todos (ver `registerAction`).
+    await getAuth().api.sendVerificationEmail({
+      body: { email, callbackURL: "/pending" },
+      // Con `headers` la librería ve la sesión (si la hay) y el idioma del
+      // correo sale de la cookie `lang` de esta request
+      // (`lib/auth/email-locale.ts`).
+      headers: await headers(),
+    })
+  } catch (error) {
+    // Dos `APIError` posibles, y ninguno cambia lo que ve la persona:
+    //
+    //   - **Sin sesión** la librería no lanza por correo inexistente (responde
+    //     lo mismo, con relleno de tiempo), así que lo que llega acá es un
+    //     fallo real de envío, y contarlo sería el oráculo.
+    //   - **Con sesión** puede lanzar `EMAIL_MISMATCH` (no aplica: el correo
+    //     es el de la sesión) o `EMAIL_ALREADY_VERIFIED`, que solo pasa si la
+    //     cookie de caché decía «sin confirmar» y la base ya dice lo contrario.
+    //     Para esa persona el correo **ya está** confirmado: decirle «listo»
+    //     es lo correcto, y la próxima lectura viva de la bandera lo refleja.
+    if (!(error instanceof APIError)) throw error
+  }
+
+  return { sent: true }
 }

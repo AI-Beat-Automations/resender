@@ -1,0 +1,743 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Resender.dev — Correos de verificación y de cuenta vinculada (export Figma / Resend)</title>
+<style>
+  /* ------------------------------------------------------------------
+     TOKENS reales del sitio (packages/ui/src/styles/globals.css, :root).
+     Son los mismos hex que van inline en las plantillas de docs/email/.
+     ------------------------------------------------------------------ */
+  :root {
+    --background: #f3ede1; /* crema: fondo del correo */
+    --foreground: #242029; /* morado oscuro: marca y títulos */
+    --card: #ffffff;       /* tarjeta */
+    --border: #d4cfc7;     /* borde de la tarjeta */
+    --rule: #e1dace;       /* separador y borde de la caja de URL */
+    --primary: #7773a5;    /* violeta de marca: botón */
+    --muted-foreground: #6b6780; /* cuerpo */
+    --radius-card: 10px;
+    --radius-btn: 8px;
+
+    /* Modo oscuro (solo clientes que respetan prefers-color-scheme) */
+    --dark-background: #242029;
+    --dark-card: #2e2a35;
+    --dark-border: #3d3845;
+    --dark-ink: #f3ede1;
+    --dark-muted: #a09bab;
+    --dark-url: #35303d;
+
+    --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --font-mono: "Space Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ==================================================================
+     Chrome de este documento (no forma parte del correo)
+     ================================================================== */
+  .page { max-width: 1320px; margin: 0 auto; padding: 64px 24px 96px; }
+  .kicker { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.02em; color: var(--primary); text-transform: lowercase; margin: 0 0 8px; }
+  h1 { font-size: 34px; line-height: 1.15; margin: 0 0 12px; letter-spacing: -0.02em; }
+  h2 { font-size: 22px; margin: 56px 0 4px; letter-spacing: -0.01em; }
+  h3 { font-size: 15px; margin: 28px 0 8px; }
+  p.lead { color: var(--muted-foreground); max-width: 62ch; margin: 0 0 8px; }
+  small.note { color: var(--muted-foreground); font-size: 13px; display: block; max-width: 70ch; }
+  code { font-family: var(--font-mono); font-size: 12.5px; background: #ebe4d6; padding: 1px 5px; border-radius: 4px; }
+  hr { border: 0; border-top: 1px solid var(--border); margin: 56px 0 24px; }
+
+  .frames { display: grid; grid-template-columns: repeat(auto-fill, minmax(600px, 1fr)); gap: 28px; margin-top: 20px; }
+
+  /* Cada .frame es un board pensado para importarse a Figma como un frame.
+     Adentro va el HTML REAL de la plantilla (docs/email/*.html) con el copy
+     real del diccionario ya reemplazado: lo que ves es lo que llega. */
+  .frame { border: 1px dashed var(--border); border-radius: 12px; overflow: hidden; background: var(--background); }
+  .frame__label { font-family: var(--font-mono); font-size: 11px; color: var(--muted-foreground); padding: 8px 12px; border-bottom: 1px dashed var(--border); }
+
+  /* Cómo se ve en la bandeja, antes de abrirlo: remitente, asunto y preheader. */
+  .inbox { display: grid; grid-template-columns: 220px 1fr; gap: 2px 14px; padding: 12px 16px; background: var(--card); border-bottom: 1px solid var(--border); font-size: 13px; }
+  .inbox__from { font-weight: 600; grid-row: span 2; }
+  .inbox__subject { font-weight: 600; }
+  .inbox__pre { color: var(--muted-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .email { padding: 0; }
+  .email table { border-collapse: collapse; }
+
+  /* Modo oscuro: mismas reglas que el @media (prefers-color-scheme: dark)
+     de la plantilla, aplicadas a mano para que el frame se vea así siempre. */
+  .frame--dark .inbox { background: var(--dark-card); border-color: var(--dark-border); color: var(--dark-ink); }
+  .frame--dark .inbox__pre { color: var(--dark-muted); }
+  .frame--dark .frame__label { color: var(--dark-muted); }
+  .frame--dark .rs-page  { background-color: var(--dark-background) !important; }
+  .frame--dark .rs-card  { background-color: var(--dark-card) !important; border-color: var(--dark-border) !important; }
+  .frame--dark .rs-ink   { color: var(--dark-ink) !important; }
+  .frame--dark .rs-muted { color: var(--dark-muted) !important; }
+  .frame--dark .rs-rule  { background-color: var(--dark-border) !important; }
+  .frame--dark .rs-url   { background-color: var(--dark-url) !important; border-color: var(--dark-border) !important; color: var(--dark-muted) !important; }
+
+  /* Anatomía: swatches y tablas */
+  .swatches { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+  .swatch { width: 150px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--card); font-size: 12px; }
+  .swatch__color { height: 48px; }
+  .swatch__meta { padding: 8px 10px; }
+  .swatch__meta code { background: none; padding: 0; }
+  table.spec { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-top: 12px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  table.spec th, table.spec td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--rule); }
+  table.spec th { font-family: var(--font-mono); font-size: 11.5px; font-weight: 500; color: var(--muted-foreground); background: #faf7f0; }
+  table.spec tr:last-child td { border-bottom: 0; }
+  table.spec td:first-child { white-space: nowrap; }
+  ul { padding-left: 20px; }
+  li { margin: 4px 0; }
+</style>
+</head>
+<body>
+<main class="page">
+  <p class="kicker">resender.dev · correo transaccional · issue #98</p>
+  <h1>Confirmación de correo y aviso de cuenta vinculada</h1>
+  <p class="lead">
+    Los dos correos nuevos del <em>Canal de correo</em>, con la misma maqueta que el de recuperación de
+    contraseña. Cada frame es la plantilla real de <code>docs/email/</code> con el copy real de
+    <code>content/i18n/{es,en}.ts</code> ya reemplazado: lo que se ve acá es lo que llega al buzón.
+  </p>
+  <small class="note">
+    Reglas que ordenan el diseño: marca en texto y no en imagen (un correo de seguridad sin logotipo
+    parece falsificado si el cliente bloquea imágenes); un solo trabajo por correo, sin vender nada;
+    la URL en texto plano debajo del botón cuando el botón importa; y modo oscuro solo como mejora,
+    porque Gmail invierte por su cuenta y los colores inline ya son legibles invertidos.
+  </small>
+
+  <h2>1 · Confirmación de correo</h2>
+  <p class="lead">
+    Sale en el alta con contraseña y con «Reenviar confirmación» desde <code>/pending</code>, Settings o el
+    rebote <code>account_not_linked</code> de <code>/login</code>. Un alta por Google no lo recibe. El enlace vive
+    24 horas, es un JWT sin fila en base y no se puede revocar: solo vence.
+  </p>
+  <small class="note">La última línea, «si no creaste esta cuenta, ignora este mensaje», no es relleno: es lo que evita que alguien confirme una cuenta que registró otro con su dirección.</small>
+  <div class="frames">
+
+  <section class="frame" id="verify-email-es" data-figma-frame="verify-email / es / light">
+    <header class="frame__label">verify-email / es / light · 600px</header>
+    <div class="inbox"><span class="inbox__from">Resender &lt;no-reply@resender.dev&gt;</span><span class="inbox__subject">Confirma tu correo</span><span class="inbox__pre">Confirma que este correo es tuyo. El enlace vence en 24 horas.</span></div>
+    <div class="email">
+<table role="presentation" class="rs-page" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3ede1;">
+    <tr>
+      <td align="center" style="padding:40px 12px;">
+
+        <table role="presentation" class="rs-shell" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px; max-width:600px;">
+
+          
+          <tr>
+            <td class="rs-pad" align="left" style="padding:0 8px 20px 8px;">
+              <span class="rs-ink" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:17px; font-weight:700; letter-spacing:-0.01em; color:#242029;">Resender</span>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="rs-card" style="background-color:#ffffff; border:1px solid #d4cfc7; border-radius:10px;">
+
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+
+                <tr>
+                  <td class="rs-pad" style="padding:36px 40px 0 40px;">
+                    <h1 class="rs-h1 rs-ink" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:26px; line-height:34px; font-weight:700; letter-spacing:-0.02em; color:#242029;">Hola Ada,</h1>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td class="rs-pad" style="padding:14px 40px 0 40px;">
+                    <p class="rs-muted" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; line-height:24px; color:#6b6780;">Confirma que este correo es tuyo para terminar de crear tu cuenta.</p>
+                  </td>
+                </tr>
+
+                
+                <tr>
+                  <td class="rs-pad rs-btn" style="padding:28px 40px 0 40px;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td align="center" bgcolor="#7773a5" style="background-color:#7773a5; border-radius:8px;">
+                          <a href="https://resender.dev/api/auth/verify-email?token=eyJhbGciOiJIUzI1NiJ9…&amp;callbackURL=%2Fpending" target="_blank" rel="noopener" style="display:inline-block; padding:13px 26px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; font-weight:600; line-height:20px; color:#ffffff; text-decoration:none; border-radius:8px;">Confirmar mi correo</a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td class="rs-pad" style="padding:20px 40px 0 40px;">
+                    <p class="rs-muted" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:13px; line-height:20px; color:#6b6780;">El enlace vence en 24 horas.</p>
+                  </td>
+                </tr>
+
+                
+                <tr>
+                  <td class="rs-pad" style="padding:24px 40px 0 40px;">
+                    <p class="rs-muted" style="margin:0 0 8px 0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:12px; line-height:18px; color:#6b6780;">¿No funciona el botón? Copia esta dirección:</p>
+                    <div class="rs-url" style="padding:10px 12px; background-color:#f3ede1; border:1px solid #e1dace; border-radius:8px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px; line-height:18px; color:#6b6780; word-break:break-all;">https://resender.dev/api/auth/verify-email?token=eyJhbGciOiJIUzI1NiJ9…&amp;callbackURL=%2Fpending</div>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td class="rs-pad" style="padding:28px 40px 0 40px;">
+                    <div class="rs-rule" style="height:1px; line-height:1px; font-size:0; background-color:#e1dace;">&nbsp;</div>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td class="rs-pad" style="padding:20px 40px 36px 40px;">
+                    <p class="rs-muted" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:13px; line-height:20px; color:#6b6780;">Si no creaste esta cuenta, ignora este mensaje.</p>
+                  </td>
+                </tr>
+
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="rs-pad" align="left" style="padding:20px 8px 0 8px;">
+              <p class="rs-muted" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:12px; line-height:18px; color:#6b6780;">Resender · resender.dev</p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+    </div>
+  </section>
+
+  <section class="frame" id="verify-email-en" data-figma-frame="verify-email / en / light">
+    <header class="frame__label">verify-email / en / light · 600px</header>
+    <div class="inbox"><span class="inbox__from">Resender &lt;no-reply@resender.dev&gt;</span><span class="inbox__subject">Confirm your email</span><span class="inbox__pre">Confirm this email is yours. The link expires in 24 hours.</span></div>
+    <div class="email">
+<table role="presentation" class="rs-page" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3ede1;">
+    <tr>
+      <td align="center" style="padding:40px 12px;">
+
+        <table role="presentation" class="rs-shell" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px; max-width:600px;">
+
+          
+          <tr>
+            <td class="rs-pad" align="left" style="padding:0 8px 20px 8px;">
+              <span class="rs-ink" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:17px; font-weight:700; letter-spacing:-0.01em; color:#242029;">Resender</span>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="rs-card" style="background-color:#ffffff; border:1px solid #d4cfc7; border-radius:10px;">
+
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+
+                <tr>
+                  <td class="rs-pad" style="padding:36px 40px 0 40px;">
+                    <h1 class="rs-h1 rs-ink" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:26px; line-height:34px; font-weight:700; letter-spacing:-0.02em; color:#242029;">Hi Ada,</h1>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td class="rs-pad" style="padding:14px 40px 0 40px;">
+                    <p class="rs-muted" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; line-height:24px; color:#6b6780;">Confirm this email is yours to finish creating your account.</p>
+                  </td>
+                </tr>
+
+                
+                <tr>
+                  <td class="rs-pad rs-btn" style="padding:28px 40px 0 40px;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td align="center" bgcolor="#7773a5" style="background-color:#7773a5; border-radius:8px;">
+                          <a href="https://resender.dev/api/auth/verify-email?token=eyJhbGciOiJIUzI1NiJ9…&amp;callbackURL=%2Fpending" target="_blank" rel="noopener" style="display:inline-block; padding:13px 26px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; font-weight:600; line-height:20px; color:#ffffff; text-decoration:none; border-radius:8px;">Confirm my email</a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td class="rs-pad" style="padding:20px 40px 0 40px;">
+                    <p class="rs-muted" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:13px; line-height:20px; color:#6b6780;">The link expires in 24 hours.</p>
+                  </td>
+                </tr>
+
+                
+                <tr>
+                  <td class="rs-pad" style="padding:24px 40px 0 40px;">
+                    <p class="rs-muted" style="margin:0 0 8px 0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:12px; line-height:18px; color:#6b6780;">Button not working? Copy this address:</p>
+                    <div class="rs-url" style="padding:10px 12px; background-color:#f3ede1; border:1px solid #e1dace; border-radius:8px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px; line-height:18px; color:#6b6780; word-break:break-all;">https://resender.dev/api/auth/verify-email?token=eyJhbGciOiJIUzI1NiJ9…&amp;callbackURL=%2Fpending</div>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td class="rs-pad" style="padding:28px 40px 0 40px;">
+                    <div class="rs-rule" style="height:1px; line-height:1px; font-size:0; background-color:#e1dace;">&nbsp;</div>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td class="rs-pad" style="padding:20px 40px 36px 40px;">
+                    <p class="rs-muted" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:13px; line-height:20px; color:#6b6780;">If you didn't create this account, ignore this message.</p>
+                  </td>
+                </tr>
+
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="rs-pad" align="left" style="padding:20px 8px 0 8px;">
+              <p class="rs-muted" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:12px; line-height:18px; color:#6b6780;">Resender · resender.dev</p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+    </div>
+  </section>
+
+  <section class="frame frame--dark" id="verify-email-es-dark" data-figma-frame="verify-email / es / dark">
+    <header class="frame__label">verify-email / es / dark · 600px</header>
+    <div class="inbox"><span class="inbox__from">Resender &lt;no-reply@resender.dev&gt;</span><span class="inbox__subject">Confirma tu correo</span><span class="inbox__pre">Confirma que este correo es tuyo. El enlace vence en 24 horas.</span></div>
+    <div class="email">
+<table role="presentation" class="rs-page" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3ede1;">
+    <tr>
+      <td align="center" style="padding:40px 12px;">
+
+        <table role="presentation" class="rs-shell" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px; max-width:600px;">
+
+          
+          <tr>
+            <td class="rs-pad" align="left" style="padding:0 8px 20px 8px;">
+              <span class="rs-ink" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:17px; font-weight:700; letter-spacing:-0.01em; color:#242029;">Resender</span>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="rs-card" style="background-color:#ffffff; border:1px solid #d4cfc7; border-radius:10px;">
+
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+
+                <tr>
+                  <td class="rs-pad" style="padding:36px 40px 0 40px;">
+                    <h1 class="rs-h1 rs-ink" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:26px; line-height:34px; font-weight:700; letter-spacing:-0.02em; color:#242029;">Hola Ada,</h1>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td class="rs-pad" style="padding:14px 40px 0 40px;">
+                    <p class="rs-muted" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; line-height:24px; color:#6b6780;">Confirma que este correo es tuyo para terminar de crear tu cuenta.</p>
+                  </td>
+                </tr>
+
+                
+                <tr>
+                  <td class="rs-pad rs-btn" style="padding:28px 40px 0 40px;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td align="center" bgcolor="#7773a5" style="background-color:#7773a5; border-radius:8px;">
+                          <a href="https://resender.dev/api/auth/verify-email?token=eyJhbGciOiJIUzI1NiJ9…&amp;callbackURL=%2Fpending" target="_blank" rel="noopener" style="display:inline-block; padding:13px 26px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; font-weight:600; line-height:20px; color:#ffffff; text-decoration:none; border-radius:8px;">Confirmar mi correo</a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td class="rs-pad" style="padding:20px 40px 0 40px;">
+                    <p class="rs-muted" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:13px; line-height:20px; color:#6b6780;">El enlace vence en 24 horas.</p>
+                  </td>
+                </tr>
+
+                
+                <tr>
+                  <td class="rs-pad" style="padding:24px 40px 0 40px;">
+                    <p class="rs-muted" style="margin:0 0 8px 0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:12px; line-height:18px; color:#6b6780;">¿No funciona el botón? Copia esta dirección:</p>
+                    <div class="rs-url" style="padding:10px 12px; background-color:#f3ede1; border:1px solid #e1dace; border-radius:8px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px; line-height:18px; color:#6b6780; word-break:break-all;">https://resender.dev/api/auth/verify-email?token=eyJhbGciOiJIUzI1NiJ9…&amp;callbackURL=%2Fpending</div>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td class="rs-pad" style="padding:28px 40px 0 40px;">
+                    <div class="rs-rule" style="height:1px; line-height:1px; font-size:0; background-color:#e1dace;">&nbsp;</div>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td class="rs-pad" style="padding:20px 40px 36px 40px;">
+                    <p class="rs-muted" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:13px; line-height:20px; color:#6b6780;">Si no creaste esta cuenta, ignora este mensaje.</p>
+                  </td>
+                </tr>
+
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="rs-pad" align="left" style="padding:20px 8px 0 8px;">
+              <p class="rs-muted" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:12px; line-height:18px; color:#6b6780;">Resender · resender.dev</p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+    </div>
+  </section>
+  </div>
+
+  <h3>Variables de la plantilla <code>RESEND_TEMPLATE_VERIFY_EMAIL</code></h3>
+  <table class="spec">
+    <thead><tr><th>Variable en Resend</th><th>es</th><th>en</th></tr></thead>
+    <tbody>
+      <tr><td><em>subject</em> (no es variable: lo manda la API)</td><td>Confirma tu correo</td><td>Confirm your email</td></tr>
+      <tr><td><code>{{{PREHEADER}}}</code></td><td>Confirma que este correo es tuyo. El enlace vence en 24 horas.</td><td>Confirm this email is yours. The link expires in 24 hours.</td></tr><tr><td><code>{{{GREETING}}}</code></td><td>Hola Ada,</td><td>Hi Ada,</td></tr><tr><td><code>{{{INTRO}}}</code></td><td>Confirma que este correo es tuyo para terminar de crear tu cuenta.</td><td>Confirm this email is yours to finish creating your account.</td></tr><tr><td><code>{{{CTA_LABEL}}}</code></td><td>Confirmar mi correo</td><td>Confirm my email</td></tr><tr><td><code>{{{EXPIRY_NOTE}}}</code></td><td>El enlace vence en 24 horas.</td><td>The link expires in 24 hours.</td></tr><tr><td><code>{{{FALLBACK_LABEL}}}</code></td><td>¿No funciona el botón? Copia esta dirección:</td><td>Button not working? Copy this address:</td></tr><tr><td><code>{{{IGNORE_NOTE}}}</code></td><td>Si no creaste esta cuenta, ignora este mensaje.</td><td>If you didn&#x27;t create this account, ignore this message.</td></tr><tr><td><code>{{{FOOTER_NOTE}}}</code></td><td>Resender · resender.dev</td><td>Resender · resender.dev</td></tr><tr><td><code>{{{VERIFY_URL}}}</code></td><td>https://resender.dev/api/auth/verify-email?token=eyJhbGciOiJIUzI1NiJ9…&amp;callbackURL=%2Fpending</td><td>https://resender.dev/api/auth/verify-email?token=eyJhbGciOiJIUzI1NiJ9…&amp;callbackURL=%2Fpending</td></tr>
+    </tbody></table>
+  <small class="note"><code>{{{GREETING}}}</code> lleva el nombre del alta interpolado (<code>{name}</code> en el diccionario). <code>{{{VERIFY_URL}}}</code> la arma Better Auth: <code>&lt;BETTER_AUTH_URL&gt;/api/auth/verify-email?token=…&amp;callbackURL=/pending</code>; no se reconstruye en código propio.</small>
+
+  <h2>2 · Aviso de cuenta vinculada</h2>
+  <p class="lead">
+    Sale cuando Google se suma a una cuenta que <strong>ya tenía</strong> contraseña, desde <code>/login</code> o
+    desde Settings. Es la contrapartida de no borrar nunca la contraseña: no se le quita a nadie una forma de
+    entrar, pero el dueño del correo se entera de que apareció otra.
+  </p>
+  <small class="note">El botón va a <code>/forgot-password</code> y no a un buzón de soporte: la recuperación revoca todas las sesiones, así que quien recibe esto sin haberlo pedido se defiende solo.</small>
+  <div class="frames">
+
+  <section class="frame" id="account-linked-es" data-figma-frame="account-linked / es / light">
+    <header class="frame__label">account-linked / es / light · 600px</header>
+    <div class="inbox"><span class="inbox__from">Resender &lt;no-reply@resender.dev&gt;</span><span class="inbox__subject">Ahora también entras con Google</span><span class="inbox__pre">Vinculaste Google a tu cuenta de Resender. Tu contraseña sigue funcionando.</span></div>
+    <div class="email">
+<table role="presentation" class="rs-page" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3ede1;">
+    <tr>
+      <td align="center" style="padding:40px 12px;">
+
+        <table role="presentation" class="rs-shell" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px; max-width:600px;">
+
+          
+          <tr>
+            <td class="rs-pad" align="left" style="padding:0 8px 20px 8px;">
+              <span class="rs-ink" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:17px; font-weight:700; letter-spacing:-0.01em; color:#242029;">Resender</span>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="rs-card" style="background-color:#ffffff; border:1px solid #d4cfc7; border-radius:10px;">
+
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+
+                <tr>
+                  <td class="rs-pad" style="padding:36px 40px 0 40px;">
+                    <h1 class="rs-h1 rs-ink" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:26px; line-height:34px; font-weight:700; letter-spacing:-0.02em; color:#242029;">Ahora también entras con Google</h1>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td class="rs-pad" style="padding:14px 40px 0 40px;">
+                    <p class="rs-muted" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; line-height:24px; color:#6b6780;">Vinculaste tu cuenta de Google (ada@example.com) a tu cuenta de Resender.</p>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td class="rs-pad" style="padding:14px 40px 0 40px;">
+                    <p class="rs-muted" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; line-height:24px; color:#6b6780;">Desde ahora puedes entrar con Google o con tu contraseña: tu contraseña sigue funcionando.</p>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td class="rs-pad" style="padding:28px 40px 0 40px;">
+                    <div class="rs-rule" style="height:1px; line-height:1px; font-size:0; background-color:#e1dace;">&nbsp;</div>
+                  </td>
+                </tr>
+
+                
+                <tr>
+                  <td class="rs-pad" style="padding:20px 40px 0 40px;">
+                    <p class="rs-ink" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:14px; line-height:22px; font-weight:600; color:#242029;">Si no fuiste tú, cambia tu contraseña.</p>
+                  </td>
+                </tr>
+
+                
+                <tr>
+                  <td class="rs-pad rs-btn" style="padding:16px 40px 36px 40px;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td align="center" bgcolor="#7773a5" style="background-color:#7773a5; border-radius:8px;">
+                          <a href="https://resender.dev/forgot-password" target="_blank" rel="noopener" style="display:inline-block; padding:13px 26px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; font-weight:600; line-height:20px; color:#ffffff; text-decoration:none; border-radius:8px;">Cambiar mi contraseña</a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="rs-pad" align="left" style="padding:20px 8px 0 8px;">
+              <p class="rs-muted" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:12px; line-height:18px; color:#6b6780;">Resender · resender.dev</p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+    </div>
+  </section>
+
+  <section class="frame" id="account-linked-en" data-figma-frame="account-linked / en / light">
+    <header class="frame__label">account-linked / en / light · 600px</header>
+    <div class="inbox"><span class="inbox__from">Resender &lt;no-reply@resender.dev&gt;</span><span class="inbox__subject">You can now sign in with Google</span><span class="inbox__pre">You linked Google to your Resender account. Your password still works.</span></div>
+    <div class="email">
+<table role="presentation" class="rs-page" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3ede1;">
+    <tr>
+      <td align="center" style="padding:40px 12px;">
+
+        <table role="presentation" class="rs-shell" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px; max-width:600px;">
+
+          
+          <tr>
+            <td class="rs-pad" align="left" style="padding:0 8px 20px 8px;">
+              <span class="rs-ink" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:17px; font-weight:700; letter-spacing:-0.01em; color:#242029;">Resender</span>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="rs-card" style="background-color:#ffffff; border:1px solid #d4cfc7; border-radius:10px;">
+
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+
+                <tr>
+                  <td class="rs-pad" style="padding:36px 40px 0 40px;">
+                    <h1 class="rs-h1 rs-ink" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:26px; line-height:34px; font-weight:700; letter-spacing:-0.02em; color:#242029;">You can now sign in with Google</h1>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td class="rs-pad" style="padding:14px 40px 0 40px;">
+                    <p class="rs-muted" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; line-height:24px; color:#6b6780;">You linked your Google account (ada@example.com) to your Resender account.</p>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td class="rs-pad" style="padding:14px 40px 0 40px;">
+                    <p class="rs-muted" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; line-height:24px; color:#6b6780;">From now on you can sign in with Google or with your password: your password still works.</p>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td class="rs-pad" style="padding:28px 40px 0 40px;">
+                    <div class="rs-rule" style="height:1px; line-height:1px; font-size:0; background-color:#e1dace;">&nbsp;</div>
+                  </td>
+                </tr>
+
+                
+                <tr>
+                  <td class="rs-pad" style="padding:20px 40px 0 40px;">
+                    <p class="rs-ink" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:14px; line-height:22px; font-weight:600; color:#242029;">If this wasn't you, change your password.</p>
+                  </td>
+                </tr>
+
+                
+                <tr>
+                  <td class="rs-pad rs-btn" style="padding:16px 40px 36px 40px;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td align="center" bgcolor="#7773a5" style="background-color:#7773a5; border-radius:8px;">
+                          <a href="https://resender.dev/en/forgot-password" target="_blank" rel="noopener" style="display:inline-block; padding:13px 26px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; font-weight:600; line-height:20px; color:#ffffff; text-decoration:none; border-radius:8px;">Change my password</a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="rs-pad" align="left" style="padding:20px 8px 0 8px;">
+              <p class="rs-muted" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:12px; line-height:18px; color:#6b6780;">Resender · resender.dev</p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+    </div>
+  </section>
+
+  <section class="frame frame--dark" id="account-linked-es-dark" data-figma-frame="account-linked / es / dark">
+    <header class="frame__label">account-linked / es / dark · 600px</header>
+    <div class="inbox"><span class="inbox__from">Resender &lt;no-reply@resender.dev&gt;</span><span class="inbox__subject">Ahora también entras con Google</span><span class="inbox__pre">Vinculaste Google a tu cuenta de Resender. Tu contraseña sigue funcionando.</span></div>
+    <div class="email">
+<table role="presentation" class="rs-page" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3ede1;">
+    <tr>
+      <td align="center" style="padding:40px 12px;">
+
+        <table role="presentation" class="rs-shell" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px; max-width:600px;">
+
+          
+          <tr>
+            <td class="rs-pad" align="left" style="padding:0 8px 20px 8px;">
+              <span class="rs-ink" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:17px; font-weight:700; letter-spacing:-0.01em; color:#242029;">Resender</span>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="rs-card" style="background-color:#ffffff; border:1px solid #d4cfc7; border-radius:10px;">
+
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+
+                <tr>
+                  <td class="rs-pad" style="padding:36px 40px 0 40px;">
+                    <h1 class="rs-h1 rs-ink" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:26px; line-height:34px; font-weight:700; letter-spacing:-0.02em; color:#242029;">Ahora también entras con Google</h1>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td class="rs-pad" style="padding:14px 40px 0 40px;">
+                    <p class="rs-muted" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; line-height:24px; color:#6b6780;">Vinculaste tu cuenta de Google (ada@example.com) a tu cuenta de Resender.</p>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td class="rs-pad" style="padding:14px 40px 0 40px;">
+                    <p class="rs-muted" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; line-height:24px; color:#6b6780;">Desde ahora puedes entrar con Google o con tu contraseña: tu contraseña sigue funcionando.</p>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td class="rs-pad" style="padding:28px 40px 0 40px;">
+                    <div class="rs-rule" style="height:1px; line-height:1px; font-size:0; background-color:#e1dace;">&nbsp;</div>
+                  </td>
+                </tr>
+
+                
+                <tr>
+                  <td class="rs-pad" style="padding:20px 40px 0 40px;">
+                    <p class="rs-ink" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:14px; line-height:22px; font-weight:600; color:#242029;">Si no fuiste tú, cambia tu contraseña.</p>
+                  </td>
+                </tr>
+
+                
+                <tr>
+                  <td class="rs-pad rs-btn" style="padding:16px 40px 36px 40px;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td align="center" bgcolor="#7773a5" style="background-color:#7773a5; border-radius:8px;">
+                          <a href="https://resender.dev/forgot-password" target="_blank" rel="noopener" style="display:inline-block; padding:13px 26px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; font-weight:600; line-height:20px; color:#ffffff; text-decoration:none; border-radius:8px;">Cambiar mi contraseña</a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="rs-pad" align="left" style="padding:20px 8px 0 8px;">
+              <p class="rs-muted" style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:12px; line-height:18px; color:#6b6780;">Resender · resender.dev</p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+    </div>
+  </section>
+  </div>
+
+  <h3>Variables de la plantilla <code>RESEND_TEMPLATE_ACCOUNT_LINKED</code></h3>
+  <table class="spec">
+    <thead><tr><th>Variable en Resend</th><th>es</th><th>en</th></tr></thead>
+    <tbody>
+      <tr><td><em>subject</em> (no es variable: lo manda la API)</td><td>Ahora también entras con Google</td><td>You can now sign in with Google</td></tr>
+      <tr><td><code>{{{PREHEADER}}}</code></td><td>Vinculaste Google a tu cuenta de Resender. Tu contraseña sigue funcionando.</td><td>You linked Google to your Resender account. Your password still works.</td></tr><tr><td><code>{{{HEADING}}}</code></td><td>Ahora también entras con Google</td><td>You can now sign in with Google</td></tr><tr><td><code>{{{INTRO}}}</code></td><td>Vinculaste tu cuenta de Google (ada@example.com) a tu cuenta de Resender.</td><td>You linked your Google account (ada@example.com) to your Resender account.</td></tr><tr><td><code>{{{BODY}}}</code></td><td>Desde ahora puedes entrar con Google o con tu contraseña: tu contraseña sigue funcionando.</td><td>From now on you can sign in with Google or with your password: your password still works.</td></tr><tr><td><code>{{{WARNING_LABEL}}}</code></td><td>Si no fuiste tú, cambia tu contraseña.</td><td>If this wasn&#x27;t you, change your password.</td></tr><tr><td><code>{{{CTA_LABEL}}}</code></td><td>Cambiar mi contraseña</td><td>Change my password</td></tr><tr><td><code>{{{FOOTER_NOTE}}}</code></td><td>Resender · resender.dev</td><td>Resender · resender.dev</td></tr><tr><td><code>{{{FORGOT_URL}}}</code></td><td>https://resender.dev/forgot-password</td><td>https://resender.dev/en/forgot-password</td></tr>
+    </tbody></table>
+  <small class="note"><code>{{{INTRO}}}</code> lleva el correo interpolado (<code>{googleEmail}</code>): es el de la cuenta de Resender, porque la librería solo vincula cuando los dos coinciden. <code>{{{FORGOT_URL}}}</code> es <code>&lt;BETTER_AUTH_URL&gt;/forgot-password</code> o <code>/en/forgot-password</code> según el idioma.</small>
+
+  <h2>3 · Anatomía compartida</h2>
+  <p class="lead">Idéntica al correo de recuperación (<code>docs/email/password-reset.html</code>): cambiar acá es cambiar en los tres.</p>
+
+  <h3>Color</h3>
+  <div class="swatches">
+    <div class="swatch"><div class="swatch__color" style="background:#f3ede1"></div><div class="swatch__meta"><code>#F3EDE1</code><br>fondo · caja de URL</div></div>
+    <div class="swatch"><div class="swatch__color" style="background:#ffffff; border-bottom:1px solid #d4cfc7"></div><div class="swatch__meta"><code>#FFFFFF</code><br>tarjeta</div></div>
+    <div class="swatch"><div class="swatch__color" style="background:#d4cfc7"></div><div class="swatch__meta"><code>#D4CFC7</code><br>borde de la tarjeta</div></div>
+    <div class="swatch"><div class="swatch__color" style="background:#e1dace"></div><div class="swatch__meta"><code>#E1DACE</code><br>separador · borde de URL</div></div>
+    <div class="swatch"><div class="swatch__color" style="background:#242029"></div><div class="swatch__meta"><code>#242029</code><br>marca · título · aviso</div></div>
+    <div class="swatch"><div class="swatch__color" style="background:#6b6780"></div><div class="swatch__meta"><code>#6B6780</code><br>cuerpo · notas · pie</div></div>
+    <div class="swatch"><div class="swatch__color" style="background:#7773a5"></div><div class="swatch__meta"><code>#7773A5</code><br>botón</div></div>
+  </div>
+  <div class="swatches">
+    <div class="swatch"><div class="swatch__color" style="background:#242029"></div><div class="swatch__meta"><code>#242029</code><br>dark · fondo</div></div>
+    <div class="swatch"><div class="swatch__color" style="background:#2e2a35"></div><div class="swatch__meta"><code>#2E2A35</code><br>dark · tarjeta</div></div>
+    <div class="swatch"><div class="swatch__color" style="background:#3d3845"></div><div class="swatch__meta"><code>#3D3845</code><br>dark · bordes · separador</div></div>
+    <div class="swatch"><div class="swatch__color" style="background:#35303d"></div><div class="swatch__meta"><code>#35303D</code><br>dark · caja de URL</div></div>
+    <div class="swatch"><div class="swatch__color" style="background:#f3ede1"></div><div class="swatch__meta"><code>#F3EDE1</code><br>dark · marca · título</div></div>
+    <div class="swatch"><div class="swatch__color" style="background:#a09bab"></div><div class="swatch__meta"><code>#A09BAB</code><br>dark · cuerpo</div></div>
+  </div>
+
+  <h3>Tipografía y medidas</h3>
+  <table class="spec">
+    <thead><tr><th>Elemento</th><th>Fuente</th><th>Tamaño / interlínea</th><th>Peso</th><th>Color</th></tr></thead>
+    <tbody>
+      <tr><td>Marca «Resender»</td><td>System sans (-apple-system, Segoe UI, Roboto, Helvetica, Arial)</td><td>17 / auto, tracking -0.01em</td><td>700</td><td>#242029</td></tr>
+      <tr><td>Título (h1)</td><td>System sans</td><td>26 / 34, tracking -0.02em (móvil: 24 / 32)</td><td>700</td><td>#242029</td></tr>
+      <tr><td>Cuerpo</td><td>System sans</td><td>15 / 24</td><td>400</td><td>#6B6780</td></tr>
+      <tr><td>Aviso «Si no fuiste tú…»</td><td>System sans</td><td>14 / 22</td><td>600</td><td>#242029</td></tr>
+      <tr><td>Nota de vencimiento · nota final</td><td>System sans</td><td>13 / 20</td><td>400</td><td>#6B6780</td></tr>
+      <tr><td>Etiqueta de URL · pie</td><td>System sans</td><td>12 / 18</td><td>400</td><td>#6B6780</td></tr>
+      <tr><td>URL en texto</td><td>Mono (ui-monospace, Menlo, Consolas)</td><td>12 / 18, word-break: break-all</td><td>400</td><td>#6B6780 sobre #F3EDE1</td></tr>
+      <tr><td>Botón</td><td>System sans</td><td>15 / 20 · padding 13×26 · radio 8</td><td>600</td><td>#FFFFFF sobre #7773A5</td></tr>
+    </tbody>
+  </table>
+  <ul>
+    <li>Ancho del contenido <code>600px</code> (100% en móvil), centrado, con <code>40px 12px</code> de margen exterior.</li>
+    <li>Tarjeta: fondo blanco, borde <code>1px #D4CFC7</code>, radio <code>10px</code>, padding interior <code>36 / 40</code> (móvil: <code>24</code> lateral).</li>
+    <li>Ritmo vertical dentro de la tarjeta: título → 14 → cuerpo → 28 → botón → 20 → nota → 24 → URL → 28 → separador → 20 → nota final → 36.</li>
+    <li>Marca 20px por encima de la tarjeta; pie 20px por debajo, ambos alineados al borde interior (8px).</li>
+    <li>Sistema de fuentes del cliente a propósito: los correos no cargan Inter ni Space Mono; en Figma usar Inter/SF Pro como aproximación.</li>
+    <li>Sin VML de Outlook: el botón se ve rectangular en Outlook de escritorio y redondeado en todo lo demás. Es deliberado, porque el editor de Resend puede limpiar los comentarios condicionales.</li>
+  </ul>
+
+  <h3>Cómo llevarlo a Figma</h3>
+  <ul>
+    <li>Importar este archivo con <em>html.to.design</em>: cada <code>section.frame</code> llega como un frame con el nombre de <code>data-figma-frame</code>.</li>
+    <li>Las <code>@media</code> del correo no viajan; por eso el modo oscuro está como frame aparte y ya aplicado.</li>
+    <li>Para reconstruirlo a mano: frame 600 de ancho con fill <code>#F3EDE1</code>, auto layout vertical; una tarjeta blanca con borde y radio 10; texto con los estilos de la tabla; botón como frame <code>#7773A5</code> radio 8 con padding 13/26.</li>
+  </ul>
+
+  <h3>Cómo llevarlo a Resend</h3>
+  <ul>
+    <li>Pegar en el editor de plantillas el HTML de <code>docs/email/verify-email.html</code> y <code>docs/email/account-linked.html</code> tal cual, con las <code>{{{VARIABLES}}}</code> de triple llave.</li>
+    <li>El asunto no es parte de la plantilla: lo manda la API por envío (<code>verifyEmailSubject</code> / <code>accountLinkedSubject</code>), así cambia con el idioma sin duplicar plantillas.</li>
+    <li>Pegar los IDs en <code>RESEND_TEMPLATE_VERIFY_EMAIL</code> y <code>RESEND_TEMPLATE_ACCOUNT_LINKED</code> (<code>wrangler.jsonc</code> en prod y staging, y <code>.env</code>).</li>
+    <li>Probar mandando a <code>info@resender.dev</code> en <code>es</code> y <code>en</code>; revisar que ninguna variable llegue vacía y que el botón y la URL apunten al mismo enlace.</li>
+  </ul>
+
+  <hr />
+  <p><small class="note">
+    Generado desde el código real del repo. Si cambia el copy en <code>content/i18n/</code>, las plantillas en
+    <code>docs/email/</code> o los tokens de <code>globals.css</code>, este archivo queda desactualizado —
+    regenerarlo antes de usarlo como referencia de diseño.
+  </small></p>
+</main>
+</body>
+</html>
