@@ -1,5 +1,9 @@
 import { type NextRequest } from "next/server"
 
+import {
+  API_KEY_RATE_LIMIT_RETRY_AFTER_SECONDS,
+  allowApiKeyRequest,
+} from "@/lib/auth/api-key-rate-limit"
 import { authenticateApiKey } from "@/lib/auth/api-keys"
 import { resolveInstagramAccess } from "@/lib/auth/channel-access"
 import { isUserWaitlisted } from "@/lib/auth/waitlist"
@@ -34,7 +38,7 @@ import {
   getActivePageWithTokenForTenant,
   markPageTokenInvalid,
 } from "@/lib/pages/page-registry"
-import { posthog } from "@/lib/posthog"
+import { captureDeferred } from "@/lib/posthog"
 
 // Envía un mensaje directo por Instagram.
 // Body: { pageId, recipientId, reply, conversationId? }.
@@ -70,6 +74,23 @@ export async function POST(request: NextRequest) {
     )
   }
   trace.setTenant(apiKey.tenantId)
+
+  // Antes de cualquier otro round-trip: el límite protege justamente a los
+  // gates que vienen después.
+  if (!(await allowApiKeyRequest(apiKey.id))) {
+    return trace.drop(
+      "rate_limited",
+      Response.json(
+        { error: "rate_limited" },
+        {
+          status: 429,
+          headers: {
+            "retry-after": String(API_KEY_RATE_LIMIT_RETRY_AFTER_SECONDS),
+          },
+        }
+      )
+    )
+  }
 
   const idempotencyHeader = request.headers.get("idempotency-key")
   const idempotencyKey = idempotencyHeader?.trim() ?? null
@@ -396,21 +417,18 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  if (posthog) {
-    posthog.capture({
-      distinctId: apiKey.tenantId,
-      event: "message sent",
-      properties: {
-        message_id: message.id,
-        conversation_id: conversation.id,
-        page_id: input.value.pageId,
-        channel: "instagram",
-        status: message.status,
-        meta_ok: metaResult.ok,
-      },
-    })
-    await posthog.flush()
-  }
+  captureDeferred({
+    distinctId: apiKey.tenantId,
+    event: "message sent",
+    properties: {
+      message_id: message.id,
+      conversation_id: conversation.id,
+      page_id: input.value.pageId,
+      channel: "instagram",
+      status: message.status,
+      meta_ok: metaResult.ok,
+    },
+  })
 
   return Response.json(
     {

@@ -113,66 +113,75 @@ export async function POST(request: NextRequest) {
   // mandó nada» de «mandó algo y el parser no lo reconoció».
   const envelope = describeWebhookEnvelope(body)
 
-  try {
-    const ingested = await ingestInstagramWebhookPayload(body, requestId)
+  // La ingesta entera va **fuera de la respuesta**, igual que en WhatsApp: son
+  // ~8 round-trips a Neon por evento y Meta solo espera el 200. Con la ingesta
+  // inline, un sobre de veinte eventos tardaba segundos en contestar y Meta
+  // empieza a reintentar —y a marcar el webhook como lento— a partir de ahí.
+  // `after()` en OpenNext es `waitUntil`: el trabajo corre igual, pero después
+  // de que Meta ya tiene su 200. La firma ya está verificada arriba, así que lo
+  // que se difiere es solo trabajo nuestro, nunca la decisión de aceptar.
+  after(async () => {
+    try {
+      const ingested = await ingestInstagramWebhookPayload(body, requestId)
 
-    const nonEmpty = envelope.messagingCount + envelope.changeCount > 0
-    log({
-      entrypoint: "route",
-      action: "webhook_receive",
-      // Un sobre con eventos que produce cero ingestas no es normal: o el
-      // parser dejó de reconocer el payload, o todo lo que vino se descartó
-      // —y en ese caso hay una línea `inbound_ingest_dropped` con el mismo
-      // `requestId` que dice por qué—.
-      ...(ingested.length === 0 && nonEmpty
-        ? {
-            outcome: "dropped" as const,
-            reason: "no_events_in_payload" as const,
-            level: "warn" as const,
+      const nonEmpty = envelope.messagingCount + envelope.changeCount > 0
+      log({
+        entrypoint: "after",
+        action: "webhook_receive",
+        // Un sobre con eventos que produce cero ingestas no es normal: o el
+        // parser dejó de reconocer el payload, o todo lo que vino se descartó
+        // —y en ese caso hay una línea `inbound_ingest_dropped` con el mismo
+        // `requestId` que dice por qué—.
+        ...(ingested.length === 0 && nonEmpty
+          ? {
+              outcome: "dropped" as const,
+              reason: "no_events_in_payload" as const,
+              level: "warn" as const,
+            }
+          : { outcome: "ok" as const }),
+        requestId,
+        channel: "instagram",
+        route: ROUTE,
+        count: ingested.length,
+        ...envelope,
+      })
+
+      // El reenvío al webhook del tenant: el endpoint del cliente puede tardar
+      // segundos, y un push que falle no debe frenar a los demás del sobre.
+      await Promise.all(
+        ingested.map(async (item) => {
+          try {
+            await item.pushJob()
+          } catch (error) {
+            // Un throw acá no va a ningún lado: la request ya respondió y
+            // nadie escucha. `recordDelivery` hace un insert que puede fallar,
+            // así que sin esta línea sería un descarte silencioso más.
+            log({
+              entrypoint: "after",
+              action: "webhook_delivery",
+              outcome: "failed",
+              reason: "internal_error",
+              requestId,
+              channel: "instagram",
+              errorMessage: describeError(error),
+            })
           }
-        : { outcome: "ok" as const }),
-      requestId,
-      channel: "instagram",
-      route: ROUTE,
-      count: ingested.length,
-      ...envelope,
-    })
-
-    // El reenvío al webhook del tenant va fuera de la respuesta: Meta solo
-    // espera el 200, y el endpoint del cliente puede tardar segundos.
-    for (const item of ingested) {
-      after(async () => {
-        try {
-          await item.pushJob()
-        } catch (error) {
-          // Hasta ahora un throw acá no iba a ningún lado: la request ya
-          // respondió y nadie escucha. `recordDelivery` hace un insert que
-          // puede fallar, así que era un descarte silencioso más.
-          log({
-            entrypoint: "after",
-            action: "webhook_delivery",
-            outcome: "failed",
-            reason: "internal_error",
-            requestId,
-            channel: "instagram",
-            errorMessage: describeError(error),
-          })
-        }
+        })
+      )
+    } catch (error) {
+      log({
+        entrypoint: "after",
+        action: "webhook_receive",
+        outcome: "failed",
+        reason: "internal_error",
+        requestId,
+        channel: "instagram",
+        route: ROUTE,
+        ...envelope,
+        errorMessage: describeError(error),
       })
     }
-  } catch (error) {
-    log({
-      entrypoint: "route",
-      action: "webhook_receive",
-      outcome: "failed",
-      reason: "internal_error",
-      requestId,
-      channel: "instagram",
-      route: ROUTE,
-      ...envelope,
-      errorMessage: describeError(error),
-    })
-  }
+  })
 
   return Response.json({ ok: true })
 }

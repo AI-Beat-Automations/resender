@@ -90,58 +90,66 @@ export async function POST(request: NextRequest) {
 
   const envelope = describeWebhookEnvelope(body)
 
-  try {
-    const ingested = await ingestMetaWebhookPayload(body, requestId)
+  // La ingesta entera va **fuera de la respuesta**, igual que en Instagram y
+  // en WhatsApp: son ~8 round-trips a Neon por evento y Meta solo espera el
+  // 200. `after()` en OpenNext es `waitUntil`: el trabajo corre igual, pero
+  // después de que Meta ya tiene su 200. La firma ya está verificada arriba,
+  // así que lo que se difiere es solo trabajo nuestro, nunca la decisión de
+  // aceptar.
+  after(async () => {
+    try {
+      const ingested = await ingestMetaWebhookPayload(body, requestId)
 
-    const nonEmpty = envelope.messagingCount + envelope.changeCount > 0
-    log({
-      entrypoint: "route",
-      action: "webhook_receive",
-      ...(ingested.length === 0 && nonEmpty
-        ? {
-            outcome: "dropped" as const,
-            reason: "no_events_in_payload" as const,
-            level: "warn" as const,
+      const nonEmpty = envelope.messagingCount + envelope.changeCount > 0
+      log({
+        entrypoint: "after",
+        action: "webhook_receive",
+        ...(ingested.length === 0 && nonEmpty
+          ? {
+              outcome: "dropped" as const,
+              reason: "no_events_in_payload" as const,
+              level: "warn" as const,
+            }
+          : { outcome: "ok" as const }),
+        requestId,
+        channel: "messenger",
+        route: ROUTE,
+        count: ingested.length,
+        ...envelope,
+      })
+
+      await Promise.all(
+        ingested.map(async (item) => {
+          try {
+            await item.pushJob()
+          } catch (error) {
+            // Un throw acá no va a ningún lado: la request ya respondió.
+            log({
+              entrypoint: "after",
+              action: "webhook_delivery",
+              outcome: "failed",
+              reason: "internal_error",
+              requestId,
+              channel: "messenger",
+              errorMessage: describeError(error),
+            })
           }
-        : { outcome: "ok" as const }),
-      requestId,
-      channel: "messenger",
-      route: ROUTE,
-      count: ingested.length,
-      ...envelope,
-    })
-
-    for (const item of ingested) {
-      after(async () => {
-        try {
-          await item.pushJob()
-        } catch (error) {
-          // Un throw acá no iba a ningún lado: la request ya respondió.
-          log({
-            entrypoint: "after",
-            action: "webhook_delivery",
-            outcome: "failed",
-            reason: "internal_error",
-            requestId,
-            channel: "messenger",
-            errorMessage: describeError(error),
-          })
-        }
+        })
+      )
+    } catch (error) {
+      log({
+        entrypoint: "after",
+        action: "webhook_receive",
+        outcome: "failed",
+        reason: "internal_error",
+        requestId,
+        channel: "messenger",
+        route: ROUTE,
+        ...envelope,
+        errorMessage: describeError(error),
       })
     }
-  } catch (error) {
-    log({
-      entrypoint: "route",
-      action: "webhook_receive",
-      outcome: "failed",
-      reason: "internal_error",
-      requestId,
-      channel: "messenger",
-      route: ROUTE,
-      ...envelope,
-      errorMessage: describeError(error),
-    })
-  }
+  })
 
   return Response.json({ ok: true })
 }

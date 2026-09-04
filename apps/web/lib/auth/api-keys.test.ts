@@ -43,8 +43,8 @@ const auth = betterAuth({
 })
 
 // La misma configuración, pero con un adaptador que no contesta: es el blip de
-// Neon del escenario real. `findOne` es lo primero que toca `verifyApiKey` al
-// buscar el hash de la key, así que romperlo ahí rompe la verificación entera
+// Neon del escenario real. `findOne` es lo único que toca `authenticateApiKey`
+// al buscar el hash de la key, así que romperlo ahí rompe la verificación entera
 // sin tocar nada más.
 const brokenMemoryAdapter: ReturnType<typeof memoryAdapter> = (options) => ({
   ...memoryAdapter(db)(options),
@@ -63,8 +63,8 @@ const brokenAuth = betterAuth({
 })
 
 // Mutable para que un solo test pueda cambiar la instancia bajo los pies del
-// módulo, que es la única forma de ejercitar el fallo de base sin mockear
-// `verifyApiKey` y dejar de probar el plugin real.
+// módulo, que es la única forma de ejercitar el fallo de base sin mockear el
+// adaptador y dejar de probar el plugin real.
 let currentAuth = auth
 
 vi.mock("@/lib/auth/auth", async (importOriginal) => {
@@ -131,18 +131,19 @@ describe("authenticateApiKey", () => {
     })
   })
 
-  // `last_used_at` es lo que la lista de Ajustes muestra como último uso. El
-  // plugin lo refresca en cada verificación **aunque el rate limit esté
-  // apagado**; si eso dejara de pasar, la columna quedaría siempre en null y la
-  // pantalla mentiría en silencio.
-  it("marca el último uso al verificar", async () => {
-    const created = await createApiKey(tenantId, "con uso")
-    expect(created.record.lastUsedAt).toBeNull()
+  // Lo contrario de lo que este test decía antes: verificar **no escribe**.
+  // `verifyApiKey` del plugin refrescaba `last_used_at` en cada llamada y a
+  // cincuenta envíos por segundo eso era un lock de fila por tenant. La columna
+  // dejó de existir en el producto; si alguien vuelve a pasar por el plugin, el
+  // valor deja de ser null y esto se pone rojo.
+  it("verificar no escribe en la fila de la key", async () => {
+    const created = await createApiKey(tenantId, "solo lectura")
 
     await authenticateApiKey(created.apiKey)
 
-    const revoked = await revokeApiKey(tenantId, created.record.id)
-    expect(revoked?.lastUsedAt).toBeInstanceOf(Date)
+    const stored = db.auth_api_keys?.find((row) => row.id === created.record.id)
+    expect(stored?.lastRequest ?? null).toBeNull()
+    expect(stored?.requestCount ?? 0).toBe(0)
   })
 
   it("corta una key inventada, una vacía y algo que no es texto", async () => {
@@ -154,17 +155,13 @@ describe("authenticateApiKey", () => {
     await expect(authenticateApiKey({ key: "x" })).resolves.toBeNull()
   })
 
-  // **El caso que este bloque existe para proteger.** `verifyApiKey` colapsa
-  // cualquier excepción a `valid: false`, así que sin el corte de
-  // `isVerificationInfrastructureFailure` un blip de base saldría como
-  // `401 unauthorized` y el operador se iría a buscar una key revocada que nunca
-  // se revocó. Tiene que ser un 500, que es lo que la ruta emite cuando esto
-  // propaga.
+  // **El caso que este bloque existe para proteger.** Un blip de base durante
+  // la lectura no puede salir como `401 unauthorized`: el operador se iría a
+  // buscar una key revocada que nunca se revocó. Tiene que ser un 500, que es
+  // lo que la ruta emite cuando esto propaga.
   //
-  // El test corre contra el plugin real y no contra un mock de su respuesta: lo
-  // que distingue las dos ramas es la forma de `error.message` que arma el
-  // propio plugin, y mockearla sería probar la suposición en vez del hecho. Si
-  // un bump del paquete cambia esa forma, esto se pone rojo.
+  // El test corre contra el adaptador real de Better Auth con `findOne` roto,
+  // que es exactamente lo que `authenticateApiKey` toca.
   it("propaga un fallo de base en vez de disfrazarlo de 401", async () => {
     const created = await createApiKey(tenantId, "victima del blip")
 
@@ -184,16 +181,13 @@ describe("authenticateApiKey", () => {
   })
 
   // La otra mitad del corte: una key que de verdad no vale sigue siendo `null`.
-  // Las dos ramas comparten el `code` `INVALID_API_KEY`, así que si el criterio
-  // se escribiera solo con el `code` este test se pondría rojo.
   it("no confunde una key inexistente con un fallo de base", async () => {
     await expect(
       authenticateApiKey("pk_live_estanoexisteperotieneelprefijo")
     ).resolves.toBeNull()
   })
 
-  // Y una revocada tampoco: el plugin la rechaza con `KEY_DISABLED`, que es un
-  // 401 legítimo.
+  // Y una revocada tampoco: `enabled` en falso es un 401 legítimo.
   it("no confunde una key revocada con un fallo de base", async () => {
     const created = await createApiKey(tenantId, "revocada, no rota")
     await revokeApiKey(tenantId, created.record.id)
@@ -217,7 +211,6 @@ describe("createApiKey", () => {
     )
     expect(created.record.label).toBe("etiqueta")
     expect(created.record.status).toBe("active")
-    expect(created.record.lastUsedAt).toBeNull()
   })
 
   it("rechaza una etiqueta vacía y una de más de 80 caracteres", async () => {

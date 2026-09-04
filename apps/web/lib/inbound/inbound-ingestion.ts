@@ -45,7 +45,7 @@ import { routeWhatsappWebhook } from "./whatsapp-webhook"
 import type { WhatsappStatusEvent } from "./whatsapp-parsers"
 import { accountFields, describeError, log } from "@/lib/observability/logger"
 import { getCloudflareContext } from "@opennextjs/cloudflare"
-import { posthog } from "@/lib/posthog"
+import { captureDeferred } from "@/lib/posthog"
 
 export type InboundPushJob = () => Promise<void>
 
@@ -565,23 +565,20 @@ async function ingestInboundEvents(
     // lea en el orden en que pasan las cosas: se guarda, no se cobra, no sale.
     if (event.historical) continue
 
-    if (posthog) {
-      posthog.capture({
-        distinctId: page.tenantId,
-        event: "message received",
-        properties: {
-          message_id: message.id,
-          conversation_id: conversation.id,
-          page_id: page.metaPageId,
-          channel,
-          event_type: event.eventType,
-          // Distingue el eco de la Business App de un entrante del cliente sin
-          // tener que cruzar la fila: son dos hechos comerciales distintos.
-          ...(event.origin ? { origin: event.origin } : {}),
-        },
-      })
-      await posthog.flush()
-    }
+    captureDeferred({
+      distinctId: page.tenantId,
+      event: "message received",
+      properties: {
+        message_id: message.id,
+        conversation_id: conversation.id,
+        page_id: page.metaPageId,
+        channel,
+        event_type: event.eventType,
+        // Distingue el eco de la Business App de un entrante del cliente sin
+        // tener que cruzar la fila: son dos hechos comerciales distintos.
+        ...(event.origin ? { origin: event.origin } : {}),
+      },
+    })
 
     const payload = buildInboundPushPayload({
       page,
@@ -866,20 +863,17 @@ async function ingestInstagramComments(
       }
     }
 
-    if (posthog) {
-      posthog.capture({
-        distinctId: page.tenantId,
-        event: "instagram comment received",
-        properties: {
-          instagram_comment_id: comment.id,
-          ig_comment_id: comment.igCommentId,
-          media_id: comment.mediaId,
-          page_id: page.metaPageId,
-          is_reply: comment.parentIgCommentId !== null,
-        },
-      })
-      await posthog.flush()
-    }
+    captureDeferred({
+      distinctId: page.tenantId,
+      event: "instagram comment received",
+      properties: {
+        instagram_comment_id: comment.id,
+        ig_comment_id: comment.igCommentId,
+        media_id: comment.mediaId,
+        page_id: page.metaPageId,
+        is_reply: comment.parentIgCommentId !== null,
+      },
+    })
 
     const payload = buildInboundCommentPayload({ page, comment })
     const subject = { kind: "comment", id: comment.id } as const

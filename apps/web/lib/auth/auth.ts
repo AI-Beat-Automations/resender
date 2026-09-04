@@ -512,9 +512,10 @@ export function apiKeyPlugin() {
     // (issue #88). Apagadas explícitamente y no por omisión:
     //
     //   - Rate limit por key: el límite real del producto es el binding
-    //     nativo de Cloudflare (`lib/auth/rate-limit.ts`). En `false` el
-    //     plugin igual refresca `last_used_at` en cada verificación, que es
-    //     el dato que la lista de Ajustes muestra.
+    //     nativo de Cloudflare (`lib/auth/api-key-rate-limit.ts`). En `false`
+    //     su `verifyApiKey` igual refresca `last_used_at` en cada verificación,
+    //     y por eso las rutas no lo usan: `authenticateApiKey` lee la fila por
+    //     el adaptador sin escribir nada.
     //   - Expiración: las keys viven hasta revocación manual. Sin default y
     //     con el `expiresIn` del cliente rechazado, `expires_at` es siempre
     //     null y la barrida de expiradas nunca las toca.

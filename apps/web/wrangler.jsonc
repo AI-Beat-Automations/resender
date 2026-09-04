@@ -85,12 +85,19 @@
         "queue": "whatsapp-jobs",
       },
     ],
+    // `max_concurrency` acotado a propósito en todos los consumidores: sin él,
+    // Cloudflare escala invocaciones concurrentes sin techo cuando la cola
+    // crece, y cada entrega son varias queries a Neon. Un pico de la cola se
+    // convertía en una tormenta contra la base. Diez consumidores por batch de
+    // diez son cien entregas en vuelo, de sobra para el volumen actual; las
+    // DLQ con cinco, porque solo marcan el job muerto.
     "consumers": [
       {
         "queue": "webhook-deliveries",
         "max_batch_size": 10,
         "max_batch_timeout": 5,
         "max_retries": 5,
+        "max_concurrency": 10,
         "dead_letter_queue": "webhook-deliveries-dlq",
       },
       {
@@ -102,6 +109,7 @@
         "max_batch_size": 10,
         "max_batch_timeout": 5,
         "max_retries": 5,
+        "max_concurrency": 5,
       },
       {
         // Cola propia y no `webhook-deliveries` a propósito: un import de
@@ -111,6 +119,7 @@
         "max_batch_size": 10,
         "max_batch_timeout": 5,
         "max_retries": 5,
+        "max_concurrency": 10,
         "dead_letter_queue": "whatsapp-jobs-dlq",
       },
       {
@@ -120,6 +129,7 @@
         "max_batch_size": 10,
         "max_batch_timeout": 5,
         "max_retries": 5,
+        "max_concurrency": 5,
       },
     ],
   },
@@ -138,8 +148,14 @@
   // Recuperación: reclama los jobs cuyo plazo durable venció, es decir los que
   // quedaron `pending`/`processing` porque el Worker murió entre encolar y
   // entregar. Es la red debajo de la cola, no un segundo camino de entrega.
+  //
+  // Cada 30 minutos y no cada 5 a propósito: cada corrida consulta Neon aunque
+  // no haya nada que recuperar, y Neon apaga el compute recién tras 5 minutos
+  // sin actividad. Con `*/5` la base no se apagaba nunca y facturaba compute
+  // las 24 horas sin un solo cliente. Un job huérfano tarda como mucho media
+  // hora más en recuperarse, que es un costo aceptable frente a ese.
   "triggers": {
-    "crons": ["*/5 * * * *"],
+    "crons": ["*/30 * * * *"],
   },
   "observability": {
     "enabled": true,
@@ -184,6 +200,14 @@
       // que se equivoca de contraseña un par de veces —y para una oficina
       // entera detrás de un NAT— y corta el barrido de credenciales.
       "simple": { "limit": 10, "period": 60 },
+    },
+    // Por API key en `/api/meta/*/send` (`lib/auth/api-key-rate-limit.ts`).
+    // 3.000 por minuto = 50 por segundo: por encima del pico de un bot con
+    // 5.000 conversaciones al día, así que solo corta bucles, no uso real.
+    {
+      "namespace_id": "1007",
+      "name": "API_KEY_RATE_LIMITER",
+      "simple": { "limit": 3000, "period": 60 },
     },
   ],
   // Los secretos (DATABASE_URL, BETTER_AUTH_SECRET, etc.) NO van aquí: se cargan
@@ -265,6 +289,7 @@
             "max_batch_size": 10,
             "max_batch_timeout": 5,
             "max_retries": 5,
+            "max_concurrency": 10,
             "dead_letter_queue": "webhook-deliveries-staging-dlq",
           },
           {
@@ -272,12 +297,14 @@
             "max_batch_size": 10,
             "max_batch_timeout": 5,
             "max_retries": 5,
+            "max_concurrency": 5,
           },
           {
             "queue": "whatsapp-jobs-staging",
             "max_batch_size": 10,
             "max_batch_timeout": 5,
             "max_retries": 5,
+            "max_concurrency": 10,
             "dead_letter_queue": "whatsapp-jobs-staging-dlq",
           },
           {
@@ -285,6 +312,7 @@
             "max_batch_size": 10,
             "max_batch_timeout": 5,
             "max_retries": 5,
+            "max_concurrency": 5,
           },
         ],
       },
@@ -299,8 +327,11 @@
       // Explícito aunque `triggers` sea heredable: staging es donde se verifica
       // que el cron corre, y depender de la herencia para eso deja la
       // verificación apoyada en un detalle de wrangler en vez de en el archivo.
+      // Cada hora: alcanza para verificar que corre y deja que el compute de
+      // Neon de staging se apague el resto del tiempo (mismo motivo que en
+      // producción).
       "triggers": {
-        "crons": ["*/5 * * * *"],
+        "crons": ["0 * * * *"],
       },
       // Contador propio: compartir `namespace_id` con producción haría que el
       // tráfico de pruebas consumiera la cuota de los visitantes reales.
@@ -319,6 +350,11 @@
           "namespace_id": "1006",
           "name": "AUTH_RATE_LIMITER",
           "simple": { "limit": 10, "period": 60 },
+        },
+        {
+          "namespace_id": "1008",
+          "name": "API_KEY_RATE_LIMITER",
+          "simple": { "limit": 3000, "period": 60 },
         },
       ],
       "observability": {
