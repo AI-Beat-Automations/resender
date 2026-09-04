@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
+  allowApiKeyRequest: vi.fn(),
   authenticateApiKey: vi.fn(),
   getTenantEntitlement: vi.fn(),
   hasActiveSubscription: vi.fn(),
@@ -12,6 +13,11 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/billing/entitlement-status", () => ({
   getTenantEntitlement: mocks.getTenantEntitlement,
+}))
+
+vi.mock("@/lib/auth/api-key-rate-limit", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/auth/api-key-rate-limit")>()),
+  allowApiKeyRequest: mocks.allowApiKeyRequest,
 }))
 
 vi.mock("@/lib/auth/api-keys", () => ({
@@ -43,7 +49,7 @@ vi.mock("@/lib/observability/logger", async (importOriginal) => ({
   log: mocks.log,
 }))
 
-vi.mock("@/lib/posthog", () => ({ posthog: null }))
+vi.mock("@/lib/posthog", () => ({ posthog: null, captureDeferred: vi.fn() }))
 
 import type { NextRequest } from "next/server"
 
@@ -65,7 +71,11 @@ const sendRequest = (headers: Record<string, string> = {}) =>
 describe("POST /api/meta/instagram/send", () => {
   beforeEach(() => {
     for (const mock of Object.values(mocks)) mock.mockReset()
-    mocks.authenticateApiKey.mockResolvedValue({ tenantId: "tenant-1" })
+    mocks.allowApiKeyRequest.mockResolvedValue(true)
+    mocks.authenticateApiKey.mockResolvedValue({
+      id: "key-1",
+      tenantId: "tenant-1",
+    })
     mocks.isUserWaitlisted.mockResolvedValue(false)
     mocks.hasActiveSubscription.mockResolvedValue(true)
     mocks.resolveInstagramAccess.mockResolvedValue(true)
@@ -73,6 +83,20 @@ describe("POST /api/meta/instagram/send", () => {
       block: null,
       periodStart: new Date("2026-08-01"),
     })
+  })
+
+  // El límite va antes de cualquier otro gate: es lo que los protege. Un bot
+  // en bucle recibe 429 con `retry-after` y no toca ni Neon ni Meta.
+  it("rejects with 429 when the API key exceeded its rate limit", async () => {
+    mocks.allowApiKeyRequest.mockResolvedValue(false)
+
+    const response = await POST(sendRequest())
+
+    expect(response.status).toBe(429)
+    expect(response.headers.get("retry-after")).toBe("60")
+    expect(mocks.allowApiKeyRequest).toHaveBeenCalledWith("key-1")
+    expect(mocks.isUserWaitlisted).not.toHaveBeenCalled()
+    expect(mocks.sendInstagramTextMessage).not.toHaveBeenCalled()
   })
 
   // ADR 0011: Instagram entra a facturación, así que la cuenta restringida

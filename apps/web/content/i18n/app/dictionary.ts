@@ -358,11 +358,9 @@ export type AppDict = {
     headPrefix: string
     headStatus: string
     headCreated: string
-    headLastUsed: string
     headActions: string
     statusActive: string
     statusRevoked: string
-    never: string
     revoke: string
     revoking: string
     /** `{label}` */

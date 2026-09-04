@@ -1,9 +1,10 @@
 import { headers } from "next/headers"
 
+import { defaultKeyHasher } from "@better-auth/api-key"
 import { isAPIError } from "better-auth/api"
 
 import { getAuth } from "@/lib/auth/auth"
-import { log } from "@/lib/observability/logger"
+import { describeError, log } from "@/lib/observability/logger"
 
 // **El único lugar del repositorio que le habla al plugin `apiKey`.** Igual que
 // `lib/auth/session.ts` con la sesión: los consumidores —las cinco rutas de la
@@ -15,7 +16,7 @@ import { log } from "@/lib/observability/logger"
 // cuando la implementación era propia (`lib/api-keys/api-keys.ts`, borrado en el
 // escalón 3 de la ADR 0014): mismo `ApiKeyRecord`, mismo `{ id, tenantId }` al
 // autenticar, mismo `InvalidApiKeyLabelError`. Nada del vocabulario del plugin
-// —`referenceId`, `enabled`, `lastRequest`— sale de este archivo.
+// —`referenceId`, `enabled`— sale de este archivo.
 
 /** Prefijo visible de toda API key emitida. Ver [API Token] en CONTEXT.md. */
 export const API_KEY_PREFIX = "pk_live_"
@@ -29,7 +30,6 @@ export type ApiKeyRecord = {
   visiblePrefix: string
   status: ApiKeyStatus
   createdAt: Date
-  lastUsedAt: Date | null
 }
 
 export type AuthenticatedApiKey = {
@@ -125,17 +125,27 @@ export async function revokeApiKey(
  * en ningún otro lado, porque equivocarla es que un tenant opere sobre los datos
  * de otro.
  *
+ * **No pasa por `verifyApiKey` del plugin, a propósito.** Ese endpoint hace un
+ * UPDATE de `last_used_at` en cada verificación, incondicional y sin opción
+ * para apagarlo, incluso con el rate limit interno en `false`. A cincuenta
+ * envíos por segundo del mismo bot son cincuenta escrituras por segundo sobre
+ * una sola fila, y Postgres las serializa en el lock: cada envío esperaba al
+ * anterior para autenticarse. El dato que esa escritura sostenía —la columna
+ * "último uso" de Ajustes— se eliminó del producto por no aportar nada real.
+ * Acá se hace lo mismo que el plugin **menos la escritura**: el mismo hash
+ * (`defaultKeyHasher`, SHA-256), el mismo SELECT por `secret_hash` a través de
+ * su adaptador, y las mismas dos reglas de rechazo: `enabled` en falso y
+ * `expires_at` vencido. Emitir y revocar siguen siendo del plugin.
+ *
  * Devuelve `null` para toda key que no autentica —inexistente, revocada,
  * expirada, malformada—: el contrato hacia afuera es un 401 sin detalle, igual
  * que antes.
  *
- * **Un fallo de infraestructura no es un 401.** `verifyApiKey` colapsa cualquier
- * excepción a `valid: false`, así que un blip de Neon durante la verificación
- * saldría, sin este corte, como `401 {"error":"unauthorized"}`: N8N dejaría de
- * funcionar y el operador se iría a buscar una key revocada que nunca se revocó.
- * Eso se distingue (ver `isVerificationInfrastructureFailure`) y se propaga como
- * `ApiKeyVerificationFailedError`, que las rutas no atrapan y que Next convierte
- * en el mismo 500 que emitía esta función cuando la implementación era propia.
+ * **Un fallo de infraestructura no es un 401.** Si el adaptador lanza —un blip
+ * de Neon durante la lectura—, se propaga como `ApiKeyVerificationFailedError`,
+ * que las rutas no atrapan y que Next convierte en 500. Sin ese corte, N8N
+ * dejaría de funcionar y el operador se iría a buscar una key revocada que
+ * nunca se revocó.
  */
 export async function authenticateApiKey(
   apiKey: unknown
@@ -144,25 +154,44 @@ export async function authenticateApiKey(
   // de Resender y no hace falta ir a la base a comprobarlo.
   if (!isApiKeyFormat(apiKey)) return null
 
-  const result = await getAuth().api.verifyApiKey({ body: { key: apiKey } })
+  const hashedKey = await defaultKeyHasher(apiKey)
 
-  if (isVerificationInfrastructureFailure(result.error)) {
-    // La causa real ya se perdió: el plugin la escribe en su propio logger y no
-    // la devuelve. Lo que se registra acá es la señal de que hubo un fallo de
-    // verificación —no de que la key sea mala—, que es lo que hoy no existía.
+  let row: StoredApiKey | null
+  try {
+    const { adapter } = await getAuth().$context
+    // `model: "apikey"` y `field: "key"` son los nombres lógicos del plugin; el
+    // adaptador los traduce a `auth_api_keys.secret_hash` con el `schema` de
+    // `apiKeyPlugin()`. Es la misma consulta que hace `verifyApiKey`.
+    row = await adapter.findOne<StoredApiKey>({
+      model: "apikey",
+      where: [{ field: "key", value: hashedKey }],
+    })
+  } catch (error) {
     log({
       entrypoint: "route",
       action: "api_key_verify",
       outcome: "failed",
       reason: "internal_error",
-      errorMessage: VERIFICATION_FAILED_MESSAGE,
+      errorMessage: describeError(error),
     })
     throw new ApiKeyVerificationFailedError()
   }
 
-  if (!result.valid || !result.key) return null
+  if (!row || row.enabled === false) return null
+  if (row.expiresAt && new Date(row.expiresAt).getTime() < Date.now()) {
+    return null
+  }
 
-  return { id: result.key.id, tenantId: result.key.referenceId }
+  return { id: row.id, tenantId: row.referenceId }
+}
+
+// Lo que se lee de la fila al verificar: nada más, y en el vocabulario del
+// plugin, que es el que el adaptador entiende.
+type StoredApiKey = {
+  id: string
+  referenceId: string
+  enabled: boolean
+  expiresAt: Date | string | null
 }
 
 const VERIFICATION_FAILED_MESSAGE =
@@ -180,41 +209,6 @@ export class ApiKeyVerificationFailedError extends Error {
   }
 }
 
-/**
- * Separa "esta key no vale" de "no pude averiguarlo".
- *
- * `verifyApiKey` devuelve `valid: false` en los dos casos, pero **no** devuelve
- * el mismo `error`. El endpoint tiene dos ramas de fallo y se delatan por la
- * forma de `error.message`, que es tipada y distinta en cada una:
- *
- *   - Rechazo del plugin (`isAPIError`): copia el cuerpo del `APIError`, así que
- *     `message` es el **texto** (`"Invalid API key."`) y `code` el motivo real
- *     —`INVALID_API_KEY` si no existe, `KEY_DISABLED` si está revocada,
- *     `KEY_EXPIRED`, `USAGE_EXCEEDED`—. Todo esto es un 401 legítimo.
- *   - Excepción cualquiera (el `catch` de última instancia, que es donde cae que
- *     la base no conteste): arma el error a mano con
- *     `message: API_KEY_ERROR_CODES.INVALID_API_KEY`, que **no es el texto sino
- *     el objeto entero** `{ code, message }` de `defineErrorCodes`, y `code:
- *     "INVALID_API_KEY"`.
- *
- * De ahí la condición: el `code` genérico **y** un `message` que no es un
- * string. Las dos juntas, porque el `code` solo no alcanza —lo comparte con la
- * key inexistente, que es el 401 más común— y el `message` solo tampoco.
- *
- * Sí, se apoya en un descuido del plugin (la rama de excepción se olvidó de
- * desenvolver `.message`), y por eso está escrito acá y no repartido. La
- * versión está fijada (`@better-auth/api-key` 1.7.2, `package.json` sin rango) y
- * `lib/auth/api-keys.test.ts` cubre las dos ramas contra el plugin real, así que
- * un bump que lo corrija rompe el test en vez de romper producción en silencio.
- * Y si igual se colara: la degradación es al 401 de siempre, nunca a un 500 de
- * más para una key que sí es inválida.
- */
-function isVerificationInfrastructureFailure(
-  error: { code: string; message: unknown } | null
-): boolean {
-  return error?.code === "INVALID_API_KEY" && typeof error.message !== "string"
-}
-
 function isApiKeyFormat(value: unknown): value is string {
   return typeof value === "string" && value.startsWith(API_KEY_PREFIX)
 }
@@ -230,12 +224,15 @@ function normalizeLabel(labelInput: unknown) {
   return label
 }
 
-// La forma del plugin traducida a la del producto. Los dos campos que no son un
-// renombre directo:
+// La forma del plugin traducida a la del producto. El único campo que no es un
+// renombre directo es `status`, que sale de `enabled`: lo que el plugin apaga
+// al revocar.
 //
-//   - `status` sale de `enabled`, que es lo que el plugin apaga al revocar.
-//   - `lastUsedAt` sale de `lastRequest`, que el plugin refresca en cada
-//     verificación exitosa aun con el rate limit apagado.
+// **No hay `lastUsedAt`.** La columna `last_used_at` existe porque el plugin la
+// declara y la escribe al crear, pero el producto dejó de leerla y de
+// refrescarla (ver `authenticateApiKey`): mantenerla al día costaba una
+// escritura por request sobre una fila caliente y nadie tomaba decisiones con
+// ese dato.
 //
 // **No hay `revokedAt`.** El plugin no guarda cuándo se revocó una key y su
 // `update` no toca `updated_at`, así que no existe ninguna columna de la que
@@ -250,7 +247,6 @@ function mapApiKey(apiKey: {
   referenceId: string
   enabled: boolean
   createdAt: Date | string
-  lastRequest?: Date | string | null
 }): ApiKeyRecord {
   return {
     id: apiKey.id,
@@ -259,6 +255,5 @@ function mapApiKey(apiKey: {
     visiblePrefix: apiKey.start ?? API_KEY_PREFIX,
     status: apiKey.enabled ? "active" : "revoked",
     createdAt: new Date(apiKey.createdAt),
-    lastUsedAt: apiKey.lastRequest ? new Date(apiKey.lastRequest) : null,
   }
 }
