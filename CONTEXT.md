@@ -263,6 +263,9 @@ Las dos resoluciones —@handle y publicacion— corren al **leer la pantalla**,
 
 Los dos modos son de **solo lectura**: no hay compositor en ninguno, las respuestas salen por la API externa. Decision en `docs/adr/0009-inbox-mensajes-y-comentarios.md`.
 
+### Consola
+La parte del producto de `/login` hacia adentro: [Conexión], [Estructura de Inbox], [Pantallas de configuracion]. Es la raíz del breadcrumb de cada pantalla y el primer grupo del menú lateral; el segundo grupo, *Recursos*, solo enlaza a la [Documentacion publica del flujo (`/docs`)].
+
 ### Pantallas de configuracion
 La gestion de paginas conectadas no vive dentro de `Settings` en el MVP; se realiza en una pantalla separada.
 La pantalla separada se llama `Connections` y vive en la ruta `/connections`.

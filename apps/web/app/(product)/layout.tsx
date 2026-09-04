@@ -7,6 +7,10 @@ import {
   type QuotaNoticeView,
 } from "@/features/billing/ui/quota-notice-bar"
 import { AppSidebar } from "@/features/shell/ui/app-sidebar"
+import { ConsoleHeader } from "@/features/shell/ui/console-header"
+import { HeaderActionsProvider } from "@/features/shell/ui/header-actions"
+import { SidebarInset, SidebarProvider } from "@workspace/ui/components/sidebar"
+import { TooltipProvider } from "@workspace/ui/components/tooltip"
 import { AppI18nProvider } from "@/content/i18n/app/provider"
 import { getAppI18n } from "@/lib/i18n/app-dict"
 import { resolveProductAccess } from "@/lib/auth/waitlist"
@@ -52,30 +56,37 @@ export default async function ProductLayout({
   }
 
   return (
-    // Shell de dos columnas (ADR 0005): sidebar fijo, contenido con scroll
-    // propio. El dashboard va sobre `--surface-app`, sin textura.
-    <div className="flex h-svh overflow-hidden bg-[var(--surface-app)]">
-      <AppI18nProvider lang={lang} dict={t}>
-        <PostHogIdentify
-          distinctId={session.user.id}
-          email={session.user.email}
-        />
-        <AppSidebar
-          name={session.user.name}
-          email={session.user.email}
-          signOutAction={signOutAction}
-        />
-        <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">
-          {/* La franja de cuota va dentro del `main`, al ancho de la columna. */}
-          <QuotaNoticeBar notice={notice} t={t} />
-          {/* PADDING DEL LAYOUT: el contenedor aporta 36px horizontales, 28px
-            arriba y 32px abajo (spec C.7). Cada pantalla dibuja su cabecera y
-            su cuerpo sin repetir estos paddings; solo el espacio entre ambos
-            (24px) corre por su cuenta. */}
-          <div className="px-9 pt-7 pb-8">{children}</div>
-        </main>
-      </AppI18nProvider>
-    </div>
+    // Shell de la consola (ADR 0015): bloque `Sidebar` de shadcn fijo a 232 px
+    // y `SidebarInset` con header → barra de cuota → contenido. El sidebar no
+    // colapsa (`collapsible="none"`), así que el provider solo aporta el ancho.
+    <AppI18nProvider lang={lang} dict={t}>
+      <PostHogIdentify
+        distinctId={session.user.id}
+        email={session.user.email}
+      />
+      <TooltipProvider>
+        <HeaderActionsProvider>
+          <SidebarProvider
+            className="h-svh min-h-0 overflow-hidden bg-[var(--surface-app)]"
+            style={{ "--sidebar-width": "232px" } as React.CSSProperties}
+          >
+            <AppSidebar
+              name={session.user.name}
+              email={session.user.email}
+              signOutAction={signOutAction}
+            />
+            <SidebarInset className="min-w-0 overflow-y-auto">
+              <ConsoleHeader />
+              {/* La franja de cuota va bajo el header, al ancho de la columna. */}
+              <QuotaNoticeBar notice={notice} t={t} />
+              {/* PADDING DEL LAYOUT: 24px por lado. Cada pantalla dibuja su
+                  cabecera y su cuerpo sin repetir estos paddings. */}
+              <div className="px-6 py-6">{children}</div>
+            </SidebarInset>
+          </SidebarProvider>
+        </HeaderActionsProvider>
+      </TooltipProvider>
+    </AppI18nProvider>
   )
 }
 
