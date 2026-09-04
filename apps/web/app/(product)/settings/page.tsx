@@ -212,6 +212,5 @@ function toApiKeyView(
     visiblePrefix: apiKey.visiblePrefix,
     status: apiKey.status,
     createdAt: apiKey.createdAt.toISOString(),
-    lastUsedAt: apiKey.lastUsedAt?.toISOString() ?? null,
   }
 }

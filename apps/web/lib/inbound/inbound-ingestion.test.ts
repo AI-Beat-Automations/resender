@@ -79,7 +79,7 @@ vi.mock("@/lib/observability/logger", async (importOriginal) => ({
   log: mocks.log,
 }))
 
-vi.mock("@/lib/posthog", () => ({ posthog: null }))
+vi.mock("@/lib/posthog", () => ({ posthog: null, captureDeferred: vi.fn() }))
 
 import {
   ingestInstagramWebhookPayload as ingestInstagramRaw,

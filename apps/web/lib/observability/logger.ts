@@ -120,6 +120,7 @@ export type LogReason =
   | "reply_too_long"
   // gates de las rutas salientes
   | "unauthorized"
+  | "rate_limited" // la API key superó su cuota por minuto (429)
   | "waitlisted"
   | "channel_not_enabled" // ADR 0010: el tenant no tiene permiso para ese canal
   // WhatsApp: el contacto no escribió en las últimas 24 h, así que Meta sólo

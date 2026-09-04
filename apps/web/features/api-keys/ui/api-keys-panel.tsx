@@ -23,7 +23,6 @@ export type ApiKeyView = {
   visiblePrefix: string
   status: "active" | "revoked"
   createdAt: string
-  lastUsedAt: string | null
 }
 
 // Cabeceras de tabla en mono MAYÚSCULAS (spec C.5).
@@ -76,7 +75,6 @@ export function ApiKeysPanel({
                 <TableHead className={HEAD}>{t.apiKeys.headPrefix}</TableHead>
                 <TableHead className={HEAD}>{t.apiKeys.headStatus}</TableHead>
                 <TableHead className={HEAD}>{t.apiKeys.headCreated}</TableHead>
-                <TableHead className={HEAD}>{t.apiKeys.headLastUsed}</TableHead>
                 <TableHead className={`${HEAD} pr-5 text-right`}>
                   <span className="sr-only">{t.apiKeys.headActions}</span>
                 </TableHead>
@@ -113,13 +111,6 @@ function ApiKeyRow({ apiKey, t }: { apiKey: ApiKeyView; t: AppDict }) {
       <TableCell className={CELL}>
         {formatDay(apiKey.createdAt, t.intl)}
       </TableCell>
-      <TableCell className={CELL}>
-        {apiKey.lastUsedAt ? (
-          formatDayTime(apiKey.lastUsedAt, t.intl)
-        ) : (
-          <span className="text-[var(--text-subtle)]">{t.apiKeys.never}</span>
-        )}
-      </TableCell>
       <TableCell className="px-3 py-3 pr-5 text-right">
         {revoked ? (
           // Una key revocada sigue en la lista, sin acción y **sin fecha de
@@ -142,15 +133,5 @@ function formatDay(iso: string, intl: string): string {
     day: "numeric",
     month: "short",
     year: "numeric",
-  })
-}
-
-function formatDayTime(iso: string, intl: string): string {
-  return new Date(iso).toLocaleString(intl, {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
   })
 }

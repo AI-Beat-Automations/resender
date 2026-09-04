@@ -20,6 +20,9 @@ interface CloudflareEnv {
   // Rate limit por IP del acceso y del alta (`lib/auth/rate-limit.ts`). Cuenta
   // aparte del de la lista de espera: comparten el mecanismo, no la cuota.
   AUTH_RATE_LIMITER: RateLimit
+  // Rate limit por API key de las rutas `/api/meta/*/send`
+  // (`lib/auth/api-key-rate-limit.ts`). Cuota propia, mismo mecanismo.
+  API_KEY_RATE_LIMITER: RateLimit
   // Productor de la cola de entregas. La ingesta escribe el job en
   // `external_webhook_jobs` y encola su id; el consumidor vive en `worker.ts`.
   WEBHOOK_DELIVERIES: Queue<WebhookDeliveryMessage>
