@@ -1,6 +1,6 @@
 import Link from "next/link"
 import { redirect } from "next/navigation"
-import { LoaderCircle } from "lucide-react"
+import { CircleCheck } from "lucide-react"
 
 import { getSession } from "@/lib/auth/session"
 import { ActivationPoller } from "@/features/billing/ui/activation-poller"
@@ -9,6 +9,7 @@ import { getStripe } from "@/lib/billing/stripe"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
 import { privatePageMetadata } from "@/lib/seo"
 import { getAppI18n } from "@/lib/i18n/app-dict"
+import { Button } from "@workspace/ui/components/button"
 
 // Estática y en español por el mismo motivo que en `/billing`: es el `<title>`
 // de una página `noindex` que dura unos segundos.
@@ -41,28 +42,36 @@ export default async function BillingSuccessPage({
 
   return (
     <AccessShell lang={lang}>
-      <AccessCard className="max-w-130 p-7.5">
-        <span className="flex size-11 items-center justify-center rounded-full bg-primary-soft text-primary-soft-foreground">
-          <LoaderCircle className="size-5 animate-spin" aria-hidden />
-        </span>
-        <h1 className="mt-4.5 font-heading text-[22px] font-bold tracking-tight">
-          {t.billing.successTitle}
-        </h1>
-        <p className="mt-2.5 text-[14.5px]/[1.6] text-muted-foreground">
-          {t.billing.successBody}
-        </p>
-        <p className="mt-4.5 text-[13px]/[1.6] text-muted-foreground">
+      {/* Palomita en `text-success` y no un spinner: el pago ya se hizo, lo
+          que falta es que el webhook lo replique. El botón a `/connections`
+          es la salida manual; `ActivationPoller` lleva sola cuando el gate
+          la deja pasar. */}
+      <AccessCard
+        className="max-w-130"
+        align="start"
+        title={t.billing.successTitle}
+        description={t.billing.successBody}
+        header={
+          <span className="mb-2 flex size-11 items-center justify-center rounded-full bg-success-soft text-success">
+            <CircleCheck className="size-5" aria-hidden />
+          </span>
+        }
+      >
+        <Button asChild size="lg" className="w-full">
+          <Link href="/connections">{t.billing.successCta}</Link>
+        </Button>
+        <p className="text-[13px]/[1.6] text-muted-foreground">
           {t.billing.successSlowBefore}
           <Link
             href="/connections"
-            className="font-medium text-foreground underline-offset-4 hover:underline"
+            className="font-medium text-primary underline-offset-4 hover:underline"
           >
             {t.billing.successSlowLink}
           </Link>
           {t.billing.successSlowMiddle}
           <a
             href={`mailto:${t.common.contactEmail}`}
-            className="font-medium text-foreground underline-offset-4 hover:underline"
+            className="font-medium text-primary underline-offset-4 hover:underline"
           >
             {t.common.contactEmail}
           </a>

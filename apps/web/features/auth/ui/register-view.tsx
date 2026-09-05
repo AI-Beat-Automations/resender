@@ -7,8 +7,8 @@ import { registerAction } from "@/features/auth/actions"
 import {
   AccessCard,
   AccessDocsLink,
-  AccessEyebrow,
   AccessShell,
+  AccessSwitchLink,
 } from "@/features/auth/ui/access-shell"
 import { AuthForm } from "@/features/auth/ui/auth-form"
 import { GoogleSignIn } from "@/features/auth/ui/google-sign-in"
@@ -45,14 +45,11 @@ export async function RegisterView({
   return (
     <AccessShell lang={lang} topbarEnd={<AccessDocsLink lang={lang} />}>
       <HtmlLang lang={lang} />
-      <AccessCard className="max-w-95 p-6.5">
-        <AccessEyebrow label={t.register.eyebrow} />
-        <h1 className="mt-1.5 font-heading text-[22px] font-bold tracking-tight">
-          {t.register.title}.
-        </h1>
-        <p className="mt-2 text-[13.5px] text-muted-foreground">
-          {t.register.subtitle}
-        </p>
+      <AccessCard
+        eyebrow={t.register.eyebrow}
+        title={t.register.title}
+        description={t.register.subtitle}
+      >
         {oauthErrorKind ? (
           <OauthErrorNotice kind={oauthErrorKind} lang={lang} />
         ) : null}
@@ -60,6 +57,7 @@ export async function RegisterView({
         {googleEnabled ? <GoogleSignIn lang={lang} from="register" /> : null}
         <AuthForm action={registerAction} mode="register" lang={lang} />
       </AccessCard>
+      <AccessSwitchLink lang={lang} mode="register" />
     </AccessShell>
   )
 }

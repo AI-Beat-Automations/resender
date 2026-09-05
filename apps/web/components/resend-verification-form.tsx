@@ -4,6 +4,7 @@ import { useActionState } from "react"
 import { Check, LoaderCircle, TriangleAlert } from "lucide-react"
 
 import type { Locale } from "@/content/i18n"
+import { Alert, AlertDescription } from "@workspace/ui/components/alert"
 import { Button } from "@workspace/ui/components/button"
 
 // El estado de `resendVerificationEmailAction` (`features/auth/actions`),
@@ -54,19 +55,19 @@ export function ResendVerificationForm({
 }) {
   const [state, formAction, pending] = useActionState(action, {})
 
+  // «Listo» y error sobre el `Alert` del DS. El de éxito es un `status` con
+  // `aria-live="polite"`: confirma sin interrumpir al lector de pantalla.
   if (state.sent) {
     return (
-      <p
-        className={className}
+      <Alert
+        variant="success"
         role="status"
         aria-live="polite"
-        data-slot="resend-sent"
+        className={className}
       >
-        <span className="inline-flex items-center gap-1.5 text-[13px] text-success-soft-foreground">
-          <Check className="size-3.5 shrink-0" aria-hidden />
-          {sentLabel}
-        </span>
-      </p>
+        <Check className="size-3.5" aria-hidden />
+        <AlertDescription className="text-[13px]">{sentLabel}</AlertDescription>
+      </Alert>
     )
   }
 
@@ -75,8 +76,14 @@ export function ResendVerificationForm({
       {/* El server action no ve el pathname: el idioma va en un input oculto,
           igual que en `AuthForm`. Solo lo usa para el 429 del rate limit. */}
       <input type="hidden" name="locale" value={lang} />
-      <div className="flex flex-wrap items-center gap-2">
-        <Button type="submit" variant={variant} size={size} disabled={pending}>
+      <div className="flex flex-col gap-2">
+        <Button
+          type="submit"
+          variant={variant}
+          size={size}
+          disabled={pending}
+          className="self-start"
+        >
           {pending ? (
             <>
               <LoaderCircle className="size-4 animate-spin" aria-hidden />
@@ -87,13 +94,12 @@ export function ResendVerificationForm({
           )}
         </Button>
         {state.error ? (
-          <span
-            role="alert"
-            className="inline-flex items-center gap-1.5 text-[13px] text-destructive"
-          >
-            <TriangleAlert className="size-3.5 shrink-0" aria-hidden />
-            {state.error}
-          </span>
+          <Alert variant="destructive">
+            <TriangleAlert className="size-3.5" aria-hidden />
+            <AlertDescription className="text-[13px]">
+              {state.error}
+            </AlertDescription>
+          </Alert>
         ) : null}
       </div>
     </form>

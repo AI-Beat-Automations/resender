@@ -6,7 +6,6 @@ import { getDictionary, localePath, type Locale } from "@/content/i18n"
 import {
   AccessCard,
   AccessDocsLink,
-  AccessEyebrow,
   AccessShell,
 } from "@/features/auth/ui/access-shell"
 import { ResetPasswordForm } from "@/features/auth/ui/reset-password-form"
@@ -31,34 +30,27 @@ export async function ResetPasswordView({
   return (
     <AccessShell lang={lang} topbarEnd={<AccessDocsLink lang={lang} />}>
       <HtmlLang lang={lang} />
-      <AccessCard className="max-w-100">
-        <AccessEyebrow label={t.reset.eyebrow} />
-        {alive ? (
-          <>
-            <h1 className="mt-1.5 font-heading text-2xl font-bold tracking-tight">
-              {t.reset.title}.
-            </h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {t.reset.subtitle}
-            </p>
-            <ResetPasswordForm lang={lang} token={token} />
-          </>
-        ) : (
-          <>
-            <h1 className="mt-1.5 font-heading text-2xl font-bold tracking-tight">
-              {t.reset.expiredTitle}.
-            </h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {t.reset.expiredBody}
-            </p>
-            <Button asChild size="lg" className="mt-5 w-full">
-              <Link href={localePath("/forgot-password", lang)}>
-                {t.reset.requestAnother}
-              </Link>
-            </Button>
-          </>
-        )}
-      </AccessCard>
+      {alive ? (
+        <AccessCard
+          eyebrow={t.reset.eyebrow}
+          title={t.reset.title}
+          description={t.reset.subtitle}
+        >
+          <ResetPasswordForm lang={lang} token={token} />
+        </AccessCard>
+      ) : (
+        <AccessCard
+          eyebrow={t.reset.eyebrow}
+          title={t.reset.expiredTitle}
+          description={t.reset.expiredBody}
+        >
+          <Button asChild size="lg" className="w-full">
+            <Link href={localePath("/forgot-password", lang)}>
+              {t.reset.requestAnother}
+            </Link>
+          </Button>
+        </AccessCard>
+      )}
     </AccessShell>
   )
 }

@@ -1,11 +1,13 @@
 "use client"
 
 import { useActionState } from "react"
-import { LoaderCircle, TriangleAlert } from "lucide-react"
+import { LoaderCircle } from "lucide-react"
 
 import { signInWithGoogleAction } from "@/features/auth/actions"
 import { getDictionary, type Locale } from "@/content/i18n"
+import { AuthNotice } from "@/features/auth/ui/auth-notice"
 import { Button } from "@workspace/ui/components/button"
+import { Separator } from "@workspace/ui/components/separator"
 
 // «Continuar con Google» más el separador «o» que lo aparta del `AuthForm`
 // de siempre ([Cuenta vinculada], issue #98). Es un form con server action y
@@ -30,21 +32,13 @@ export function GoogleSignIn({
 
   return (
     <>
-      <form action={formAction} className="mt-5 flex flex-col gap-3.5">
+      <form action={formAction} className="flex flex-col gap-4">
         {/* Los dos inputs ocultos son lo que el action no puede ver: el idioma
             de la página (para el 429 y para el prefijo `/en`) y desde qué
             pantalla salió, que es a dónde vuelve el `?error=`. */}
         <input type="hidden" name="locale" value={lang} />
         <input type="hidden" name="from" value={from} />
-        {state.error && (
-          <p
-            role="alert"
-            className="flex items-start gap-2 rounded-lg border border-destructive-soft-border bg-destructive-soft px-3 py-2.5 text-[13px] text-destructive-soft-foreground"
-          >
-            <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-            {state.error}
-          </p>
-        )}
+        {state.error && <AuthNotice tone="error">{state.error}</AuthNotice>}
         <Button
           type="submit"
           size="lg"
@@ -60,15 +54,15 @@ export function GoogleSignIn({
           {t.google.continueWith}
         </Button>
       </form>
-      {/* Separador «o»: línea a cada lado y la palabra en el medio, con el
-          mismo tono apagado del texto secundario de la card. */}
+      {/* Separador «o»: un `Separator` a cada lado y la palabra en el medio,
+          con el mismo tono apagado del texto secundario de la card. */}
       <div
-        className="mt-4 flex items-center gap-3 text-[12px] text-muted-foreground"
+        className="flex items-center gap-2.5 text-[12px] text-muted-foreground"
         aria-hidden
       >
-        <span className="h-px flex-1 bg-border" />
+        <Separator className="flex-1" />
         <span>{t.google.divider}</span>
-        <span className="h-px flex-1 bg-border" />
+        <Separator className="flex-1" />
       </div>
     </>
   )

@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation"
-import { Check } from "lucide-react"
 
 import { getSession } from "@/lib/auth/session"
 import { HtmlLang } from "@/components/html-lang"
@@ -8,10 +7,11 @@ import { loginAction } from "@/features/auth/actions"
 import {
   AccessCard,
   AccessDocsLink,
-  AccessEyebrow,
   AccessShell,
+  AccessSwitchLink,
 } from "@/features/auth/ui/access-shell"
 import { AuthForm } from "@/features/auth/ui/auth-form"
+import { AuthNotice } from "@/features/auth/ui/auth-notice"
 import { GoogleSignIn } from "@/features/auth/ui/google-sign-in"
 import { OauthErrorNotice } from "@/features/auth/ui/oauth-error-notice"
 import { isGoogleEnabled } from "@/lib/auth/google"
@@ -54,17 +54,15 @@ export async function LoginView({
   return (
     <AccessShell lang={lang} topbarEnd={<AccessDocsLink lang={lang} />}>
       <HtmlLang lang={lang} />
-      <AccessCard className="max-w-100">
-        <AccessEyebrow label={t.login.eyebrow} />
-        <h1 className="mt-1.5 font-heading text-2xl font-bold tracking-tight">
-          {t.login.title}.
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">{t.login.subtitle}</p>
+      <AccessCard
+        eyebrow={t.login.eyebrow}
+        title={t.login.title}
+        description={t.login.subtitle}
+      >
         {passwordChanged ? (
-          <p className="mt-4 flex items-start gap-2 rounded-lg border border-success-soft-border bg-success-soft px-3 py-2.5 text-[13px] text-success-soft-foreground">
-            <Check className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          <AuthNotice tone="success" role="status">
             {t.passwordChanged}
-          </p>
+          </AuthNotice>
         ) : null}
         {oauthErrorKind ? (
           <OauthErrorNotice kind={oauthErrorKind} lang={lang} />
@@ -74,6 +72,7 @@ export async function LoginView({
         {googleEnabled ? <GoogleSignIn lang={lang} from="login" /> : null}
         <AuthForm action={loginAction} mode="login" lang={lang} />
       </AccessCard>
+      <AccessSwitchLink lang={lang} mode="login" />
     </AccessShell>
   )
 }

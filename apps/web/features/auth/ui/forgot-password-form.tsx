@@ -2,10 +2,11 @@
 
 import Link from "next/link"
 import { useActionState } from "react"
-import { Check, LoaderCircle, TriangleAlert } from "lucide-react"
+import { LoaderCircle } from "lucide-react"
 
 import { forgotPasswordAction } from "@/features/auth/actions"
 import { getDictionary, localePath, type Locale } from "@/content/i18n"
+import { AuthNotice } from "@/features/auth/ui/auth-notice"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
@@ -13,8 +14,8 @@ import { Label } from "@workspace/ui/components/label"
 // Formulario propio y **no** un modo más de `AuthForm`: sumarle dos modos
 // llenaría de condiciones cruzadas el único formulario que autentica del
 // producto, y vitest no ejecuta `.tsx`, así que ese refactor no tendría red.
-// Lo que sí se comparte es el chrome (`AccessShell`/`AccessCard`) y el estilo
-// del bloque de error.
+// Lo que sí se comparte es el chrome (`AccessShell`/`AccessCard`) y el bloque
+// de error (`AuthNotice`).
 export function ForgotPasswordForm({ lang }: { lang: Locale }) {
   const [state, formAction, pending] = useActionState(forgotPasswordAction, {})
   const t = getDictionary(lang).auth
@@ -24,16 +25,12 @@ export function ForgotPasswordForm({ lang }: { lang: Locale }) {
   // el botón de reenviar necesita el email que se acaba de tipear.
   if (state.sent) {
     return (
-      <form action={formAction} className="mt-5 flex flex-col gap-3.5">
+      <form action={formAction} className="flex flex-col gap-4">
         <input type="hidden" name="locale" value={lang} />
-        <p className="flex items-start gap-2 rounded-lg border border-success-soft-border bg-success-soft px-3 py-2.5 text-[13px] text-success-soft-foreground">
-          <Check className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-          <span>
-            <strong className="font-medium">{t.forgot.sentTitle}</strong>{" "}
-            {t.forgot.sentBody}
-          </span>
-        </p>
-        <div className="grid gap-2">
+        <AuthNotice tone="success" role="status" title={t.forgot.sentTitle}>
+          {t.forgot.sentBody}
+        </AuthNotice>
+        <div className="grid gap-1.5">
           <Label htmlFor="email">{t.form.email}</Label>
           <Input
             id="email"
@@ -70,11 +67,11 @@ export function ForgotPasswordForm({ lang }: { lang: Locale }) {
   }
 
   return (
-    <form action={formAction} className="mt-5 flex flex-col gap-3.5">
+    <form action={formAction} className="flex flex-col gap-4">
       {/* El server action no ve el pathname: el idioma va en un input oculto,
           igual que en `AuthForm`. */}
       <input type="hidden" name="locale" value={lang} />
-      <div className="grid gap-2">
+      <div className="grid gap-1.5">
         <Label htmlFor="email">{t.form.email}</Label>
         <Input
           id="email"
@@ -87,15 +84,7 @@ export function ForgotPasswordForm({ lang }: { lang: Locale }) {
           placeholder={t.form.emailPlaceholder}
         />
       </div>
-      {state.error && (
-        <p
-          role="alert"
-          className="flex items-start gap-2 rounded-lg border border-destructive-soft-border bg-destructive-soft px-3 py-2.5 text-[13px] text-destructive-soft-foreground"
-        >
-          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-          {state.error}
-        </p>
-      )}
+      {state.error && <AuthNotice tone="error">{state.error}</AuthNotice>}
       <Button type="submit" size="lg" className="w-full" disabled={pending}>
         {pending ? (
           <>
@@ -113,10 +102,10 @@ export function ForgotPasswordForm({ lang }: { lang: Locale }) {
 
 function BackToLogin({ lang, label }: { lang: Locale; label: string }) {
   return (
-    <p className="mt-1 text-center text-[13.5px] text-muted-foreground">
+    <p className="text-center text-[13.5px] text-muted-foreground">
       <Link
         href={localePath("/login", lang)}
-        className="font-medium text-foreground underline-offset-4 hover:underline"
+        className="font-medium text-primary underline-offset-4 hover:underline"
       >
         {label}
       </Link>

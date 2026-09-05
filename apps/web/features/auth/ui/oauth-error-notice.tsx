@@ -1,10 +1,11 @@
 "use client"
 
 import { useActionState } from "react"
-import { Check, LoaderCircle, TriangleAlert } from "lucide-react"
+import { LoaderCircle } from "lucide-react"
 
 import { resendVerificationEmailAction } from "@/features/auth/actions"
 import { getDictionary, type Locale } from "@/content/i18n"
+import { AuthNotice } from "@/features/auth/ui/auth-notice"
 import type { OAuthErrorKind } from "@/lib/auth/oauth-errors"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
@@ -29,16 +30,12 @@ export function OauthErrorNotice({
   const t = getDictionary(lang).auth
 
   return (
-    <div className="mt-4 flex flex-col gap-3">
-      <p
-        role="alert"
-        className="flex items-start gap-2 rounded-lg border border-destructive-soft-border bg-destructive-soft px-3 py-2.5 text-[13px] text-destructive-soft-foreground"
-      >
-        <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+    <div className="flex flex-col gap-3">
+      <AuthNotice tone="error">
         {kind === "account_not_linked"
           ? t.oauthErrors.accountNotLinked
           : t.oauthErrors.generic}
-      </p>
+      </AuthNotice>
       {kind === "account_not_linked" ? <ResendForm lang={lang} /> : null}
     </div>
   )
@@ -55,13 +52,9 @@ function ResendForm({ lang }: { lang: Locale }) {
   // revela si una cuenta existe, igual que `forgot.sentBody`.
   if (state.sent) {
     return (
-      <p
-        role="status"
-        className="flex items-start gap-2 rounded-lg border border-success-soft-border bg-success-soft px-3 py-2.5 text-[13px] text-success-soft-foreground"
-      >
-        <Check className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+      <AuthNotice tone="success" role="status">
         {t.oauthErrors.resendSent}
-      </p>
+      </AuthNotice>
     )
   }
 
@@ -77,15 +70,7 @@ function ResendForm({ lang }: { lang: Locale }) {
         aria-label={t.form.email}
         placeholder={t.oauthErrors.resendEmailPlaceholder}
       />
-      {state.error && (
-        <p
-          role="alert"
-          className="flex items-start gap-2 rounded-lg border border-destructive-soft-border bg-destructive-soft px-3 py-2.5 text-[13px] text-destructive-soft-foreground"
-        >
-          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-          {state.error}
-        </p>
-      )}
+      {state.error && <AuthNotice tone="error">{state.error}</AuthNotice>}
       {/* Reenviar consume un intento del rate limit que comparte con el login
           (10/60s por IP), igual que el reenvío de la recuperación. */}
       <Button
