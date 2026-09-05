@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { LoaderCircle } from "lucide-react"
+import { LoaderCircle, Plus } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { usePostHog } from "posthog-js/react"
 
@@ -18,9 +18,11 @@ import {
 } from "@/features/connect-whatsapp/signup-events"
 import { decideWhatsappSubmission } from "@/features/connect-whatsapp/signup-submission"
 import { useAppDict } from "@/content/i18n/app/provider"
+import { Alert, AlertTitle } from "@workspace/ui/components/alert"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
+import { cn } from "@workspace/ui/lib/utils"
 
 // Launcher del **Embedded Signup de WhatsApp**. Es el gemelo de
 // `ConnectFacebookButton` y `ConnectInstagramButton`, pero es el único de los
@@ -106,7 +108,21 @@ const PAIRING_TIMEOUT_MS = 4_000
 // muerto y un `state_mismatch` gratis, así que se renueva antes de que expire.
 const NONCE_REFRESH_MS = 8 * 60 * 1_000
 
-export function ConnectWhatsAppButton() {
+export function ConnectWhatsAppButton({
+  variant = "default",
+  size = "lg",
+  icon = false,
+  compact = false,
+}: {
+  // Solo piel (ADR 0015): el flujo del Embedded Signup no cambia con la forma.
+  variant?: React.ComponentProps<typeof Button>["variant"]
+  size?: React.ComponentProps<typeof Button>["size"]
+  icon?: boolean
+  // En el hueco de acciones del header no hay sitio para la descripción ni
+  // para los avisos: la descripción queda solo para lectores de pantalla y lo
+  // que pasa dentro del popup se cuelga debajo del botón, sin empujar el header.
+  compact?: boolean
+}) {
   const posthog = usePostHog()
   const router = useRouter()
 
@@ -456,10 +472,17 @@ export function ConnectWhatsAppButton() {
     // —el onboarding es este popup— y no puede haber dos launchers armados a la
     // vez, porque el nonce vive en una cookie única por navegador y el segundo
     // pisaría al primero.
-    <div id="conectar-whatsapp" className="flex flex-col items-start gap-4">
+    <div
+      id="conectar-whatsapp"
+      className={cn(
+        "flex flex-col items-start gap-4",
+        compact && "relative gap-0"
+      )}
+    >
       <div className="flex flex-col items-start gap-1.5">
         <Button
-          size="lg"
+          size={size}
+          variant={variant}
           onClick={launch}
           disabled={disabled}
           // Un botón deshabilitado sin explicación es indistinguible de uno
@@ -469,54 +492,75 @@ export function ConnectWhatsAppButton() {
           }
           aria-describedby="whatsapp-entry-description"
         >
-          {submitting && (
-            <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+          {submitting ? (
+            <LoaderCircle className="animate-spin" aria-hidden />
+          ) : (
+            icon && <Plus aria-hidden />
           )}
           {submitting ? t.whatsappSignup.connecting : t.whatsappSignup.connect}
         </Button>
         <p
           id="whatsapp-entry-description"
-          className="max-w-[420px] text-[12.5px]/[1.5] text-muted-foreground"
+          className={cn(
+            "max-w-[420px] text-[12.5px]/[1.5] text-muted-foreground",
+            compact && "sr-only"
+          )}
         >
           {t.whatsappSignup.description}
         </p>
-        {/* La consecuencia concreta, ya con el modo real en la mano. Es la
-            mitad que antes vivía en la descripción de cada botón y que con un
-            solo punto de entrada no se puede decir de antemano sin confundir:
-            hasta que la ventana no se cierra, no se sabe cuál de las dos toca. */}
-        {modeCaveat && (
-          <p className="max-w-[420px] text-[12.5px]/[1.5] text-foreground">
-            {modeCaveat}
-          </p>
-        )}
       </div>
 
-      {/* El 133005: el número ya tenía verificación en dos pasos con un PIN que
-          no es el nuestro. Hay que relanzar el flujo entero —el `code` anterior
-          ya se gastó—, así que el campo se queda montado y su valor viaja en el
-          siguiente envío. */}
-      {pinRequired && (
-        <div className="grid w-full max-w-[320px] gap-1.5">
-          <Label htmlFor="whatsapp-pin">{t.whatsappSignup.pinLabel}</Label>
-          <Input
-            id="whatsapp-pin"
-            ref={pinInputRef}
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            maxLength={6}
-            placeholder={t.whatsappSignup.pinPlaceholder}
-            className="font-mono"
-          />
-          <p className="text-[12px]/[1.5] text-muted-foreground">
-            {t.whatsappSignup.pinHint}
-          </p>
-        </div>
-      )}
+      {/* Lo que pasó dentro del popup y el PIN del 133005. En modo compacto se
+          descuelgan bajo el botón como un panel flotante, alineado a la
+          derecha, para no romper la altura fija del header. */}
+      {(modeCaveat || pinRequired || message) && (
+        <div
+          className={cn(
+            "flex flex-col items-start gap-4",
+            compact &&
+              "absolute top-full right-0 z-20 mt-2 w-[380px] max-w-[calc(100vw-3rem)] rounded-xl bg-popover p-3.5 text-left ring-1 ring-foreground/10"
+          )}
+        >
+          {/* La consecuencia concreta, ya con el modo real en la mano. Es la
+              mitad que antes vivía en la descripción de cada botón y que con un
+              solo punto de entrada no se puede decir de antemano sin confundir:
+              hasta que la ventana no se cierra, no se sabe cuál de las dos toca. */}
+          {modeCaveat && (
+            <p className="max-w-[420px] text-[12.5px]/[1.5] text-foreground">
+              {modeCaveat}
+            </p>
+          )}
 
-      {message && (
-        <p className="max-w-[420px] text-[12.5px]/[1.5] text-[var(--danger-text)]">
-          {message}
-        </p>
+          {/* El 133005: el número ya tenía verificación en dos pasos con un PIN
+              que no es el nuestro. Hay que relanzar el flujo entero —el `code`
+              anterior ya se gastó—, así que el campo se queda montado y su
+              valor viaja en el siguiente envío. */}
+          {pinRequired && (
+            <div className="grid w-full max-w-[320px] gap-1.5">
+              <Label htmlFor="whatsapp-pin">{t.whatsappSignup.pinLabel}</Label>
+              <Input
+                id="whatsapp-pin"
+                ref={pinInputRef}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                placeholder={t.whatsappSignup.pinPlaceholder}
+                className="font-mono"
+              />
+              <p className="text-[12px]/[1.5] text-muted-foreground">
+                {t.whatsappSignup.pinHint}
+              </p>
+            </div>
+          )}
+
+          {message && (
+            <Alert variant="destructive" className="max-w-[420px]">
+              <AlertTitle className="text-[12.5px]/[1.5] font-normal">
+                {message}
+              </AlertTitle>
+            </Alert>
+          )}
+        </div>
       )}
     </div>
   )

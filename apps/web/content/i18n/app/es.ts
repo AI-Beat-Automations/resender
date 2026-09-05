@@ -135,6 +135,7 @@ export const es: AppDict = {
     },
     connectedAccountsHeading: "CUENTAS CONECTADAS",
     quota: "{activePageCount} de {maxPages} conexiones",
+    quotaActiveLabel: "conexiones activas",
     quotaUnresolved: "cupo sin resolver · escríbenos a info@resender.dev",
     noticeConnectedGeneric: "Conectado: la autorización se completó.",
     noticeInstagramNamed:
@@ -234,6 +235,7 @@ export const es: AppDict = {
     listHeading: "PÁGINAS QUE ADMINISTRAS",
     badgeConnected: "ya conectada",
     badgeForeign: "en otra cuenta",
+    badgeAtLimit: "Ya marcaste la que te permite tu plan",
     foreignBody:
       "Ya está conectada en otra cuenta de Resender. Una página pertenece a una sola cuenta.",
     connectedBody: "Ya la tienes conectada y activa.",
