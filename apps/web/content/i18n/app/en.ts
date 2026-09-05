@@ -133,6 +133,7 @@ export const en: AppDict = {
     },
     connectedAccountsHeading: "CONNECTED ACCOUNTS",
     quota: "{activePageCount} of {maxPages} connections",
+    quotaActiveLabel: "active connections",
     quotaUnresolved: "quota unresolved · write to info@resender.dev",
     noticeConnectedGeneric: "Connected: the authorization completed.",
     noticeInstagramNamed:
@@ -232,6 +233,7 @@ export const en: AppDict = {
     listHeading: "PAGES YOU MANAGE",
     badgeConnected: "already connected",
     badgeForeign: "on another account",
+    badgeAtLimit: "You already checked what your plan allows",
     foreignBody:
       "It's already connected on another Resender account. A page belongs to a single account.",
     connectedBody: "You already have it connected and active.",

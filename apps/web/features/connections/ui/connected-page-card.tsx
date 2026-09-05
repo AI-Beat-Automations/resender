@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useActionState, useState, useTransition } from "react"
 import {
   Check,
+  Copy,
   KeyRound,
   LoaderCircle,
   TriangleAlert,
@@ -17,20 +18,30 @@ import {
   saveWebhookUrlAction,
   type ConnectionActionState,
 } from "@/features/connections/actions"
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@workspace/ui/components/alert"
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogMedia,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@workspace/ui/components/alert-dialog"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@workspace/ui/components/dialog"
+import { Card } from "@workspace/ui/components/card"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
+import { cn } from "@workspace/ui/lib/utils"
+
+import { ChannelAvatar } from "./channel-avatar"
 import {
   CONNECTION_STATUS_VARIANT,
   resolveConnectionStatus,
@@ -133,18 +144,26 @@ export function ConnectedPageCard({
   const pinReveal = offersPinReveal(page)
 
   return (
-    <article
-      className={`rounded-2xl border border-border bg-card p-[22px] shadow-[var(--shadow-sm)] ${
-        active ? "" : "opacity-75"
-      }`}
+    <Card
+      className={cn(
+        "gap-0 py-0",
+        // Una desconectada se apaga: fondo hundido y sin sombra (mock 1e).
+        !active && "bg-surface-sunken text-muted-foreground"
+      )}
     >
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
+      <div className="flex flex-col gap-3 px-5 py-[18px] sm:flex-row sm:items-center sm:gap-3.5">
+        <ChannelAvatar channel={page.channel} muted={!active} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             {/* En WhatsApp el titular es el número, no el `name`: es lo que el
                 usuario reconoce, y el `phone_number_id` que guarda
                 `metaPageId` no le dice nada. */}
-            <h3 className="font-heading text-base font-semibold">
+            <h3
+              className={cn(
+                "font-heading text-[15.5px] font-semibold",
+                active ? "text-foreground" : "text-muted-foreground"
+              )}
+            >
               {identity.title}
             </h3>
             {/* El canal va primero y siempre: con tres canales en la misma
@@ -159,19 +178,32 @@ export function ConnectedPageCard({
               {t.channels.statusBadge[status]}
             </Badge>
             {tokenInvalid && (
-              <Badge variant="destructive">
+              <Badge variant="destructiveSoft">
                 {t.connectionCard.tokenInvalidBadge}
               </Badge>
             )}
           </div>
-          <p className="mt-1 font-mono text-[11.5px] text-[var(--text-subtle)]">
-            {/* Los ids que el usuario cita en un correo de soporte: el IG ID en
-                Instagram, y el WABA junto al `phone_number_id` en WhatsApp —un
-                WABA puede tener varios números, así que sin él dos tarjetas del
-                mismo negocio son indistinguibles. */}
-            {identity.identity} · {t.connectionCard.connectedOn}{" "}
-            <time dateTime={page.connectedAt}>{page.connectedAtLabel}</time>
-          </p>
+          {active ? (
+            <p className="mt-1 font-mono text-[11.5px] text-[var(--text-subtle)]">
+              {/* Los ids que el usuario cita en un correo de soporte: el IG ID
+                  en Instagram, y el WABA junto al `phone_number_id` en WhatsApp
+                  —un WABA puede tener varios números, así que sin él dos
+                  tarjetas del mismo negocio son indistinguibles. */}
+              {identity.identity} · {t.connectionCard.connectedOn}{" "}
+              <time dateTime={page.connectedAt}>{page.connectedAtLabel}</time>
+            </p>
+          ) : (
+            // Desconectar es un UPDATE, no un DELETE: conviene decirlo donde
+            // el usuario duda de si perdió algo.
+            <p className="mt-1 text-[12.5px] text-muted-foreground">
+              {page.disconnectedAtLabel
+                ? fmt(t.connectionCard.disconnectedOn, {
+                    date: page.disconnectedAtLabel,
+                  })
+                : t.connectionCard.disconnectedNoDate}
+              {t.connectionCard.disconnectedHistoryKept}
+            </p>
+          )}
         </div>
 
         {active ? (
@@ -180,7 +212,7 @@ export function ConnectedPageCard({
           // Una página desconectada del mismo tenant vuelve a `selectable`
           // (page-selection.ts:75), así que reconectarla es elegirla otra vez.
           // Es el único canal con pantalla de selección.
-          <Button asChild variant="outline" size="sm">
+          <Button asChild variant="outline" size="sm" className="shrink-0">
             <Link href="/connections/select">
               {t.connectionCard.reconnectAgain}
             </Link>
@@ -189,7 +221,7 @@ export function ConnectedPageCard({
           // Instagram y WhatsApp no tienen pantalla de selección —el diálogo
           // autoriza assets concretos—, así que reconectar es volver a
           // autorizar directo, cada uno por su propio flujo.
-          <Button asChild variant="outline" size="sm">
+          <Button asChild variant="outline" size="sm" className="shrink-0">
             <a href={reconnectHref}>{t.connectionCard.reconnectAgain}</a>
           </Button>
         )}
@@ -199,35 +231,32 @@ export function ConnectedPageCard({
           se dice por qué está muda. Va antes que el aviso del token: si los dos
           coinciden, reconectar no devuelve el canal. */}
       {noAccess && (
-        <div className="mt-4 flex items-start gap-3 rounded-lg border border-warning-soft-border bg-warning-soft p-3.5 text-warning-soft-foreground">
-          <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
-          <div className="min-w-0 flex-1">
-            <p className="text-[13.5px] font-medium">
-              {fmt(t.connectionCard.noAccessTitle, {
-                channel: t.channels.label[page.channel],
-              })}
-            </p>
-            <p className="mt-1 text-[13px]/[1.55]">
-              {t.connectionCard.noAccessBody}
-            </p>
-          </div>
-        </div>
+        <Alert variant="warning" className={ALERT_IN_CARD}>
+          <TriangleAlert aria-hidden />
+          <AlertTitle>
+            {fmt(t.connectionCard.noAccessTitle, {
+              channel: t.channels.label[page.channel],
+            })}
+          </AlertTitle>
+          <AlertDescription>{t.connectionCard.noAccessBody}</AlertDescription>
+        </Alert>
       )}
 
       {tokenInvalid && (
-        <div className="mt-4 flex flex-col gap-3 rounded-lg border border-destructive-soft-border bg-destructive-soft p-3.5 text-destructive-soft-foreground sm:flex-row sm:items-center">
-          <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
-          <div className="min-w-0 flex-1">
-            <p className="text-[13.5px] font-medium">
-              {fmt(t.connectionCard.tokenInvalidTitle, {
-                noun: t.channels.noun[page.channel],
-              })}
-            </p>
-            <p className="mt-1 text-[13px]/[1.55]">
-              {t.channels.tokenInvalidBody[page.channel]}
-            </p>
+        <Alert
+          variant="destructive"
+          className={cn(ALERT_IN_CARD, ALERT_WITH_ACTION)}
+        >
+          <TriangleAlert aria-hidden />
+          <AlertTitle>
+            {fmt(t.connectionCard.tokenInvalidTitle, {
+              noun: t.channels.noun[page.channel],
+            })}
+          </AlertTitle>
+          <AlertDescription>
+            {t.channels.tokenInvalidBody[page.channel]}
             {(page.tokenError || page.tokenErrorAtLabel) && (
-              <p className="mt-2 font-mono text-[11px] opacity-85">
+              <span className="mt-1.5 block font-mono text-[11px] opacity-85">
                 {[
                   page.tokenError,
                   page.tokenErrorAtLabel
@@ -238,20 +267,16 @@ export function ConnectedPageCard({
                 ]
                   .filter(Boolean)
                   .join(" · ")}
-              </p>
+              </span>
             )}
-          </div>
+          </AlertDescription>
           {/* El botón vive junto al error: hasta ahora el aviso decía
               «reconéctala desde Facebook» y el botón estaba en otra sección
               (ADR 0005). No se deshabilita por falta de cupo. */}
-          <Button
-            asChild
-            size="sm"
-            className="shrink-0 self-start sm:self-center"
-          >
+          <Button asChild size="sm" className={ALERT_ACTION}>
             <a href={reconnectHref}>{t.connectionCard.reconnect}</a>
           </Button>
-        </div>
+        </Alert>
       )}
 
       {/* Lo propio de WhatsApp. Va antes del webhook porque responde a la
@@ -259,7 +284,7 @@ export function ConnectedPageCard({
           historial es accionable con plazo: dejarlo debajo del formulario lo
           escondería justo cuando corre el reloj de 24 h. */}
       {page.channel === "whatsapp" && (
-        <div className="mt-4 grid gap-3">
+        <div className="mx-5 mb-[18px] grid gap-3">
           <dl className="flex flex-wrap gap-x-6 gap-y-1.5 font-mono text-[11.5px] text-muted-foreground">
             <div className="flex gap-1.5">
               <dt className="text-[var(--text-subtle)]">
@@ -305,31 +330,36 @@ export function ConnectedPageCard({
           {pinReveal && <WhatsappPinPanel connectionId={page.id} t={t} />}
 
           {coexistence && (
-            <div className="rounded-lg border border-border bg-surface-sunken px-3.5 py-3">
-              <p className="text-[13px] font-medium">
+            <Alert role="note" className="bg-surface-sunken">
+              <AlertTitle className="text-[13px]">
                 {t.connectionCard.coexistenceLimitsTitle}
-              </p>
-              <ul className="mt-1.5 grid gap-1 text-[12.5px]/[1.55] text-muted-foreground">
-                {t.channels.coexistenceLimits.map((limit) => (
-                  <li key={limit} className="flex gap-2">
-                    <span aria-hidden>·</span>
-                    <span>{limit}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+              </AlertTitle>
+              <AlertDescription>
+                <ul className="grid gap-1 text-[12.5px]/[1.55]">
+                  {t.channels.coexistenceLimits.map((limit) => (
+                    <li key={limit} className="flex gap-2">
+                      <span aria-hidden>·</span>
+                      <span>{limit}</span>
+                    </li>
+                  ))}
+                </ul>
+              </AlertDescription>
+            </Alert>
           )}
         </div>
       )}
 
-      {active ? (
-        <>
-          <form action={saveAction} className="mt-4 grid gap-2">
+      {active && (
+        // Cuerpo en dos columnas (mock 1e): el webhook y, al lado, la firma.
+        // La firma va junto a la URL porque solo tiene sentido cuando hay una:
+        // el secreto firma lo que se manda a ese destino.
+        <div className="grid gap-5 border-t border-border-subtle px-5 py-4 md:grid-cols-2">
+          <form action={saveAction} className="grid content-start gap-2">
             <input type="hidden" name="connectionId" value={page.id} />
             <Label htmlFor={`webhook-${page.id}`}>
               {t.connectionCard.webhookLabel}
             </Label>
-            <div className="flex flex-col gap-2.5 sm:flex-row">
+            <div className="flex flex-col gap-2 sm:flex-row">
               <Input
                 id={`webhook-${page.id}`}
                 name="webhookUrl"
@@ -337,21 +367,27 @@ export function ConnectedPageCard({
                 defaultValue={page.webhookUrl ?? ""}
                 placeholder={t.connectionCard.webhookPlaceholder}
                 aria-invalid={saveState.error ? true : undefined}
-                className="flex-1 font-mono"
+                className="flex-1 font-mono text-[12.5px]"
               />
-              <Button type="submit" size="lg" disabled={savePending}>
+              <Button type="submit" disabled={savePending}>
                 {savePending && (
-                  <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+                  <LoaderCircle className="animate-spin" aria-hidden />
                 )}
                 {savePending ? t.common.saving : t.common.save}
               </Button>
             </div>
             {saveState.error ? (
-              <p className="text-[12.5px] text-[var(--danger-text)]">
+              <p
+                role="alert"
+                className="text-[12.5px] text-[var(--danger-text)]"
+              >
                 {saveState.error}
               </p>
             ) : saveState.message ? (
-              <p className="flex items-center gap-1.5 text-[12.5px] text-success-text">
+              <p
+                role="status"
+                className="flex items-center gap-1.5 text-[12.5px] text-success-text"
+              >
                 <Check className="size-3.5" aria-hidden />
                 {saveState.message}
               </p>
@@ -362,10 +398,8 @@ export function ConnectedPageCard({
             ) : null}
           </form>
 
-          {/* Firma del push. Va debajo de la URL porque solo tiene sentido cuando
-            hay una: el secreto firma lo que se manda a ese destino. */}
-          <div className="mt-3.5 grid gap-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="grid content-start gap-2">
+            <div className="flex h-5 flex-wrap items-center justify-between gap-2">
               <Label className="flex items-center gap-1.5">
                 <KeyRound className="size-3.5" aria-hidden />
                 {t.connectionCard.signingSecretLabel}
@@ -375,14 +409,11 @@ export function ConnectedPageCard({
                 <Button
                   type="submit"
                   variant="outline"
-                  size="sm"
+                  size="xs"
                   disabled={rotatePending}
                 >
                   {rotatePending && (
-                    <LoaderCircle
-                      className="size-3.5 animate-spin"
-                      aria-hidden
-                    />
+                    <LoaderCircle className="animate-spin" aria-hidden />
                   )}
                   {rotatePending
                     ? t.connectionCard.rotating
@@ -394,16 +425,23 @@ export function ConnectedPageCard({
             </div>
 
             {revealedSecret ? (
-              <div className="grid gap-1.5 rounded-lg border border-[var(--warning-border,var(--border))] bg-surface-sunken px-3.5 py-3">
-                <p className="text-[12.5px] font-medium">
-                  {t.connectionCard.secretRevealTitle}
-                </p>
-                <code className="block overflow-x-auto rounded bg-background px-2.5 py-2 font-mono text-[12.5px] select-all">
-                  {revealedSecret}
-                </code>
+              <RevealedSecret secret={revealedSecret} t={t} />
+            ) : (
+              // Enmascarado: el secreto nunca vuelve a leerse después del
+              // revelado único, así que la caja solo dice que existe.
+              <div
+                className="flex h-9 items-center overflow-hidden rounded-lg border border-border bg-surface-sunken px-3 font-mono text-[12.5px] text-[var(--text-subtle)]"
+                aria-hidden
+              >
+                {page.hasSigningSecret ? SECRET_MASK : "—"}
               </div>
-            ) : rotateState.error ? (
-              <p className="text-[12.5px] text-[var(--danger-text)]">
+            )}
+
+            {rotateState.error ? (
+              <p
+                role="alert"
+                className="text-[12.5px] text-[var(--danger-text)]"
+              >
                 {rotateState.error}
               </p>
             ) : (
@@ -414,33 +452,74 @@ export function ConnectedPageCard({
               </p>
             )}
           </div>
-        </>
-      ) : (
-        // Desconectar es un UPDATE, no un DELETE: conviene decirlo donde el
-        // usuario duda de si perdió algo.
-        <p className="mt-3.5 rounded-lg bg-surface-sunken px-3.5 py-3 text-[13px] text-muted-foreground">
-          {page.disconnectedAtLabel
-            ? fmt(t.connectionCard.disconnectedOn, {
-                date: page.disconnectedAtLabel,
-              })
-            : t.connectionCard.disconnectedNoDate}
-          {t.connectionCard.disconnectedHistoryKept}
-        </p>
+        </div>
       )}
-    </article>
+    </Card>
   )
 }
 
-// Tinte por tono. El `Record` evita el `if` encadenado que se olvida de un
-// tono nuevo y lo pinta de gris.
-const HISTORY_SYNC_TONE: Record<HistorySyncNotice["tone"], string> = {
-  info: "border-info-soft-border bg-info-soft text-info-soft-foreground",
-  success:
-    "border-success-soft-border bg-success-soft text-success-soft-foreground",
-  warning:
-    "border-warning-soft-border bg-warning-soft text-warning-soft-foreground",
-  danger:
-    "border-destructive-soft-border bg-destructive-soft text-destructive-soft-foreground",
+// Los avisos dentro de la tarjeta van a ras de los 20 px del cuerpo.
+const ALERT_IN_CARD = "mx-5 mb-[18px] w-auto px-3.5 py-3"
+// Alert con un botón a la derecha: tercera columna, botón centrado en las dos
+// filas del icono. Mismo truco que la franja de cuota.
+const ALERT_WITH_ACTION =
+  "has-[>svg]:grid-cols-[auto_1fr_auto] has-[>svg]:gap-x-3 items-center"
+const ALERT_ACTION = "col-start-3 row-span-2 row-start-1 shrink-0 self-center"
+
+// Lo que dibuja la caja del secreto cuando existe pero no se puede leer. Es un
+// literal visual, no copy: el prefijo `whsec_` es el del secreto real
+// (`lib/pages/webhook-signing.ts`) y los puntos son el enmascarado del mock.
+const SECRET_MASK = "whsec_••••••••••••••••••••"
+
+// El secreto se muestra una sola vez (ver `revealedSecret`). «Copiar» va al
+// lado porque es lo único que el usuario tiene que hacer con él antes de que
+// desaparezca.
+function RevealedSecret({ secret, t }: { secret: string; t: AppDict }) {
+  const [copied, setCopied] = useState(false)
+
+  const copy = () => {
+    void navigator.clipboard.writeText(secret).then(() => {
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  return (
+    <Alert variant="warning" className="gap-1.5 px-3.5 py-3">
+      <AlertTitle className="text-[12.5px]">
+        {t.connectionCard.secretRevealTitle}
+      </AlertTitle>
+      <AlertDescription>
+        <div className="flex items-center gap-2">
+          <code className="block min-w-0 flex-1 overflow-x-auto rounded-md bg-background px-2.5 py-1.5 font-mono text-[12.5px] text-foreground select-all">
+            {secret}
+          </code>
+          <Button
+            type="button"
+            variant="outline"
+            size="xs"
+            onClick={copy}
+            className="shrink-0"
+          >
+            {copied ? <Check aria-hidden /> : <Copy aria-hidden />}
+            {copied ? t.common.copied : t.common.copy}
+          </Button>
+        </div>
+      </AlertDescription>
+    </Alert>
+  )
+}
+
+// Tono del dominio → variante de `Alert`. El `Record` evita el `if` encadenado
+// que se olvida de un tono nuevo y lo pinta de gris.
+const HISTORY_SYNC_VARIANT: Record<
+  HistorySyncNotice["tone"],
+  React.ComponentProps<typeof Alert>["variant"]
+> = {
+  info: "info",
+  success: "success",
+  warning: "warning",
+  danger: "destructive",
 }
 
 /**
@@ -491,7 +570,10 @@ function WhatsappPinPanel({
   }
 
   return (
-    <div className="rounded-lg border border-border bg-surface-sunken px-3.5 py-3">
+    <div
+      role="note"
+      className="rounded-lg border border-border bg-surface-sunken px-3.5 py-3"
+    >
       <p className="text-[13px] font-medium">{t.connectionCard.pinTitle}</p>
       <p className="mt-1 text-[12.5px]/[1.55] text-muted-foreground">
         {t.connectionCard.pinBody}
@@ -522,7 +604,10 @@ function WhatsappPinPanel({
       )}
 
       {error && (
-        <p className="mt-2 text-[12.5px]/[1.55] text-[var(--danger-text)]">
+        <p
+          role="alert"
+          className="mt-2 text-[12.5px]/[1.55] text-[var(--danger-text)]"
+        >
           {error}
         </p>
       )}
@@ -538,26 +623,25 @@ function HistorySyncPanel({
   reconnectHref: string
 }) {
   return (
-    <div
-      className={`flex flex-col gap-3 rounded-lg border p-3.5 sm:flex-row sm:items-center ${HISTORY_SYNC_TONE[notice.tone]}`}
+    <Alert
+      variant={HISTORY_SYNC_VARIANT[notice.tone]}
+      className={cn("px-3.5 py-3", notice.actionLabel && ALERT_WITH_ACTION)}
     >
-      <div className="min-w-0 flex-1">
-        <p className="font-mono text-[11.5px] tracking-[0.04em]">
-          {notice.label}
-        </p>
-        <p className="mt-1 text-[13px]/[1.55]">{notice.body}</p>
-      </div>
+      <AlertTitle className="font-mono text-[11.5px] font-normal tracking-[0.04em]">
+        {notice.label}
+      </AlertTitle>
+      <AlertDescription>{notice.body}</AlertDescription>
       {notice.actionLabel && (
         <Button
           asChild
           size="sm"
           variant="outline"
-          className="shrink-0 self-start sm:self-center"
+          className="col-start-2 row-span-2 row-start-1 shrink-0 self-center justify-self-end sm:col-start-3"
         >
           <a href={reconnectHref}>{notice.actionLabel}</a>
         </Button>
       )}
-    </div>
+    </Alert>
   )
 }
 
@@ -574,62 +658,55 @@ function DisconnectDialog({
   >(disconnectPageAction, {})
 
   return (
-    // Diálogo en lugar del `window.confirm` (ADR 0005). Al desconectarse la
-    // tarjeta se vuelve a pintar sin diálogo, así que se cierra sola.
-    <Dialog>
-      <DialogTrigger asChild>
+    // `AlertDialog` en lugar del `window.confirm` (ADR 0005) y del `Dialog`
+    // (ADR 0015): es una confirmación destructiva. Al desconectarse la tarjeta
+    // se vuelve a pintar sin diálogo, así que se cierra sola.
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
         <Button
           variant="ghost"
           size="sm"
-          className="shrink-0 text-[var(--danger-text)]"
+          className="shrink-0 text-muted-foreground hover:text-[var(--danger-text)]"
         >
           {t.connectionCard.disconnect}
         </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <span
-            className="flex size-9 items-center justify-center rounded-full bg-destructive-soft text-destructive-soft-foreground"
-            aria-hidden
-          >
-            <Unplug className="size-[17px]" />
-          </span>
-          <DialogTitle className="mt-3.5 text-[17px] tracking-[-0.02em]">
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogMedia className="bg-destructive-soft text-destructive-soft-foreground">
+            <Unplug aria-hidden />
+          </AlertDialogMedia>
+          <AlertDialogTitle>
             {fmt(t.connectionCard.disconnectTitle, { name: page.name })}
-          </DialogTitle>
-          <DialogDescription className="mt-2 text-[13.5px]/[1.6]">
+          </AlertDialogTitle>
+          <AlertDialogDescription>
             {t.connectionCard.disconnectBody}
-          </DialogDescription>
-        </DialogHeader>
-        <form action={action}>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <form action={action} className="grid gap-4">
           <input type="hidden" name="connectionId" value={page.id} />
           {state.error && (
-            <p className="mb-3 text-[12.5px] text-[var(--danger-text)]">
-              {state.error}
-            </p>
+            <Alert variant="destructive">
+              <AlertTitle className="font-normal">{state.error}</AlertTitle>
+            </Alert>
           )}
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="ghost" size="lg">
-                {t.common.cancel}
-              </Button>
-            </DialogClose>
-            <Button
-              type="submit"
-              variant="destructive"
-              size="lg"
-              disabled={pending}
-            >
-              {pending && (
-                <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
-              )}
+          <AlertDialogFooter>
+            <AlertDialogCancel variant="ghost">
+              {t.common.cancel}
+            </AlertDialogCancel>
+            {/* Submit normal en vez de `AlertDialogAction`: ese cierra el
+                diálogo al click y desmontaría el `<form>` antes de la action.
+                El diálogo se queda abierto con el spinner hasta que la tarjeta
+                se repinta desconectada (o muestra el error). */}
+            <Button type="submit" variant="destructive" disabled={pending}>
+              {pending && <LoaderCircle className="animate-spin" aria-hidden />}
               {pending
                 ? t.connectionCard.disconnecting
                 : t.connectionCard.disconnectConfirm}
             </Button>
-          </DialogFooter>
+          </AlertDialogFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }

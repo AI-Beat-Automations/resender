@@ -111,6 +111,8 @@ export type AppDict = {
     connectedAccountsHeading: string
     /** `{activePageCount}`, `{maxPages}` */
     quota: string
+    /** Sufijo del contador «N / M» de la cabecera. */
+    quotaActiveLabel: string
     quotaUnresolved: string
     noticeConnectedGeneric: string
     /** `{username}` */
@@ -208,6 +210,8 @@ export type AppDict = {
     listHeading: string
     badgeConnected: string
     badgeForeign: string
+    /** Motivo en la fila de una página que el cupo ya no deja marcar. */
+    badgeAtLimit: string
     foreignBody: string
     connectedBody: string
     addOnlyHint: string

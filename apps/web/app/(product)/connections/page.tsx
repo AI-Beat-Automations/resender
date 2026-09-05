@@ -1,25 +1,29 @@
 import Link from "next/link"
-import {
-  AtSign,
-  Check,
-  Link2,
-  MessageCircle,
-  TriangleAlert,
-  X,
-} from "lucide-react"
+import { Check, TriangleAlert, X } from "lucide-react"
 
 import { ConnectFacebookButton } from "@/features/connect-meta/ui/connect-facebook-button"
 import { ConnectInstagramButton } from "@/features/connect-meta/ui/connect-instagram-button"
 import { ConnectWhatsAppButton } from "@/features/connect-whatsapp/ui/connect-whatsapp-button"
+import { ChannelAvatar } from "@/features/connections/ui/channel-avatar"
 import {
   ConnectedPageCard,
   type ConnectedPageView,
 } from "@/features/connections/ui/connected-page-card"
+import { EmptyState } from "@/features/shell/ui/empty-state"
+import { HeaderActions } from "@/features/shell/ui/header-actions"
 import { getSession } from "@/lib/auth/session"
 import {
   resolveChannelAccess,
   type ChannelAccess,
 } from "@/lib/auth/channel-access"
+import { Alert, AlertAction, AlertTitle } from "@workspace/ui/components/alert"
+import {
+  Card,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@workspace/ui/components/card"
 
 // Sin sesión no hay permisos que leer y la pantalla no ofrece ningún canal
 // cerrado. Messenger queda en `true` porque no tiene bandera: lo que decide si
@@ -85,121 +89,132 @@ export default async function ConnectionsPage({
     (left, right) => cardRank(left) - cardRank(right)
   )
   const firstActiveId = sortedPages.find((page) => page.status === "active")?.id
+  const hasPages = tenantPages.length > 0
 
   return (
     // El padding de página lo aporta el `main` del layout (spec C.7): acá solo
-    // el ritmo vertical entre cabecera y cuerpo.
-    <div>
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    // el ritmo vertical. El ancho máximo es el del mock 1e.
+    <div className="flex max-w-[880px] flex-col gap-5">
+      {/* Los botones de conectar viven en el hueco del header (ADR 0015). En el
+          estado vacío los CTA están en las tarjetas de abajo, y el launcher de
+          WhatsApp no puede estar montado dos veces (nonce único por navegador),
+          así que el hueco queda vacío. Los hijos son elementos de servidor:
+          `HeaderActions` solo los publica en el contexto del header. */}
+      {hasPages && (
+        <HeaderActions>
+          {offersInstagram && (
+            <ConnectInstagramButton
+              label={t.connections.connectInstagram}
+              variant="outline"
+              size="sm"
+              icon
+            />
+          )}
+          {offersWhatsapp && (
+            <ConnectWhatsAppButton variant="outline" size="sm" icon compact />
+          )}
+          <ConnectFacebookButton
+            label={t.connections.connectFacebook}
+            variant="outline"
+            size="sm"
+            icon
+          />
+        </HeaderActions>
+      )}
+
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
         <div>
-          <p className="font-mono text-[11px] tracking-[0.08em] text-[var(--text-subtle)]">
-            {`// ${t.connections.eyebrow}`}
-          </p>
-          <h1 className="mt-1.5 font-heading text-[26px] font-bold tracking-[-0.02em]">
+          <h1 className="font-heading text-2xl font-bold tracking-[-0.02em]">
             {t.connections.title}
           </h1>
-          <p className="mt-2 max-w-[620px] text-[14.5px]/[1.6] text-muted-foreground">
+          <p className="mt-1.5 max-w-[600px] text-sm/[1.55] text-muted-foreground">
             {t.connections.subtitle}
           </p>
         </div>
-        {/* En el estado vacío los CTA viven en las tarjetas de abajo, no acá. */}
-        {tenantPages.length > 0 && (
-          <div className="flex shrink-0 flex-wrap gap-2.5">
-            <ConnectFacebookButton label={t.connections.connectFacebook} />
-            {offersInstagram && (
-              <ConnectInstagramButton label={t.connections.connectInstagram} />
-            )}
-            {offersWhatsapp && <ConnectWhatsAppButton />}
-          </div>
-        )}
+        {/* El contador sustituye al botón deshabilitado por cupo (ADR 0005):
+            los botones del header siguen activos y el cupo se lee acá. */}
+        {hasPages && <PageQuota quota={quota} t={t} />}
       </header>
 
-      <div className="mt-6 flex flex-col gap-3.5">
-        {meta === "connected" && (
-          <div className="flex items-center gap-3 rounded-lg border border-success-soft-border bg-success-soft px-4 py-3 text-success-soft-foreground">
-            <Check className="size-4 shrink-0" aria-hidden />
-            <p className="flex-1 text-[13.5px]">
-              {formatConnectedSummary(connected, t)}
-            </p>
-            <Link
-              href="/connections"
-              aria-label={t.common.dismissNotice}
-              className="shrink-0 opacity-60 hover:opacity-100"
-            >
-              <X className="size-[15px]" aria-hidden />
-            </Link>
-          </div>
-        )}
+      {meta === "connected" && (
+        <Alert variant="success" role="status" className="items-center">
+          <Check aria-hidden />
+          <AlertTitle className="font-normal">
+            {formatConnectedSummary(connected, t)}
+          </AlertTitle>
+          <DismissNotice label={t.common.dismissNotice} />
+        </Alert>
+      )}
 
-        {/* Instagram conecta una sola cuenta por autorización, así que el aviso
-            la nombra por su @handle en vez de listar lo que quedó conectado. */}
-        {instagram === "connected" && (
-          <div className="flex items-center gap-3 rounded-lg border border-success-soft-border bg-success-soft px-4 py-3 text-success-soft-foreground">
-            <Check className="size-4 shrink-0" aria-hidden />
-            <p className="flex-1 text-[13.5px]">
-              {username
-                ? fmt(t.connections.noticeInstagramNamed, { username })
-                : t.connections.noticeInstagram}
-            </p>
-            <Link
-              href="/connections"
-              aria-label={t.common.dismissNotice}
-              className="shrink-0 opacity-60 hover:opacity-100"
-            >
-              <X className="size-[15px]" aria-hidden />
-            </Link>
-          </div>
-        )}
+      {/* Instagram conecta una sola cuenta por autorización, así que el aviso
+          la nombra por su @handle en vez de listar lo que quedó conectado. */}
+      {instagram === "connected" && (
+        <Alert variant="success" role="status" className="items-center">
+          <Check aria-hidden />
+          <AlertTitle className="font-normal">
+            {username
+              ? fmt(t.connections.noticeInstagramNamed, { username })
+              : t.connections.noticeInstagram}
+          </AlertTitle>
+          <DismissNotice label={t.common.dismissNotice} />
+        </Alert>
+      )}
 
-        {/* Los dos canales comparten el catálogo de motivos: el mismo problema
-            se redacta igual, llegue por el callback de Facebook o el de
-            Instagram. */}
-        {(meta === "error" || instagram === "error") && (
-          <div className="flex items-start gap-3 rounded-lg border border-destructive-soft-border bg-destructive-soft px-3.5 py-3 text-destructive-soft-foreground">
-            <TriangleAlert
-              className="mt-0.5 size-[15px] shrink-0"
-              aria-hidden
+      {/* Los dos canales comparten el catálogo de motivos: el mismo problema
+          se redacta igual, llegue por el callback de Facebook o el de
+          Instagram. */}
+      {(meta === "error" || instagram === "error") && (
+        <Alert variant="destructive" role="alert">
+          <TriangleAlert aria-hidden />
+          <AlertTitle className="font-normal">
+            {formatMetaConnectionError(reason, t)}
+          </AlertTitle>
+        </Alert>
+      )}
+
+      {hasPages ? (
+        <section className="flex flex-col gap-4">
+          <h2 className="sr-only">{t.connections.connectedAccountsHeading}</h2>
+          {sortedPages.map((page) => (
+            <ConnectedPageCard
+              key={page.id}
+              page={toPageView(page, access, t)}
+              showWebhookHint={page.id === firstActiveId}
             />
-            <p className="flex-1 text-[13px]/[1.5]">
-              {formatMetaConnectionError(reason, t)}
-            </p>
-          </div>
-        )}
-
-        {tenantPages.length === 0 ? (
-          <EmptyState
-            offersInstagram={offersInstagram}
-            offersWhatsapp={offersWhatsapp}
-            t={t}
-          />
-        ) : (
-          <>
-            <div className="mt-0.5 flex flex-wrap items-baseline justify-between gap-2">
-              <h2 className="font-mono text-[11px] tracking-[0.08em] text-muted-foreground">
-                {t.connections.connectedAccountsHeading}
-              </h2>
-              <PageQuota quota={quota} t={t} />
-            </div>
-            {sortedPages.map((page) => (
-              <ConnectedPageCard
-                key={page.id}
-                page={toPageView(page, access, t)}
-                showWebhookHint={page.id === firstActiveId}
-              />
-            ))}
-          </>
-        )}
-      </div>
+          ))}
+        </section>
+      ) : (
+        <ConnectionsEmptyState
+          offersInstagram={offersInstagram}
+          offersWhatsapp={offersWhatsapp}
+          t={t}
+        />
+      )}
     </div>
   )
 }
 
-// B1: qué va a pasar al conectar la primera cuenta, y el flujo en tres pasos.
-// Una tarjeta por canal: cada uno tiene su propio diálogo de autorización en
-// Meta, así que son dos caminos y no dos variantes del mismo botón.
-// Sin permiso, Instagram no aparece acá: es la pantalla que ve una cuenta
-// nueva, que es justo la población que nace sin el canal (ADR 0010).
-function EmptyState({
+// La X que limpia el aviso: vuelve a `/connections` sin los `searchParams`.
+function DismissNotice({ label }: { label: string }) {
+  return (
+    <AlertAction className="top-1/2 -translate-y-1/2">
+      <Link
+        href="/connections"
+        aria-label={label}
+        className="flex size-6 items-center justify-center rounded-md opacity-60 hover:opacity-100"
+      >
+        <X className="size-[14px]" aria-hidden />
+      </Link>
+    </AlertAction>
+  )
+}
+
+// B1 (mock 1f): una tarjeta por canal y, debajo, el panel punteado con los tres
+// pasos. Cada canal tiene su propio diálogo de autorización en Meta, así que
+// son caminos distintos y no variantes del mismo botón. Sin permiso, Instagram
+// y WhatsApp no aparecen: es la pantalla que ve una cuenta nueva, que es justo
+// la población que nace sin el canal (ADR 0010).
+function ConnectionsEmptyState({
   offersInstagram,
   offersWhatsapp,
   t,
@@ -210,80 +225,97 @@ function EmptyState({
 }) {
   return (
     <>
-      <section className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-[22px] shadow-[var(--shadow-sm)] sm:flex-row sm:items-center">
-        <span
-          className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[var(--primary-tint)] text-primary"
-          aria-hidden
+      <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
+        <ChannelCard
+          channel="messenger"
+          title={t.connections.empty.facebookTitle}
+          body={t.connections.empty.facebookBody}
         >
-          <Link2 className="size-5" />
-        </span>
-        <div className="flex-1">
-          <h2 className="font-heading text-base font-semibold">
-            {t.connections.empty.facebookTitle}
-          </h2>
-          <p className="mt-1 text-[13.5px] text-muted-foreground">
-            {t.connections.empty.facebookBody}
-          </p>
-        </div>
-        <ConnectFacebookButton label={t.connections.connectFacebook} />
-      </section>
+          <ConnectFacebookButton
+            label={t.connections.connectFacebook}
+            variant="outline"
+            size="default"
+            className="w-full"
+          />
+        </ChannelCard>
 
-      {offersInstagram && (
-        <section className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-[22px] shadow-[var(--shadow-sm)] sm:flex-row sm:items-center">
-          <span
-            className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[var(--primary-tint)] text-primary"
-            aria-hidden
+        {offersInstagram && (
+          <ChannelCard
+            channel="instagram"
+            title={t.connections.empty.instagramTitle}
+            body={t.connections.empty.instagramBody}
           >
-            <AtSign className="size-5" />
-          </span>
-          <div className="flex-1">
-            <h2 className="font-heading text-base font-semibold">
-              {t.connections.empty.instagramTitle}
-            </h2>
-            <p className="mt-1 text-[13.5px] text-muted-foreground">
-              {t.connections.empty.instagramBody}
-            </p>
-          </div>
-          <ConnectInstagramButton label={t.connections.connectInstagram} />
-        </section>
-      )}
+            <ConnectInstagramButton
+              label={t.connections.connectInstagram}
+              variant="outline"
+              size="default"
+              className="w-full"
+            />
+          </ChannelCard>
+        )}
 
-      {offersWhatsapp && (
-        <section className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-[22px] shadow-[var(--shadow-sm)] sm:flex-row sm:items-center">
-          <span
-            className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[var(--primary-tint)] text-primary"
-            aria-hidden
+        {offersWhatsapp && (
+          <ChannelCard
+            channel="whatsapp"
+            title={t.connections.empty.whatsappTitle}
+            body={t.connections.empty.whatsappBody}
           >
-            <MessageCircle className="size-5" />
-          </span>
-          <div className="flex-1">
-            <h2 className="font-heading text-base font-semibold">
-              {t.connections.empty.whatsappTitle}
-            </h2>
-            <p className="mt-1 text-[13.5px] text-muted-foreground">
-              {t.connections.empty.whatsappBody}
-            </p>
-          </div>
-          <ConnectWhatsAppButton />
-        </section>
-      )}
+            <ConnectWhatsAppButton variant="outline" size="default" />
+          </ChannelCard>
+        )}
+      </div>
 
-      <section className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-border-strong bg-card p-10 text-center">
-        <div className="max-w-[460px]">
-          <h3 className="font-heading text-[19px] font-semibold tracking-[-0.02em]">
-            {t.connections.empty.title}
-          </h3>
-          <p className="mt-2 text-sm/[1.6] text-muted-foreground">
-            {t.connections.empty.body}
-          </p>
-        </div>
-        <ol className="flex flex-wrap justify-center gap-x-[22px] gap-y-1.5 font-mono text-[11px] text-[var(--text-subtle)]">
-          <li>{t.connections.empty.step1}</li>
-          <li>{t.connections.empty.step2}</li>
-          <li>{t.connections.empty.step3}</li>
+      <EmptyState
+        title={t.connections.empty.title}
+        body={t.connections.empty.body}
+      >
+        <ol className="flex flex-wrap justify-center gap-2 text-xs text-muted-foreground">
+          {[
+            t.connections.empty.step1,
+            t.connections.empty.step2,
+            t.connections.empty.step3,
+          ].map((step) => (
+            <li
+              key={step}
+              className="rounded-full border border-border bg-card px-3 py-1.5"
+            >
+              {step}
+            </li>
+          ))}
         </ol>
-      </section>
+      </EmptyState>
     </>
+  )
+}
+
+function ChannelCard({
+  channel,
+  title,
+  body,
+  children,
+}: {
+  channel: ConnectedPageView["channel"]
+  title: string
+  body: string
+  children: React.ReactNode
+}) {
+  return (
+    <Card className="gap-3 [--card-spacing:--spacing(5)]">
+      <CardHeader className="gap-3">
+        <ChannelAvatar channel={channel} />
+        <div>
+          <CardTitle className="font-semibold">{title}</CardTitle>
+          <CardDescription className="mt-1 text-[13px]/[1.5]">
+            {body}
+          </CardDescription>
+        </div>
+      </CardHeader>
+      {/* El pie va sin fondo: en el mock el botón es parte de la misma
+          superficie blanca. */}
+      <CardFooter className="mt-auto border-0 bg-transparent pt-0">
+        {children}
+      </CardFooter>
+    </Card>
   )
 }
 
@@ -294,18 +326,18 @@ function EmptyState({
 function PageQuota({ quota, t }: { quota: PageQuotaView; t: AppDict }) {
   if (!quota) {
     return (
-      <p className="font-mono text-[11px] text-[var(--danger-text)]">
+      <p className="shrink-0 font-mono text-[11px] text-[var(--danger-text)]">
         {t.connections.quotaUnresolved}
       </p>
     )
   }
 
   return (
-    <p className="font-mono text-[11px] text-muted-foreground">
-      {fmt(t.connections.quota, {
-        activePageCount: quota.activePageCount,
-        maxPages: quota.maxPages,
-      })}
+    <p className="flex shrink-0 items-center gap-1.5 text-[12.5px] whitespace-nowrap text-muted-foreground">
+      <span className="font-medium text-foreground">
+        {quota.activePageCount} / {quota.maxPages}
+      </span>
+      {t.connections.quotaActiveLabel}
     </p>
   )
 }
