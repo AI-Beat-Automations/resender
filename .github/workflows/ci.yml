@@ -69,9 +69,15 @@ jobs:
   # Sube contra `web-staging`, no contra `web`: el historial de versiones de
   # producción no debe llenarse de builds de PRs sin revisar.
   #
-  # No imprime una preview URL: `preview_urls` está en false (ver
-  # apps/web/wrangler.jsonc) para no publicar un host indexable por deploy.
-  # Para ver el cambio corriendo están `wrangler dev` y la rama `dev`.
+  # Imprime una preview URL: `preview_urls` está en true en `env.staging` (ver
+  # apps/web/wrangler.jsonc), así que cada versión subida queda en
+  # `<hash>-web-staging.<subdominio>.workers.dev` sin desplegarse, y el paso
+  # de abajo la deja como comentario en el PR. Ese host sirve la app con las
+  # `vars` y los secretos de staging: misma branch de Neon y **sin correr las
+  # migraciones del PR** — un PR que trae migración y código va a fallar en
+  # el preview hasta que `dev` la despliegue, y eso es lo esperado. El host
+  # lleva `X-Robots-Tag: noindex` (apps/web/proxy.ts) y tiene que estar detrás
+  # de Cloudflare Access igual que staging.resender.dev.
   #
   # Efecto secundario: deja a `web-staging` con una versión más nueva que la
   # desplegada, y en ese estado wrangler rechaza `secret put` ("the latest
@@ -82,6 +88,10 @@ jobs:
     needs: ci
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Para crear/editar el comentario con la URL.
+      pull-requests: write
     env:
       # Igual que en deploy-staging.yml: el flag --env no llega a wrangler a
       # través de opennextjs-cloudflare (workers-sdk#11741).
@@ -96,8 +106,12 @@ jobs:
 
       - run: npm ci
 
+      # `--message` llega a `wrangler versions upload` tal cual: la CLI de
+      # opennextjs corre con `unknown-options-as-args` y reenvía lo que no
+      # reconoce. `head.sha` y no `github.sha`: en `pull_request` el segundo
+      # es el merge commit sintético, que nadie tiene en su historial.
       - name: Upload preview version
-        run: npm run upload -w web
+        id: upload
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -105,6 +119,51 @@ jobs:
           NEXT_PUBLIC_META_CONFIG_ID: ${{ vars.NEXT_PUBLIC_META_CONFIG_ID_STAGING }}
           NEXT_PUBLIC_POSTHOG_KEY: ${{ vars.NEXT_PUBLIC_POSTHOG_KEY_STAGING }}
           NEXT_PUBLIC_POSTHOG_HOST: ${{ vars.NEXT_PUBLIC_POSTHOG_HOST_STAGING }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -o pipefail
+          npm run upload -w web -- --message "PR #${PR_NUMBER} ${HEAD_SHA}" \
+            | tee upload.log
+
+          url=$(grep -E 'Version Preview URL:' upload.log \
+            | sed -E 's/.*Version Preview URL:[[:space:]]*//' \
+            | tr -d '[:space:]' \
+            | tail -n 1)
+
+          if [ -z "$url" ]; then
+            echo "::error::wrangler subió la versión pero no imprimió 'Version Preview URL'."
+            echo "::error::Revisa que env.staging.preview_urls siga en true en apps/web/wrangler.jsonc y que el subdominio workers.dev de la cuenta exista."
+            exit 1
+          fi
+
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      # Un solo comentario por PR, editado en cada push: se busca por el
+      # marcador con el que empieza. Sin el marcador, cada push agregaría uno.
+      - name: Comment preview URL on PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PREVIEW_URL: ${{ steps.upload.outputs.url }}
+        run: |
+          marker='<!-- preview-url -->'
+          short_sha="${HEAD_SHA:0:7}"
+          body=$(printf '%s\n**Preview:** %s\n\nCommit `%s`.\n\nCorre contra los datos de **staging** (misma branch de Neon, mismos secretos) y **sin migraciones**: si este PR trae una, el preview la ve recién cuando `dev` la despliegue.\n' \
+            "$marker" "$PREVIEW_URL" "$short_sha")
+
+          existing=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate \
+            --jq "[.[] | select(.body | startswith(\"${marker}\"))][0].id // empty")
+
+          if [ -n "$existing" ]; then
+            gh api -X PATCH "repos/${REPO}/issues/comments/${existing}" -f body="$body" > /dev/null
+            echo "Comentario ${existing} actualizado: ${PREVIEW_URL}"
+          else
+            gh api -X POST "repos/${REPO}/issues/${PR_NUMBER}/comments" -f body="$body" > /dev/null
+            echo "Comentario creado: ${PREVIEW_URL}"
+          fi
 
       # Va al final y no en el job `ci`: el bundle que Cloudflare pesa lo produce
       # el build de OpenNext, y el único que lo corre es este job. Para cuando

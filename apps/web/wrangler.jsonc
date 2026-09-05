@@ -233,16 +233,28 @@
     // despliega desde la rama `dev` (.github/workflows/deploy-staging.yml).
     //
     // Sobre la herencia: `main`, `compatibility_date`, `compatibility_flags`,
-    // `assets`, `observability`, `workers_dev` y `preview_urls` SÍ se heredan
-    // del bloque de arriba y por eso no se repiten. `vars`, `ratelimits`, los
+    // `assets`, `observability` y `workers_dev` SÍ se heredan del bloque de
+    // arriba y por eso no se repiten (`preview_urls` también se heredaría, pero
+    // staging lo pisa a propósito, ver abajo). `vars`, `ratelimits`, los
     // bindings y los secretos NO se heredan y hay que declararlos completos.
     "staging": {
       "name": "web-staging",
-      // `workers_dev`/`preview_urls` se heredan en false por la misma razón que
-      // en producción: un host extra sirviendo el mismo HTML es contenido
-      // duplicado indexable. Staging vive solo en su custom domain, y ese
-      // hostname debe quedar detrás de Cloudflare Access (ver el checklist) —
-      // si no, Google indexa una copia entera del sitio.
+      // `workers_dev` se hereda en false por la misma razón que en producción:
+      // un host extra sirviendo el mismo HTML es contenido duplicado indexable.
+      // Staging vive en su custom domain, y ese hostname debe quedar detrás de
+      // Cloudflare Access (ver el checklist) — si no, Google indexa una copia
+      // entera del sitio.
+      //
+      // `preview_urls` sí se activa acá (producción sigue en false): es lo que
+      // hace que `wrangler versions upload --env staging` publique una URL
+      // `<hash>-web-staging.<subdominio>.workers.dev` por PR sin desplegar
+      // nada (job `preview` de .github/workflows/ci.yml). Costo asumido: la versión
+      // desplegada de staging también gana esa URL, o sea un host más con el
+      // mismo HTML. Por eso `proxy.ts` responde `X-Robots-Tag: noindex` en
+      // todo lo que corre con `ENVIRONMENT=staging`, y por eso
+      // `*-web-staging.*.workers.dev` tiene que ir detrás de la misma
+      // aplicación de Cloudflare Access que `staging.resender.dev`.
+      "preview_urls": true,
       "routes": [{ "pattern": "staging.resender.dev", "custom_domain": true }],
       // Faltaba, y wrangler lo venía avisando: `vars` no se hereda, así que
       // `web-staging` corría sin `ENVIRONMENT` y `logger.ts` lo resolvía como

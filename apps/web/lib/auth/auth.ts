@@ -73,9 +73,23 @@ function createAuth() {
     // único que vale evita que un día alguien lo reviva sin querer.
     secret: process.env.BETTER_AUTH_SECRET,
     baseURL: process.env.BETTER_AUTH_URL,
-    trustedOrigins: process.env.BETTER_AUTH_URL
-      ? [process.env.BETTER_AUTH_URL]
-      : [],
+    // En staging se suma el patrón de los hosts de preview por PR
+    // (`<hash>-web-staging.<subdominio>.workers.dev`, ver `preview_urls` en
+    // wrangler.jsonc). Sin él, el `Origin` de un preview no coincide con
+    // `BETTER_AUTH_URL` (que sigue siendo staging.resender.dev) y Better Auth
+    // rechaza todo POST a `/api/auth/*` con 403 "Invalid origin": no se puede
+    // iniciar sesión en el preview. Better Auth 1.7 acepta wildcards en
+    // `trustedOrigins` (`*` cubre varios labels, comprobado contra
+    // `matchesOriginPattern`), y el patrón exige el sufijo `-web-staging`
+    // para no confiar en cualquier `workers.dev`. Solo staging: producción
+    // no tiene preview URLs y no debe confiar en ningún host que no sea el
+    // suyo.
+    trustedOrigins: [
+      ...(process.env.BETTER_AUTH_URL ? [process.env.BETTER_AUTH_URL] : []),
+      ...(process.env.ENVIRONMENT === "staging"
+        ? ["https://*-web-staging.*.workers.dev"]
+        : []),
+    ],
 
     // El adaptador Postgres built-in detecta el driver con `if ("connect" in
     // db)`, y el cliente HTTP de Neon (`neon()`) no tiene `.connect`: pasárselo
