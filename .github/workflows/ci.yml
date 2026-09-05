@@ -126,10 +126,12 @@ jobs:
           npm run upload -w web -- --message "PR #${PR_NUMBER} ${HEAD_SHA}" \
             | tee upload.log
 
+          # `|| true`: el shell de Actions corre con `-e` y `pipefail`, y un grep
+          # sin coincidencia devuelve 1, lo que abortaría el paso antes del aviso.
           url=$(grep -E 'Version Preview URL:' upload.log \
             | sed -E 's/.*Version Preview URL:[[:space:]]*//' \
             | tr -d '[:space:]' \
-            | tail -n 1)
+            | tail -n 1 || true)
 
           # Sin URL no se falla: la subida ya validó que Cloudflare acepta el
           # bundle, que es lo que este job garantiza desde el principio. La URL
