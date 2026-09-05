@@ -6,7 +6,9 @@ import { cn } from "@workspace/ui/lib/utils"
 
 import { getDictionary, type Locale } from "@/content/i18n"
 
-// Timeline animado del recorrido de un mensaje (diseño 1b), en claro y oscuro.
+// Timeline animado del recorrido de un mensaje (mock `1a`). Los extremos IN y
+// OUT van en primario (punto lleno) y el paso intermedio HOOK apagado (punto
+// hueco): lo que entra y sale es lo que Resender mueve, el medio es tu servidor.
 // Secuencia en loop: aparece el paso IN → se pinta la línea → aparece HOOK →
 // se pinta la línea → aparece OUT. El contenedor se remonta por ciclo.
 //
@@ -49,11 +51,11 @@ function buildSteps(lang: Locale): FlowStep[] {
     },
     {
       label: "OUT",
-      labelClass: "text-foreground",
+      labelClass: "text-primary",
       meta: flowMock.out.meta,
       text: flowMock.out.text,
       textClass: "font-medium text-foreground",
-      dotClass: "bg-foreground",
+      dotClass: "bg-primary",
       delay: 2700,
       lineDelay: null,
     },

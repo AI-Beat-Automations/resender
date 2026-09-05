@@ -27,21 +27,22 @@ type BGPatternProps = React.ComponentProps<"div"> & {
   fill?: string
 }
 
+// Las máscaras se expresan en `black`/`transparent`: en `mask-image` solo cuenta
+// el canal alfa, así que meter `var(--background)` era un falso acople al tema.
+// `fade-edges` fija las paradas del mock `1a` (lleno hasta el 40 %, nada al 85 %).
 const maskClasses: Record<BGMaskType, string> = {
   "fade-edges":
-    "[mask-image:radial-gradient(ellipse_at_center,var(--background),transparent)]",
+    "[mask-image:radial-gradient(ellipse_at_center,black_40%,transparent_85%)]",
   "fade-center":
-    "[mask-image:radial-gradient(ellipse_at_center,transparent,var(--background))]",
-  "fade-top": "[mask-image:linear-gradient(to_bottom,transparent,var(--background))]",
-  "fade-bottom":
-    "[mask-image:linear-gradient(to_bottom,var(--background),transparent)]",
-  "fade-left": "[mask-image:linear-gradient(to_right,transparent,var(--background))]",
-  "fade-right":
-    "[mask-image:linear-gradient(to_right,var(--background),transparent)]",
+    "[mask-image:radial-gradient(ellipse_at_center,transparent,black)]",
+  "fade-top": "[mask-image:linear-gradient(to_bottom,transparent,black)]",
+  "fade-bottom": "[mask-image:linear-gradient(to_bottom,black,transparent)]",
+  "fade-left": "[mask-image:linear-gradient(to_right,transparent,black)]",
+  "fade-right": "[mask-image:linear-gradient(to_right,black,transparent)]",
   "fade-x":
-    "[mask-image:linear-gradient(to_right,transparent,var(--background),transparent)]",
+    "[mask-image:linear-gradient(to_right,transparent,black,transparent)]",
   "fade-y":
-    "[mask-image:linear-gradient(to_bottom,transparent,var(--background),transparent)]",
+    "[mask-image:linear-gradient(to_bottom,transparent,black,transparent)]",
   none: "",
 }
 
@@ -78,7 +79,11 @@ const BGPattern = ({
 
   return (
     <div
-      className={cn("absolute inset-0 z-[-10] size-full", maskClasses[mask], className)}
+      className={cn(
+        "absolute inset-0 z-[-10] size-full",
+        maskClasses[mask],
+        className
+      )}
       style={{
         backgroundImage,
         backgroundSize: bgSize,

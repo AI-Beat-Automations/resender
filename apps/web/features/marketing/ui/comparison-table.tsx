@@ -22,7 +22,7 @@ function Cell({
   no: string
 }) {
   if (value === true) {
-    return <Check className="mx-auto size-5 text-primary" aria-label={yes} />
+    return <Check className="mx-auto size-5 text-success" aria-label={yes} />
   }
   if (value === false) {
     return (
@@ -42,26 +42,29 @@ export function ComparisonTable({ lang }: { lang: Locale }) {
         title={comparison.title}
         subtitle={comparison.subtitle}
       />
-      <div className="mx-auto mt-12 max-w-3xl overflow-x-auto">
+      {/* La tabla va dentro de una tarjeta con bordes redondos (mock `1m`); la
+          cabecera en mono mayúscula, con Resender en `foreground` y ManyChat
+          apagado. */}
+      <div className="mx-auto mt-12 max-w-3xl overflow-x-auto rounded-2xl border border-border bg-card">
         <Table>
           <TableHeader>
-            <TableRow>
-              <TableHead className="w-1/2">
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="w-1/2 px-5 font-mono text-[11px] tracking-[0.06em] uppercase">
                 {comparison.headers.feature}
               </TableHead>
-              <TableHead className="text-center font-semibold text-primary">
+              <TableHead className="text-center font-mono text-[11px] font-semibold tracking-[0.06em] text-foreground uppercase">
                 {comparison.headers.resender}
               </TableHead>
-              <TableHead className="text-center">
+              <TableHead className="text-center font-mono text-[11px] tracking-[0.06em] uppercase">
                 {comparison.headers.manychat}
               </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {comparison.rows.map((row) => (
-              <TableRow key={row.feature}>
-                <TableCell className="font-medium">{row.feature}</TableCell>
-                <TableCell className="text-center">
+              <TableRow key={row.feature} className="last:border-0">
+                <TableCell className="px-5 py-3.5">{row.feature}</TableCell>
+                <TableCell className="text-center font-medium">
                   <Cell
                     value={row.resender}
                     yes={comparison.yes}

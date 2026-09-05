@@ -9,21 +9,23 @@ import { getDictionary, localePath, type Locale } from "@/content/i18n"
 export function Hero({ lang }: { lang: Locale }) {
   const dict = getDictionary(lang)
 
+  // Halo radial arriba a la izquierda en el gris de `--accent` (#f0f0f0 en el
+  // mock `1a`); `--muted` queda demasiado cerca del blanco para verse.
   return (
-    <section className="bg-[radial-gradient(circle_at_top_left,var(--color-muted),transparent_38rem)]">
+    <section className="bg-[radial-gradient(circle_at_top_left,var(--color-accent),transparent_38rem)]">
       <div className="mx-auto grid w-full max-w-6xl items-center gap-12 px-6 py-20 md:grid-cols-[1.1fr_0.9fr] md:py-28">
         <div className="max-w-2xl">
           <p className="mb-4 font-mono text-sm text-primary">
             <span className="text-muted-foreground">{"// "}</span>
             {dict.hero.eyebrow}
           </p>
-          <h1 className="text-4xl font-bold tracking-tight md:text-6xl">
+          <h1 className="text-4xl font-bold tracking-[-0.03em] md:text-6xl md:leading-[1.05]">
             {dict.hero.title}
             <br />
             <Typewriter className="text-primary" text={dict.hero.titleAccent} />
             <span
               aria-hidden
-              className="caret-blink ml-1 inline-block h-[0.85em] w-[3px] translate-y-[1px] rounded-[1px] bg-primary align-baseline"
+              className="caret-blink ml-1 inline-block h-[0.85em] w-[3px] translate-y-[4px] rounded-[1px] bg-primary align-baseline"
             />
           </h1>
           <p className="mt-6 max-w-xl text-lg leading-8 text-muted-foreground">

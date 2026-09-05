@@ -38,7 +38,9 @@ export function PainPoint({ lang }: { lang: Locale }) {
           return (
             <Reveal key={item.title} delay={i * 80}>
               <Card className="h-full flex-row items-start gap-4 p-6">
-                <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                {/* Icono sobre gris neutro (`--accent`), como el mock: el violeta se
+                    reserva para kickers, CTAs y el plan destacado. */}
+                <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-accent text-accent-foreground">
                   <Icon className="size-5" />
                 </div>
                 <div>

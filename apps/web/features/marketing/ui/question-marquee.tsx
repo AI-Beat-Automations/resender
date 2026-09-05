@@ -1,11 +1,13 @@
+import { Badge } from "@workspace/ui/components/badge"
 import { cn } from "@workspace/ui/lib/utils"
 
 // Marquee de preguntas/quejas reales que se mueven en 2 renglones (direcciones
-// opuestas). Bubbles redondeadas como el resto de los elementos del sitio.
+// opuestas). Las píldoras son `Badge variant="outline"` (hereda borde y texto
+// de los tokens); se le suelta la altura fija del badge porque acá es una frase
+// entera, no una etiqueta.
 // CSS puro: el track duplica su contenido y se traslada -50% (ver globals.css).
 
-const BUBBLE =
-  "whitespace-nowrap rounded-2xl border border-border bg-card px-4 py-2.5 text-sm text-card-foreground shadow-sm"
+const BUBBLE = "h-auto rounded-2xl bg-card px-4 py-2.5 text-sm shadow-sm"
 
 // `hidden` marca la fila entera como decorativa. La segunda copia de los items
 // siempre lo es: existe solo para que el loop cierre sin salto, no para leerse
@@ -31,14 +33,19 @@ function Row({
         )}
       >
         {items.map((q, i) => (
-          <span key={`a-${i}`} className={BUBBLE}>
+          <Badge key={`a-${i}`} variant="outline" className={BUBBLE}>
             {q}
-          </span>
+          </Badge>
         ))}
         {items.map((q, i) => (
-          <span key={`b-${i}`} aria-hidden className={BUBBLE}>
+          <Badge
+            key={`b-${i}`}
+            aria-hidden
+            variant="outline"
+            className={BUBBLE}
+          >
             {q}
-          </span>
+          </Badge>
         ))}
       </div>
     </div>
