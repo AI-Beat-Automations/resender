@@ -131,10 +131,15 @@ jobs:
             | tr -d '[:space:]' \
             | tail -n 1)
 
+          # Sin URL no se falla: la subida ya validó que Cloudflare acepta el
+          # bundle, que es lo que este job garantiza desde el principio. La URL
+          # falta cuando el Worker `web-staging` todavía no tiene previews
+          # habilitados: wrangler consulta ese ajuste en la API antes de
+          # imprimirla, y solo se aplica al Worker con `wrangler deploy` (el
+          # próximo deploy-staging) o `wrangler triggers deploy --env staging`.
+          # Tampoco aparece si la cuenta no tiene subdominio workers.dev.
           if [ -z "$url" ]; then
-            echo "::error::wrangler subió la versión pero no imprimió 'Version Preview URL'."
-            echo "::error::Revisa que env.staging.preview_urls siga en true en apps/web/wrangler.jsonc y que el subdominio workers.dev de la cuenta exista."
-            exit 1
+            echo "::warning::wrangler subió la versión pero no imprimió 'Version Preview URL': el Worker web-staging aún no tiene previews habilitados (se aplica en el próximo deploy de staging) o falta el subdominio workers.dev."
           fi
 
           echo "url=$url" >> "$GITHUB_OUTPUT"
@@ -142,6 +147,7 @@ jobs:
       # Un solo comentario por PR, editado en cada push: se busca por el
       # marcador con el que empieza. Sin el marcador, cada push agregaría uno.
       - name: Comment preview URL on PR
+        if: steps.upload.outputs.url != ''
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
