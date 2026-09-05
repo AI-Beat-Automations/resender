@@ -8,16 +8,17 @@ import { ResendVerificationForm } from "@/components/resend-verification-form"
 import { SignOutForm } from "@/components/sign-out-form"
 import { fmt } from "@/content/i18n/app"
 import { resendVerificationEmailAction } from "@/features/auth/actions"
-import {
-  AccessCard,
-  AccessEyebrow,
-  AccessShell,
-} from "@/features/auth/ui/access-shell"
+import { AccessCard, AccessShell } from "@/features/auth/ui/access-shell"
 import { isEmailVerified } from "@/lib/auth/email-verified"
 import { classifyVerificationError } from "@/lib/auth/oauth-errors"
 import { resolveProductAccess } from "@/lib/auth/waitlist"
 import { getAppI18n } from "@/lib/i18n/app-dict"
 import { privatePageMetadata } from "@/lib/seo"
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@workspace/ui/components/alert"
 import { Button } from "@workspace/ui/components/button"
 
 // Estática y en español por el mismo motivo que en `/billing`: es el `<title>`
@@ -72,7 +73,7 @@ export default async function PendingPage({ searchParams }: PendingPageProps) {
       topbarEnd={
         // `SignOutForm` hace el `posthog.reset()` antes de la server action.
         <SignOutForm action={signOutAction}>
-          <Button type="submit" variant="outline">
+          <Button type="submit" variant="ghost">
             {t.accessPending.signOut}
           </Button>
         </SignOutForm>
@@ -84,70 +85,76 @@ export default async function PendingPage({ searchParams }: PendingPageProps) {
         distinctId={session.user.id}
         email={session.user.email}
       />
-      <AccessCard className="max-w-130 p-7.5">
-        {/* Bloque de confirmación **por encima** del mensaje de aprobación y
-            solo si el correo no está confirmado. Confirmar no da acceso y no
-            confirmar no lo quita: lo único que habilita es vincular Google.
-            Una cuenta aprobada no llega a leer esto —`/pending` la rebota—,
-            así que confirma y reenvía desde Settings. */}
-        {!verified ? (
-          <div className="mb-6 rounded-lg border border-border bg-surface-sunken px-4 py-3.5">
-            <p className="flex items-center gap-2 text-[14px] font-semibold">
-              <MailCheck className="size-4 shrink-0" aria-hidden />
-              {t.accessPending.verify.title}
-            </p>
-            <p className="mt-1.5 text-[13px]/[1.6] text-muted-foreground">
-              {fmt(t.accessPending.verify.body, { email: session.user.email })}
-            </p>
-            {linkExpired ? (
-              <p
-                role="alert"
-                className="mt-2 text-[13px] text-destructive-soft-foreground"
-              >
-                {t.accessPending.verify.linkExpired}
-              </p>
+      <AccessCard
+        className="max-w-130"
+        align="start"
+        eyebrow={t.accessPending.eyebrow}
+        title={t.accessPending.title}
+        description={t.accessPending.body}
+        header={
+          <>
+            {/* Bloque de confirmación **por encima** del mensaje de aprobación
+                y solo si el correo no está confirmado. Confirmar no da acceso
+                y no confirmar no lo quita: lo único que habilita es vincular
+                Google. Una cuenta aprobada no llega a leer esto —`/pending`
+                la rebota—, así que confirma y reenvía desde Settings. */}
+            {!verified ? (
+              <Alert role="note" className="mb-4 bg-surface-sunken">
+                <MailCheck aria-hidden />
+                <AlertTitle>{t.accessPending.verify.title}</AlertTitle>
+                <AlertDescription className="flex flex-col gap-2.5 text-[13px]/[1.6] [&_p:not(:last-child)]:mb-0">
+                  <p>
+                    {fmt(t.accessPending.verify.body, {
+                      email: session.user.email,
+                    })}
+                  </p>
+                  {linkExpired ? (
+                    <p
+                      role="alert"
+                      className="text-destructive-soft-foreground"
+                    >
+                      {t.accessPending.verify.linkExpired}
+                    </p>
+                  ) : null}
+                  <ResendVerificationForm
+                    action={resendVerificationEmailAction}
+                    lang={lang}
+                    label={t.accessPending.verify.resend}
+                    sentLabel={t.accessPending.verify.sent}
+                    variant="outline"
+                    size="sm"
+                  />
+                </AlertDescription>
+              </Alert>
             ) : null}
-            <ResendVerificationForm
-              action={resendVerificationEmailAction}
-              lang={lang}
-              label={t.accessPending.verify.resend}
-              sentLabel={t.accessPending.verify.sent}
-              size="sm"
-              className="mt-3"
-            />
-          </div>
-        ) : null}
-        {/* Palomita sobre `primary-soft`, el mismo tratamiento que la espera de
-            /billing/success: el registro SÍ terminó bien y la pantalla confirma
-            eso primero. Un reloj o un candado leerían como error. */}
-        <span className="flex size-11 items-center justify-center rounded-full bg-primary-soft text-primary-soft-foreground">
-          <CircleCheck className="size-5" aria-hidden />
-        </span>
-        <AccessEyebrow label={t.accessPending.eyebrow} />
-        <h1 className="mt-1.5 font-heading text-[22px] font-bold tracking-tight">
-          {t.accessPending.title}
-        </h1>
-        <p className="mt-2.5 text-[14.5px]/[1.6] text-muted-foreground">
-          {t.accessPending.body}
-        </p>
-        <div className="mt-4.5 rounded-lg border border-border bg-surface-sunken px-3.5 py-3">
+            {/* Palomita en `text-success`, el mismo tratamiento que
+                /billing/success: el registro SÍ terminó bien y la pantalla
+                confirma eso primero. Un reloj o un candado leerían como
+                error. */}
+            <span className="mb-2 flex size-11 items-center justify-center rounded-full bg-success-soft text-success">
+              <CircleCheck className="size-5" aria-hidden />
+            </span>
+          </>
+        }
+      >
+        <div className="rounded-lg border border-border bg-surface-sunken px-3.5 py-3">
           <p className="text-[12.5px] text-muted-foreground">
             {t.accessPending.emailLabel}
           </p>
           <p className="mt-0.5 font-mono text-[13.5px]">{session.user.email}</p>
         </div>
-        <p className="mt-4 text-[13px]/[1.6] text-muted-foreground">
+        <p className="text-[13px]/[1.6] text-muted-foreground">
           {t.accessPending.helpBefore}
           <Link
             href="/docs"
-            className="font-medium text-foreground underline-offset-4 hover:underline"
+            className="font-medium text-primary underline-offset-4 hover:underline"
           >
             {t.accessPending.helpDocsLink}
           </Link>
           {t.accessPending.helpMiddle}
           <a
             href={`mailto:${t.common.contactEmail}`}
-            className="font-medium text-foreground underline-offset-4 hover:underline"
+            className="font-medium text-primary underline-offset-4 hover:underline"
           >
             {t.common.contactEmail}
           </a>

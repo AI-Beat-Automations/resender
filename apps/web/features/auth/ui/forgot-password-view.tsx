@@ -3,7 +3,6 @@ import { getDictionary, type Locale } from "@/content/i18n"
 import {
   AccessCard,
   AccessDocsLink,
-  AccessEyebrow,
   AccessShell,
 } from "@/features/auth/ui/access-shell"
 import { ForgotPasswordForm } from "@/features/auth/ui/forgot-password-form"
@@ -20,14 +19,11 @@ export function ForgotPasswordView({ lang }: { lang: Locale }) {
   return (
     <AccessShell lang={lang} topbarEnd={<AccessDocsLink lang={lang} />}>
       <HtmlLang lang={lang} />
-      <AccessCard className="max-w-100">
-        <AccessEyebrow label={t.forgot.eyebrow} />
-        <h1 className="mt-1.5 font-heading text-2xl font-bold tracking-tight">
-          {t.forgot.title}.
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {t.forgot.subtitle}
-        </p>
+      <AccessCard
+        eyebrow={t.forgot.eyebrow}
+        title={t.forgot.title}
+        description={t.forgot.subtitle}
+      >
         <ForgotPasswordForm lang={lang} />
       </AccessCard>
     </AccessShell>

@@ -461,6 +461,7 @@ export const en: AppDict = {
     planLimitsOne: "{messages} messages · {pages} connection",
     planLimitsMany: "{messages} messages · {pages} connections",
     subscribe: "Subscribe",
+    recommended: "Recommended",
     footnote:
       "Change plan, update your card or cancel whenever you want from Settings, with Stripe's portal.",
     successMetaTitle: "Activating your subscription",
@@ -471,6 +472,7 @@ export const en: AppDict = {
     successSlowLink: "Open the app",
     successSlowMiddle: " or write to ",
     successSlowAfter: ".",
+    successCta: "Go to my connections",
   },
 
   metaErrors: {

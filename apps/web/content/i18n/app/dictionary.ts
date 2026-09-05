@@ -438,6 +438,8 @@ export type AppDict = {
     /** `{messages}`, `{pages}` */
     planLimitsMany: string
     subscribe: string
+    /** Badge del plan destacado en `/billing` (mock `1d`). */
+    recommended: string
     footnote: string
     successMetaTitle: string
     successTitle: string
@@ -446,6 +448,8 @@ export type AppDict = {
     successSlowLink: string
     successSlowMiddle: string
     successSlowAfter: string
+    /** Botón a `/connections` en `/billing/success`. */
+    successCta: string
   }
 
   /**
