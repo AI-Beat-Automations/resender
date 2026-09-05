@@ -98,92 +98,90 @@
 }
 
 /* ---------------------------------------------------------------------------
-   Design system: rampas crudas (tokens/colors.css).
-   Acento violeta #7773a5 en ambos modos. Los neutros son arena cálida, nunca
-   gris frío. Las semánticas son apagadas y terrosas para convivir con la crema.
+   Design system: rampas crudas (ADR 0015).
+   Paleta neutra + violeta #7673A4: los neutros son el gris de Tailwind, sin
+   matiz cálido ni frío, y las semánticas son las rampas estándar de Tailwind
+   (green, amber, red, blue). Nada de la app usa estas rampas directamente:
+   todo pasa por el contrato semántico de más abajo.
    --------------------------------------------------------------------------- */
 :root {
-  /* Violeta — primario de marca. 500 es el acento fijado. */
-  --violet-50: #f4f3f8;
-  --violet-100: #e7e6f0;
-  --violet-200: #cfcde1;
-  --violet-300: #b3b0cd;
-  --violet-400: #9591b8;
-  --violet-500: #7773a5;
-  --violet-600: #635f8c;
-  --violet-700: #514d73;
-  --violet-800: #3d3a57;
-  --violet-900: #2e2b40;
-  --violet-950: #1e1c2b;
+  /* Violeta — primario de marca. 500 es el acento fijado por el mock. */
+  --violet-50: #f6f5fa;
+  --violet-100: #eeedf6;
+  --violet-200: #d9d7ea;
+  --violet-300: #bab7d5;
+  --violet-400: #9895bd;
+  --violet-500: #7673a4;
+  --violet-600: #66639a;
+  --violet-700: #4d4a75;
+  --violet-800: #3b3959;
+  --violet-900: #2c2a42;
+  --violet-950: #1c1b2b;
 
-  /* Arena — neutro cálido construido sobre el fondo crema. */
-  --sand-50: #fbf8f2;
-  --sand-100: #f3ede1;
-  --sand-200: #ebe4d6;
-  --sand-300: #ded5c4;
-  --sand-400: #c9bfa9;
-  --sand-500: #a89e8a;
-  --sand-600: #857c6c;
-  --sand-700: #635c50;
-  --sand-800: #474139;
-  --sand-900: #332f2c;
-  --sand-950: #242029; /* tinta — lleva un matiz violeta a propósito */
+  /* Neutro — superficies, bordes y texto en ambos modos. */
+  --neutral-50: #fafafa;
+  --neutral-100: #f5f5f5;
+  --neutral-200: #e5e5e5;
+  --neutral-300: #d4d4d4;
+  --neutral-400: #a3a3a3;
+  --neutral-500: #737373;
+  --neutral-600: #525252;
+  --neutral-700: #404040;
+  --neutral-800: #262626;
+  --neutral-900: #171717;
+  --neutral-950: #0a0a0a;
 
-  /* Superficies de tinta (grises del modo oscuro, con matiz violeta) */
-  --ink-900: #242029;
-  --ink-800: #2e2a35;
-  --ink-700: #35303d;
-  --ink-600: #3d3845;
-  --ink-500: #4a4453;
-  --ink-300: #a09bab;
+  /* Verde — éxito / conectado / positivo */
+  --green-50: #f0fdf4;
+  --green-100: #dcfce7;
+  --green-200: #bbf7d0;
+  --green-300: #86efac;
+  --green-400: #4ade80;
+  --green-500: #22c55e;
+  --green-600: #16a34a;
+  --green-700: #15803d;
+  --green-800: #166534;
+  --green-900: #14532d;
+  --green-950: #052e16;
 
-  /* Salvia — éxito / conectado / positivo */
-  --sage-50: #eff4ec;
-  --sage-100: #e1ebde;
-  --sage-200: #c3d8c3;
-  --sage-300: #9cbfa1;
-  --sage-400: #6ea07b;
-  --sage-500: #3f7a52;
-  --sage-600: #336344;
-  --sage-700: #2a5039;
-  --sage-800: #1f3a2a;
-  --sage-900: #16281e;
+  /* Rojo — destructivo / error */
+  --red-50: #fef2f2;
+  --red-100: #fee2e2;
+  --red-200: #fecaca;
+  --red-300: #fca5a5;
+  --red-400: #f87171;
+  --red-500: #ef4444;
+  --red-600: #dc2626;
+  --red-700: #b91c1c;
+  --red-800: #991b1b;
+  --red-900: #7f1d1d;
+  --red-950: #450a0a;
 
-  /* Ladrillo — destructivo / error (conserva el #c0392b del producto) */
-  --brick-50: #fbeeea;
-  --brick-100: #f7e4e0;
-  --brick-200: #eec5bc;
-  --brick-300: #de9e92;
-  --brick-400: #ce6c58;
-  --brick-500: #c0392b;
-  --brick-600: #a02d22;
-  --brick-700: #7e241b;
-  --brick-800: #5a1b15;
-  --brick-900: #3b1310;
+  /* Ámbar — aviso / cuota / pendiente */
+  --amber-50: #fffbeb;
+  --amber-100: #fef3c7;
+  --amber-200: #fde68a;
+  --amber-300: #fcd34d;
+  --amber-400: #fbbf24;
+  --amber-500: #f59e0b;
+  --amber-600: #d97706;
+  --amber-700: #b45309;
+  --amber-800: #92400e;
+  --amber-900: #78350f;
+  --amber-950: #451a03;
 
-  /* Azul pizarra — info / énfasis neutro. A un paso de matiz del violeta. */
-  --azure-50: #edf2f7;
-  --azure-100: #e3eaf2;
-  --azure-200: #bfd0e1;
-  --azure-300: #96b3ce;
-  --azure-400: #6591b6;
-  --azure-500: #3a6e9c;
-  --azure-600: #2f5a80;
-  --azure-700: #274867;
-  --azure-800: #1d354b;
-  --azure-900: #152632;
-
-  /* Ocre — aviso / cuota / pendiente */
-  --ochre-50: #fbf3e2;
-  --ochre-100: #f4e1b8;
-  --ochre-200: #e5ce9f;
-  --ochre-300: #d4af66;
-  --ochre-400: #c4881f;
-  --ochre-500: #a9741a;
-  --ochre-600: #8a5a12;
-  --ochre-700: #6b460e;
-  --ochre-800: #4c320b;
-  --ochre-900: #332208;
+  /* Azul — info / énfasis neutro */
+  --blue-50: #eff6ff;
+  --blue-100: #dbeafe;
+  --blue-200: #bfdbfe;
+  --blue-300: #93c5fd;
+  --blue-400: #60a5fa;
+  --blue-500: #3b82f6;
+  --blue-600: #2563eb;
+  --blue-700: #1d4ed8;
+  --blue-800: #1e40af;
+  --blue-900: #1e3a8a;
+  --blue-950: #172554;
 
   /* Absolutos */
   --white: #ffffff;
@@ -223,7 +221,7 @@
   --container-max: 1152px;
   --container-prose: 768px;
   --header-h: 64px;
-  --sidebar-w: 240px;
+  --sidebar-w: 232px;
   --control-h-xs: 24px;
   --control-h-sm: 28px;
   --control-h: 32px;
@@ -248,17 +246,18 @@
   --border-width-thick: 2px;
 
   --shadow-none: none;
-  --shadow-xs: 0 1px 2px 0 color-mix(in oklab, var(--sand-950) 5%, transparent);
+  --shadow-xs: 0 1px 2px 0
+    color-mix(in oklab, var(--neutral-950) 5%, transparent);
   --shadow-sm:
-    0 1px 2px 0 color-mix(in oklab, var(--sand-950) 6%, transparent),
-    0 1px 3px 0 color-mix(in oklab, var(--sand-950) 6%, transparent);
+    0 1px 2px 0 color-mix(in oklab, var(--neutral-950) 6%, transparent),
+    0 1px 3px 0 color-mix(in oklab, var(--neutral-950) 6%, transparent);
   --shadow-md:
-    0 2px 4px -1px color-mix(in oklab, var(--sand-950) 8%, transparent),
-    0 4px 10px -2px color-mix(in oklab, var(--sand-950) 6%, transparent);
+    0 2px 4px -1px color-mix(in oklab, var(--neutral-950) 8%, transparent),
+    0 4px 10px -2px color-mix(in oklab, var(--neutral-950) 6%, transparent);
   --shadow-lg: 0 8px 24px -6px
-    color-mix(in oklab, var(--sand-950) 14%, transparent);
+    color-mix(in oklab, var(--neutral-950) 14%, transparent);
   --ring-hairline: inset 0 0 0 1px
-    color-mix(in oklab, var(--sand-950) 10%, transparent);
+    color-mix(in oklab, var(--neutral-950) 10%, transparent);
   --focus-ring: 0 0 0 3px var(--primary-ring);
 }
 
@@ -310,9 +309,11 @@
 }
 
 /* ---------------------------------------------------------------------------
-   Design system: contrato semántico (tokens/semantic.css).
+   Design system: contrato semántico (ADR 0015).
    Nombres de shadcn tal cual, más los extras de Resender (--success-*, --info-*,
-   --warning-*, --*-soft, --surface-*, --bubble-*) que shadcn no trae.
+   --warning-*, --*-soft, --surface-*, --bubble-*) que shadcn no trae. Los
+   valores del modo claro son los del mock `Resender Redesign.dc.html`: fondo
+   blanco, texto #252525, bordes #e5e5e5 y el violeta #7673A4 como único acento.
 
    Modo claro. `.light` lo redeclara para que cualquier subárbol marcado con esa
    clase gane sobre un `.dark` ancestro: así el sitio público queda siempre en
@@ -320,123 +321,123 @@
    --------------------------------------------------------------------------- */
 :root,
 .light {
-  --background: #f3ede1;
-  --foreground: #242029;
+  --background: #ffffff;
+  --foreground: #252525;
   --card: #ffffff;
-  --card-foreground: #242029;
+  --card-foreground: #252525;
   --popover: #ffffff;
-  --popover-foreground: #242029;
-  --primary: #7773a5;
+  --popover-foreground: #252525;
+  --primary: #7673a4;
   --primary-foreground: #ffffff;
-  --secondary: #ffffff;
-  --secondary-foreground: #242029;
-  --muted: #ebe4d6;
-  --muted-foreground: #6b6780;
-  --accent: #7773a5;
-  --accent-foreground: #ffffff;
-  --destructive: #c0392b;
+  --secondary: #f5f5f5;
+  --secondary-foreground: #252525;
+  --muted: #f5f5f5;
+  --muted-foreground: #767676;
+  --accent: #f0f0f0;
+  --accent-foreground: #252525;
+  --destructive: #dc2626;
   --destructive-foreground: #ffffff;
-  --border: #d4cfc7;
-  --input: #d4cfc7;
-  --ring: #7773a5;
-  --radius: 0.625rem;
+  --border: #e5e5e5;
+  --input: #e5e5e5;
+  --ring: #7673a4;
+  --radius: 0.5rem;
 
   /* --- superficies más allá de card --- */
-  --surface-page: var(--sand-100);
+  --surface-page: #ffffff;
   --surface-card: #ffffff;
-  --surface-sunken: var(--sand-200);
+  --surface-sunken: #fafafa;
   --surface-raised: #ffffff;
-  --surface-contrast: var(--sand-950);
-  --surface-contrast-foreground: var(--sand-100);
-  --surface-app: color-mix(in oklab, var(--sand-200) 45%, var(--sand-100));
+  --surface-contrast: #252525;
+  --surface-contrast-foreground: #fafafa;
+  --surface-app: #ffffff;
 
   /* --- texto --- */
-  --text-strong: var(--sand-950);
-  --text-body: var(--sand-950);
-  --text-muted: #6b6780;
-  --text-subtle: var(--sand-500);
+  --text-strong: #252525;
+  --text-body: #252525;
+  --text-muted: #767676;
+  --text-subtle: var(--neutral-400);
   --text-accent: var(--violet-500);
   --text-on-accent: #ffffff;
-  --text-inverse: var(--sand-100);
+  --text-inverse: #fafafa;
 
   /* --- bordes --- */
-  --border-subtle: #e1dace;
-  --border-default: #d4cfc7;
-  --border-strong: var(--sand-400);
+  --border-subtle: #ececec;
+  --border-default: #e5e5e5;
+  --border-strong: #d4d4d4;
   --border-accent: var(--violet-500);
 
   /* --- estados de interacción del primario (botones, enlaces) --- */
-  --primary-hover: #6b679a;
-  --primary-active: var(--violet-600);
-  --primary-soft: var(--violet-100);
+  --primary-hover: #66639a;
+  --primary-active: var(--violet-700);
+  --primary-soft: #eeedf6;
   --primary-soft-hover: var(--violet-200);
-  --primary-soft-border: var(--violet-200);
-  --primary-soft-foreground: var(--violet-700);
+  --primary-soft-border: #d9d7ea;
+  --primary-soft-foreground: #4d4a75;
   --primary-tint: color-mix(in oklab, var(--violet-500) 10%, transparent);
   --primary-ring: color-mix(in oklab, var(--violet-500) 50%, transparent);
 
   /* --- semántica: éxito --- */
-  --success: var(--sage-500);
+  --success: #16a34a;
   --success-foreground: #ffffff;
-  --success-soft: var(--sage-100);
-  --success-soft-border: var(--sage-200);
-  --success-soft-foreground: var(--sage-700);
-  --success-text: var(--sage-600);
+  --success-soft: #f0fdf4;
+  --success-soft-border: #bbf7d0;
+  --success-soft-foreground: #166534;
+  --success-text: var(--green-700);
 
   /* --- semántica: peligro (alias de destructive) --- */
-  --danger: var(--brick-500);
+  --danger: #dc2626;
   --danger-foreground: #ffffff;
-  --danger-soft: var(--brick-100);
-  --danger-soft-border: var(--brick-200);
-  --danger-soft-foreground: var(--brick-700);
-  --danger-text: var(--brick-600);
-  --destructive-soft: var(--brick-100);
-  --destructive-soft-foreground: var(--brick-700);
+  --danger-soft: #fef2f2;
+  --danger-soft-border: #fecaca;
+  --danger-soft-foreground: #b91c1c;
+  --danger-text: var(--red-600);
+  --destructive-soft: #fef2f2;
+  --destructive-soft-foreground: #b91c1c;
 
   /* --- semántica: info --- */
-  --info: var(--azure-500);
+  --info: var(--blue-600);
   --info-foreground: #ffffff;
-  --info-soft: var(--azure-100);
-  --info-soft-border: var(--azure-200);
-  --info-soft-foreground: var(--azure-700);
-  --info-text: var(--azure-600);
+  --info-soft: var(--blue-50);
+  --info-soft-border: var(--blue-200);
+  --info-soft-foreground: var(--blue-800);
+  --info-text: var(--blue-700);
 
   /* --- semántica: aviso --- */
-  --warning: var(--ochre-400);
-  --warning-foreground: var(--sand-950);
-  --warning-soft: #f4e1b8;
-  --warning-soft-border: var(--ochre-200);
-  --warning-soft-foreground: var(--ochre-700);
-  --warning-text: var(--ochre-600);
+  --warning: #d97706;
+  --warning-foreground: #ffffff;
+  --warning-soft: #fffbeb;
+  --warning-soft-border: #fde68a;
+  --warning-soft-foreground: #b45309;
+  --warning-text: var(--amber-700);
 
   /* --- burbujas de la bitácora de mensajes --- */
-  --bubble-in: var(--sage-100);
-  --bubble-in-border: var(--sage-200);
-  --bubble-in-foreground: var(--sage-800);
-  --bubble-out: var(--ochre-100);
-  --bubble-out-border: var(--ochre-200);
-  --bubble-out-foreground: var(--ochre-800);
+  --bubble-in: #ffffff;
+  --bubble-in-border: #e5e5e5;
+  --bubble-in-foreground: #252525;
+  --bubble-out: #7673a4;
+  --bubble-out-border: #7673a4;
+  --bubble-out-foreground: #ffffff;
 
   /* --- gráficos --- */
-  --chart-1: #7773a5;
-  --chart-2: #918ec0;
-  --chart-3: #5f5b85;
-  --chart-4: #a9a5c9;
-  --chart-5: #46436b;
-  --chart-success: var(--sage-400);
-  --chart-info: var(--azure-400);
-  --chart-warning: var(--ochre-300);
-  --chart-danger: var(--brick-400);
+  --chart-1: #7673a4;
+  --chart-2: #9895bd;
+  --chart-3: #4d4a75;
+  --chart-4: #bab7d5;
+  --chart-5: #2c2a42;
+  --chart-success: var(--green-500);
+  --chart-info: var(--blue-500);
+  --chart-warning: var(--amber-500);
+  --chart-danger: var(--red-500);
 
   /* --- sidebar --- */
-  --sidebar: #f3ede1;
-  --sidebar-foreground: #242029;
-  --sidebar-primary: #7773a5;
+  --sidebar: #fafafa;
+  --sidebar-foreground: #252525;
+  --sidebar-primary: #7673a4;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #ebe4d6;
-  --sidebar-accent-foreground: #242029;
-  --sidebar-border: #d4cfc7;
-  --sidebar-ring: #7773a5;
+  --sidebar-accent: #ebebeb;
+  --sidebar-accent-foreground: #252525;
+  --sidebar-border: #ececec;
+  --sidebar-ring: #7673a4;
 
   /* Los widgets nativos (inputs, scrollbars, autofill) también se pintan claros
      aunque el equipo esté en oscuro: sin esto el navegador seguiría el
@@ -444,122 +445,117 @@
   color-scheme: light;
 }
 
+/* Modo oscuro: neutros de shadcn (ADR 0015). No hay mock; se diseña en código
+   con el mismo violeta y los tintes suaves apoyados sobre `--card` (#171717)
+   para que sigan leyéndose como "tinte + borde" igual que en claro. */
 .dark {
   color-scheme: dark;
-  --background: #242029;
-  --foreground: #f3ede1;
-  --card: #2e2a35;
-  --card-foreground: #f3ede1;
-  --popover: #2e2a35;
-  --popover-foreground: #f3ede1;
-  --primary: #7773a5;
+  --background: #0a0a0a;
+  --foreground: #fafafa;
+  --card: #171717;
+  --card-foreground: #fafafa;
+  --popover: #171717;
+  --popover-foreground: #fafafa;
+  --primary: #7673a4;
   --primary-foreground: #ffffff;
-  --secondary: #2e2a35;
-  --secondary-foreground: #f3ede1;
-  --muted: #35303d;
-  --muted-foreground: #a09bab;
-  --accent: #7773a5;
-  --accent-foreground: #ffffff;
-  --destructive: #e5533d;
+  --secondary: #262626;
+  --secondary-foreground: #fafafa;
+  --muted: #262626;
+  --muted-foreground: #a3a3a3;
+  --accent: #262626;
+  --accent-foreground: #fafafa;
+  --destructive: var(--red-400);
   --destructive-foreground: #ffffff;
-  --border: #3d3845;
-  --input: #3d3845;
-  --ring: #7773a5;
+  --border: #262626;
+  --input: #262626;
+  --ring: #7673a4;
 
-  --surface-page: var(--ink-900);
-  --surface-card: var(--ink-800);
-  --surface-sunken: var(--ink-700);
-  --surface-raised: var(--ink-700);
-  --surface-contrast: var(--sand-100);
-  --surface-contrast-foreground: var(--sand-950);
-  --surface-app: color-mix(in oklab, var(--ink-800) 40%, var(--ink-900));
+  --surface-page: #0a0a0a;
+  --surface-card: #171717;
+  --surface-sunken: #171717;
+  --surface-raised: #262626;
+  --surface-contrast: #fafafa;
+  --surface-contrast-foreground: #0a0a0a;
+  --surface-app: #0a0a0a;
 
-  --text-strong: var(--sand-100);
-  --text-body: var(--sand-100);
-  --text-muted: #a09bab;
-  --text-subtle: #7c7689;
-  --text-accent: #a9a5c9;
-  --text-inverse: var(--sand-950);
+  --text-strong: #fafafa;
+  --text-body: #fafafa;
+  --text-muted: #a3a3a3;
+  --text-subtle: var(--neutral-500);
+  --text-accent: var(--violet-400);
+  --text-inverse: #0a0a0a;
 
-  --border-subtle: #332e3b;
-  --border-default: #3d3845;
-  --border-strong: #4a4453;
+  --border-subtle: #1f1f1f;
+  --border-default: #262626;
+  --border-strong: #404040;
   --border-accent: var(--violet-400);
 
-  --primary-hover: #8985b4;
+  --primary-hover: #8683b1;
   --primary-active: var(--violet-400);
-  --primary-soft: color-mix(in oklab, var(--violet-500) 22%, var(--ink-900));
-  --primary-soft-hover: color-mix(
-    in oklab,
-    var(--violet-500) 32%,
-    var(--ink-900)
-  );
-  --primary-soft-border: color-mix(
-    in oklab,
-    var(--violet-500) 45%,
-    var(--ink-900)
-  );
-  --primary-soft-foreground: #c7c4dd;
+  --primary-soft: color-mix(in oklab, var(--violet-500) 22%, #171717);
+  --primary-soft-hover: color-mix(in oklab, var(--violet-500) 32%, #171717);
+  --primary-soft-border: color-mix(in oklab, var(--violet-500) 45%, #171717);
+  --primary-soft-foreground: var(--violet-300);
 
-  --success: #6ea07b;
-  --success-foreground: #12211a;
-  --success-soft: #24352a;
-  --success-soft-border: #3a5343;
-  --success-soft-foreground: #a8d3b2;
-  --success-text: #8fc29c;
+  --success: var(--green-400);
+  --success-foreground: #052e16;
+  --success-soft: color-mix(in oklab, var(--green-900) 45%, #171717);
+  --success-soft-border: var(--green-900);
+  --success-soft-foreground: var(--green-300);
+  --success-text: var(--green-400);
 
-  --danger: #e5533d;
+  --danger: var(--red-400);
   --danger-foreground: #ffffff;
-  --danger-soft: #3a2521;
-  --danger-soft-border: #5a342c;
-  --danger-soft-foreground: #f0a99a;
-  --danger-text: #ec8776;
-  --destructive-soft: #3a2521;
-  --destructive-soft-foreground: #f0a99a;
+  --danger-soft: color-mix(in oklab, var(--red-900) 45%, #171717);
+  --danger-soft-border: var(--red-900);
+  --danger-soft-foreground: var(--red-300);
+  --danger-text: var(--red-400);
+  --destructive-soft: color-mix(in oklab, var(--red-900) 45%, #171717);
+  --destructive-soft-foreground: var(--red-300);
 
-  --info: #6591b6;
-  --info-foreground: #0f1b24;
-  --info-soft: #1f2b38;
-  --info-soft-border: #35485c;
-  --info-soft-foreground: #a9c8e5;
-  --info-text: #9bbbd8;
+  --info: var(--blue-400);
+  --info-foreground: #172554;
+  --info-soft: color-mix(in oklab, var(--blue-900) 45%, #171717);
+  --info-soft-border: var(--blue-900);
+  --info-soft-foreground: var(--blue-300);
+  --info-text: var(--blue-400);
 
-  --warning: #d4af66;
-  --warning-foreground: #241f0f;
-  --warning-soft: #33291a;
-  --warning-soft-border: #52412a;
-  --warning-soft-foreground: #e8c888;
-  --warning-text: #debb7a;
+  --warning: var(--amber-400);
+  --warning-foreground: #451a03;
+  --warning-soft: color-mix(in oklab, var(--amber-900) 45%, #171717);
+  --warning-soft-border: var(--amber-900);
+  --warning-soft-foreground: var(--amber-300);
+  --warning-text: var(--amber-400);
 
-  --bubble-in: #24352a;
-  --bubble-in-border: #3a5343;
-  --bubble-in-foreground: #c6e3cd;
-  --bubble-out: #33291a;
-  --bubble-out-border: #52412a;
-  --bubble-out-foreground: #edd6a6;
+  --bubble-in: #171717;
+  --bubble-in-border: #262626;
+  --bubble-in-foreground: #fafafa;
+  --bubble-out: #7673a4;
+  --bubble-out-border: #7673a4;
+  --bubble-out-foreground: #ffffff;
 
-  --chart-1: #918ec0;
-  --chart-2: #7773a5;
-  --chart-3: #a9a5c9;
-  --chart-4: #5f5b85;
-  --chart-5: #c7c4dd;
+  --chart-1: #9895bd;
+  --chart-2: #7673a4;
+  --chart-3: #bab7d5;
+  --chart-4: #4d4a75;
+  --chart-5: #d9d7ea;
 
-  --sidebar: #2e2a35;
-  --sidebar-foreground: #f3ede1;
-  --sidebar-primary: #7773a5;
+  --sidebar: #0a0a0a;
+  --sidebar-foreground: #fafafa;
+  --sidebar-primary: #7673a4;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #35303d;
-  --sidebar-accent-foreground: #f3ede1;
-  --sidebar-border: #3d3845;
-  --sidebar-ring: #7773a5;
+  --sidebar-accent: #262626;
+  --sidebar-accent-foreground: #fafafa;
+  --sidebar-border: #262626;
+  --sidebar-ring: #7673a4;
 
-  /* Sombras del DS en oscuro (tokens/elevation.css). */
+  /* Sombras del DS en oscuro: negro puro, como hasta ahora. */
   --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.35);
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4), 0 1px 3px 0 rgba(0, 0, 0, 0.3);
   --shadow-md:
     0 2px 4px -1px rgba(0, 0, 0, 0.45), 0 4px 10px -2px rgba(0, 0, 0, 0.35);
   --shadow-lg: 0 8px 24px -6px rgba(0, 0, 0, 0.55);
-  --ring-hairline: inset 0 0 0 1px rgba(243, 237, 225, 0.1);
+  --ring-hairline: inset 0 0 0 1px rgba(250, 250, 250, 0.1);
 }
 
 /* Defaults de elemento del design system (tokens/base.css).
@@ -669,8 +665,12 @@ pre[data-theme] span {
    `max-width` en vez de `width`: si el ancho estimado en `ch` se pasa del ancho
    real, el elemento se queda en su ancho natural en lugar de estirarse. */
 @keyframes typewriter-reveal {
-  from { max-width: 0; }
-  to   { max-width: calc(var(--typewriter-chars) * 1.2ch); }
+  from {
+    max-width: 0;
+  }
+  to {
+    max-width: calc(var(--typewriter-chars) * 1.2ch);
+  }
 }
 .typewriter {
   display: inline-block;

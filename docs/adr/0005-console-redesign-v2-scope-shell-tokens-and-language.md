@@ -4,6 +4,10 @@ status: accepted
 
 # Rediseño de la consola v2: alcance recortado, shell con sidebar, tokens del DS e idioma
 
+> **Enmendada en tokens, shell y alcance por la
+> [ADR 0015](0015-ui-neutra-violeta-shadcn.md):** paleta neutra + violeta, shell sobre el bloque
+> `Sidebar` de shadcn y alcance que incluye el sitio público. Lo demás sigue vigente.
+
 > **Enmendada en el punto del idioma por la
 > [ADR 0006](0006-access-screens-return-to-the-dictionary.md):** `/login` y `/register` leen su
 > texto del `Dict` porque tienen gemela en `/en`. Las otras siete rutas de producto siguen con el

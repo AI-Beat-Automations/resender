@@ -61,6 +61,12 @@ export type AppDict = {
     navInbox: string
     navSettings: string
     navDocs: string
+    groupConsole: string
+    groupResources: string
+    /** Raíz del breadcrumb de toda pantalla de la consola. */
+    breadcrumbConsole: string
+    /** Hoja de `/connections/select`; las demás reutilizan `nav*`. */
+    breadcrumbSelectPages: string
     theme: string
     signOut: string
   }
