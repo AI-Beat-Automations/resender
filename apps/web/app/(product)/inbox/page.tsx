@@ -1,12 +1,15 @@
 import Link from "next/link"
 import type { ReactNode } from "react"
-import { MessageSquare } from "lucide-react"
+import { Eye, MessageSquare } from "lucide-react"
 
 import { getSession } from "@/lib/auth/session"
 import { CommentThread } from "@/features/comments/ui/comment-thread"
 import { PublicationLogList } from "@/features/comments/ui/publication-log-list"
 import { EmptyPane } from "@/features/inbox/ui/empty-pane"
-import { InboxAccountFilter } from "@/features/inbox/ui/inbox-account-filter"
+import {
+  InboxAccountFilter,
+  type InboxFilterAccount,
+} from "@/features/inbox/ui/inbox-account-filter"
 import { InboxTabsNav } from "@/features/inbox/ui/inbox-tabs-nav"
 import { ConversationLogList } from "@/features/messages/ui/conversation-log-list"
 import {
@@ -22,7 +25,11 @@ import {
   listPublicationComments,
   listPublicationReadModel,
 } from "@/lib/comments/read-model"
-import { firstParam, resolveInboxTab } from "@/lib/inbox/inbox-tabs"
+import {
+  firstParam,
+  resolveInboxTab,
+  type InboxTab,
+} from "@/lib/inbox/inbox-tabs"
 import {
   mediaKey,
   resolveContactProfiles,
@@ -39,6 +46,7 @@ import {
 import { listTenantPages } from "@/lib/pages/page-registry"
 import type { AppDict } from "@/content/i18n/app"
 import { getAppDict } from "@/lib/i18n/app-dict"
+import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 
 export default async function InboxPage({
@@ -63,7 +71,7 @@ export default async function InboxPage({
   const tab = resolveInboxTab(params.tab)
   const accounts = await listTenantPages(tenantId)
   // En comentarios el filtro solo lista Instagram: los comentarios no existen
-  // en Messenger, y una píldora que siempre devuelve cero es un control muerto.
+  // en Messenger, y una opción que siempre devuelve cero es un control muerto.
   // Filtrar acá además invalida solo el `?page=` de una cuenta de Messenger al
   // cambiar de modo, sin tener que limpiarlo aparte.
   const filterable =
@@ -75,36 +83,30 @@ export default async function InboxPage({
     ? accountParam
     : undefined
 
-  return (
-    <div className="flex flex-col">
-      <header>
-        <p className="font-mono text-[11px] tracking-[0.08em] text-[var(--text-subtle)]">
-          {`// ${t.inbox.eyebrow}`}
-        </p>
-        <h1 className="mt-1 font-heading text-[26px] font-bold tracking-[-0.02em]">
-          {t.inbox.title}
-        </h1>
-        <p className="mt-2 max-w-[640px] text-[14.5px] leading-relaxed text-muted-foreground">
-          {t.inbox.subtitle}
-        </p>
-        <InboxTabsNav active={tab} accountId={accountId ?? null} t={t} />
-        <InboxAccountFilter
-          tab={tab}
-          accounts={filterable.map((account) => ({
-            id: account.id,
-            name: account.name,
-          }))}
-          selectedAccountId={accountId ?? null}
-          t={t}
-        />
-      </header>
+  // La cabecera lleva el conteo del modo, que solo se sabe tras la consulta
+  // del modo: cada uno la dibuja con su número en vez de consultar dos veces.
+  const renderHeader = (count: number) => (
+    <InboxHeader
+      tab={tab}
+      accountId={accountId ?? null}
+      accounts={filterable.map((account) => ({
+        id: account.id,
+        name: account.name,
+      }))}
+      count={count}
+      t={t}
+    />
+  )
 
+  return (
+    <div className="flex flex-col gap-5">
       {tab === "comentarios" ? (
         <ComentariosMode
           tenantId={tenantId}
           accountId={accountId}
           mediaParam={firstParam(params.media)}
           hasInstagram={filterable.length > 0}
+          renderHeader={renderHeader}
           t={t}
         />
       ) : (
@@ -112,6 +114,7 @@ export default async function InboxPage({
           tenantId={tenantId}
           accountId={accountId}
           conversationParam={firstParam(params.conversation)}
+          renderHeader={renderHeader}
           t={t}
         />
       )}
@@ -119,15 +122,70 @@ export default async function InboxPage({
   )
 }
 
+// Cabecera de la pantalla (ADR 0015, mock 1h): título con el conteo del modo
+// en `Badge` y el «solo lectura» en `Badge outline`, y debajo las pestañas y
+// el filtro por cuenta. Sin buscador ni filtro por plataforma: fuera de scope.
+function InboxHeader({
+  tab,
+  accountId,
+  accounts,
+  count,
+  t,
+}: {
+  tab: InboxTab
+  accountId: string | null
+  accounts: InboxFilterAccount[]
+  count: number
+  t: AppDict
+}) {
+  return (
+    <header className="flex flex-col gap-3">
+      <div>
+        <div className="flex items-center gap-2.5">
+          <h1 className="font-heading text-2xl font-bold tracking-[-0.02em]">
+            {t.inbox.title}
+          </h1>
+          <Badge
+            variant="secondary"
+            className="font-mono"
+            title={t.inbox.countTitle[tab]}
+          >
+            {count.toLocaleString(t.intl)}
+          </Badge>
+          <Badge variant="outline" title={t.inbox.readOnlyHint}>
+            <Eye aria-hidden />
+            {t.inbox.readOnly}
+          </Badge>
+        </div>
+        <p className="mt-1.5 max-w-[640px] text-sm/[1.55] text-muted-foreground">
+          {t.inbox.subtitle}
+        </p>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <InboxTabsNav active={tab} accountId={accountId} t={t} />
+        <div className="w-full sm:w-[260px]">
+          <InboxAccountFilter
+            tab={tab}
+            accounts={accounts}
+            selectedAccountId={accountId}
+          />
+        </div>
+      </div>
+    </header>
+  )
+}
+
 async function MensajesMode({
   tenantId,
   accountId,
   conversationParam,
+  renderHeader,
   t,
 }: {
   tenantId: string
   accountId: string | undefined
   conversationParam: string | undefined
+  renderHeader: (count: number) => ReactNode
   t: AppDict
 }) {
   const conversations = await listConversationReadModel({
@@ -183,27 +241,30 @@ async function MensajesMode({
     rows.find((row) => row.id === selectedConversation?.id) ?? null
 
   return (
-    <InboxPanels>
-      <ConversationLogList
-        rows={rows}
-        selectedConversationId={selectedRow?.id ?? null}
-        selectedAccountId={accountId ?? null}
-        t={t}
-      />
-      {selectedRow ? (
-        <MessageThread
-          header={{
-            contactLabel: selectedRow.contactLabel,
-            pageLabel: selectedRow.pageLabel,
-            channel: selectedRow.channel,
-          }}
-          messages={toThreadMessageViews(thread, t)}
+    <>
+      {renderHeader(rows.length)}
+      <InboxPanels>
+        <ConversationLogList
+          rows={rows}
+          selectedConversationId={selectedRow?.id ?? null}
+          selectedAccountId={accountId ?? null}
           t={t}
         />
-      ) : (
-        <EmptyThread filtered={Boolean(accountId)} t={t} />
-      )}
-    </InboxPanels>
+        {selectedRow ? (
+          <MessageThread
+            header={{
+              contactLabel: selectedRow.contactLabel,
+              pageLabel: selectedRow.pageLabel,
+              channel: selectedRow.channel,
+            }}
+            messages={toThreadMessageViews(thread, t)}
+            t={t}
+          />
+        ) : (
+          <EmptyThread filtered={Boolean(accountId)} t={t} />
+        )}
+      </InboxPanels>
+    </>
   )
 }
 
@@ -212,12 +273,14 @@ async function ComentariosMode({
   accountId,
   mediaParam,
   hasInstagram,
+  renderHeader,
   t,
 }: {
   tenantId: string
   accountId: string | undefined
   mediaParam: string | undefined
   hasInstagram: boolean
+  renderHeader: (count: number) => ReactNode
   t: AppDict
 }) {
   // Sin cuenta de Instagram no hay hueco que llenar: es el único vacío
@@ -225,18 +288,21 @@ async function ComentariosMode({
   // vez de dibujar dos columnas con las dos mitades vacías.
   if (!hasInstagram) {
     return (
-      <div className="mt-6 flex min-h-[28rem] overflow-hidden rounded-[var(--radius-2xl)] border border-border bg-surface-app">
-        <EmptyPane
-          icon={MessageSquare}
-          title={t.inbox.noInstagramTitle}
-          body={t.inbox.noInstagramBody}
-          action={
-            <Button asChild variant="outline" size="sm">
-              <Link href="/connections">{t.inbox.noInstagramCta}</Link>
-            </Button>
-          }
-        />
-      </div>
+      <>
+        {renderHeader(0)}
+        <InboxPanels>
+          <EmptyPane
+            icon={MessageSquare}
+            title={t.inbox.noInstagramTitle}
+            body={t.inbox.noInstagramBody}
+            action={
+              <Button asChild variant="outline" size="sm">
+                <Link href="/connections">{t.inbox.noInstagramCta}</Link>
+              </Button>
+            }
+          />
+        </InboxPanels>
+      </>
     )
   }
 
@@ -280,49 +346,55 @@ async function ComentariosMode({
     ) ?? null
 
   return (
-    <InboxPanels>
-      <PublicationLogList
-        rows={rows}
-        selectedKey={selectedRow?.key ?? null}
-        selectedAccountId={accountId ?? null}
-        t={t}
-      />
-      {selectedRow ? (
-        <CommentThread
-          header={{
-            mediaLabel: selectedRow.mediaLabel,
-            mediaPermalink: selectedRow.mediaPermalink,
-            accountLabel: selectedRow.accountLabel,
-          }}
-          comments={toCommentBubbleViews(thread, t)}
+    <>
+      {renderHeader(rows.length)}
+      <InboxPanels>
+        <PublicationLogList
+          rows={rows}
+          selectedKey={selectedRow?.key ?? null}
+          selectedAccountId={accountId ?? null}
           t={t}
         />
-      ) : (
-        <EmptyPane
-          icon={MessageSquare}
-          title={
-            accountId
-              ? t.inbox.noCommentsFilteredTitle
-              : t.inbox.noCommentsTitle
-          }
-          body={
-            accountId ? t.inbox.noCommentsFilteredBody : t.inbox.noCommentsBody
-          }
-        />
-      )}
-    </InboxPanels>
+        {selectedRow ? (
+          <CommentThread
+            header={{
+              mediaLabel: selectedRow.mediaLabel,
+              mediaPermalink: selectedRow.mediaPermalink,
+              accountLabel: selectedRow.accountLabel,
+            }}
+            comments={toCommentBubbleViews(thread, t)}
+            t={t}
+          />
+        ) : (
+          <EmptyPane
+            icon={MessageSquare}
+            title={
+              accountId
+                ? t.inbox.noCommentsFilteredTitle
+                : t.inbox.noCommentsTitle
+            }
+            body={
+              accountId
+                ? t.inbox.noCommentsFilteredBody
+                : t.inbox.noCommentsBody
+            }
+          />
+        )}
+      </InboxPanels>
+    </>
   )
 }
 
 /**
- * Dos columnas con scroll propio (spec B4). La altura sale del viewport menos
- * la cabecera y el padding del layout; el `min-h` evita que se aplaste cuando
- * la franja de cuota empuja el contenido. Vive una sola vez porque los dos
- * modos comparten la misma caja.
+ * Dos columnas con scroll propio (spec B4): la lista en `Card` de 360 px y el
+ * hilo en la suya. La altura sale del viewport menos la cabecera y el padding
+ * del layout; el `min-h` evita que se aplaste cuando la franja de cuota
+ * empuja el contenido. Vive una sola vez porque los dos modos comparten la
+ * misma caja.
  */
 function InboxPanels({ children }: { children: ReactNode }) {
   return (
-    <div className="mt-6 flex h-[calc(100svh-16rem)] min-h-[28rem] overflow-hidden rounded-[var(--radius-2xl)] border border-border">
+    <div className="flex h-[calc(100svh-17rem)] min-h-[28rem] gap-4">
       {children}
     </div>
   )

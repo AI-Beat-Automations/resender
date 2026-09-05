@@ -99,7 +99,6 @@ export type AppDict = {
   }
 
   connections: {
-    eyebrow: string
     title: string
     subtitle: string
     connectFacebook: string
@@ -109,8 +108,6 @@ export type AppDict = {
     whatsappEntryDescription: string
     whatsappModeCaveat: Record<WhatsappOnboardingMode, string>
     connectedAccountsHeading: string
-    /** `{activePageCount}`, `{maxPages}` */
-    quota: string
     /** Sufijo del contador «N / M» de la cabecera. */
     quotaActiveLabel: string
     quotaUnresolved: string
@@ -189,7 +186,6 @@ export type AppDict = {
   }
 
   select: {
-    eyebrow: string
     title: string
     subtitle: string
     back: string
@@ -222,15 +218,16 @@ export type AppDict = {
   }
 
   inbox: {
-    eyebrow: string
     title: string
     subtitle: string
     tabs: Record<InboxTab, string>
     tabsAria: string
+    /** `title` del badge de conteo de la cabecera, por modo. */
+    countTitle: Record<InboxTab, string>
     filterAll: string
+    filterAria: string
     conversationsHeading: string
     publicationsHeading: string
-    sortedByActivity: string
     emptyConversations: string
     emptyConversationsFiltered: string
     emptyComments: string
@@ -287,7 +284,6 @@ export type AppDict = {
   }
 
   settings: {
-    eyebrow: string
     title: string
     subtitle: string
     tabs: Record<SettingsTab, string>
@@ -344,6 +340,8 @@ export type AppDict = {
       google: string
       googleNotLinked: string
       link: string
+      /** Botón de la fila de contraseña: ancla a la tarjeta de cambio. */
+      change: string
       linkRequiresVerified: string
       unlink: string
       unlinkHint: string
@@ -392,6 +390,11 @@ export type AppDict = {
     perMonth: string
     periodMessages: string
     usageAria: string
+    /** Texto bajo la barra según el tono de `resolveQuotaBar`. */
+    usageNeutral: string
+    /** `{percent}` */
+    usageWarning: string
+    usageBlocked: string
     limitsUnresolved: string
     managePortal: string
     portalHint: string

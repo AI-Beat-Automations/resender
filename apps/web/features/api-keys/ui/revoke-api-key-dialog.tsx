@@ -1,25 +1,28 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { LoaderCircle } from "lucide-react"
+import { LoaderCircle, TriangleAlert } from "lucide-react"
 
 import { fmt } from "@/content/i18n/app"
 import { useAppDict } from "@/content/i18n/app/provider"
 import { revokeApiKeyAction } from "@/features/api-keys/actions"
-import { Button } from "@workspace/ui/components/button"
+import { Alert, AlertTitle } from "@workspace/ui/components/alert"
 import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@workspace/ui/components/dialog"
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@workspace/ui/components/alert-dialog"
+import { Button } from "@workspace/ui/components/button"
 
-// Revocar pasa de `window.confirm` a diálogo (ADR 0005). El aviso importante
-// es que el efecto es inmediato: las llamadas que usen la key fallan desde ya.
+// Revocar confirma en `AlertDialog` (ADR 0015) y no en `window.confirm`. El
+// aviso importante es que el efecto es inmediato: las llamadas que usen la key
+// fallan desde ya. El disparador es `ghost` (mock 1k): en una tabla, un botón
+// rojo por fila grita más de lo que ayuda.
 export function RevokeApiKeyDialog({
   apiKeyId,
   label,
@@ -49,34 +52,32 @@ export function RevokeApiKeyDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button type="button" variant="destructive" size="sm">
+    <AlertDialog open={open} onOpenChange={setOpen}>
+      <AlertDialogTrigger asChild>
+        <Button type="button" variant="ghost" size="sm">
           {t.revoke}
         </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{fmt(t.revokeTitle, { label })}</DialogTitle>
-          <DialogDescription>{t.revokeBody}</DialogDescription>
-        </DialogHeader>
-        <form action={revoke}>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{fmt(t.revokeTitle, { label })}</AlertDialogTitle>
+          <AlertDialogDescription>{t.revokeBody}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <form action={revoke} className="grid gap-2">
           <input type="hidden" name="apiKeyId" value={apiKeyId} />
           {error ? (
-            <p className="text-[13px] text-destructive">{error}</p>
+            <Alert variant="destructive" role="alert">
+              <TriangleAlert aria-hidden />
+              <AlertTitle className="font-normal">{error}</AlertTitle>
+            </Alert>
           ) : null}
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="ghost" size="lg">
-                {dict.common.cancel}
-              </Button>
-            </DialogClose>
-            <Button
-              type="submit"
-              variant="destructive"
-              size="lg"
-              disabled={pending}
-            >
+          {/* Botón normal y no `AlertDialogAction`: ese cierra el diálogo al
+              click y desmontaría el form antes de que la acción devuelva. */}
+          <AlertDialogFooter className="mt-2">
+            <AlertDialogCancel variant="ghost">
+              {dict.common.cancel}
+            </AlertDialogCancel>
+            <Button type="submit" variant="destructive" disabled={pending}>
               {pending ? (
                 <>
                   <LoaderCircle className="animate-spin" aria-hidden />
@@ -86,9 +87,9 @@ export function RevokeApiKeyDialog({
                 t.revokeConfirm
               )}
             </Button>
-          </DialogFooter>
+          </AlertDialogFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }

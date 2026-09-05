@@ -1,10 +1,11 @@
 "use client"
 
 import { useActionState } from "react"
-import { LoaderCircle } from "lucide-react"
+import { LoaderCircle, TriangleAlert } from "lucide-react"
 
 import { unlinkGoogleAction } from "@/features/account/actions"
 import { useAppDict } from "@/content/i18n/app/provider"
+import { Alert, AlertTitle } from "@workspace/ui/components/alert"
 import { Button } from "@workspace/ui/components/button"
 
 // «Desvincular» Google desde Settings. Solo se dibuja cuando queda otra
@@ -16,10 +17,16 @@ export function UnlinkGoogleForm({ accountId }: { accountId: string }) {
   const t = useAppDict().account.signInMethods
 
   return (
-    <form action={formAction} className="flex flex-wrap items-center gap-2">
+    <form
+      action={formAction}
+      className="flex flex-wrap items-center justify-end gap-2"
+    >
       {/* Id de la **fila** de `auth_accounts`, que es lo que `unlinkAccount`
           compara; no el `sub` de Google. */}
       <input type="hidden" name="accountId" value={accountId} />
+      <span className="text-[12.5px] text-muted-foreground">
+        {t.unlinkHint}
+      </span>
       <Button type="submit" variant="outline" size="sm" disabled={pending}>
         {pending ? (
           <LoaderCircle className="size-4 animate-spin" aria-hidden />
@@ -27,14 +34,11 @@ export function UnlinkGoogleForm({ accountId }: { accountId: string }) {
         {t.unlink}
       </Button>
       {state.error ? (
-        <span role="alert" className="text-[13px] text-destructive">
-          {state.error}
-        </span>
-      ) : (
-        <span className="text-[12.5px] text-muted-foreground">
-          {t.unlinkHint}
-        </span>
-      )}
+        <Alert variant="destructive" role="alert" className="basis-full">
+          <TriangleAlert aria-hidden />
+          <AlertTitle className="font-normal">{state.error}</AlertTitle>
+        </Alert>
+      ) : null}
     </form>
   )
 }

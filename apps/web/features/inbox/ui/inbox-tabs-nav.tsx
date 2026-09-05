@@ -2,16 +2,13 @@ import Link from "next/link"
 
 import type { AppDict } from "@/content/i18n/app"
 import { INBOX_TABS, inboxHref, type InboxTab } from "@/lib/inbox/inbox-tabs"
-import { cn } from "@workspace/ui/lib/utils"
+import { Tabs, TabsList, TabsTrigger } from "@workspace/ui/components/tabs"
 
-// Modo de Inbox como enlaces, no como `Tabs` de Radix (ADR 0005): el estado
-// vive en `?tab=`, así que la navegación tiene que ser recargable, compartible
-// y con botón atrás, y así la pantalla entera sigue siendo server component.
-// Es el mismo componente que las pestañas de Ajustes.
-//
-// Subrayado y no píldoras a propósito: debajo va el filtro por cuenta, que sí
-// son píldoras. Dos filas de píldoras idénticas no dejarían ver cuál cambia de
-// pantalla y cuál filtra la que ya estás viendo.
+// Modo de Inbox sobre `Tabs` de shadcn (ADR 0015), pero el estado sigue en
+// `?tab=` (ADR 0005): cada pestaña es un `Link` vía `asChild`, así que la
+// navegación es recargable, compartible y con botón atrás, y la página entera
+// sigue renderizando el modo en servidor. No hay `TabsContent`: `Tabs` solo
+// pinta cuál está activa. Mismo patrón que `SettingsTabsNav`.
 //
 // Pasa el filtro de cuenta pero NO la selección: al cambiar de modo se conserva
 // por qué cuenta estabas mirando y se cae en el elemento más reciente del modo
@@ -26,27 +23,19 @@ export function InboxTabsNav({
   t: AppDict
 }) {
   return (
-    <nav aria-label={t.inbox.tabsAria} className="mt-4 flex gap-1">
-      {INBOX_TABS.map((tab) => {
-        const isActive = tab === active
-
-        return (
-          <Link
-            key={tab}
-            href={inboxHref({ tab, pageId: accountId })}
-            aria-current={isActive ? "page" : undefined}
-            className={cn(
-              "relative rounded-md px-1.5 py-1 text-sm font-medium transition-colors",
-              "after:absolute after:inset-x-0 after:-bottom-0.5 after:h-0.5 after:bg-foreground after:opacity-0 after:transition-opacity",
-              isActive
-                ? "text-foreground after:opacity-100"
-                : "text-foreground/60 hover:text-foreground"
-            )}
-          >
-            {t.inbox.tabs[tab]}
-          </Link>
-        )
-      })}
-    </nav>
+    <Tabs value={active}>
+      <TabsList variant="line" aria-label={t.inbox.tabsAria}>
+        {INBOX_TABS.map((tab) => (
+          <TabsTrigger key={tab} value={tab} asChild>
+            <Link
+              href={inboxHref({ tab, pageId: accountId })}
+              aria-current={tab === active ? "page" : undefined}
+            >
+              {t.inbox.tabs[tab]}
+            </Link>
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
   )
 }

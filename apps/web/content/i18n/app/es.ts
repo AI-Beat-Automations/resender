@@ -118,7 +118,6 @@ export const es: AppDict = {
   },
 
   connections: {
-    eyebrow: "conexiones",
     title: "Conexiones",
     subtitle:
       "Conecta tus páginas de Facebook, tus cuentas de Instagram y tus números de WhatsApp, configura un webhook por cuenta y desconecta canales sin borrar el historial.",
@@ -134,7 +133,6 @@ export const es: AppDict = {
         "Conectaste el número que ya usas en la app de WhatsApp Business: sigue funcionando ahí y además llega a Resender. Meta decide la elegibilidad y el número queda con un techo fijo de 20 mensajes por segundo. El historial hay que sincronizarlo dentro de las 24 horas siguientes.",
     },
     connectedAccountsHeading: "CUENTAS CONECTADAS",
-    quota: "{activePageCount} de {maxPages} conexiones",
     quotaActiveLabel: "conexiones activas",
     quotaUnresolved: "cupo sin resolver · escríbenos a info@resender.dev",
     noticeConnectedGeneric: "Conectado: la autorización se completó.",
@@ -212,7 +210,6 @@ export const es: AppDict = {
   },
 
   select: {
-    eyebrow: "conexiones",
     title: "Elegir páginas",
     subtitle:
       "Elige cuáles de las páginas que administras en Facebook quieres conectar a Resender.",
@@ -248,16 +245,19 @@ export const es: AppDict = {
   },
 
   inbox: {
-    eyebrow: "inbox",
     title: "Inbox",
     subtitle:
       "Log durable de mensajes y comentarios. Las respuestas salen de la API externa; esta pantalla es de solo lectura.",
     tabs: { mensajes: "Mensajes", comentarios: "Comentarios" },
     tabsAria: "Modo de la bandeja",
+    countTitle: {
+      mensajes: "Conversaciones en el log",
+      comentarios: "Publicaciones con comentarios",
+    },
     filterAll: "Todas las cuentas",
+    filterAria: "Filtrar por cuenta",
     conversationsHeading: "Conversaciones",
     publicationsHeading: "Publicaciones",
-    sortedByActivity: "Ordenadas por actividad reciente.",
     emptyConversations: "Todavía no hay conversaciones.",
     emptyConversationsFiltered: "No hay conversaciones para este filtro.",
     emptyComments: "Todavía no hay comentarios.",
@@ -326,7 +326,6 @@ export const es: AppDict = {
   },
 
   settings: {
-    eyebrow: "ajustes",
     title: "Ajustes",
     subtitle: "Administra tu cuenta y las API keys de integración externa.",
     tabs: {
@@ -382,6 +381,7 @@ export const es: AppDict = {
       google: "Google",
       googleNotLinked: "No vinculado",
       link: "Vincular",
+      change: "Cambiar",
       linkRequiresVerified: "Confirma tu correo primero",
       unlink: "Desvincular",
       unlinkHint: "Desvincular pide una sesión reciente.",
@@ -431,6 +431,12 @@ export const es: AppDict = {
     perMonth: " · ${price} / mes",
     periodMessages: "Mensajes de este período",
     usageAria: "Consumo de mensajes del período",
+    usageNeutral:
+      "Desde el 80 % te avisamos; al agotar la cuota se pausa el envío hasta el próximo período.",
+    usageWarning:
+      "Estás al {percent} %. Desde el 80 % te avisamos; al agotar la cuota se pausa el envío hasta el próximo período.",
+    usageBlocked:
+      "Agotaste la cuota: el envío queda pausado hasta el próximo período. Sube de plan para reanudarlo.",
     limitsUnresolved:
       "No pudimos resolver los límites de tu plan, así que no podemos mostrarte el consumo. Escríbenos a",
     managePortal: "Administrar suscripción",

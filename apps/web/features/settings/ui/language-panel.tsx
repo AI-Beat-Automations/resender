@@ -1,52 +1,41 @@
-import { Check } from "lucide-react"
-
 import type { AppDict } from "@/content/i18n/app"
 import type { Locale } from "@/content/i18n"
 import { setAppLocaleAction } from "@/features/settings/actions"
-import {
-  SettingsCard,
-  SettingsCardTitle,
-} from "@/features/settings/ui/settings-card"
 import { locales } from "@/content/i18n"
-import { Button } from "@workspace/ui/components/button"
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@workspace/ui/components/toggle-group"
 
-// Selector de idioma de la consola. Server component con una server action por
-// botón: no hace falta cliente para escribir una cookie y revalidar.
+// Selector de idioma de la consola, dibujado como fila de la tarjeta «Cuenta»
+// (ADR 0015, mock 1j). Sigue siendo server component con una server action por
+// botón: `ToggleGroup` es cliente de Radix, pero recibe como hijos botones DOM
+// `type="submit" name="locale"` vía `asChild`, así que el `<form>` sigue
+// escribiendo la cookie sin ningún `onChange` en el cliente. `value={lang}`
+// solo pinta cuál está activo.
 //
-// Dos botones y no un `<select>` porque son dos opciones y el `select` obligaría
-// a un `onChange` en el cliente o a un botón de guardar extra. Cada etiqueta va
-// **en su propio idioma** —«Español», «English»— que es la convención de los
-// selectores de idioma: quien busca el suyo lo reconoce sin saber leer el otro.
+// Cada etiqueta va **en su propio idioma** —«Español», «English»— que es la
+// convención de los selectores de idioma: quien busca el suyo lo reconoce sin
+// saber leer el otro.
 export function LanguagePanel({ lang, t }: { lang: Locale; t: AppDict }) {
   return (
-    <SettingsCard>
-      <SettingsCardTitle>{t.settings.language.title}</SettingsCardTitle>
-      <p className="mt-1 max-w-140 text-[13.5px]/[1.55] text-muted-foreground">
+    <form
+      action={setAppLocaleAction}
+      className="flex flex-col gap-1.5"
+      aria-label={t.settings.language.label}
+    >
+      <ToggleGroup type="single" value={lang} variant="outline" size="sm">
+        {locales.map((locale) => (
+          <ToggleGroupItem key={locale} value={locale} asChild>
+            <button type="submit" name="locale" value={locale}>
+              {t.settings.language[locale]}
+            </button>
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+      <p className="text-[12.5px] text-muted-foreground">
         {t.settings.language.body}
       </p>
-      <form
-        action={setAppLocaleAction}
-        className="mt-4 flex flex-wrap gap-2.5"
-        aria-label={t.settings.language.label}
-      >
-        {locales.map((locale) => {
-          const active = locale === lang
-          return (
-            <Button
-              key={locale}
-              type="submit"
-              name="locale"
-              value={locale}
-              size="lg"
-              variant={active ? "default" : "outline"}
-              aria-pressed={active}
-            >
-              {active ? <Check className="size-3.5" aria-hidden /> : null}
-              {t.settings.language[locale]}
-            </Button>
-          )
-        })}
-      </form>
-    </SettingsCard>
+    </form>
   )
 }

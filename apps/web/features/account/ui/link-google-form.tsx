@@ -1,10 +1,11 @@
 "use client"
 
 import { useActionState } from "react"
-import { LoaderCircle } from "lucide-react"
+import { LoaderCircle, TriangleAlert } from "lucide-react"
 
 import { linkGoogleAction } from "@/features/account/actions"
 import { useAppDict } from "@/content/i18n/app/provider"
+import { Alert, AlertTitle } from "@workspace/ui/components/alert"
 import { Button } from "@workspace/ui/components/button"
 
 // «Vincular» Google desde Settings ([Cuenta vinculada]). Con el correo sin
@@ -16,7 +17,18 @@ export function LinkGoogleForm({ verified }: { verified: boolean }) {
   const t = useAppDict().account.signInMethods
 
   return (
-    <form action={formAction} className="flex flex-wrap items-center gap-2">
+    <form
+      action={formAction}
+      className="flex flex-wrap items-center justify-end gap-2"
+    >
+      {!verified ? (
+        <span
+          id="link-google-hint"
+          className="text-[12.5px] text-muted-foreground"
+        >
+          {t.linkRequiresVerified}
+        </span>
+      ) : null}
       <Button
         type="submit"
         variant="outline"
@@ -29,18 +41,11 @@ export function LinkGoogleForm({ verified }: { verified: boolean }) {
         ) : null}
         {t.link}
       </Button>
-      {!verified ? (
-        <span
-          id="link-google-hint"
-          className="text-[12.5px] text-muted-foreground"
-        >
-          {t.linkRequiresVerified}
-        </span>
-      ) : null}
       {state.error ? (
-        <span role="alert" className="text-[13px] text-destructive">
-          {state.error}
-        </span>
+        <Alert variant="destructive" role="alert" className="basis-full">
+          <TriangleAlert aria-hidden />
+          <AlertTitle className="font-normal">{state.error}</AlertTitle>
+        </Alert>
       ) : null}
     </form>
   )

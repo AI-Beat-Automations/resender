@@ -1,20 +1,20 @@
 "use client"
 
 import { useActionState } from "react"
-import { LoaderCircle } from "lucide-react"
+import { LoaderCircle, TriangleAlert } from "lucide-react"
 import { usePostHog } from "posthog-js/react"
 
 import {
   changePasswordAction,
   type ChangePasswordState,
 } from "@/features/account/actions"
-import {
-  SettingsCard,
-  SettingsCardTitle,
-} from "@/features/settings/ui/settings-card"
+import { CHANGE_PASSWORD_ANCHOR } from "@/features/account/ui/change-password-anchor"
+import { SettingsCardHeader } from "@/features/settings/ui/settings-card"
 import { useAppDict } from "@/content/i18n/app/provider"
 import { isPostHogEnabled } from "@/lib/posthog-client"
+import { Alert, AlertTitle } from "@workspace/ui/components/alert"
 import { Button } from "@workspace/ui/components/button"
+import { Card, CardContent, CardFooter } from "@workspace/ui/components/card"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 
@@ -46,57 +46,65 @@ export function ChangePasswordPanel() {
   }, {})
 
   return (
-    <SettingsCard>
-      <SettingsCardTitle>{t.passwordTitle}</SettingsCardTitle>
+    // El id es el ancla del botón «Cambiar» de «Cómo entras a Resender».
+    <Card id={CHANGE_PASSWORD_ANCHOR} className="scroll-mt-6">
       {/* El cierre de sesión se avisa antes, no después: `changePasswordAction`
           termina en `signOut({ redirectTo: "/login?passwordChanged=1" })`. */}
-      <p className="mt-1 max-w-140 text-[13.5px]/[1.55] text-muted-foreground">
-        {t.passwordBody}
-      </p>
-      <form action={action} className="mt-4 max-w-140">
-        <div className="grid gap-3.5 sm:grid-cols-2">
-          <div className="grid gap-2">
-            <Label htmlFor="newPassword">{t.newPassword}</Label>
-            <Input
-              id="newPassword"
-              name="newPassword"
-              type="password"
-              autoComplete="new-password"
-              required
-              minLength={8}
-              placeholder={t.newPasswordPlaceholder}
-            />
+      <SettingsCardHeader
+        title={t.passwordTitle}
+        description={t.passwordBody}
+      />
+      <form action={action}>
+        <CardContent className="flex flex-col gap-3">
+          <div className="grid gap-3.5 sm:grid-cols-2">
+            <div className="grid gap-2">
+              <Label htmlFor="newPassword">{t.newPassword}</Label>
+              <Input
+                id="newPassword"
+                name="newPassword"
+                type="password"
+                autoComplete="new-password"
+                required
+                minLength={8}
+                placeholder={t.newPasswordPlaceholder}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="confirmPassword">{t.confirmPassword}</Label>
+              <Input
+                id="confirmPassword"
+                name="confirmPassword"
+                type="password"
+                autoComplete="new-password"
+                required
+                minLength={8}
+                placeholder={t.confirmPasswordPlaceholder}
+              />
+            </div>
           </div>
-          <div className="grid gap-2">
-            <Label htmlFor="confirmPassword">{t.confirmPassword}</Label>
-            <Input
-              id="confirmPassword"
-              name="confirmPassword"
-              type="password"
-              autoComplete="new-password"
-              required
-              minLength={8}
-              placeholder={t.confirmPasswordPlaceholder}
-            />
-          </div>
-        </div>
-        <p className="mt-2 text-[12.5px] text-muted-foreground">
-          {t.passwordHint}
-        </p>
-        <Button type="submit" size="lg" className="mt-4" disabled={pending}>
-          {pending ? (
-            <>
-              <LoaderCircle className="animate-spin" aria-hidden />
-              {dict.common.saving}
-            </>
-          ) : (
-            t.passwordSubmit
-          )}
-        </Button>
-        {state.error ? (
-          <p className="mt-3 text-[13px] text-destructive">{state.error}</p>
-        ) : null}
+          <p className="text-[12.5px] text-muted-foreground">
+            {t.passwordHint}
+          </p>
+          {state.error ? (
+            <Alert variant="destructive" role="alert">
+              <TriangleAlert aria-hidden />
+              <AlertTitle className="font-normal">{state.error}</AlertTitle>
+            </Alert>
+          ) : null}
+        </CardContent>
+        <CardFooter className="mt-4 justify-end">
+          <Button type="submit" disabled={pending}>
+            {pending ? (
+              <>
+                <LoaderCircle className="animate-spin" aria-hidden />
+                {dict.common.saving}
+              </>
+            ) : (
+              t.passwordSubmit
+            )}
+          </Button>
+        </CardFooter>
       </form>
-    </SettingsCard>
+    </Card>
   )
 }

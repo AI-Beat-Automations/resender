@@ -1,9 +1,12 @@
 import type { LucideIcon } from "lucide-react"
 import type { ReactNode } from "react"
 
-// Panel derecho vacío de Inbox. Lo comparten los dos modos: el vacío de un log
-// dice siempre lo mismo —qué falta y qué lo va a llenar—, y tenerlo dos veces
-// garantizaba que uno de los dos se quedara viejo.
+import { Card } from "@workspace/ui/components/card"
+
+// Panel derecho vacío de Inbox, en la misma `Card` que ocuparía el hilo
+// (ADR 0015). Lo comparten los dos modos: el vacío de un log dice siempre lo
+// mismo —qué falta y qué lo va a llenar—, y tenerlo dos veces garantizaba que
+// uno de los dos se quedara viejo.
 export function EmptyPane({
   icon: Icon,
   title,
@@ -16,7 +19,7 @@ export function EmptyPane({
   action?: ReactNode
 }) {
   return (
-    <section className="flex min-w-0 flex-1 flex-col items-center justify-center gap-3.5 bg-surface-app p-10 text-center">
+    <Card className="min-w-0 flex-1 items-center justify-center gap-3.5 bg-surface-app p-10 text-center">
       <span
         className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground"
         aria-hidden
@@ -32,6 +35,6 @@ export function EmptyPane({
         </p>
       </div>
       {action}
-    </section>
+    </Card>
   )
 }
