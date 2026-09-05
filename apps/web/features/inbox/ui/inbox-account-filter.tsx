@@ -1,73 +1,78 @@
-import Link from "next/link"
+"use client"
 
-import type { AppDict } from "@/content/i18n/app"
+import { useRouter } from "next/navigation"
+
+import { useAppDict } from "@/content/i18n/app/provider"
 import { inboxHref, type InboxTab } from "@/lib/inbox/inbox-tabs"
-import { Badge } from "@workspace/ui/components/badge"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@workspace/ui/components/select"
 
-// Filtro por cuenta conectada (spec C.1): el par seleccionado/no seleccionado
-// son las variantes `default` / `outline` del Badge. Son enlaces, así que la
-// pantalla sigue siendo server component.
+// Filtro por cuenta conectada como `Select` de shadcn (ADR 0015). Es la
+// excepción a «Inbox es server component entero» (ADR 0005): un `Select` de
+// Radix necesita `onValueChange` en el cliente para navegar, y no hay forma de
+// que un `<select>` nativo produzca una navegación sin JS. La isla es mínima —
+// solo este control— y el estado sigue viviendo en la URL: elegir una cuenta
+// hace `router.push` a exactamente la misma URL que producían las píldoras
+// (`inboxHref`), incluida «Todas las cuentas» = sin `?page=`.
 //
 // Dice «cuentas» y no «páginas» desde la ADR 0008: `connected_pages` dejó de
-// ser páginas de Facebook y hoy mezcla Messenger e Instagram.
+// ser páginas de Facebook y hoy mezcla Messenger, Instagram y WhatsApp.
 
 export type InboxFilterAccount = {
   id: string
   name: string
 }
 
+// Radix no admite `""` como valor de un item: «todas» lleva un centinela que
+// nunca colisiona con un id de cuenta (son UUID).
+const ALL_ACCOUNTS = "__all__"
+
 export function InboxAccountFilter({
   tab,
   accounts,
   selectedAccountId,
-  t,
 }: {
   tab: InboxTab
   accounts: InboxFilterAccount[]
   selectedAccountId: string | null
-  t: AppDict
 }) {
-  // Sin cuentas no hay nada que filtrar: una fila con una sola píldora
-  // «Todas las cuentas» es un control que no hace nada.
+  const router = useRouter()
+  const t = useAppDict().inbox
+
+  // Sin cuentas no hay nada que filtrar: un desplegable con solo «Todas las
+  // cuentas» es un control que no hace nada.
   if (accounts.length === 0) return null
 
   return (
-    <div className="mt-3.5 flex flex-wrap gap-2">
-      <FilterPill
-        href={inboxHref({ tab })}
-        label={t.inbox.filterAll}
-        active={!selectedAccountId}
-      />
-      {accounts.map((account) => (
-        <FilterPill
-          key={account.id}
-          href={inboxHref({ tab, pageId: account.id })}
-          label={account.name}
-          active={selectedAccountId === account.id}
-        />
-      ))}
-    </div>
-  )
-}
-
-function FilterPill({
-  href,
-  label,
-  active,
-}: {
-  href: string
-  label: string
-  active: boolean
-}) {
-  return (
-    <Badge
-      asChild
-      variant={active ? "default" : "outline"}
-      className="h-6 px-3"
+    <Select
+      value={selectedAccountId ?? ALL_ACCOUNTS}
+      onValueChange={(value) => {
+        router.push(
+          inboxHref({ tab, pageId: value === ALL_ACCOUNTS ? null : value })
+        )
+      }}
     >
-      <Link href={href} aria-current={active ? "page" : undefined}>
-        {label}
-      </Link>
-    </Badge>
+      {/* Compacto como en el mock: cabe a la derecha de las píldoras de modo. */}
+      <SelectTrigger
+        size="sm"
+        aria-label={t.filterAria}
+        className="h-7 max-w-[180px] min-w-0 rounded-[7px] bg-card text-xs"
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent position="popper">
+        <SelectItem value={ALL_ACCOUNTS}>{t.filterAll}</SelectItem>
+        {accounts.map((account) => (
+          <SelectItem key={account.id} value={account.id}>
+            {account.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }

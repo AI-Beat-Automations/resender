@@ -18,7 +18,6 @@ import {
   SubscriptionPanel,
   type SubscriptionView,
 } from "@/features/billing/ui/subscription-panel"
-import { LanguagePanel } from "@/features/settings/ui/language-panel"
 import { SettingsTabsNav } from "@/features/settings/ui/settings-tabs-nav"
 import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
 import type { TenantEntitlement } from "@/lib/billing/entitlements"
@@ -51,37 +50,34 @@ export default async function SettingsPage({
   const tab = resolveSettingsTab(params.tab)
 
   return (
-    <div className="flex flex-col">
-      <header>
-        <p className="font-mono text-[11px] tracking-[0.08em] text-[var(--text-subtle)]">
-          {`// ${t.settings.eyebrow}`}
-        </p>
-        <h1 className="mt-1.5 font-heading text-[26px] font-bold tracking-[-0.02em]">
-          {t.settings.title}
-        </h1>
-        {tab === "cuenta" ? (
-          <p className="mt-2 max-w-155 text-[14.5px]/[1.6] text-muted-foreground">
+    // El padding de página lo aporta el `main` del layout: acá solo el ritmo
+    // vertical. El ancho máximo es el del mock 1j.
+    <div className="flex max-w-[880px] flex-col gap-5">
+      <header className="flex flex-col gap-3">
+        <div>
+          <h1 className="font-heading text-2xl font-bold tracking-[-0.02em]">
+            {t.settings.title}
+          </h1>
+          <p className="mt-1.5 max-w-[600px] text-sm/[1.55] text-muted-foreground">
             {t.settings.subtitle}
           </p>
-        ) : null}
+        </div>
         <SettingsTabsNav active={tab} t={t} />
       </header>
 
-      <div className="mt-6">
-        {tab === "cuenta" ? (
-          <AccountTab
-            email={session.user.email ?? ""}
-            tenantId={session.user.id}
-            lang={lang}
-            t={t}
-            oauthError={params.error}
-          />
-        ) : null}
-        {tab === "api-keys" ? <ApiKeysTab t={t} /> : null}
-        {tab === "suscripcion" ? (
-          <SubscriptionTab tenantId={session.user.id} t={t} />
-        ) : null}
-      </div>
+      {tab === "cuenta" ? (
+        <AccountTab
+          email={session.user.email ?? ""}
+          tenantId={session.user.id}
+          lang={lang}
+          t={t}
+          oauthError={params.error}
+        />
+      ) : null}
+      {tab === "api-keys" ? <ApiKeysTab t={t} /> : null}
+      {tab === "suscripcion" ? (
+        <SubscriptionTab tenantId={session.user.id} t={t} />
+      ) : null}
     </div>
   )
 }
@@ -108,12 +104,16 @@ async function AccountTab({
   ])
 
   return (
-    <div className="flex max-w-205 flex-col gap-4">
-      <AccountIdentityPanel email={email} tenantId={tenantId} t={t} />
-      {/* El idioma va en Cuenta y no en una pestaña propia: es una preferencia
-          de lectura de quien entra, como el email con el que entra. */}
-      <LanguagePanel lang={lang} t={t} />
-      <ChangePasswordPanel />
+    <div className="flex flex-col gap-4">
+      {/* El idioma va dentro de Cuenta y no en una tarjeta propia: es una
+          preferencia de lectura de quien entra, como el email con el que
+          entra. */}
+      <AccountIdentityPanel
+        email={email}
+        tenantId={tenantId}
+        lang={lang}
+        t={t}
+      />
       {/* `resendVerificationEmailAction` es de `features/auth`: la página la
           pasa por prop porque `features/account` no importa a su hermana. Una
           sola acción para `/login`, `/pending` y acá. */}
@@ -127,6 +127,7 @@ async function AccountTab({
         resendAction={resendVerificationEmailAction}
         oauthError={oauthError}
       />
+      <ChangePasswordPanel />
       {/* La zona de peligro va separada del resto: borrar la cuenta no puede
           leerse a la misma altura que cambiar la contraseña. */}
       {email ? (
@@ -145,11 +146,7 @@ async function AccountTab({
 async function ApiKeysTab({ t }: { t: AppDict }) {
   const apiKeys = await listApiKeys()
 
-  return (
-    <div className="max-w-225">
-      <ApiKeysPanel apiKeys={apiKeys.map(toApiKeyView)} t={t} />
-    </div>
-  )
+  return <ApiKeysPanel apiKeys={apiKeys.map(toApiKeyView)} t={t} />
 }
 
 async function SubscriptionTab({
@@ -171,14 +168,12 @@ async function SubscriptionTab({
   }
 
   return (
-    <div className="max-w-160">
-      <SubscriptionPanel
-        subscription={
-          subscription ? toSubscriptionView(subscription, entitlement) : null
-        }
-        t={t}
-      />
-    </div>
+    <SubscriptionPanel
+      subscription={
+        subscription ? toSubscriptionView(subscription, entitlement) : null
+      }
+      t={t}
+    />
   )
 }
 

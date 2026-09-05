@@ -3,11 +3,9 @@ import { KeyRound } from "lucide-react"
 import type { AppDict } from "@/content/i18n/app"
 import { CreateApiKeyForm } from "@/features/api-keys/ui/create-api-key-form"
 import { RevokeApiKeyDialog } from "@/features/api-keys/ui/revoke-api-key-dialog"
-import {
-  SettingsCard,
-  SettingsCardTitle,
-} from "@/features/settings/ui/settings-card"
+import { SettingsCardHeader } from "@/features/settings/ui/settings-card"
 import { Badge } from "@workspace/ui/components/badge"
+import { Card } from "@workspace/ui/components/card"
 import {
   Table,
   TableBody,
@@ -25,15 +23,16 @@ export type ApiKeyView = {
   createdAt: string
 }
 
-// Cabeceras de tabla en mono MAYÚSCULAS (spec C.5).
+// Cabeceras de tabla en mono MAYÚSCULAS (spec C.5, mock 1k).
 const HEAD =
-  "px-3 py-2.5 font-mono text-[11px] font-normal tracking-[0.06em] text-muted-foreground"
+  "px-3 py-2.5 font-mono text-[10.5px] font-normal tracking-[0.06em] text-muted-foreground"
 
 const CELL = "px-3 py-3 font-mono text-xs text-muted-foreground"
 
 // B7. Server component: solo la creación (que devuelve el secreto una sola vez)
 // y la revocación (que confirma en diálogo) necesitan cliente. Así las fechas
-// se formatean en un único huso y no hay desajuste de hidratación.
+// se formatean en un único huso y no hay desajuste de hidratación. Sin «Último
+// uso»: fuera de scope de la capa 5.
 export function ApiKeysPanel({
   apiKeys,
   t,
@@ -45,18 +44,16 @@ export function ApiKeysPanel({
     <div className="flex flex-col gap-4">
       <CreateApiKeyForm />
 
-      <SettingsCard className="overflow-hidden p-0">
-        <div className="border-b border-border px-5 py-4.5">
-          <SettingsCardTitle>{t.apiKeys.listTitle}</SettingsCardTitle>
-          <p className="mt-0.5 text-[13px] text-muted-foreground">
-            {t.apiKeys.listBody}
-          </p>
-        </div>
+      <Card className="pb-0">
+        <SettingsCardHeader
+          title={t.apiKeys.listTitle}
+          description={t.apiKeys.listBody}
+        />
 
         {apiKeys.length === 0 ? (
           // Estado vacío explícito: sin él, una tabla en blanco se lee como un
           // error de carga.
-          <div className="flex items-center gap-3 px-5 py-6">
+          <div className="flex items-center gap-3 px-5 pb-6">
             <KeyRound
               className="size-4 shrink-0 text-muted-foreground"
               aria-hidden
@@ -87,7 +84,7 @@ export function ApiKeysPanel({
             </TableBody>
           </Table>
         )}
-      </SettingsCard>
+      </Card>
     </div>
   )
 }
@@ -97,7 +94,7 @@ function ApiKeyRow({ apiKey, t }: { apiKey: ApiKeyView; t: AppDict }) {
 
   return (
     <TableRow className={revoked ? "opacity-60" : undefined}>
-      <TableCell className="max-w-50 truncate px-3 py-3 pl-5 text-[13.5px] font-medium text-foreground">
+      <TableCell className="max-w-50 truncate px-3 py-3 pl-5 text-[13px] font-medium text-foreground">
         {apiKey.label}
       </TableCell>
       <TableCell className={CELL}>{apiKey.visiblePrefix}…</TableCell>
@@ -117,7 +114,7 @@ function ApiKeyRow({ apiKey, t }: { apiKey: ApiKeyView; t: AppDict }) {
           // revocación**: el plugin `apiKey` no guarda cuándo se revocó y
           // mostrar `updated_at` sería mostrar la fecha de creación disfrazada
           // (CONTEXT.md → [Gestion de API keys en Settings]).
-          <span className="font-mono text-[11.5px] text-[var(--text-subtle)]">
+          <span className="font-mono text-[11px] text-[var(--text-subtle)]">
             {t.apiKeys.statusRevoked}
           </span>
         ) : (

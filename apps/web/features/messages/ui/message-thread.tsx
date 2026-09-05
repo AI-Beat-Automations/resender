@@ -1,4 +1,5 @@
-import { Eye, Inbox, TriangleAlert } from "lucide-react"
+import Link from "next/link"
+import { ArrowRight, Inbox, MessageSquare, TriangleAlert } from "lucide-react"
 
 import { ChannelBadge } from "@/features/inbox/ui/channel-badge"
 import type { AppDict } from "@/content/i18n/app"
@@ -9,11 +10,14 @@ import type {
   ThreadReactionView,
 } from "@/lib/messages/display"
 import type { PageChannel } from "@/lib/pages/page-registry"
-import { Badge } from "@workspace/ui/components/badge"
+import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { cn } from "@workspace/ui/lib/utils"
 
-// Hilo de solo lectura (ADR 0005). Las burbujas usan los tokens `--bubble-*`
-// del DS (spec C.3) en lugar del amarillo/verde crudo de Tailwind, y el
+// Hilo de solo lectura (ADR 0005), columna derecha de la superficie única de
+// Inbox (mock 1h): cabecera blanca de 52 px, cuerpo hundido con las burbujas y
+// un pie que dice por qué no hay compositor. Las burbujas usan los tokens
+// `--bubble-*` del DS —entrante blanca con borde, respuesta violeta— con el
+// radio del mock: 14 px y 4 px en la esquina que apunta a quien habla. El
 // saliente fallido se "vacía" y se orla en rojo en vez de rellenarse.
 
 export type ThreadHeaderView = {
@@ -32,36 +36,54 @@ export function MessageThread({
   t: AppDict
 }) {
   return (
-    <section className="flex min-w-0 flex-1 flex-col bg-surface-app">
-      <header className="flex items-center gap-3 border-b border-border bg-card px-6 py-4">
-        <div className="min-w-0 flex-1">
-          <h2 className="truncate font-mono text-[14px] font-semibold">
-            {header.contactLabel}
-          </h2>
-          <p className="mt-1 flex items-center gap-1.5 font-mono text-[11px] text-[var(--text-subtle)]">
-            <ChannelBadge channel={header.channel} t={t} />
-            <span className="truncate">{header.pageLabel}</span>
-          </p>
-        </div>
-        {/* El badge declara lo que la pantalla no tiene: no hay compositor,
-            las respuestas salen por la API externa. */}
-        <Badge variant="info" title={t.inbox.readOnlyHint}>
-          <Eye aria-hidden />
-          {t.inbox.readOnly}
-        </Badge>
+    <section className="flex min-w-0 flex-1 flex-col bg-surface-sunken">
+      {/* Sin «Abrir en …»: en DMs no hay permalink que abrir. */}
+      <header className="flex h-[52px] shrink-0 items-center gap-2.5 border-b border-border-subtle bg-card px-5">
+        <h2 className="min-w-0 truncate font-heading text-[15px] font-semibold">
+          {header.contactLabel}
+        </h2>
+        <ChannelBadge
+          channel={header.channel}
+          className="px-2 text-[11.5px]"
+          t={t}
+        />
+        <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-[var(--text-subtle)]">
+          · {header.pageLabel}
+        </span>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto p-6">
-        {messages.length === 0 ? (
-          <p className="m-auto max-w-[22rem] text-center text-[14px] leading-relaxed text-muted-foreground">
-            {t.inbox.threadEmpty}
-          </p>
-        ) : (
-          messages.map((message) => (
-            <MessageBubble key={message.id} message={message} t={t} />
-          ))
-        )}
-      </div>
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="flex min-h-full flex-col gap-3.5 px-7 py-6">
+          {messages.length === 0 ? (
+            <p className="m-auto max-w-[22rem] text-center text-[14px] leading-relaxed text-muted-foreground">
+              {t.inbox.threadEmpty}
+            </p>
+          ) : (
+            messages.map((message) => (
+              <MessageBubble key={message.id} message={message} t={t} />
+            ))
+          )}
+        </div>
+      </ScrollArea>
+
+      {/* El pie ocupa el lugar del compositor que no hay: las respuestas
+          salen por la API externa. `/docs` redirige al sitio de docs, por eso
+          abre en otra pestaña como el enlace del sidebar. */}
+      <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-border-subtle bg-card px-5 py-3 text-[12.5px] text-muted-foreground">
+        <span className="flex min-w-0 items-center gap-2.5">
+          <MessageSquare className="size-3.5 shrink-0" aria-hidden />
+          <span className="truncate">{t.inbox.readOnlyFooter}</span>
+        </span>
+        <Link
+          href="/docs"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex shrink-0 items-center gap-1 font-medium text-foreground hover:underline"
+        >
+          {t.inbox.readOnlyFooterLink}
+          <ArrowRight className="size-3" aria-hidden />
+        </Link>
+      </footer>
     </section>
   )
 }
@@ -108,14 +130,14 @@ function MessageBubble({
       ) : null}
       <article
         className={cn(
-          "flex max-w-[62%] flex-col",
+          "flex max-w-[60%] flex-col",
           outbound ? "items-end self-end" : "items-start self-start"
         )}
       >
         <div
           className={cn(
-            "rounded-[var(--radius-3xl)] border px-[15px] py-[11px] text-[14px] leading-[1.55] break-words whitespace-pre-wrap",
-            outbound ? "rounded-br-[6px]" : "rounded-bl-[6px]",
+            "rounded-[14px] border px-3.5 py-2.5 text-sm leading-normal break-words whitespace-pre-wrap",
+            outbound ? "rounded-br-[4px]" : "rounded-bl-[4px]",
             failed
               ? "border-[var(--danger-soft-border)] bg-card text-foreground"
               : outbound
@@ -141,7 +163,7 @@ function MessageBubble({
         ) : null}
         <p
           className={cn(
-            "mt-[5px] flex items-center gap-1.5 font-mono text-[10.5px]",
+            "mt-1 flex items-center gap-1.5 font-mono text-[10.5px]",
             failed ? "text-[var(--danger-text)]" : "text-[var(--text-subtle)]"
           )}
           // El sufijo `· respuesta a comentario` es lo único que distingue a
@@ -153,18 +175,13 @@ function MessageBubble({
             <TriangleAlert className="size-3 shrink-0" aria-hidden />
           ) : null}
           {message.meta}
-          {/* La entrega va en su propio chip y con el prefijo «entrega:»: en la
-              misma línea conviven dos `sent` que no significan lo mismo — el
+          {/* La entrega va con el prefijo «entrega:» (display.ts): en la misma
+              línea conviven dos `sent` que no significan lo mismo — el
               `status` interno es «se lo mandamos a Meta» y el `delivery_status`
-              es «Meta lo mandó al teléfono». Son dos columnas distintas y
-              pintarlas iguales las confunde. */}
+              es «Meta lo mandó al teléfono». Texto plano como en el mock, sin
+              chip; el title explica la diferencia. */}
           {message.delivery ? (
-            <span
-              className="rounded-full bg-surface-sunken px-1.5 py-px"
-              title={t.inbox.deliveryTitle}
-            >
-              {message.delivery}
-            </span>
+            <span title={t.inbox.deliveryTitle}>· {message.delivery}</span>
           ) : null}
         </p>
         {message.error ? (
@@ -236,7 +253,7 @@ function BubbleAttachment({
         <img
           src={attachment.url}
           alt={t.inbox.imageAlt}
-          className="max-h-72 max-w-full rounded-[12px]"
+          className="max-h-72 max-w-full rounded-[10px]"
         />
       )
     case "video":
@@ -244,7 +261,7 @@ function BubbleAttachment({
         <video
           controls
           src={attachment.url}
-          className="max-h-72 max-w-full rounded-[12px]"
+          className="max-h-72 max-w-full rounded-[10px]"
         />
       )
     case "audio":

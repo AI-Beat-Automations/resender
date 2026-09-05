@@ -2,13 +2,14 @@ import Link from "next/link"
 
 import type { AppDict } from "@/content/i18n/app"
 import { SETTINGS_TABS, type SettingsTab } from "@/lib/settings/settings-tabs"
-import { cn } from "@workspace/ui/lib/utils"
+import { Tabs, TabsList, TabsTrigger } from "@workspace/ui/components/tabs"
 
-// Pestañas de Ajustes como enlaces, no como `Tabs` de Radix (ADR 0005): el
-// estado vive en `?tab=`, así que la navegación tiene que ser recargable,
-// compartible y con botón atrás. Se copia el aspecto de `TabsList
-// variant="line"` (subrayado bajo la pestaña activa) sin su comportamiento
-// cliente, y así la pantalla entera sigue siendo server component.
+// Pestañas de Ajustes sobre `Tabs` de shadcn (ADR 0015), pero el estado sigue
+// en `?tab=` (ADR 0005): cada pestaña es un `Link` vía `asChild`, así que la
+// navegación es recargable, compartible y con botón atrás, y la página sigue
+// renderizando la pestaña en servidor. No hay `TabsContent`: `Tabs` solo pinta
+// cuál está activa. El `?tab=` va siempre explícito —a diferencia de Inbox—
+// porque la franja de cuota enlaza a `/settings?tab=suscripcion`.
 export function SettingsTabsNav({
   active,
   t,
@@ -17,27 +18,19 @@ export function SettingsTabsNav({
   t: AppDict
 }) {
   return (
-    <nav aria-label={t.settings.tabsAria} className="mt-4.5 flex gap-1">
-      {SETTINGS_TABS.map((tab) => {
-        const isActive = tab === active
-
-        return (
-          <Link
-            key={tab}
-            href={`/settings?tab=${tab}`}
-            aria-current={isActive ? "page" : undefined}
-            className={cn(
-              "relative rounded-md px-1.5 py-1 text-sm font-medium transition-colors",
-              "after:absolute after:inset-x-0 after:-bottom-0.5 after:h-0.5 after:bg-foreground after:opacity-0 after:transition-opacity",
-              isActive
-                ? "text-foreground after:opacity-100"
-                : "text-foreground/60 hover:text-foreground"
-            )}
-          >
-            {t.settings.tabs[tab]}
-          </Link>
-        )
-      })}
-    </nav>
+    <Tabs value={active}>
+      <TabsList variant="line" aria-label={t.settings.tabsAria}>
+        {SETTINGS_TABS.map((tab) => (
+          <TabsTrigger key={tab} value={tab} asChild>
+            <Link
+              href={`/settings?tab=${tab}`}
+              aria-current={tab === active ? "page" : undefined}
+            >
+              {t.settings.tabs[tab]}
+            </Link>
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
   )
 }

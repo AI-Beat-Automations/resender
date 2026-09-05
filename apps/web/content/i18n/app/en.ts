@@ -116,7 +116,6 @@ export const en: AppDict = {
   },
 
   connections: {
-    eyebrow: "connections",
     title: "Connections",
     subtitle:
       "Connect your Facebook pages, your Instagram accounts and your WhatsApp numbers, set a webhook per account, and disconnect channels without deleting history.",
@@ -132,7 +131,6 @@ export const en: AppDict = {
         "You connected the number you already use in the WhatsApp Business app: it keeps working there and also reaches Resender. Meta decides eligibility, and the number gets a hard ceiling of 20 messages per second. The history has to be synced within the next 24 hours.",
     },
     connectedAccountsHeading: "CONNECTED ACCOUNTS",
-    quota: "{activePageCount} of {maxPages} connections",
     quotaActiveLabel: "active connections",
     quotaUnresolved: "quota unresolved · write to info@resender.dev",
     noticeConnectedGeneric: "Connected: the authorization completed.",
@@ -210,7 +208,6 @@ export const en: AppDict = {
   },
 
   select: {
-    eyebrow: "connections",
     title: "Choose pages",
     subtitle:
       "Choose which of the pages you manage on Facebook you want to connect to Resender.",
@@ -246,22 +243,26 @@ export const en: AppDict = {
   },
 
   inbox: {
-    eyebrow: "inbox",
     title: "Inbox",
-    subtitle:
-      "A durable log of messages and comments. Replies go out through the external API; this screen is read-only.",
     tabs: { mensajes: "Messages", comentarios: "Comments" },
     tabsAria: "Inbox mode",
+    countTitle: {
+      mensajes: "Conversations in the log",
+      comentarios: "Posts with comments",
+    },
     filterAll: "All accounts",
+    filterAria: "Filter by account",
     conversationsHeading: "Conversations",
     publicationsHeading: "Posts",
-    sortedByActivity: "Sorted by recent activity.",
     emptyConversations: "No conversations yet.",
     emptyConversationsFiltered: "No conversations for this filter.",
     emptyComments: "No comments yet.",
     emptyCommentsFiltered: "No comments for this filter.",
     readOnly: "read-only",
     readOnlyHint: "Replies go out through the external API",
+    readOnlyFooter:
+      "Replies go out through the external API. This screen is read-only.",
+    readOnlyFooterLink: "See the send API",
     threadEmpty: "This conversation has no saved messages yet.",
     noConversationsTitle: "No conversations saved yet.",
     noConversationsFilteredTitle: "This account has no conversations yet.",
@@ -322,7 +323,6 @@ export const en: AppDict = {
   },
 
   settings: {
-    eyebrow: "settings",
     title: "Settings",
     subtitle: "Manage your account and the API keys for external integration.",
     tabs: {
@@ -378,6 +378,7 @@ export const en: AppDict = {
       google: "Google",
       googleNotLinked: "Not linked",
       link: "Link",
+      change: "Change",
       linkRequiresVerified: "Confirm your email first",
       unlink: "Unlink",
       unlinkHint: "Unlinking requires a recent session.",
@@ -426,6 +427,12 @@ export const en: AppDict = {
     perMonth: " · ${price} / month",
     periodMessages: "Messages this period",
     usageAria: "Message usage for the period",
+    usageNeutral:
+      "We warn you from 80%; once the quota runs out, sending pauses until the next period.",
+    usageWarning:
+      "You're at {percent}%. We warn you from 80%; once the quota runs out, sending pauses until the next period.",
+    usageBlocked:
+      "Quota exhausted: sending is paused until the next period. Upgrade your plan to resume.",
     limitsUnresolved:
       "We couldn't resolve your plan's limits, so we can't show you your usage. Write to",
     managePortal: "Manage subscription",
