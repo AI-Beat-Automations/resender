@@ -246,8 +246,6 @@ export const es: AppDict = {
 
   inbox: {
     title: "Inbox",
-    subtitle:
-      "Log durable de mensajes y comentarios. Las respuestas salen de la API externa; esta pantalla es de solo lectura.",
     tabs: { mensajes: "Mensajes", comentarios: "Comentarios" },
     tabsAria: "Modo de la bandeja",
     countTitle: {
@@ -264,6 +262,9 @@ export const es: AppDict = {
     emptyCommentsFiltered: "No hay comentarios para este filtro.",
     readOnly: "solo lectura",
     readOnlyHint: "Las respuestas salen por la API externa",
+    readOnlyFooter:
+      "Las respuestas salen por la API externa. Esta pantalla es de solo lectura.",
+    readOnlyFooterLink: "Ver la API de envío",
     threadEmpty: "Esta conversación todavía no tiene mensajes guardados.",
     noConversationsTitle: "Todavía no hay conversaciones guardadas.",
     noConversationsFilteredTitle:

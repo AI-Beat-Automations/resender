@@ -219,7 +219,6 @@ export type AppDict = {
 
   inbox: {
     title: string
-    subtitle: string
     tabs: Record<InboxTab, string>
     tabsAria: string
     /** `title` del badge de conteo de la cabecera, por modo. */
@@ -234,6 +233,9 @@ export type AppDict = {
     emptyCommentsFiltered: string
     readOnly: string
     readOnlyHint: string
+    /** Pie del hilo de mensajes: por qué no hay compositor, y el enlace. */
+    readOnlyFooter: string
+    readOnlyFooterLink: string
     threadEmpty: string
     /** El vacío del panel derecho, en sus cuatro combinaciones. */
     noConversationsTitle: string

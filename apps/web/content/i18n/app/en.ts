@@ -244,8 +244,6 @@ export const en: AppDict = {
 
   inbox: {
     title: "Inbox",
-    subtitle:
-      "A durable log of messages and comments. Replies go out through the external API; this screen is read-only.",
     tabs: { mensajes: "Messages", comentarios: "Comments" },
     tabsAria: "Inbox mode",
     countTitle: {
@@ -262,6 +260,9 @@ export const en: AppDict = {
     emptyCommentsFiltered: "No comments for this filter.",
     readOnly: "read-only",
     readOnlyHint: "Replies go out through the external API",
+    readOnlyFooter:
+      "Replies go out through the external API. This screen is read-only.",
+    readOnlyFooterLink: "See the send API",
     threadEmpty: "This conversation has no saved messages yet.",
     noConversationsTitle: "No conversations saved yet.",
     noConversationsFilteredTitle: "This account has no conversations yet.",

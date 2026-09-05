@@ -57,9 +57,11 @@ export function InboxAccountFilter({
         )
       }}
     >
+      {/* Compacto como en el mock: cabe a la derecha de las píldoras de modo. */}
       <SelectTrigger
+        size="sm"
         aria-label={t.filterAria}
-        className="w-full min-w-0 bg-card"
+        className="h-7 max-w-[180px] min-w-0 rounded-[7px] bg-card text-xs"
       >
         <SelectValue />
       </SelectTrigger>
