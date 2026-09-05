@@ -41,12 +41,12 @@ export function CodeTabs({
 
   return (
     <Tabs value={active} onValueChange={setActive} className="gap-0">
-      <TabsList className="h-auto w-full justify-start rounded-none border-b border-border/70 bg-transparent p-0">
+      <TabsList className="h-auto w-full justify-start rounded-none border-b border-border-subtle bg-transparent p-0">
         {snippets.map((s) => (
           <TabsTrigger
             key={s.id}
             value={s.id}
-            className="rounded-none border-0 border-b-2 border-transparent px-4 py-2.5 font-mono text-xs data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+            className="rounded-none border-0 border-b-2 border-transparent px-4 py-2.5 font-mono text-xs text-muted-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none"
           >
             {s.label}
           </TabsTrigger>
@@ -61,7 +61,7 @@ export function CodeTabs({
           className="absolute top-2 right-2 z-10 flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           {copied ? (
-            <Check className="size-4 text-primary" />
+            <Check className="size-4 text-success" />
           ) : (
             <Copy className="size-4" />
           )}

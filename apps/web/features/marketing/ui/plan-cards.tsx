@@ -17,6 +17,8 @@ import { getDictionary, localePath, type Locale } from "@/content/i18n"
 
 // Cards de planes. Reutilizado por la preview de la landing y la página /pricing.
 // `showFeatures` controla si se listan los features (full) o no (preview).
+// La Pro lleva borde primario y el badge «Recomendado» flotando sobre el borde
+// (mock `1m`); por eso la Card suelta su `overflow-hidden`, que lo recortaría.
 export function PlanCards({
   lang,
   showFeatures = true,
@@ -32,18 +34,18 @@ export function PlanCards({
         <Card
           key={plan.name}
           className={cn(
-            "flex flex-col",
-            plan.featured && "ring-2 ring-primary"
+            "relative flex flex-col overflow-visible ring-0",
+            plan.featured ? "border-2 border-primary" : "border border-border"
           )}
         >
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-xl">{plan.name}</CardTitle>
-              {plan.badge ? <Badge>{plan.badge}</Badge> : null}
-            </div>
+            {plan.badge ? (
+              <Badge className="absolute -top-2.5 right-5">{plan.badge}</Badge>
+            ) : null}
+            <CardTitle className="text-xl font-semibold">{plan.name}</CardTitle>
             <CardDescription>{plan.description}</CardDescription>
             <div className="mt-2 flex items-baseline gap-1">
-              <span className="font-heading text-4xl font-bold">
+              <span className="font-heading text-[40px] leading-none font-bold tracking-[-0.03em]">
                 {plan.price}
               </span>
               <span className="text-sm text-muted-foreground">
@@ -57,7 +59,7 @@ export function PlanCards({
               <ul className="space-y-3 text-sm">
                 {plan.features.map((feature) => (
                   <li key={feature} className="flex items-start gap-2">
-                    <Check className="mt-0.5 size-4 shrink-0 text-primary" />
+                    <Check className="mt-0.5 size-4 shrink-0 text-success" />
                     <span>{feature}</span>
                   </li>
                 ))}
@@ -65,7 +67,9 @@ export function PlanCards({
             </CardContent>
           ) : null}
 
-          <CardFooter>
+          {/* Sin la banda gris del footer de Card: en el mock el CTA va a ras
+              del cuerpo de la tarjeta. */}
+          <CardFooter className="mt-auto border-0 bg-transparent pt-0">
             <Button
               asChild
               className="w-full"

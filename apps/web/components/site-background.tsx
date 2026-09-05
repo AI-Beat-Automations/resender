@@ -1,7 +1,7 @@
 import { BGPattern } from "@workspace/ui/components/bg-pattern"
 
-// Fondo del sitio de marketing: patrón de grilla (grid) sutil, fijo al viewport,
-// con fill que se adapta al tema (mezcla del foreground) y un fade en los bordes.
+// Fondo del sitio de marketing: grilla de 40 px, fija al viewport, con la línea
+// al 8 % del foreground y un fade radial en los bordes (mock `1a`).
 // El componente soporta otras variantes (dots, diagonal-stripes…).
 export function SiteBackground() {
   return (
@@ -9,7 +9,7 @@ export function SiteBackground() {
       variant="grid"
       mask="fade-edges"
       size={40}
-      fill="color-mix(in oklab, var(--foreground) 10%, transparent)"
+      fill="color-mix(in oklab, var(--foreground) 8%, transparent)"
       className="fixed"
     />
   )

@@ -18,7 +18,8 @@ import { DOCS_URL } from "@/lib/site-config"
 import { getDictionary, localePath, type Locale } from "@/content/i18n"
 
 // Navbar público de marketing. Sticky, con logo, navegación, toggle de idioma y
-// CTAs a la app existente (Login / Empieza). El menú mobile usa Sheet. El sitio
+// CTAs a la app existente (Login en `ghost`, Empieza en `default`, como el mock
+// `1m`). El menú mobile usa Sheet. El sitio
 // es solo modo claro (ver el wrapper `.light` de cada vista), así que acá no hay
 // switch de tema: ese vive únicamente en el sidebar de la consola.
 // Los docs son un sitio aparte (docs.resender.dev), así que ese link sale del
@@ -50,11 +51,17 @@ export function SiteHeader({ lang }: { lang: Locale }) {
           ))}
         </nav>
 
-        <div className="hidden items-center gap-3 md:flex">
+        <div className="hidden items-center gap-2 md:flex">
           <LanguageToggle />
-          {/* Variante `default` (primary), la misma que el CTA del hero. */}
-          <Button asChild size="sm">
+          <Button asChild variant="ghost" size="sm">
             <Link href={localePath("/login", lang)}>{dict.nav.login}</Link>
+          </Button>
+          {/* Variante `default` (primary), la misma que el CTA del hero, y al
+              mismo destino: el registro existente. */}
+          <Button asChild size="sm">
+            <Link href={localePath("/register", lang)}>
+              {dict.nav.getStarted}
+            </Link>
           </Button>
         </div>
 
@@ -63,7 +70,11 @@ export function SiteHeader({ lang }: { lang: Locale }) {
           <LanguageToggle />
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" aria-label={dict.nav.openMenu}>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={dict.nav.openMenu}
+              >
                 <Menu className="size-5" />
               </Button>
             </SheetTrigger>
@@ -82,8 +93,19 @@ export function SiteHeader({ lang }: { lang: Locale }) {
                   </Button>
                 ))}
                 <div className="mt-4 flex flex-col gap-2">
+                  <Button
+                    asChild
+                    variant="ghost"
+                    onClick={() => setOpen(false)}
+                  >
+                    <Link href={localePath("/login", lang)}>
+                      {dict.nav.login}
+                    </Link>
+                  </Button>
                   <Button asChild onClick={() => setOpen(false)}>
-                    <Link href={localePath("/login", lang)}>{dict.nav.login}</Link>
+                    <Link href={localePath("/register", lang)}>
+                      {dict.nav.getStarted}
+                    </Link>
                   </Button>
                 </div>
               </nav>

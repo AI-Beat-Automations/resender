@@ -11,7 +11,8 @@ import { getDictionary, localePath, type Locale } from "@/content/i18n"
 
 // Footer compartido de la superficie pública (landing, pricing, blog, auth y
 // páginas legales). Destacado con color de contraste (`bg-foreground` /
-// `text-background`): morado oscuro en modo claro, crema en modo oscuro.
+// `text-background`), con un filete superior apenas visible que lo separa del
+// cierre (`final-cta`), que usa el mismo fondo (mock `1a`).
 //
 // Solo se localizan las rutas de producto. `/docs` y las páginas legales quedan
 // en la raíz: existen en un solo idioma.
@@ -71,11 +72,15 @@ export function SiteFooter({ lang }: { lang: Locale }) {
   ]
 
   return (
-    <footer className="bg-foreground text-background">
+    <footer className="border-t border-background/10 bg-foreground text-background">
       <div className="mx-auto w-full max-w-6xl px-6 py-12">
         <div className="grid gap-8 sm:grid-cols-2 md:grid-cols-4">
           <div className="space-y-3">
-            <SiteLogo href={localePath("/", lang)} label={dict.nav.home} />
+            <SiteLogo
+              href={localePath("/", lang)}
+              label={dict.nav.home}
+              tone="inverse"
+            />
             <p className="max-w-xs text-sm text-background/70">
               {dict.footer.tagline}
             </p>

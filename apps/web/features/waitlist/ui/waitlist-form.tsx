@@ -1,7 +1,7 @@
 "use client"
 
 import { useActionState, useId, useState } from "react"
-import { Check, ChevronDown, LoaderCircle, TriangleAlert } from "lucide-react"
+import { Check, LoaderCircle, TriangleAlert } from "lucide-react"
 
 import { getDictionary, type Locale } from "@/content/i18n"
 import type { WaitlistFormState } from "@/features/waitlist/actions"
@@ -10,9 +10,18 @@ import {
   HEARD_FROM_OTHER_MAX_LENGTH,
   type WaitlistSource,
 } from "@/lib/waitlist/validation"
+import { Alert, AlertTitle } from "@workspace/ui/components/alert"
 import { Button } from "@workspace/ui/components/button"
+import { Checkbox } from "@workspace/ui/components/checkbox"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@workspace/ui/components/select"
 import { cn } from "@workspace/ui/lib/utils"
 
 // La acción llega como prop desde el componente servidor (convención del repo,
@@ -30,11 +39,11 @@ type WaitlistFormProps = {
   className?: string
 }
 
-// Clases del `<select>` nativo, calcadas de `packages/ui/src/components/input`:
-// la ADR 0007 no agrega componentes nuevos a `packages/ui` por un solo
-// formulario, así que se reusan los mismos tokens en vez de un `Select` propio.
-const CONTROL_CLASS =
-  "h-10 w-full appearance-none rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/40 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive"
+// El selector y el checkbox son los de shadcn (ADR 0015). Radix renderiza por
+// debajo un `<select>` y un `<input type="checkbox">` nativos ocultos cuando
+// están dentro de un `<form>`, así que el `FormData` que recibe la server
+// action lleva exactamente los mismos campos y valores que con los controles
+// nativos de antes: `heardFrom` con la clave elegida y `consent` con "on".
 
 export function WaitlistForm({
   lang,
@@ -137,36 +146,33 @@ export function WaitlistForm({
 
             <div className="grid gap-2">
               <Label htmlFor={fieldId("heardFrom")}>{t.heardFromLabel}</Label>
-              <div className="relative">
-                <select
+              {/* Sin valor inicial el trigger muestra el placeholder: así nadie
+                  manda la primera opción real por defecto y el dato de
+                  atribución no queda falseado. */}
+              <Select
+                name="heardFrom"
+                required
+                disabled={pending}
+                value={heardFrom}
+                onValueChange={setHeardFrom}
+              >
+                <SelectTrigger
                   id={fieldId("heardFrom")}
-                  name="heardFrom"
-                  required
-                  disabled={pending}
                   aria-invalid={hasError}
-                  value={heardFrom}
-                  onChange={(event) => setHeardFrom(event.target.value)}
-                  className={cn(CONTROL_CLASS, "pr-9")}
+                  className="w-full bg-background px-3 data-[size=default]:h-10"
                 >
-                  {/* Placeholder no seleccionable: sin él el navegador elegiría
-                      la primera opción real y el dato de atribución quedaría
-                      falseado por defecto. */}
-                  <option value="" disabled>
-                    {t.heardFromPlaceholder}
-                  </option>
+                  <SelectValue placeholder={t.heardFromPlaceholder} />
+                </SelectTrigger>
+                <SelectContent position="popper">
                   {/* Se itera `HEARD_FROM_KEYS` y no las claves del diccionario:
                       el orden de un objeto no es contrato, el del array sí. */}
                   {HEARD_FROM_KEYS.map((key) => (
-                    <option key={key} value={key}>
+                    <SelectItem key={key} value={key}>
                       {t.heardFromOptions[key]}
-                    </option>
+                    </SelectItem>
                   ))}
-                </select>
-                <ChevronDown
-                  className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-muted-foreground"
-                  aria-hidden
-                />
-              </div>
+                </SelectContent>
+              </Select>
             </div>
 
             {heardFrom === "other" ? (
@@ -196,28 +202,23 @@ export function WaitlistForm({
               htmlFor={fieldId("consent")}
               className="flex items-start gap-2.5 text-[12.5px]/[1.6] font-normal text-muted-foreground"
             >
-              <input
+              <Checkbox
                 id={fieldId("consent")}
                 name="consent"
-                type="checkbox"
                 required
                 disabled={pending}
-                className="mt-0.5 size-4 shrink-0 rounded border-input accent-primary outline-none focus-visible:ring-3 focus-visible:ring-ring/40 disabled:pointer-events-none disabled:opacity-50"
+                className="mt-0.5"
               />
               {t.consent}
             </Label>
 
             {state.error ? (
-              <p
-                role="alert"
-                className="flex items-start gap-2 rounded-lg border border-destructive-soft-border bg-destructive-soft px-3 py-2.5 text-[13px] text-destructive-soft-foreground"
-              >
-                <TriangleAlert
-                  className="mt-0.5 size-3.5 shrink-0"
-                  aria-hidden
-                />
-                {state.error}
-              </p>
+              <Alert variant="destructive">
+                <TriangleAlert className="size-3.5" aria-hidden />
+                <AlertTitle className="text-[13px] font-normal">
+                  {state.error}
+                </AlertTitle>
+              </Alert>
             ) : null}
 
             <Button

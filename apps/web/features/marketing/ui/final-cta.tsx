@@ -5,9 +5,10 @@ import { Button } from "@workspace/ui/components/button"
 import { localePath, type Locale } from "@/content/i18n"
 
 // CTA final reutilizable (landing, pricing y post de blog). Sección destacada
-// con color de contraste: `bg-foreground`/`text-background`, así en modo claro
-// se ve con el morado oscuro de la marca y en modo oscuro con el crema —
-// invirtiendo el tono respecto del resto de la página.
+// con color de contraste: `bg-foreground`/`text-background`, invirtiendo el
+// tono respecto del resto de la página. El botón también se invierte (fondo
+// `background`, texto `foreground`): sobre el gris oscuro el violeta del
+// primario no contrasta lo suficiente (mock `1a`).
 export function FinalCta({
   lang,
   title,
@@ -29,14 +30,18 @@ export function FinalCta({
   return (
     <section className="bg-foreground text-background">
       <div className="mx-auto w-full max-w-4xl px-6 py-24 text-center">
-        <h2 className="text-3xl font-bold tracking-tight md:text-5xl">
+        <h2 className="text-3xl font-bold tracking-[-0.03em] md:text-5xl">
           {title}
         </h2>
         <p className="mx-auto mt-4 max-w-xl text-lg text-background/70">
           {subtitle}
         </p>
         <div className="mt-8">
-          <Button asChild size="lg">
+          <Button
+            asChild
+            size="lg"
+            className="bg-background text-foreground hover:bg-background/90"
+          >
             {/* TODO: Stripe — por ahora el CTA va al registro existente. */}
             <Link href={localePath("/register", lang)}>{cta}</Link>
           </Button>
