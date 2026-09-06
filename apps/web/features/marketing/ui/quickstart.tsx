@@ -71,7 +71,7 @@ export async function Quickstart({ lang }: { lang: Locale }) {
       code: s.code,
       html: await codeToHtml(s.code, {
         lang: s.lang,
-        themes: { light: "github-light", dark: "github-dark" },
+        themes: { light: "min-light", dark: "min-dark" },
         // Sin color inline: los tokens quedan como CSS vars y alternamos por
         // tema (.dark) desde globals.css. Si no, el color claro quedaba fijo e
         // ilegible en modo oscuro.

@@ -4,6 +4,10 @@ status: accepted
 
 # Rediseño de la consola v2: alcance recortado, shell con sidebar, tokens del DS e idioma
 
+> **Enmendada en tokens y alcance por la
+> [ADR 0015](0015-paleta-neutra-violeta.md):** paleta neutra + violeta en toda la superficie,
+> sitio público incluido. Shell y primitivas siguen como acá, hasta su propia enmienda.
+
 > **Enmendada en el punto del idioma por la
 > [ADR 0006](0006-access-screens-return-to-the-dictionary.md):** `/login` y `/register` leen su
 > texto del `Dict` porque tienen gemela en `/en`. Las otras siete rutas de producto siguen con el

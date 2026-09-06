@@ -8,7 +8,7 @@ import { cn } from "@workspace/ui/lib/utils"
 // Chrome compartido de las cuatro pantallas de acceso (login, registro,
 // elección de plan y activación de la suscripción). Ninguna lleva sidebar:
 // viven fuera del grupo `(product)` y se dibujan como una tarjeta centrada
-// sobre la crema, con topbar de wordmark y pie legal compacto. Eran cinco: la
+// sobre el fondo neutro, con topbar de wordmark y pie legal compacto. Eran cinco: la
 // quinta era la pantalla autenticada del gate de acceso en `/waitlist`, que la
 // ADR 0007 reemplazó por la lista de espera pública, que es una página de
 // marketing y usa el chrome del sitio.

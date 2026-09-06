@@ -11,7 +11,7 @@ import { getDictionary, localePath, type Locale } from "@/content/i18n"
 
 // Footer compartido de la superficie pública (landing, pricing, blog, auth y
 // páginas legales). Destacado con color de contraste (`bg-foreground` /
-// `text-background`): morado oscuro en modo claro, crema en modo oscuro.
+// `text-background`): negro en modo claro, blanco en modo oscuro.
 //
 // Solo se localizan las rutas de producto. `/docs` y las páginas legales quedan
 // en la raíz: existen en un solo idioma.
