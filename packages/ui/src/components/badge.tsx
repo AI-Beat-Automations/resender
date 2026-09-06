@@ -19,7 +19,7 @@ const badgeVariants = cva(
         ghost:
           "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
         link: "text-primary underline-offset-4 hover:underline",
-        // Tintes semánticos: sobre la crema un tinte suave sin su *-soft-border
+        // Tintes semánticos: sobre el blanco un tinte suave sin su *-soft-border
         // se desvanece, así que las cuatro variantes llevan borde siempre.
         success:
           "border-success-soft-border bg-success-soft text-success-soft-foreground [a]:hover:bg-success-soft/80",

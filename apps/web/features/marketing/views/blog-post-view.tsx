@@ -30,7 +30,7 @@ import { getDictionary, localePath, type Locale } from "@/content/i18n"
 const prettyCodeOptions: PrettyCodeOptions = {
   // Temas duales: los tokens usan CSS vars que alternan con la clase .dark
   // (ver el snippet .shiki en packages/ui/src/styles/globals.css).
-  theme: { light: "github-light", dark: "github-dark" },
+  theme: { light: "min-light", dark: "min-dark" },
   keepBackground: false,
   // Los bloques sin lenguaje (``` a secas) igual se resaltan como texto plano,
   // así reciben el color del tema y no quedan invisibles sobre el fondo claro.

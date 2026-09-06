@@ -263,6 +263,10 @@ Las dos resoluciones —@handle y publicacion— corren al **leer la pantalla**,
 
 Los dos modos son de **solo lectura**: no hay compositor en ninguno, las respuestas salen por la API externa. Decision en `docs/adr/0009-inbox-mensajes-y-comentarios.md`.
 
+### Primario
+El único color de marca de la interfaz: el violeta `#7673A4`, igual en claro y en oscuro. Pinta el botón principal de cada pantalla, los enlaces, el foco y las burbujas salientes del [Inbox]; todo lo demás es neutro (blanco, grises, negro `#252525`) o una semántica (éxito, aviso, error, info).
+El mock lo llama «acento» porque lo expone como un selector que se puede cambiar; en Resender no se usa esa palabra: *acento* en shadcn es el gris de hover de menús y listas, y llamar «acento» al violeta confunde las dos cosas. En código el primario es `primary`.
+
 ### Pantallas de configuracion
 La gestion de paginas conectadas no vive dentro de `Settings` en el MVP; se realiza en una pantalla separada.
 La pantalla separada se llama `Connections` y vive en la ruta `/connections`.
