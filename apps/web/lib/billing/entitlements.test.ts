@@ -41,14 +41,18 @@ describe("plan limits resolution", () => {
   })
 
   it("fails closed for an unknown or missing lookup key", () => {
-    expect(resolvePlanLimits("business_monthly")).toBe(null)
+    expect(resolvePlanLimits("business_monthly")).toEqual({
+      messagesPerPeriod: 1_000_000,
+      maxPages: 40,
+    })
+    expect(resolvePlanLimits("enterprise_monthly")).toBe(null)
     expect(resolvePlanLimits(null)).toBe(null)
     expect(resolvePlanLimits(undefined)).toBe(null)
   })
 
   it("blocks with plan_unavailable when the lookup key is unknown", () => {
     const result = evaluateEntitlement(
-      input({ priceLookupKey: "business_monthly" })
+      input({ priceLookupKey: "enterprise_monthly" })
     )
     expect(result.limits).toBe(null)
     expect(result.block?.code).toBe("plan_unavailable")
@@ -287,7 +291,7 @@ describe("quota bar", () => {
     })
 
     const unresolved = evaluateEntitlement(
-      input({ priceLookupKey: "business_monthly" })
+      input({ priceLookupKey: "enterprise_monthly" })
     )
     expect(
       resolveQuotaBar({

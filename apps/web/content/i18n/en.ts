@@ -16,26 +16,25 @@ export const en: Dict = {
   },
 
   hero: {
-    eyebrow: "receive and reply to Facebook messages via API",
-    title: "The relay API for Facebook messages.",
+    eyebrow: "Instagram and Facebook via API.",
+    title: "One webhook for all your channels.",
     titleAccent: "Developer-first.",
     subtitle:
-      "Connect your Page, point your webhook and reply with a POST. No visual builders, no features you'll never use.",
+      "Connect your channels, point your webhook and reply with a POST.",
     ctaPrimary: "Get started",
     ctaSecondary: "See how it works",
   },
 
   flowMock: {
-    live: "message-flow · live",
     in: {
-      meta: "Facebook · 2:02 PM",
+      meta: "Incoming message · 2:02 PM",
       text: "Hi, do you have a slot for today?",
     },
-    hook: {
-      meta: "your server",
-      text: "Your automation receives the message and generates the reply",
+    hook: { text: "Resender processes" },
+    out: {
+      meta: "Your automation · 2:02 PM",
+      text: "Yes! See you today at 3:00 PM 👍",
     },
-    out: { meta: "POST · 2:02 PM", text: "Yes! See you today at 3:00 PM 👍" },
   },
 
   pain: {
@@ -164,9 +163,9 @@ export const en: Dict = {
     subtitle:
       "A plan for every stage. No contracts, no surprises. Cancel whenever you want.",
     intro: [
-      "Both plans include the same thing: the full API, inbound and outbound webhooks, and support. The only difference is how many messages you process per month and how many Facebook Pages you connect.",
+      "All three plans include the same thing: the full API, inbound and outbound webhooks, and support. The only difference is how many messages you process per month and how many Facebook Pages you connect.",
       "A message is every event that crosses the relay, in either direction: the one a user sends you and that lands at your webhook counts as one, and your reply through the API counts as another. A ten-turn back-and-forth uses twenty messages. Webhook retries after an outage are not billed.",
-      "If you are torn between the two, start with Starter. 50,000 messages a month is roughly 25,000 short conversations, plenty for a side project or your first clients. We warn you as you approach the limit, and moving up to Pro is immediate: no downtime and nothing to reconnect.",
+      "If in doubt, start with Starter. 50,000 messages a month is roughly 25,000 short conversations, plenty for a side project or your first clients. We warn you as you approach the limit, and moving up to Pro is immediate: no downtime and nothing to reconnect.",
       "We charge per message processed rather than per contact reached, which is the difference that shows most against ManyChat as you grow: your bill tracks real traffic, not the accumulated size of your audience.",
     ],
     plans: [
@@ -186,7 +185,7 @@ export const en: Dict = {
       },
       {
         name: "Pro",
-        price: "$25",
+        price: "$29",
         period: "/mo",
         description: "For growing devs and agencies.",
         featured: true,
@@ -194,11 +193,30 @@ export const en: Dict = {
         cta: "Get started with Pro",
         features: [
           "100,000 messages per month",
-          "5 Facebook Pages",
+          "5 connections",
+          "Email + Discord support",
+        ],
+      },
+      {
+        name: "Business",
+        price: "$199",
+        period: "/mo",
+        description: "For agencies running several clients.",
+        featured: false,
+        badge: null,
+        cta: "Get started with Business",
+        features: [
+          "1,000,000 messages per month",
+          "40 connections",
           "Email + Discord support",
         ],
       },
     ],
+    enterprise: {
+      title: "Need more than this?",
+      description:
+        "If your volume goes beyond Business or you need custom terms, email us at {email} and we'll put together a plan for your organization.",
+    },
   },
 
   comparison: {
@@ -272,7 +290,7 @@ export const en: Dict = {
         },
         {
           q: "How much cheaper is Resender than ManyChat?",
-          a: "Resender starts at $15/mo with 50,000 messages and 2 Pages. ManyChat's Pro plan starts at $39/mo and scales with your contact count. The gap widens as you grow, because Resender charges per message rather than per contact.",
+          a: "Resender starts at $15/mo with 50,000 messages and 2 connections. ManyChat's Pro plan starts at $39/mo and scales with your contact count. The gap widens as you grow, because Resender charges per message rather than per contact.",
         },
         {
           q: "Can I use Resender with n8n the way I used ManyChat?",
@@ -325,7 +343,7 @@ export const en: Dict = {
       },
       {
         q: "Can I connect more Pages than my plan includes?",
-        a: "The Page limit is per plan: 2 on Starter and 5 on Pro. If you need more, move up to Pro or write to us and we'll put something together for your volume.",
+        a: "The connection limit is per plan: 2 on Starter, 5 on Pro and 40 on Business. If you need more, move up a plan or write to us and we'll put something together for your volume.",
       },
       {
         q: "What happens to my data if I cancel?",
@@ -543,7 +561,7 @@ export const en: Dict = {
   },
 
   footer: {
-    tagline: "The relay API for Facebook messages. Simple and developer-first.",
+    tagline: "One webhook for all your channels. Simple and developer-first.",
     columns: { product: "Product", legal: "Legal", contact: "Contact" },
     links: {
       pricing: "Pricing",
@@ -558,12 +576,12 @@ export const en: Dict = {
 
   meta: {
     home: {
-      title: "Resender — The relay API for Facebook messages",
+      title: "Resender — One webhook for all your channels",
       description:
-        "The developer-first alternative to ManyChat. Receive Facebook messages at your webhook and reply via API. Simple, with no features you'll never use.",
-      ogTitle: "Resender — The relay API for Facebook messages",
+        "WhatsApp, Instagram and Facebook via API. Connect your channels, point your webhook and reply with a POST. The developer-first alternative to ManyChat.",
+      ogTitle: "Resender — One webhook for all your channels",
       ogDescription:
-        "Receive Facebook messages at your webhook and reply via API. Simple and developer-first.",
+        "WhatsApp, Instagram and Facebook via API. Connect your channels, point your webhook and reply with a POST. Developer-first.",
     },
     pricing: {
       title: "Pricing and plans from $15 per month",
@@ -587,12 +605,12 @@ export const en: Dict = {
 
   llms: {
     summary:
-      "The relay API for Facebook messages. Connect your Page, point your webhook and reply with a POST — no visual builders, no features you'll never use. A developer-first alternative to ManyChat, from $15/mo. Operated by Lorna Suriano Hernandez.",
+      "One webhook for all your channels. Receive WhatsApp, Instagram and Facebook messages at your webhook and reply with a POST — no visual builders, no features you'll never use. A developer-first alternative to ManyChat, from $15/mo. Operated by Lorna Suriano Hernandez.",
     context: [
-      "Resender solves one specific problem: receiving the messages sent to a Facebook Page (Messenger) on your own server, and replying to them via API. The logic runs wherever you want it — n8n, Make, Zapier, an AI agent or your own backend — and Resender only handles the transport to and from Facebook.",
-      "How it works: you connect your Page with Facebook Login, set an HTTPS URL per Page, every incoming message arrives at that endpoint as JSON, and you reply with a POST to Resender's outbound API. The Messenger permissions are already approved, so you don't go through an app review of your own.",
+      "Resender solves one specific problem: receiving the messages sent to your Meta channels (WhatsApp, Instagram and Facebook Messenger) on your own server through a single webhook, and replying to them via API. The logic runs wherever you want it — n8n, Make, Zapier, an AI agent or your own backend — and Resender only handles the transport to and from each channel.",
+      "How it works: you connect your channels with Facebook Login, set an HTTPS URL per connection, every incoming message arrives at that endpoint as JSON, and you reply with a POST to Resender's outbound API. The Messenger permissions are already approved, so you don't go through an app review of your own.",
       "What it is NOT: Resender has no visual flow builder, broadcasts, templates or engagement analytics. If you need those, ManyChat is the better choice and we say so in the comparison.",
-      "Pricing: Starter $15/mo (50,000 messages, 2 Facebook Pages) and Pro $25/mo (100,000 messages, 5 Pages). Billing is per message processed in either direction, not per contact reached. Retries after a webhook outage are not billed. No contracts: it's month to month.",
+      "Pricing: Starter $15/mo (50,000 messages, 2 connections), Pro $29/mo (100,000 messages, 5 connections) and Business $199/mo (1,000,000 messages, 40 connections). Billing is per message processed in either direction, not per contact reached. Retries after a webhook outage are not billed. No contracts: it's month to month.",
       "The site is in Spanish at the root and in English under /en. The legal pages exist in Spanish only.",
     ],
     sections: {
@@ -611,7 +629,7 @@ export const en: Dict = {
       pricing: {
         label: "Pricing",
         detail:
-          "The Starter and Pro plans, what counts as a message, how billing works and billing questions.",
+          "The Starter, Pro and Business plans, what counts as a message, how billing works and billing questions.",
       },
       vsManychat: {
         label: "Resender vs ManyChat",

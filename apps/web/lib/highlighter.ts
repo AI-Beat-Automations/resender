@@ -14,8 +14,8 @@ export const createHighlighter = createBundledHighlighter({
     json: () => import("@shikijs/langs/json"),
   },
   themes: {
-    "github-light": () => import("@shikijs/themes/github-light"),
-    "github-dark": () => import("@shikijs/themes/github-dark"),
+    "min-light": () => import("@shikijs/themes/min-light"),
+    "min-dark": () => import("@shikijs/themes/min-dark"),
   },
   engine: () => createJavaScriptRegexEngine(),
 })

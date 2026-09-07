@@ -6,7 +6,7 @@ import { localePath, type Locale } from "@/content/i18n"
 
 // CTA final reutilizable (landing, pricing y post de blog). Sección destacada
 // con color de contraste: `bg-foreground`/`text-background`, así en modo claro
-// se ve con el morado oscuro de la marca y en modo oscuro con el crema —
+// se ve negro sobre blanco y en modo oscuro blanco sobre negro —
 // invirtiendo el tono respecto del resto de la página.
 export function FinalCta({
   lang,

@@ -15,12 +15,12 @@ export const OG_CONTENT_TYPE = "image/png"
 
 // Paleta de marca — espejo de :root en packages/ui/src/styles/globals.css.
 const COLORS = {
-  background: "#f3ece0",
-  foreground: "#242029",
-  primary: "#7773a5",
-  muted: "#ebe4d6",
-  mutedForeground: "#6b6780",
-  border: "#d4cfc7",
+  background: "#ffffff",
+  foreground: "#252525",
+  primary: "#7673a4",
+  muted: "#f5f5f5",
+  mutedForeground: "#767676",
+  border: "#e5e5e5",
 }
 
 function readFont(file: string) {
