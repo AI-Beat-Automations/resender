@@ -34,10 +34,8 @@ const TOOLS = [
 const T = {
   inBubble: 0,
   inAvatars: 400,
-  line1: 1200,
   node: 1800,
   tools: 2200,
-  line2: 3200,
   outBubble: 3800,
   outAvatars: 4200,
 } as const
@@ -54,15 +52,7 @@ function useAnim(phase: Phase) {
     if (phase === "armed") return { opacity: 0 }
     return { animation: `msg-pop 400ms ease-out ${delay}ms both` }
   }
-  const draw = (delay: number): React.CSSProperties | undefined => {
-    if (phase === "static") return undefined
-    if (phase === "armed") return { transform: "scaleY(0)" }
-    return {
-      transformOrigin: "top",
-      animation: `connector-draw 500ms ease-out ${delay}ms both`,
-    }
-  }
-  return { pop, draw }
+  return { pop }
 }
 
 function Avatars({ phase, delay }: { phase: Phase; delay: number }) {
@@ -135,7 +125,7 @@ export function FlowMock({ lang }: { lang: Locale }) {
   const { flowMock } = getDictionary(lang)
   const ref = React.useRef<HTMLDivElement>(null)
   const [phase, setPhase] = React.useState<Phase>("static")
-  const { pop, draw } = useAnim(phase)
+  const { pop } = useAnim(phase)
 
   React.useEffect(() => {
     const el = ref.current
@@ -170,13 +160,9 @@ export function FlowMock({ lang }: { lang: Locale }) {
         avatarsDelay={T.inAvatars}
       />
 
-      {/* Nodo central: conector → "Resender procesa" + herramientas → conector. */}
-      <div className="flex flex-col items-center py-1">
-        <span className="h-7 w-px bg-border" style={draw(T.line1)} />
-        <div
-          className="flex flex-col items-center gap-2.5 py-2"
-          style={pop(T.node)}
-        >
+      {/* Nodo central: "Resender procesa" + herramientas. */}
+      <div className="my-8 flex flex-col items-center">
+        <div className="flex flex-col items-center gap-2.5" style={pop(T.node)}>
           <div className="flex items-center gap-2">
             <span
               className={cn(
@@ -201,7 +187,6 @@ export function FlowMock({ lang }: { lang: Locale }) {
             ))}
           </div>
         </div>
-        <span className="h-7 w-px bg-border" style={draw(T.line2)} />
       </div>
 
       <Bubble
