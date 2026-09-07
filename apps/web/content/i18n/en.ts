@@ -212,6 +212,11 @@ export const en: Dict = {
         ],
       },
     ],
+    enterprise: {
+      title: "Need more than this?",
+      description:
+        "If your volume goes beyond Business or you need custom terms, email us at {email} and we'll put together a plan for your organization.",
+    },
   },
 
   comparison: {

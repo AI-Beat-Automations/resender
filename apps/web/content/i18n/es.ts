@@ -216,6 +216,11 @@ export const es: Dict = {
         ],
       },
     ],
+    enterprise: {
+      title: "¿Necesitas más que esto?",
+      description:
+        "Si tu volumen supera Business o necesitas condiciones a medida, escríbenos a {email} y armamos un plan para tu organización.",
+    },
   },
 
   comparison: {

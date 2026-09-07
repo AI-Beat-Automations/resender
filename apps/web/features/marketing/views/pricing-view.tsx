@@ -4,6 +4,7 @@ import { SiteBackground } from "@/components/site-background"
 import { HtmlLang } from "@/components/html-lang"
 import { Section, SectionHeading } from "@/features/marketing/ui/section"
 import { PlanCards } from "@/features/marketing/ui/plan-cards"
+import { EnterpriseCta } from "@/features/marketing/ui/enterprise-cta"
 import { ComparisonTable } from "@/features/marketing/ui/comparison-table"
 import { FaqSection } from "@/features/marketing/ui/faq-section"
 import { FinalCta } from "@/features/marketing/ui/final-cta"
@@ -51,6 +52,9 @@ export function PricingView({ lang }: { lang: Locale }) {
           />
           <div className="mt-16">
             <PlanCards lang={lang} />
+          </div>
+          <div className="mt-6">
+            <EnterpriseCta lang={lang} />
           </div>
           <div className="mx-auto mt-16 max-w-2xl space-y-6 leading-8 text-muted-foreground">
             {dict.pricing.intro.map((paragraph) => (
