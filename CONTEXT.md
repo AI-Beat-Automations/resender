@@ -334,8 +334,8 @@ Gotcha documentado: el campo `pageId` de `POST /api/meta/send` se matchea contra
 "Delete account" en `Settings` borra **todo** el tenant (cuenta, paginas, conversaciones, mensajes, API keys); no hay borrado parcial en el MVP. Es inmediato y transaccional en produccion; los backups se purgan en ≤30 dias. Antes de borrar, se intenta best-effort dar de baja cada pagina activa del webhook de Meta. Requiere confirmacion destructiva (reescribir el email de la cuenta). Se implementa con FKs `on delete cascade` (migracion `0002`), que reemplazan el `on delete restrict` original. Cuidado: con cascade, borrar una fila de `connected_pages` arrastraria su historial; hoy nada borra paginas (ver [Desconexión de páginas], que es UPDATE no DELETE).
 
 ### Suscripcion (billing)
-El uso del producto requiere una suscripcion de pago gestionada por Stripe. Hay 3 planes mensuales en USD: **Starter $15**, **Pro $29** y **Business $60**. Solo ciclo mensual.
-El plan **Business** se elimino en la ADR 0003 y vuelve en la ADR 0016 reactivando el mismo price de Stripe. Pro subio de $25 a $29 en la misma ADR.
+El uso del producto requiere una suscripcion de pago gestionada por Stripe. Hay 3 planes mensuales en USD: **Starter $15**, **Pro $29** y **Business $200**. Solo ciclo mensual.
+El plan **Business** se elimino en la ADR 0003 y vuelve en la ADR 0016 con un price nuevo en Stripe y la misma lookup key. Pro subio de $25 a $29 en la misma ADR.
 La diferenciacion funcional entre planes ya no es binaria: cada plan trae una cuota de mensajes y un limite de paginas. Ver [Límites por plan]. Decisiones en `docs/adr/0002-stripe-checkout-subscriptions.md`, `docs/adr/0003-plan-entitlements-usage-quota.md` y `docs/adr/0016-tres-planes-pro-a-29.md`.
 
 ### Límites por plan
@@ -343,7 +343,7 @@ La diferenciacion funcional entre planes ya no es binaria: cada plan trae una cu
 |---|---|---|---|
 | `starter_monthly` | $15 | 50.000 | 2 |
 | `pro_monthly` | $29 | 100.000 | 5 |
-| `business_monthly` | $60 | 250.000 | 12 |
+| `business_monthly` | $200 | 1.000.000 | 40 |
 
 El límite se resuelve desde `subscriptions.price_lookup_key` contra un mapa en código. Un `price_lookup_key` desconocido es fail-closed, igual que el resto de los gates.
 

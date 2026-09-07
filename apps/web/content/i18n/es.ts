@@ -203,15 +203,15 @@ export const es: Dict = {
       },
       {
         name: "Business",
-        price: "$60",
+        price: "$200",
         period: "/mes",
         description: "Para agencias con varios clientes.",
         featured: false,
         badge: null,
         cta: "Empezar con Business",
         features: [
-          "250.000 mensajes por mes",
-          "12 conexiones",
+          "1.000.000 de mensajes por mes",
+          "40 conexiones",
           "Soporte por email + Discord",
         ],
       },
@@ -350,7 +350,7 @@ export const es: Dict = {
       },
       {
         q: "¿Puedo conectar más páginas de las que incluye mi plan?",
-        a: "El límite de conexiones es por plan: 2 en Starter, 5 en Pro y 12 en Business. Si necesitas más, subes de plan o nos escribes y armamos algo a medida para tu volumen.",
+        a: "El límite de conexiones es por plan: 2 en Starter, 5 en Pro y 40 en Business. Si necesitas más, subes de plan o nos escribes y armamos algo a medida para tu volumen.",
       },
       {
         q: "¿Qué pasa con mis datos si cancelo?",
@@ -627,7 +627,7 @@ export const es: Dict = {
       "Resender resuelve un problema puntual: recibir en tu propio servidor, por un solo webhook, los mensajes que llegan a tus canales de Meta (WhatsApp, Instagram y Facebook Messenger) y responderlos por API. La lógica corre donde tú quieras — n8n, Make, Zapier, un agente de IA o tu propio backend — y Resender se encarga solo del transporte hacia y desde cada canal.",
       "Cómo funciona: conectas tus canales con Facebook Login, configuras una URL HTTPS por conexión, cada mensaje entrante llega a ese endpoint como JSON, y respondes con un POST a la API de salida de Resender. Los permisos de Messenger ya están aprobados, así que no pasas por un review de app propio.",
       "Qué NO es: Resender no tiene builder visual de flujos, difusiones, plantillas ni analítica de engagement. Si necesitas eso, ManyChat es la mejor opción y así lo decimos en la comparativa.",
-      "Precios: Starter $15/mes (50.000 mensajes, 2 conexiones), Pro $29/mes (100.000 mensajes, 5 conexiones) y Business $60/mes (250.000 mensajes, 12 conexiones). Se cobra por mensaje procesado en cualquier dirección, no por contacto alcanzado. Los reintentos por webhook caído no se cobran. Sin contratos: es mes a mes.",
+      "Precios: Starter $15/mes (50.000 mensajes, 2 conexiones), Pro $29/mes (100.000 mensajes, 5 conexiones) y Business $200/mes (1.000.000 de mensajes, 40 conexiones). Se cobra por mensaje procesado en cualquier dirección, no por contacto alcanzado. Los reintentos por webhook caído no se cobran. Sin contratos: es mes a mes.",
       "El sitio está en español en la raíz y en inglés bajo /en. Las páginas legales existen solo en español.",
     ],
     sections: {
