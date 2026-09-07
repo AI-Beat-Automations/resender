@@ -2,7 +2,7 @@
 // nunca price IDs: así test mode y live comparten código y renombrar
 // products/prices en el Dashboard no rompe nada.
 // `business_monthly` vuelve (ADR 0016) tras haberse eliminado en la 0003:
-// el price de $60 se reactiva en Stripe con la misma lookup key.
+// se crea un price nuevo en Stripe con la misma lookup key.
 export const PLAN_LOOKUP_KEYS = [
   "starter_monthly",
   "pro_monthly",
@@ -44,8 +44,8 @@ export const PLANS: Plan[] = [
   {
     lookupKey: "business_monthly",
     name: "Business",
-    priceMonthlyUsd: 60,
-    limits: { messagesPerPeriod: 250_000, maxPages: 12 },
+    priceMonthlyUsd: 200,
+    limits: { messagesPerPeriod: 1_000_000, maxPages: 40 },
   },
 ]
 

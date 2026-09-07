@@ -42,8 +42,8 @@ describe("plan limits resolution", () => {
 
   it("fails closed for an unknown or missing lookup key", () => {
     expect(resolvePlanLimits("business_monthly")).toEqual({
-      messagesPerPeriod: 250_000,
-      maxPages: 12,
+      messagesPerPeriod: 1_000_000,
+      maxPages: 40,
     })
     expect(resolvePlanLimits("enterprise_monthly")).toBe(null)
     expect(resolvePlanLimits(null)).toBe(null)
