@@ -18,7 +18,7 @@ export const es: Dict = {
   },
 
   hero: {
-    eyebrow: "WhatsApp, Instagram y Facebook por API.",
+    eyebrow: "Instagram y Facebook por API.",
     title: "Un solo webhook para todos tus canales.",
     titleAccent: "Developer-first.",
     subtitle: "Conecta tus canales, apunta tu webhook y responde con un POST.",
