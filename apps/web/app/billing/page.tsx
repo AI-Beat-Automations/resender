@@ -73,7 +73,7 @@ export default async function BillingPage() {
         <p className="mt-2.5 max-w-130 text-center text-[15px]/[1.6] text-muted-foreground">
           {t.billing.subtitle}
         </p>
-        <div className="mt-7 grid w-full max-w-155 gap-5 sm:grid-cols-2">
+        <div className="mt-7 grid w-full max-w-240 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {PLANS.map((plan) => {
             const recommended = plan.lookupKey === RECOMMENDED_PLAN
             return (

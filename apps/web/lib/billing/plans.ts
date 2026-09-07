@@ -1,9 +1,13 @@
-// Los 2 planes mensuales. El código referencia los lookup keys de Stripe,
+// Los 3 planes mensuales. El código referencia los lookup keys de Stripe,
 // nunca price IDs: así test mode y live comparten código y renombrar
 // products/prices en el Dashboard no rompe nada.
-// `business_monthly` fue eliminado (ADR 0003): su price está archivado en
-// Stripe y nunca tuvo suscripciones.
-export const PLAN_LOOKUP_KEYS = ["starter_monthly", "pro_monthly"] as const
+// `business_monthly` vuelve (ADR 0016) tras haberse eliminado en la 0003:
+// el price de $60 se reactiva en Stripe con la misma lookup key.
+export const PLAN_LOOKUP_KEYS = [
+  "starter_monthly",
+  "pro_monthly",
+  "business_monthly",
+] as const
 
 export type PlanLookupKey = (typeof PLAN_LOOKUP_KEYS)[number]
 
@@ -34,8 +38,14 @@ export const PLANS: Plan[] = [
   {
     lookupKey: "pro_monthly",
     name: "Pro",
-    priceMonthlyUsd: 25,
+    priceMonthlyUsd: 29,
     limits: { messagesPerPeriod: 100_000, maxPages: 5 },
+  },
+  {
+    lookupKey: "business_monthly",
+    name: "Business",
+    priceMonthlyUsd: 60,
+    limits: { messagesPerPeriod: 250_000, maxPages: 12 },
   },
 ]
 
