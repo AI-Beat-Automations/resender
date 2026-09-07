@@ -16,9 +16,9 @@ export const en: Dict = {
   },
 
   hero: {
-    eyebrow: "WhatsApp, Instagram and Facebook via API. Developer-first.",
-    title: "One webhook for",
-    titleAccent: "all your channels.",
+    eyebrow: "Instagram and Facebook via API.",
+    title: "One webhook for all your channels.",
+    titleAccent: "Developer-first.",
     subtitle:
       "Connect your channels, point your webhook and reply with a POST.",
     ctaPrimary: "Get started",
