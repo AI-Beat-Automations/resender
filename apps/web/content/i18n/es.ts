@@ -18,23 +18,24 @@ export const es: Dict = {
   },
 
   hero: {
-    eyebrow: "recibe y responde mensajes de Facebook por API",
-    title: "La API relay para mensajes de Facebook.",
-    titleAccent: "Developer-first.",
-    subtitle:
-      "Conecta tu página, apunta tu webhook y responde con un POST. Sin builders visuales ni features que no usas.",
+    eyebrow: "WhatsApp, Instagram y Facebook por API. Developer-first.",
+    title: "Un solo webhook para",
+    titleAccent: "todos tus canales.",
+    subtitle: "Conecta tus canales, apunta tu webhook y responde con un POST.",
     ctaPrimary: "Empieza",
     ctaSecondary: "Ver cómo funciona",
   },
 
   flowMock: {
-    live: "message-flow · en vivo",
-    in: { meta: "Facebook · 14:02", text: "Hola, ¿tienen turno para hoy?" },
-    hook: {
-      meta: "tu servidor",
-      text: "Tu automatización recibe el mensaje y genera la respuesta",
+    in: {
+      meta: "Mensaje entrante · 14:02",
+      text: "Hola, ¿tienen turno para hoy?",
     },
-    out: { meta: "POST · 14:02", text: "¡Sí! Te espero hoy a las 15:00 👍" },
+    hook: { text: "Resender procesa" },
+    out: {
+      meta: "Tu automatización · 14:02",
+      text: "¡Sí! Te espero hoy a las 15:00 👍",
+    },
   },
 
   // Sección "El dolor de siempre": un marquee de preguntas/quejas reales que se
@@ -563,7 +564,7 @@ export const es: Dict = {
 
   footer: {
     tagline:
-      "La API relay para mensajes de Facebook. Simple y developer-first.",
+      "Un solo webhook para todos tus canales. Simple y developer-first.",
     columns: { product: "Producto", legal: "Legal", contact: "Contacto" },
     links: {
       pricing: "Precios",
@@ -578,12 +579,12 @@ export const es: Dict = {
 
   meta: {
     home: {
-      title: "Resender — La API relay para mensajes de Facebook",
+      title: "Resender — Un solo webhook para todos tus canales",
       description:
-        "La alternativa developer-first a ManyChat. Recibe mensajes de Facebook en tu webhook y responde por API. Simple y sin features que no usas.",
-      ogTitle: "Resender — La API relay para mensajes de Facebook",
+        "WhatsApp, Instagram y Facebook por API. Conecta tus canales, apunta tu webhook y responde con un POST. La alternativa developer-first a ManyChat.",
+      ogTitle: "Resender — Un solo webhook para todos tus canales",
       ogDescription:
-        "Recibe mensajes de Facebook en tu webhook y responde por API. Simple y developer-first.",
+        "WhatsApp, Instagram y Facebook por API. Conecta tus canales, apunta tu webhook y responde con un POST. Developer-first.",
     },
     pricing: {
       title: "Precios y planes desde $15 por mes",
@@ -607,10 +608,10 @@ export const es: Dict = {
 
   llms: {
     summary:
-      "La API relay para mensajes de Facebook. Conectas tu página, apuntas tu webhook y respondes con un POST — sin builders visuales ni features que no usas. Alternativa developer-first a ManyChat, desde $15/mes. Operado por Lorna Suriano Hernandez.",
+      "Un solo webhook para todos tus canales. Recibes en tu webhook los mensajes de WhatsApp, Instagram y Facebook y respondes con un POST — sin builders visuales ni features que no usas. Alternativa developer-first a ManyChat, desde $15/mes. Operado por Lorna Suriano Hernandez.",
     context: [
-      "Resender resuelve un problema puntual: recibir en tu propio servidor los mensajes que llegan a una página de Facebook (Messenger) y responderlos por API. La lógica corre donde tú quieras — n8n, Make, Zapier, un agente de IA o tu propio backend — y Resender se encarga solo del transporte hacia y desde Facebook.",
-      "Cómo funciona: conectas tu página con Facebook Login, configuras una URL HTTPS por página, cada mensaje entrante llega a ese endpoint como JSON, y respondes con un POST a la API de salida de Resender. Los permisos de Messenger ya están aprobados, así que no pasas por un review de app propio.",
+      "Resender resuelve un problema puntual: recibir en tu propio servidor, por un solo webhook, los mensajes que llegan a tus canales de Meta (WhatsApp, Instagram y Facebook Messenger) y responderlos por API. La lógica corre donde tú quieras — n8n, Make, Zapier, un agente de IA o tu propio backend — y Resender se encarga solo del transporte hacia y desde cada canal.",
+      "Cómo funciona: conectas tus canales con Facebook Login, configuras una URL HTTPS por conexión, cada mensaje entrante llega a ese endpoint como JSON, y respondes con un POST a la API de salida de Resender. Los permisos de Messenger ya están aprobados, así que no pasas por un review de app propio.",
       "Qué NO es: Resender no tiene builder visual de flujos, difusiones, plantillas ni analítica de engagement. Si necesitas eso, ManyChat es la mejor opción y así lo decimos en la comparativa.",
       "Precios: Starter $15/mes (50.000 mensajes, 2 conexiones) y Pro $25/mes (100.000 mensajes, 5 conexiones). Se cobra por mensaje procesado en cualquier dirección, no por contacto alcanzado. Los reintentos por webhook caído no se cobran. Sin contratos: es mes a mes.",
       "El sitio está en español en la raíz y en inglés bajo /en. Las páginas legales existen solo en español.",

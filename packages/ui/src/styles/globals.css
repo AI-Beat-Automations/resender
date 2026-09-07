@@ -695,9 +695,10 @@ pre[data-theme] span {
     steps(var(--typewriter-chars, 20)) both;
 }
 
-/* FlowMock: animaciones de la secuencia (burbujas, nodo, conectores).
-   Se disparan con `animation-delay` por elemento; el contenedor se remonta por
-   ciclo para reproducirlas en loop. `both` mantiene el estado inicial/final. */
+/* FlowMock (hero): animaciones de la secuencia (burbujas, nodo, conectores).
+   Se disparan con `animation-delay` por elemento una sola vez al entrar en
+   viewport; `both` mantiene el estado inicial/final. Los tiempos viven en
+   features/marketing/ui/flow-mock.tsx. */
 @keyframes msg-pop {
   from {
     opacity: 0;

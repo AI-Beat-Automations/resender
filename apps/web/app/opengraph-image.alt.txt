@@ -1,1 +1,1 @@
-Resender — La API relay para mensajes de Facebook. Developer-first.
+Resender — Un solo webhook para todos tus canales. Developer-first.

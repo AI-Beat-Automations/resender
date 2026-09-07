@@ -21,8 +21,16 @@ const fontMono = Space_Mono({
 const fontHeading = localFont({
   variable: "--font-hk",
   src: [
-    { path: "./fonts/HKGroteskPro-Medium.woff2", weight: "500", style: "normal" },
-    { path: "./fonts/HKGroteskPro-SemiBold.woff2", weight: "600", style: "normal" },
+    {
+      path: "./fonts/HKGroteskPro-Medium.woff2",
+      weight: "500",
+      style: "normal",
+    },
+    {
+      path: "./fonts/HKGroteskPro-SemiBold.woff2",
+      weight: "600",
+      style: "normal",
+    },
     { path: "./fonts/HKGroteskPro-Bold.woff2", weight: "700", style: "normal" },
   ],
 })
@@ -36,11 +44,11 @@ const fontHeading = localFont({
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: `${SITE_NAME} — La API relay para mensajes de Facebook`,
+    default: `${SITE_NAME} — Un solo webhook para todos tus canales`,
     template: `%s — ${SITE_NAME}`,
   },
   description:
-    "Recibe mensajes de Facebook en tu webhook y responde por API. La alternativa developer-first a ManyChat, desde $15/mes.",
+    "WhatsApp, Instagram y Facebook por API. Conecta tus canales, apunta tu webhook y responde con un POST. La alternativa developer-first a ManyChat, desde $15/mes.",
   applicationName: SITE_NAME,
   authors: [{ name: SITE_LEGAL_NAME }],
   creator: SITE_LEGAL_NAME,
