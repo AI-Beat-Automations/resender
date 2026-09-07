@@ -103,6 +103,14 @@ export type Dict = {
     subtitle: string
     intro: string[]
     plans: Plan[]
+    // Banda «a medida» debajo de las cards: no es un plan con precio, es el
+    // camino de contacto para quien supera Business.
+    enterprise: {
+      title: string
+      // Lleva el marcador `{email}`: el componente lo reemplaza por el mailto
+      // de `SITE_CONTACT_EMAIL`, así el correo vive en un solo lugar.
+      description: string
+    }
   }
   comparison: {
     kicker: string
