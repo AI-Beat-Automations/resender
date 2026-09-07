@@ -44,7 +44,7 @@ export const PLANS: Plan[] = [
   {
     lookupKey: "business_monthly",
     name: "Business",
-    priceMonthlyUsd: 200,
+    priceMonthlyUsd: 199,
     limits: { messagesPerPeriod: 1_000_000, maxPages: 40 },
   },
 ]

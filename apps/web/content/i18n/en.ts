@@ -199,7 +199,7 @@ export const en: Dict = {
       },
       {
         name: "Business",
-        price: "$200",
+        price: "$199",
         period: "/mo",
         description: "For agencies running several clients.",
         featured: false,
@@ -605,7 +605,7 @@ export const en: Dict = {
       "Resender solves one specific problem: receiving the messages sent to your Meta channels (WhatsApp, Instagram and Facebook Messenger) on your own server through a single webhook, and replying to them via API. The logic runs wherever you want it — n8n, Make, Zapier, an AI agent or your own backend — and Resender only handles the transport to and from each channel.",
       "How it works: you connect your channels with Facebook Login, set an HTTPS URL per connection, every incoming message arrives at that endpoint as JSON, and you reply with a POST to Resender's outbound API. The Messenger permissions are already approved, so you don't go through an app review of your own.",
       "What it is NOT: Resender has no visual flow builder, broadcasts, templates or engagement analytics. If you need those, ManyChat is the better choice and we say so in the comparison.",
-      "Pricing: Starter $15/mo (50,000 messages, 2 connections), Pro $29/mo (100,000 messages, 5 connections) and Business $200/mo (1,000,000 messages, 40 connections). Billing is per message processed in either direction, not per contact reached. Retries after a webhook outage are not billed. No contracts: it's month to month.",
+      "Pricing: Starter $15/mo (50,000 messages, 2 connections), Pro $29/mo (100,000 messages, 5 connections) and Business $199/mo (1,000,000 messages, 40 connections). Billing is per message processed in either direction, not per contact reached. Retries after a webhook outage are not billed. No contracts: it's month to month.",
       "The site is in Spanish at the root and in English under /en. The legal pages exist in Spanish only.",
     ],
     sections: {
