@@ -180,12 +180,12 @@ export function FlowMock({ lang }: { lang: Locale }) {
           <div className="flex items-center gap-2">
             <span
               className={cn(
-                "size-2 rounded-full bg-primary",
+                "size-2 rounded-full bg-warning",
                 phase === "playing" &&
                   "animate-[connector-pulse_1.4s_ease-in-out_infinite]"
               )}
             />
-            <span className="font-mono text-[11px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">
+            <span className="font-mono text-[11px] font-semibold tracking-[0.08em] text-warning-text uppercase">
               {flowMock.hook.text}
             </span>
           </div>
