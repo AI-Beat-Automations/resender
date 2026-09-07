@@ -302,7 +302,7 @@ export const es: Dict = {
         },
         {
           q: "¿Cuánto más barato es Resender que ManyChat?",
-          a: "Resender arranca en $15/mes con 50.000 mensajes y 2 páginas. El plan Pro de ManyChat arranca en $39/mes y escala con la cantidad de contactos. La diferencia se agranda cuanto más volumen manejas, porque Resender cobra por mensajes y no por contactos.",
+          a: "Resender arranca en $15/mes con 50.000 mensajes y 2 conexiones. El plan Pro de ManyChat arranca en $39/mes y escala con la cantidad de contactos. La diferencia se agranda cuanto más volumen manejas, porque Resender cobra por mensajes y no por contactos.",
         },
         {
           q: "¿Puedo usar Resender con n8n como usaba ManyChat?",
