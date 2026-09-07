@@ -583,6 +583,10 @@
   .light {
     background-color: var(--background);
     color: var(--foreground);
+    /* Contexto de apilamiento propio: el patrón de grilla del sitio (`z-[-10]`,
+       fijo al viewport) se pinta encima de este fondo y debajo del contenido;
+       sin esto quedaría detrás del fondo opaco y desaparecería. */
+    isolation: isolate;
   }
   h1,
   h2,
