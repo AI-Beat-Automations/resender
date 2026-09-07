@@ -61,9 +61,8 @@ export type Dict = {
     ctaSecondary: string
   }
   flowMock: {
-    live: string
     in: { meta: string; text: string }
-    hook: { meta: string; text: string }
+    hook: { text: string }
     out: { meta: string; text: string }
   }
   pain: {
