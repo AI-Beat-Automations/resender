@@ -75,12 +75,12 @@ function Avatars({ phase, delay }: { phase: Phase; delay: number }) {
           className={cn(
             // Sin anillo ni relleno: los badges se solapan a ras, como en el mock.
             // `overflow-hidden` recorta el cuadrado de Instagram en círculo.
-            "relative inline-flex size-7 items-center justify-center overflow-hidden rounded-full",
+            "relative inline-flex size-6 items-center justify-center overflow-hidden rounded-full",
             i > 0 && "-ml-2"
           )}
           style={{ zIndex: CHANNELS.length - i, ...pop(delay + i * STAGGER) }}
         >
-          <Image src={c.src} alt={c.alt} width={28} height={28} />
+          <Image src={c.src} alt={c.alt} width={24} height={24} />
         </span>
       ))}
     </div>
