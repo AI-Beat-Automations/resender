@@ -246,16 +246,16 @@ export const en: AppDict = {
   },
 
   inbox: {
-    eyebrow: "inbox",
     title: "Inbox",
-    subtitle:
-      "A durable log of messages and comments. Replies go out through the external API; this screen is read-only.",
     tabs: { mensajes: "Messages", comentarios: "Comments" },
     tabsAria: "Inbox mode",
     filterAll: "All accounts",
-    conversationsHeading: "Conversations",
-    publicationsHeading: "Posts",
-    sortedByActivity: "Sorted by recent activity.",
+    accountPickerLabel: "Filter by account",
+    accountPickerSearch: "Search account…",
+    accountPickerEmpty: "No account matches.",
+    readOnlyFooter:
+      "Replies go out through the external API. This screen is read-only.",
+    readOnlyFooterCta: "See the send API",
     emptyConversations: "No conversations yet.",
     emptyConversationsFiltered: "No conversations for this filter.",
     emptyComments: "No comments yet.",
@@ -300,6 +300,8 @@ export const en: AppDict = {
     yesterday: "yesterday {time}",
     you: "You: ",
     noMessages: "No messages yet.",
+    direction: { inbound: "incoming", outbound: "reply" },
+    publicReply: "public reply",
     deliveryPrefix: "delivery: {status}",
     delivery: {
       accepted: "accepted",

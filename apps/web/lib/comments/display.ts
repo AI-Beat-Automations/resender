@@ -1,7 +1,7 @@
 import {
   formatDayLabel,
   formatLogTimestamp,
-  formatMessageMeta,
+  formatTime,
 } from "@/lib/inbox/log-format"
 
 import { fmt, type AppDict } from "@/content/i18n/app"
@@ -16,11 +16,21 @@ import type { PublicationComment, PublicationListItem } from "./read-model"
 // contacto es un PSID a secas; en un comentario Meta manda el @handle, así que
 // acá el autor sí se puede nombrar y el `igsid` queda de reserva.
 
+export type MediaKind = keyof AppDict["log"]["mediaNouns"]
+
 export type PublicationRowView = {
   /** `<connectedPageId>:<mediaId>`, la clave de `?media=`. */
   key: string
   /** El caption recortado, o `reel 17841400000000000` si no hay. */
   mediaLabel: string
+  /** `reel` · `publicación`: el sustantivo, para la píldora y el icono. */
+  mediaNoun: string
+  /** `reel · Blanqueamiento en 1 sesión` (mock `1i`), o `mediaLabel` sin caption. */
+  mediaTitle: string
+  /** Tipo normalizado del post, para elegir el icono del placeholder. */
+  mediaKind: MediaKind
+  /** `@cafe.rioja`, la cuenta a secas (mock `1i`). */
+  accountHandle: string
   /** URL pública del post en Instagram, null hasta que Graph la resuelva. */
   mediaPermalink: string | null
   /** `@cafe.rioja · ig_id 17841400000000000`. */
@@ -42,7 +52,7 @@ export type CommentBubbleView = {
   outbound: boolean
   failed: boolean
   text: string
-  /** `@juanpi · inbound · 14:02:11 · received`, con `· respondiendo a …`. */
+  /** `@juanpi · 14:02` · `respuesta pública · 14:10 · respondiendo a …`. */
   meta: string
   /** Error crudo del proveedor, solo en `failed`. */
   error: string | null
@@ -92,13 +102,15 @@ export function formatMediaLabel(
 ) {
   const caption = truncateCaption(publication.caption)
   if (caption) return caption
+  return `${t.log.mediaNouns[resolveMediaKind(publication.mediaProductType)]} ${publication.mediaId}`
+}
 
-  const key = publication.mediaProductType?.trim().toUpperCase() ?? ""
-  const nounKey =
-    key in MEDIA_NOUN_KEYS
-      ? MEDIA_NOUN_KEYS[key as keyof typeof MEDIA_NOUN_KEYS]
-      : "feed"
-  return `${t.log.mediaNouns[nounKey]} ${publication.mediaId}`
+/** `REELS` → `reels`, y cualquier cosa desconocida cae en `feed`. */
+export function resolveMediaKind(mediaProductType: string | null): MediaKind {
+  const key = mediaProductType?.trim().toUpperCase() ?? ""
+  return key in MEDIA_NOUN_KEYS
+    ? MEDIA_NOUN_KEYS[key as keyof typeof MEDIA_NOUN_KEYS]
+    : "feed"
 }
 
 function truncateCaption(caption: string | null | undefined) {
@@ -113,6 +125,15 @@ export function formatCommentCount(count: number, t: AppDict) {
   return count === 1
     ? t.log.commentCountOne
     : fmt(t.log.commentCountMany, { count })
+}
+
+/** `@cafe.rioja`, con caída al nombre si Graph no dio el handle. */
+export function formatAccountHandle(account: {
+  name: string
+  username: string | null
+}) {
+  const handle = account.username?.trim()
+  return handle ? `@${handle}` : account.name
 }
 
 /** `@cafe.rioja · ig_id 17841…`, igual que la tarjeta de Conexiones. */
@@ -154,12 +175,21 @@ export function toPublicationRowView(
   t: AppDict,
   media?: { permalink: string | null; caption: string | null }
 ): PublicationRowView {
+  const mediaKind = resolveMediaKind(publication.mediaProductType)
+  const mediaNoun = t.log.mediaNouns[mediaKind]
+  const mediaLabel = formatMediaLabel(
+    { ...publication, caption: media?.caption },
+    t
+  )
+  const caption = truncateCaption(media?.caption)
+
   return {
     key: formatPublicationKey(publication),
-    mediaLabel: formatMediaLabel(
-      { ...publication, caption: media?.caption },
-      t
-    ),
+    mediaLabel,
+    mediaNoun,
+    mediaTitle: caption ? `${mediaNoun} · ${caption}` : mediaLabel,
+    mediaKind,
+    accountHandle: formatAccountHandle(publication.account),
     mediaPermalink: media?.permalink ?? null,
     accountLabel: formatAccountLabel(publication.account),
     countLabel: formatCommentCount(publication.commentCount, t),
@@ -176,6 +206,10 @@ export function toPublicationRowView(
  * Instagram anida un solo nivel, así que en vez de dibujar el árbol se nombra
  * al padre en el metadato —si está en este hilo; si Meta lo borró, no se
  * inventa nada.
+ *
+ * El metadato sigue el mock `1i` (ADR 0018): el entrante lleva a su autor y
+ * la hora (`@juanpi · 14:02`); el propio dice `respuesta pública · 14:10`,
+ * porque el autor es siempre la cuenta y repetirlo no informa.
  */
 export function toCommentBubbleViews(
   comments: PublicationComment[],
@@ -199,13 +233,14 @@ export function toCommentBubbleViews(
     previousDay = dayLabel
     const failed = comment.status === "failed"
 
-    const author = formatCommentAuthorLabel(comment)
     const parentAuthor = comment.parentIgCommentId
       ? authorByCommentId.get(comment.parentIgCommentId)
       : undefined
     const meta = [
-      author,
-      formatMessageMeta(comment, t),
+      comment.direction === "outbound"
+        ? t.log.publicReply
+        : formatCommentAuthorLabel(comment),
+      formatTime(comment.createdAt, t),
       parentAuthor ? fmt(t.log.replyingTo, { author: parentAuthor }) : null,
     ]
       .filter(Boolean)

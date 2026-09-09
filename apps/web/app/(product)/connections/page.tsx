@@ -6,6 +6,7 @@ import {
   type ConnectedPageView,
 } from "@/features/connections/ui/connected-page-card"
 import { ConnectionsEmptyState } from "@/features/connections/ui/empty-state"
+import { ConsolePage } from "@/features/shell/ui/console-page"
 import {
   listTenantPagesCached,
   resolveChannelAccessCached,
@@ -81,9 +82,9 @@ export default async function ConnectionsPage({
 
   return (
     // Mock `1e`/`1f`: columna de 880px con 20px de ritmo vertical. El padding
-    // de página lo aporta el `main` del layout; los «Conectar…» viven en el
-    // header (slot `@header`) cuando hay cuentas.
-    <div className="flex max-w-[880px] flex-col gap-5">
+    // de página lo aporta `ConsolePage`; los «Conectar…» viven en el header
+    // (slot `@header`) cuando hay cuentas.
+    <ConsolePage className="flex max-w-[calc(880px+3rem)] flex-col gap-5">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
         <div>
           <h1 className="font-heading text-2xl font-bold tracking-[-0.02em]">
@@ -141,7 +142,7 @@ export default async function ConnectionsPage({
           />
         ))
       )}
-    </div>
+    </ConsolePage>
   )
 }
 

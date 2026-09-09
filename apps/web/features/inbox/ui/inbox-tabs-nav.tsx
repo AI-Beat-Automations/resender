@@ -7,11 +7,10 @@ import { cn } from "@workspace/ui/lib/utils"
 // Modo de Inbox como enlaces, no como `Tabs` de Radix (ADR 0005): el estado
 // vive en `?tab=`, así que la navegación tiene que ser recargable, compartible
 // y con botón atrás, y así la pantalla entera sigue siendo server component.
-// Es el mismo componente que las pestañas de Ajustes.
 //
-// Subrayado y no píldoras a propósito: debajo va el filtro por cuenta, que sí
-// son píldoras. Dos filas de píldoras idénticas no dejarían ver cuál cambia de
-// pantalla y cuál filtra la que ya estás viendo.
+// Píldoras (mock `1i`, ADR 0018): la activa se rellena con el primario. Van
+// sin contador a propósito: el modo que no está abierto no se consulta, y un
+// número pediría una lectura más solo para decorar.
 //
 // Pasa el filtro de cuenta pero NO la selección: al cambiar de modo se conserva
 // por qué cuenta estabas mirando y se cae en el elemento más reciente del modo
@@ -26,7 +25,7 @@ export function InboxTabsNav({
   t: AppDict
 }) {
   return (
-    <nav aria-label={t.inbox.tabsAria} className="mt-4 flex gap-1">
+    <nav aria-label={t.inbox.tabsAria} className="flex gap-1">
       {INBOX_TABS.map((tab) => {
         const isActive = tab === active
 
@@ -36,11 +35,10 @@ export function InboxTabsNav({
             href={inboxHref({ tab, pageId: accountId })}
             aria-current={isActive ? "page" : undefined}
             className={cn(
-              "relative rounded-md px-1.5 py-1 text-sm font-medium transition-colors",
-              "after:absolute after:inset-x-0 after:-bottom-0.5 after:h-0.5 after:bg-foreground after:opacity-0 after:transition-opacity",
+              "rounded-full px-2.5 py-1 text-[12.5px] transition-colors",
               isActive
-                ? "text-foreground after:opacity-100"
-                : "text-foreground/60 hover:text-foreground"
+                ? "bg-primary font-medium text-primary-foreground"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
             )}
           >
             {t.inbox.tabs[tab]}

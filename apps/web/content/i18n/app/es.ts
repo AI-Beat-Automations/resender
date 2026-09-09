@@ -248,16 +248,16 @@ export const es: AppDict = {
   },
 
   inbox: {
-    eyebrow: "inbox",
     title: "Inbox",
-    subtitle:
-      "Log durable de mensajes y comentarios. Las respuestas salen de la API externa; esta pantalla es de solo lectura.",
     tabs: { mensajes: "Mensajes", comentarios: "Comentarios" },
     tabsAria: "Modo de la bandeja",
     filterAll: "Todas las cuentas",
-    conversationsHeading: "Conversaciones",
-    publicationsHeading: "Publicaciones",
-    sortedByActivity: "Ordenadas por actividad reciente.",
+    accountPickerLabel: "Filtrar por cuenta",
+    accountPickerSearch: "Buscar cuenta…",
+    accountPickerEmpty: "Ninguna cuenta coincide.",
+    readOnlyFooter:
+      "Las respuestas salen por la API externa. Esta pantalla es de solo lectura.",
+    readOnlyFooterCta: "Ver la API de envío",
     emptyConversations: "Todavía no hay conversaciones.",
     emptyConversationsFiltered: "No hay conversaciones para este filtro.",
     emptyComments: "Todavía no hay comentarios.",
@@ -304,6 +304,8 @@ export const es: AppDict = {
     yesterday: "ayer {time}",
     you: "Tú: ",
     noMessages: "Todavía no hay mensajes.",
+    direction: { inbound: "entrante", outbound: "respuesta" },
+    publicReply: "respuesta pública",
     deliveryPrefix: "entrega: {status}",
     delivery: {
       accepted: "aceptado",

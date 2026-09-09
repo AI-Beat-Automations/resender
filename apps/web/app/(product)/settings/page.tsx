@@ -19,6 +19,7 @@ import {
   type SubscriptionView,
 } from "@/features/billing/ui/subscription-panel"
 import { LanguagePanel } from "@/features/settings/ui/language-panel"
+import { ConsolePage } from "@/features/shell/ui/console-page"
 import { SettingsTabsNav } from "@/features/settings/ui/settings-tabs-nav"
 import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
 import type { TenantEntitlement } from "@/lib/billing/entitlements"
@@ -51,7 +52,7 @@ export default async function SettingsPage({
   const tab = resolveSettingsTab(params.tab)
 
   return (
-    <div className="flex flex-col">
+    <ConsolePage className="flex flex-col">
       <header>
         <p className="font-mono text-[11px] tracking-[0.08em] text-[var(--text-subtle)]">
           {`// ${t.settings.eyebrow}`}
@@ -82,7 +83,7 @@ export default async function SettingsPage({
           <SubscriptionTab tenantId={session.user.id} t={t} />
         ) : null}
       </div>
-    </div>
+    </ConsolePage>
   )
 }
 

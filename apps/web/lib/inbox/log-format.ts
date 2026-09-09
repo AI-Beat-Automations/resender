@@ -8,7 +8,7 @@ import { fmt, type AppDict } from "@/content/i18n/app"
 // modo comentarios: `comments -> messages` sería una dependencia al revés, y
 // «inbox» es el concepto que hoy cubre a los dos.
 
-// Los cuatro formatos, cacheados por locale: construir un `Intl.DateTimeFormat`
+// Los tres formatos, cacheados por locale: construir un `Intl.DateTimeFormat`
 // por fila es caro, y el log dibuja cientos. La clave es el `intl` del
 // diccionario (`es-ES`, `en-US`), así que son dos entradas como mucho.
 const formats = new Map<string, ReturnType<typeof buildFormats>>()
@@ -18,11 +18,6 @@ function buildFormats(intl: string) {
     time: new Intl.DateTimeFormat(intl, {
       hour: "2-digit",
       minute: "2-digit",
-    }),
-    seconds: new Intl.DateTimeFormat(intl, {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
     }),
     day: new Intl.DateTimeFormat(intl, {
       day: "numeric",
@@ -62,22 +57,28 @@ export function formatDayLabel(value: Date, t: AppDict) {
 }
 
 /**
- * `outbound · 14:02:11 · sent`, el patrón del metadato de burbuja.
+ * `entrante · 14:01` · `respuesta · 14:02`, el patrón del metadato de burbuja
+ * (mock `1h`, ADR 0018).
  *
- * `direction` y `status` **no se traducen**: son los valores literales de las
- * columnas, y es lo que el usuario cita cuando pregunta por qué un mensaje no
- * salió. Lo único que depende del idioma es la hora.
+ * La dirección se traduce y el `status` interno ya no va: lo que el usuario
+ * necesita leer es si salió o no, y eso lo dice la entrega (`entrega: leído`,
+ * `entrega: no entregado`) que se añade detrás, más el estilo de la burbuja
+ * fallida. Los segundos se quedaron con el formato viejo: para correlacionar
+ * con logs está el id del mensaje, no la hora.
  */
 export function formatMessageMeta(
   entry: {
-    direction: string
-    status: string
+    direction: "inbound" | "outbound"
     createdAt: Date
   },
   t: AppDict
 ) {
-  const time = formatsFor(t.intl).seconds.format(entry.createdAt)
-  return `${entry.direction} · ${time} · ${entry.status}`
+  return `${t.log.direction[entry.direction]} · ${formatTime(entry.createdAt, t)}`
+}
+
+/** `14:02`, la hora suelta del metadato. */
+export function formatTime(value: Date, t: AppDict) {
+  return formatsFor(t.intl).time.format(value)
 }
 
 function daysBetween(value: Date, now: Date) {

@@ -224,15 +224,17 @@ export type AppDict = {
   }
 
   inbox: {
-    eyebrow: string
     title: string
-    subtitle: string
     tabs: Record<InboxTab, string>
     tabsAria: string
     filterAll: string
-    conversationsHeading: string
-    publicationsHeading: string
-    sortedByActivity: string
+    /** Combobox de cuenta (mock `1i`): aria del botón, placeholder y vacío. */
+    accountPickerLabel: string
+    accountPickerSearch: string
+    accountPickerEmpty: string
+    /** Franja al pie del hilo de mensajes (mock `1h`), con su enlace a docs. */
+    readOnlyFooter: string
+    readOnlyFooterCta: string
     emptyConversations: string
     emptyConversationsFiltered: string
     emptyComments: string
@@ -275,6 +277,10 @@ export type AppDict = {
     /** Prefijo del último mensaje propio en el renglón del log. */
     you: string
     noMessages: string
+    /** Dirección traducida en el metadato de burbuja (mock `1h`). */
+    direction: Record<"inbound" | "outbound", string>
+    /** Metadato del comentario propio: `respuesta pública · 09:10`. */
+    publicReply: string
     /** `{status}` */
     deliveryPrefix: string
     delivery: Record<DeliveryStatus, string>
