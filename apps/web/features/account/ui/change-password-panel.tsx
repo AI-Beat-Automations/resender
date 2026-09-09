@@ -50,7 +50,7 @@ export function ChangePasswordPanel() {
       <SettingsCardTitle>{t.passwordTitle}</SettingsCardTitle>
       {/* El cierre de sesión se avisa antes, no después: `changePasswordAction`
           termina en `signOut({ redirectTo: "/login?passwordChanged=1" })`. */}
-      <p className="mt-1 max-w-140 text-[13.5px]/[1.55] text-muted-foreground">
+      <p className="mt-1 text-[13.5px]/[1.55] text-muted-foreground">
         {t.passwordBody}
       </p>
       <form action={action} className="mt-4 max-w-140">

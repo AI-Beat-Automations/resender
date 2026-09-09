@@ -337,7 +337,7 @@ export const en: AppDict = {
       title: "Language",
       body: "The language of the console. It doesn't change the API's language or the language of Meta's emails.",
       label: "Console language",
-      es: "Español",
+      es: "Spanish",
       en: "English",
     },
   },

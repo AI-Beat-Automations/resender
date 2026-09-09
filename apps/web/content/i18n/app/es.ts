@@ -342,7 +342,7 @@ export const es: AppDict = {
       body: "El idioma de la consola. No cambia el idioma de la API ni el de los correos de Meta.",
       label: "Idioma de la consola",
       es: "Español",
-      en: "English",
+      en: "Inglés",
     },
   },
 

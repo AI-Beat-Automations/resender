@@ -26,7 +26,7 @@ export function CreateApiKeyForm() {
   return (
     <SettingsCard>
       <SettingsCardTitle>{t.createTitle}</SettingsCardTitle>
-      <p className="mt-1 max-w-150 text-[13.5px]/[1.55] text-muted-foreground">
+      <p className="mt-1 text-[13.5px]/[1.55] text-muted-foreground">
         {t.createBody}
       </p>
       <form action={action} className="mt-4 flex max-w-130 gap-2.5">
