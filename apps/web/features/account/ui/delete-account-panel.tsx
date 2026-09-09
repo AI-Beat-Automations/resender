@@ -62,7 +62,7 @@ export function DeleteAccountPanel({ email }: { email: string }) {
       <SettingsCardTitle className="text-[var(--danger-text)]">
         {t.deleteTitle}
       </SettingsCardTitle>
-      <p className="mt-1.5 max-w-160 text-[13.5px]/[1.6] text-muted-foreground">
+      <p className="mt-1.5 text-[13.5px]/[1.6] text-muted-foreground">
         {t.deleteBody}
       </p>
 

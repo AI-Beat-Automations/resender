@@ -12,6 +12,7 @@ import {
   type LucideIcon,
 } from "lucide-react"
 
+import { BrandLogo } from "@/components/brand-logo"
 import { SignOutForm } from "@/components/sign-out-form"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { useAppDict } from "@/content/i18n/app/provider"
@@ -54,17 +55,14 @@ export function AppSidebar({
 
   return (
     <aside className="flex h-svh w-[var(--sidebar-w)] shrink-0 flex-col border-r border-sidebar-border bg-sidebar px-3 pt-5 pb-3.5">
-      {/* Wordmark: `site-logo.tsx` es del sitio público (capitalizado, 18px,
-          `.dev` en bold) y no coincide con el del sidebar, así que va inline. */}
+      {/* Logotipo en imagen (negro en claro, blanco en oscuro); el `aria-label`
+          del Link es el texto accesible, las <img> van con alt vacío. */}
       <Link
         href="/connections"
         aria-label={t.home}
-        className="inline-flex items-baseline px-2.5 font-heading text-[17px] font-bold tracking-[-0.02em] text-foreground"
+        className="inline-flex px-2.5"
       >
-        resender
-        <span className="font-mono text-[14px] font-normal text-primary">
-          .dev
-        </span>
+        <BrandLogo height={24} />
       </Link>
 
       <nav className="mt-6 flex flex-col gap-0.5">
