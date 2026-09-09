@@ -1,3 +1,5 @@
+import type { ReactNode } from "react"
+
 import { Button } from "@workspace/ui/components/button"
 
 // Flujo de redirección: el botón solo navega al endpoint que arranca el OAuth de
@@ -8,12 +10,23 @@ import { Button } from "@workspace/ui/components/button"
 // (ADR 0005): re-autorizar y conectar por primera vez son el mismo camino.
 export function ConnectFacebookButton({
   label = "Conectar Facebook",
+  variant = "default",
+  size = "lg",
+  icon,
+  className,
 }: {
   label?: string
+  variant?: "default" | "outline"
+  size?: "default" | "lg"
+  icon?: ReactNode
+  className?: string
 }) {
   return (
-    <Button asChild size="lg">
-      <a href="/api/meta/start">{label}</a>
+    <Button asChild size={size} variant={variant} className={className}>
+      <a href="/api/meta/start">
+        {icon}
+        {label}
+      </a>
     </Button>
   )
 }

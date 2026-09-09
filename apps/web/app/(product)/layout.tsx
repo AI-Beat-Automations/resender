@@ -21,7 +21,12 @@ export const metadata = privatePageMetadata("Resender")
 
 export default async function ProductLayout({
   children,
-}: Readonly<{ children: React.ReactNode }>) {
+  header,
+}: Readonly<{
+  children: React.ReactNode
+  /** Slot paralelo `@header`: breadcrumb y acciones de cada ruta. */
+  header: React.ReactNode
+}>) {
   const session = await getSession()
   if (!session?.user?.id) redirect("/login")
   // El idioma se resuelve una sola vez por petición y baja por contexto: los
@@ -65,14 +70,17 @@ export default async function ProductLayout({
           email={session.user.email}
           signOutAction={signOutAction}
         />
-        <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">
-          {/* La franja de cuota va dentro del `main`, al ancho de la columna. */}
-          <QuotaNoticeBar notice={notice} t={t} />
-          {/* PADDING DEL LAYOUT: el contenedor aporta 36px horizontales, 28px
-            arriba y 32px abajo (spec C.7). Cada pantalla dibuja su cabecera y
-            su cuerpo sin repetir estos paddings; solo el espacio entre ambos
-            (24px) corre por su cuenta. */}
-          <div className="px-9 pt-7 pb-8">{children}</div>
+        <main className="flex min-w-0 flex-1 flex-col">
+          {/* Header de 52px (mock `1e`): breadcrumb + acciones de la ruta. */}
+          {header}
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+            {/* La franja de cuota va debajo del header, al ancho de la columna. */}
+            <QuotaNoticeBar notice={notice} t={t} />
+            {/* PADDING DEL LAYOUT (mock): 24px horizontales, 28px arriba y 32px
+              abajo. Cada pantalla dibuja su cabecera y su cuerpo sin repetir
+              estos paddings y acota su propio ancho máximo. */}
+            <div className="px-6 pt-7 pb-8">{children}</div>
+          </div>
         </main>
       </AppI18nProvider>
     </div>

@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { LoaderCircle } from "lucide-react"
+import { LoaderCircle, Plus } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { usePostHog } from "posthog-js/react"
 
@@ -106,7 +106,18 @@ const PAIRING_TIMEOUT_MS = 4_000
 // muerto y un `state_mismatch` gratis, así que se renueva antes de que expire.
 const NONCE_REFRESH_MS = 8 * 60 * 1_000
 
-export function ConnectWhatsAppButton() {
+// Tres encajes para el mismo launcher: `stack` (botón primario con la
+// descripción debajo), `card` (outline a todo el ancho dentro de la tarjeta de
+// canal del vacío) y `header` (outline compacto con «+» en el header; lo que
+// haya que decir se despliega en un panel bajo el botón, porque el header mide
+// 52px y no crece).
+export type ConnectWhatsAppLayout = "stack" | "card" | "header"
+
+export function ConnectWhatsAppButton({
+  layout = "stack",
+}: {
+  layout?: ConnectWhatsAppLayout
+} = {}) {
   const posthog = usePostHog()
   const router = useRouter()
 
@@ -456,10 +467,29 @@ export function ConnectWhatsAppButton() {
     // —el onboarding es este popup— y no puede haber dos launchers armados a la
     // vez, porque el nonce vive en una cookie única por navegador y el segundo
     // pisaría al primero.
-    <div id="conectar-whatsapp" className="flex flex-col items-start gap-4">
-      <div className="flex flex-col items-start gap-1.5">
+    <div
+      id="conectar-whatsapp"
+      className={
+        layout === "header"
+          ? "relative"
+          : layout === "card"
+            ? "flex flex-col gap-3"
+            : "flex flex-col items-start gap-4"
+      }
+    >
+      <div
+        className={
+          layout === "header"
+            ? "flex"
+            : layout === "card"
+              ? "flex flex-col gap-1.5"
+              : "flex flex-col items-start gap-1.5"
+        }
+      >
         <Button
-          size="lg"
+          size={layout === "header" ? "default" : "lg"}
+          variant={layout === "stack" ? "default" : "outline"}
+          className={layout === "card" ? "h-[34px] w-full" : undefined}
           onClick={launch}
           disabled={disabled}
           // Un botón deshabilitado sin explicación es indistinguible de uno
@@ -467,35 +497,73 @@ export function ConnectWhatsAppButton() {
           title={
             configError ?? (sdkReady ? undefined : t.whatsappSignup.preparing)
           }
-          aria-describedby="whatsapp-entry-description"
+          aria-describedby={
+            layout === "stack" ? "whatsapp-entry-description" : undefined
+          }
         >
-          {submitting && (
+          {submitting ? (
             <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
-          )}
+          ) : layout === "header" ? (
+            <Plus aria-hidden />
+          ) : null}
           {submitting ? t.whatsappSignup.connecting : t.whatsappSignup.connect}
         </Button>
-        <p
-          id="whatsapp-entry-description"
-          className="max-w-[420px] text-[12.5px]/[1.5] text-muted-foreground"
-        >
-          {t.whatsappSignup.description}
-        </p>
+        {layout === "stack" && (
+          <p
+            id="whatsapp-entry-description"
+            className="max-w-[420px] text-[12.5px]/[1.5] text-muted-foreground"
+          >
+            {t.whatsappSignup.description}
+          </p>
+        )}
         {/* La consecuencia concreta, ya con el modo real en la mano. Es la
             mitad que antes vivía en la descripción de cada botón y que con un
             solo punto de entrada no se puede decir de antemano sin confundir:
             hasta que la ventana no se cierra, no se sabe cuál de las dos toca. */}
-        {modeCaveat && (
+        {modeCaveat && layout !== "header" && (
           <p className="max-w-[420px] text-[12.5px]/[1.5] text-foreground">
             {modeCaveat}
           </p>
         )}
       </div>
 
+      {/* En el header no hay sitio debajo del botón: el PIN, el aviso del modo
+          y los errores se despliegan en un panel anclado bajo él. */}
+      {layout === "header" && (modeCaveat || pinRequired || message) && (
+        <div className="absolute top-full right-0 z-20 mt-2 flex w-[360px] flex-col gap-3 rounded-[10px] border border-border bg-popover p-3.5 text-left shadow-[var(--shadow-md)]">
+          {modeCaveat && (
+            <p className="text-[12.5px]/[1.5] text-foreground">{modeCaveat}</p>
+          )}
+          {pinRequired && (
+            <div className="grid gap-1.5">
+              <Label htmlFor="whatsapp-pin">{t.whatsappSignup.pinLabel}</Label>
+              <Input
+                id="whatsapp-pin"
+                ref={pinInputRef}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                placeholder={t.whatsappSignup.pinPlaceholder}
+                className="font-mono"
+              />
+              <p className="text-[12px]/[1.5] text-muted-foreground">
+                {t.whatsappSignup.pinHint}
+              </p>
+            </div>
+          )}
+          {message && (
+            <p className="text-[12.5px]/[1.5] text-[var(--danger-text)]">
+              {message}
+            </p>
+          )}
+        </div>
+      )}
+
       {/* El 133005: el número ya tenía verificación en dos pasos con un PIN que
           no es el nuestro. Hay que relanzar el flujo entero —el `code` anterior
           ya se gastó—, así que el campo se queda montado y su valor viaja en el
           siguiente envío. */}
-      {pinRequired && (
+      {pinRequired && layout !== "header" && (
         <div className="grid w-full max-w-[320px] gap-1.5">
           <Label htmlFor="whatsapp-pin">{t.whatsappSignup.pinLabel}</Label>
           <Input
@@ -513,7 +581,7 @@ export function ConnectWhatsAppButton() {
         </div>
       )}
 
-      {message && (
+      {message && layout !== "header" && (
         <p className="max-w-[420px] text-[12.5px]/[1.5] text-[var(--danger-text)]">
           {message}
         </p>
