@@ -81,10 +81,11 @@ export default async function ConnectionsPage({
   const firstActiveId = sortedPages.find((page) => page.status === "active")?.id
 
   return (
-    // Mock `1e`/`1f`: columna de 880px con 20px de ritmo vertical. El padding
-    // de página lo aporta `ConsolePage`; los «Conectar…» viven en el header
-    // (slot `@header`) cuando hay cuentas.
-    <ConsolePage className="flex max-w-[calc(880px+3rem)] flex-col gap-5">
+    // Mock `1e`/`1f` con 20px de ritmo vertical, pero sin la columna de 880px
+    // del mock: la lista va de padding a padding para no dejar media pantalla
+    // vacía a la derecha. El padding de página lo aporta `ConsolePage`; los
+    // «Conectar…» viven en el header (slot `@header`) cuando hay cuentas.
+    <ConsolePage className="flex flex-col gap-5">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
         <div>
           <h1 className="font-heading text-2xl font-bold tracking-[-0.02em]">
