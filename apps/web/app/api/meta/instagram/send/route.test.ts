@@ -3,12 +3,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const mocks = vi.hoisted(() => ({
   allowApiKeyRequest: vi.fn(),
   authenticateApiKey: vi.fn(),
+  getActivePageWithTokenByConnectionId: vi.fn(),
+  getActivePageWithTokenForTenant: vi.fn(),
+  getConversationById: vi.fn(),
+  getOutboundMessageByIdempotencyKey: vi.fn(),
   getTenantEntitlement: vi.fn(),
   hasActiveSubscription: vi.fn(),
+  incrementUsage: vi.fn(),
+  insertOutboundMessage: vi.fn(),
   isUserWaitlisted: vi.fn(),
   log: vi.fn(),
+  markPageTokenInvalid: vi.fn(),
   resolveInstagramAccess: vi.fn(),
   sendInstagramTextMessage: vi.fn(),
+  upsertConversation: vi.fn(),
 }))
 
 vi.mock("@/lib/billing/entitlement-status", () => ({
@@ -34,6 +42,24 @@ vi.mock("@/lib/auth/waitlist", () => ({
 
 vi.mock("@/lib/billing/subscription", () => ({
   hasActiveSubscription: mocks.hasActiveSubscription,
+}))
+
+vi.mock("@/lib/billing/usage-counter", () => ({
+  incrementUsage: mocks.incrementUsage,
+}))
+
+vi.mock("@/lib/messages/message-log", () => ({
+  getConversationById: mocks.getConversationById,
+  getOutboundMessageByIdempotencyKey: mocks.getOutboundMessageByIdempotencyKey,
+  insertOutboundMessage: mocks.insertOutboundMessage,
+  upsertConversation: mocks.upsertConversation,
+}))
+
+vi.mock("@/lib/pages/page-registry", () => ({
+  getActivePageWithTokenByConnectionId:
+    mocks.getActivePageWithTokenByConnectionId,
+  getActivePageWithTokenForTenant: mocks.getActivePageWithTokenForTenant,
+  markPageTokenInvalid: mocks.markPageTokenInvalid,
 }))
 
 // El cliente de Graph entero: si el gate se cayera, este espía es el que lo
@@ -68,6 +94,25 @@ const sendRequest = (headers: Record<string, string> = {}) =>
     }),
   }) as unknown as NextRequest
 
+// Sin `pageId` ni `recipientId`: la forma de la ADR 0019.
+const sendByConversation = (body: Record<string, unknown>) =>
+  new Request("https://resender.test/api/meta/instagram/send", {
+    method: "POST",
+    headers: { authorization: "Bearer rk_test" },
+    body: JSON.stringify({ conversationId: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a", ...body }),
+  }) as unknown as NextRequest
+
+const instagramPage = {
+  page: {
+    id: "conn-ig",
+    tenantId: "tenant-1",
+    channel: "instagram",
+    metaPageId: "ig-1",
+    username: "cuenta",
+  },
+  pageAccessToken: "ig-token-1",
+}
+
 describe("POST /api/meta/instagram/send", () => {
   beforeEach(() => {
     for (const mock of Object.values(mocks)) mock.mockReset()
@@ -82,6 +127,21 @@ describe("POST /api/meta/instagram/send", () => {
     mocks.getTenantEntitlement.mockResolvedValue({
       block: null,
       periodStart: new Date("2026-08-01"),
+    })
+    mocks.getOutboundMessageByIdempotencyKey.mockResolvedValue(null)
+    mocks.insertOutboundMessage.mockImplementation(
+      async (input: { conversationId: string; status: string }) => ({
+        id: "msg-1",
+        conversationId: input.conversationId,
+        status: input.status,
+      })
+    )
+    mocks.sendInstagramTextMessage.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { recipient_id: "igsid-1", message_id: "mid-1" },
+      error: null,
+      reason: null,
     })
   })
 
@@ -203,5 +263,107 @@ describe("POST /api/meta/instagram/send", () => {
       error: "no active subscription",
     })
     expect(mocks.resolveInstagramAccess).not.toHaveBeenCalled()
+  })
+
+  // ADR 0019: con el `conversation.id` del push alcanza. El destinatario sale
+  // de la conversación y el token de la cuenta a la que pertenece.
+  it("sends with conversationId alone", async () => {
+    mocks.getConversationById.mockResolvedValue({
+      id: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a",
+      connectedPageId: "conn-ig",
+      contactId: "igsid-1",
+    })
+    mocks.getActivePageWithTokenByConnectionId.mockResolvedValue(instagramPage)
+
+    const response = await POST(sendByConversation({ reply: "hola" }))
+
+    expect(response.status).toBe(200)
+    expect(mocks.getActivePageWithTokenForTenant).not.toHaveBeenCalled()
+    expect(mocks.upsertConversation).not.toHaveBeenCalled()
+    expect(mocks.sendInstagramTextMessage).toHaveBeenCalledWith({
+      accessToken: "ig-token-1",
+      recipientId: "igsid-1",
+      text: "hola",
+    })
+    expect(mocks.insertOutboundMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a",
+        connectedPageId: "conn-ig",
+        contactId: "igsid-1",
+      })
+    )
+    const body = await response.json()
+    expect(body.resender).toEqual({
+      conversationId: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a",
+      messageId: "msg-1",
+      status: "sent",
+    })
+  })
+
+  // Una conversación de Messenger en la ruta de Instagram: 400 con código y
+  // la ruta correcta en el texto.
+  it("400s a conversation from another channel", async () => {
+    mocks.getConversationById.mockResolvedValue({
+      id: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a",
+      connectedPageId: "conn-fb",
+      contactId: "psid-1",
+    })
+    mocks.getActivePageWithTokenByConnectionId.mockResolvedValue({
+      page: {
+        id: "conn-fb",
+        tenantId: "tenant-1",
+        channel: "messenger",
+        metaPageId: "page-1",
+        username: null,
+      },
+      pageAccessToken: "page-token-1",
+    })
+
+    const response = await POST(sendByConversation({ reply: "hola" }))
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({
+      code: "conversation_channel_mismatch",
+      error: "conversation belongs to messenger; use /api/meta/send",
+    })
+    expect(mocks.sendInstagramTextMessage).not.toHaveBeenCalled()
+    expect(mocks.insertOutboundMessage).not.toHaveBeenCalled()
+  })
+
+  it("404s an unknown conversationId", async () => {
+    mocks.getConversationById.mockResolvedValue(null)
+
+    const response = await POST(sendByConversation({ reply: "hola" }))
+
+    expect(response.status).toBe(404)
+    await expect(response.json()).resolves.toEqual({
+      error: "conversation not found",
+    })
+    expect(mocks.sendInstagramTextMessage).not.toHaveBeenCalled()
+  })
+
+  // El par de siempre sigue igual: búsqueda por `meta_page_id` en el canal de
+  // Instagram y upsert de la conversación.
+  it("still sends with pageId and recipientId", async () => {
+    mocks.getActivePageWithTokenForTenant.mockResolvedValue(instagramPage)
+    mocks.upsertConversation.mockResolvedValue({
+      id: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a",
+      connectedPageId: "conn-ig",
+      contactId: "igsid-1",
+    })
+
+    const response = await POST(sendRequest())
+
+    expect(response.status).toBe(200)
+    expect(mocks.getActivePageWithTokenForTenant).toHaveBeenCalledWith(
+      "tenant-1",
+      "ig-1",
+      "instagram"
+    )
+    expect(mocks.sendInstagramTextMessage).toHaveBeenCalledWith({
+      accessToken: "ig-token-1",
+      recipientId: "igsid-1",
+      text: "hola",
+    })
   })
 })
