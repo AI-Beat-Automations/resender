@@ -15,10 +15,8 @@ import {
   isWindowOpen,
 } from "@/lib/messages/customer-service-window"
 import {
-  getConversationById,
   getOutboundMessageByIdempotencyKey,
   insertOutboundMessage,
-  upsertConversation,
   type MessageRecord,
 } from "@/lib/messages/message-log"
 import { describeError, log } from "@/lib/observability/logger"
@@ -26,9 +24,11 @@ import {
   outboundLogger,
   resolveRequestId,
 } from "@/lib/observability/outbound-log"
+import { resolveSendTarget } from "@/lib/outbound/resolve-send-target"
 import {
   getBearerToken,
   parseOutboundSendInput,
+  parseSendTarget,
 } from "@/lib/outbound/send-request"
 import {
   exceedsWhatsappTextLimit,
@@ -38,14 +38,12 @@ import {
   WHATSAPP_TEXT_MAX_CHARS,
   type WhatsappOutboundContent,
 } from "@/lib/outbound/whatsapp-send"
-import {
-  getActivePageWithTokenForTenant,
-  markPageTokenInvalid,
-} from "@/lib/pages/page-registry"
+import { markPageTokenInvalid } from "@/lib/pages/page-registry"
 import { captureDeferred } from "@/lib/posthog"
 
 // Envía un mensaje por WhatsApp: texto o un adjunto por URL, nunca ambos.
-// Body: { pageId, recipientId, conversationId? } + { reply } | { attachment }.
+// Body: { conversationId } | { pageId, recipientId, conversationId? }, más
+// { reply } | { attachment } (ADR 0019).
 //
 // **El body es el mismo que el de Messenger a propósito.** `pageId` es "la
 // cuenta conectada desde la que sale el mensaje" —acá el `phone_number_id` del
@@ -218,87 +216,57 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  // Un solo parser, el neutral de canal, que valida en dos niveles: primero el
-  // destino (`pageId`, `recipientId`, `conversationId`) y después el contenido
-  // (el XOR texto/adjunto, el tipo y la URL https). Los errores de contenido son
-  // los únicos que traen `code`, y eso es lo que permite **diferirlos** hasta el
-  // paso 9 sin duplicar el parser: si vino un `code`, el destino ya pasó su
-  // validación y se puede leer del body para aplicarle los gates 6, 7 y 8.
+  // El parser común valida en dos niveles y acá se llaman por separado: primero
+  // el destino (`conversationId`, o `pageId` + `recipientId`) y recién en el
+  // paso 9 el contenido (el XOR texto/adjunto, el tipo y la URL https). Es lo
+  // que permite **diferir** los errores de contenido hasta después de los gates
+  // 6 y 7.
   //
   // Diferirlos no es cosmético: un adjunto con URL `http:` mandado a una ventana
   // cerrada tiene que contestar 409 y no 400. La causa de más arriba es la que
   // el cliente necesita ver, porque arreglar la URL no le va a servir de nada
   // hasta que el contacto escriba.
-  const input = parseOutboundSendInput(body)
-  if (!input.ok && !input.code) {
+  const target = parseSendTarget(body)
+  if (!target.ok) {
     return trace.drop(
       "invalid_request",
-      Response.json({ error: input.error }, { status: 400 })
-    )
-  }
-  const target = input.ok ? input.value : readSendTarget(body)
-
-  // ---- 6. La cuenta conectada ---------------------------------------------
-  // El canal va explícito: `meta_page_id` es único por `(channel, meta_page_id)`
-  // desde la 0013, así que buscar sin canal puede traer la fila de otro.
-  const connectedPage = await getActivePageWithTokenForTenant(
-    apiKey.tenantId,
-    target.pageId,
-    "whatsapp"
-  )
-  if (!connectedPage) {
-    return trace.drop(
-      "page_not_connected",
       Response.json(
-        { error: "WhatsApp number is not connected for this tenant" },
-        { status: 404 }
+        { ...(target.code ? { code: target.code } : {}), error: target.error },
+        { status: 400 }
       ),
-      { errorMessage: `phoneNumberId=${target.pageId}` }
+      { ...(target.code ? { errorCode: target.code } : {}) }
     )
   }
-  trace.setAccount(connectedPage.page)
 
-  // ---- 7. La conversación -------------------------------------------------
-  let conversation = target.conversationId
-    ? await getConversationById(apiKey.tenantId, target.conversationId)
-    : null
-
-  if (target.conversationId) {
-    if (
-      !conversation ||
-      conversation.connectedPageId !== connectedPage.page.id ||
-      conversation.contactId !== target.recipientId
-    ) {
-      return trace.drop(
-        "invalid_request",
-        Response.json(
-          { error: "conversationId does not match pageId and recipientId" },
-          { status: 400 }
-        )
-      )
-    }
-  } else {
-    // Sin `message`, así que este upsert **no** mueve `last_inbound_at`: un
-    // saliente nuestro no abre la ventana. La fila que nace acá para un contacto
-    // nuevo tiene `last_inbound_at` null y por lo tanto la ventana cerrada, que
-    // es exactamente la semántica de WhatsApp: al primer contacto no se le
-    // escribe sin plantilla. La conversación queda creada aunque el envío se
-    // rechace en el gate siguiente, y está bien: es la misma fila que se va a
-    // reusar cuando la persona escriba.
-    conversation = await upsertConversation({
-      tenantId: apiKey.tenantId,
-      connectedPageId: connectedPage.page.id,
-      contactId: target.recipientId,
-      lastMessageAt: new Date(),
-    })
-  }
-
-  if (!conversation) {
+  // ---- 6 y 7. La cuenta conectada y la conversación ----------------------
+  // Dos formas de destino (ADR 0019): `conversationId` solo, o `pageId` +
+  // `recipientId`. El resolvedor devuelve la cuenta, su token y la conversación
+  // en las dos, y ya trae armados el status, el `code` y la razón del log.
+  const resolved = await resolveSendTarget({
+    tenantId: apiKey.tenantId,
+    channel: "whatsapp",
+    target: target.value,
+  })
+  if (!resolved.ok) {
     return trace.drop(
-      "invalid_request",
-      Response.json({ error: "conversation not found" }, { status: 400 })
+      resolved.reason,
+      Response.json(
+        {
+          ...(resolved.code ? { code: resolved.code } : {}),
+          error: resolved.error,
+        },
+        { status: resolved.status }
+      ),
+      {
+        ...(resolved.code ? { errorCode: resolved.code } : {}),
+        ...(resolved.errorMessage
+          ? { errorMessage: resolved.errorMessage }
+          : {}),
+      }
     )
   }
+  const { page, pageAccessToken, conversation } = resolved.value
+  trace.setAccount(page)
 
   // ---- 8. La ventana de atención de 24 h ----------------------------------
   // **Sin llamar a Cloud API.** Con la ventana cerrada Meta rechazaría con un
@@ -325,9 +293,10 @@ export async function POST(request: NextRequest) {
   }
 
   // ---- 9. El contenido ----------------------------------------------------
-  // Recién acá se contestan los errores de contenido que el parser difirió, y
-  // acá se valida el largo del texto. Antes de llamar a Meta, no después: el
-  // rechazo de Cloud API por pasarse no dice cuánto sobró.
+  // Recién acá se mira el contenido que se difirió arriba, y acá se valida el
+  // largo del texto. Antes de llamar a Meta, no después: el rechazo de Cloud
+  // API por pasarse no dice cuánto sobró.
+  const input = parseOutboundSendInput(body)
   if (!input.ok) {
     return trace.drop(
       "invalid_request",
@@ -360,11 +329,11 @@ export async function POST(request: NextRequest) {
 
   const sentAt = new Date()
   const metaResult = await sendWhatsappOutboundMessage({
-    accessToken: connectedPage.pageAccessToken,
+    accessToken: pageAccessToken,
     // En WhatsApp `meta_page_id` guarda el `phone_number_id`, que es el id del
     // path de Cloud API: el `pageId` público y el del envío son el mismo valor.
-    phoneNumberId: connectedPage.page.metaPageId,
-    to: target.recipientId,
+    phoneNumberId: page.metaPageId,
+    to: conversation.contactId,
     content,
   })
   const metaDurationMs = Date.now() - sentAt.getTime()
@@ -373,7 +342,7 @@ export async function POST(request: NextRequest) {
     try {
       await markPageTokenInvalid({
         tenantId: apiKey.tenantId,
-        connectionId: connectedPage.page.id,
+        connectionId: page.id,
         error:
           metaResult.error ??
           "Meta rejected the WhatsApp token. Reconnect the number in Resender.",
@@ -386,9 +355,9 @@ export async function POST(request: NextRequest) {
         reason: "internal_error",
         requestId,
         tenantId: apiKey.tenantId,
-        connectionId: connectedPage.page.id,
+        connectionId: page.id,
         channel: "whatsapp",
-        accountId: connectedPage.page.metaPageId,
+        accountId: page.metaPageId,
         errorMessage: describeError(error),
       })
     }
@@ -407,8 +376,8 @@ export async function POST(request: NextRequest) {
     message = await insertOutboundMessage({
       tenantId: apiKey.tenantId,
       conversationId: conversation.id,
-      connectedPageId: connectedPage.page.id,
-      contactId: target.recipientId,
+      connectedPageId: page.id,
+      contactId: conversation.contactId,
       text: input.value.reply ?? "",
       status: metaResult.ok ? "sent" : "failed",
       metaMessageId: wamid,
@@ -446,7 +415,7 @@ export async function POST(request: NextRequest) {
   const traceFields = {
     subjectId: message.id,
     providerId: wamid ?? undefined,
-    contactId: target.recipientId,
+    contactId: conversation.contactId,
     textLength: input.value.reply?.length ?? 0,
     status: metaResult.status,
     durationMs: metaDurationMs,
@@ -476,7 +445,7 @@ export async function POST(request: NextRequest) {
         requestId,
         tenantId: apiKey.tenantId,
         channel: "whatsapp",
-        accountId: connectedPage.page.metaPageId,
+        accountId: page.metaPageId,
         errorMessage: describeError(error),
       })
     }
@@ -488,7 +457,7 @@ export async function POST(request: NextRequest) {
     properties: {
       message_id: message.id,
       conversation_id: conversation.id,
-      page_id: target.pageId,
+      page_id: page.metaPageId,
       channel: "whatsapp",
       status: message.status,
       meta_ok: metaResult.ok,
@@ -512,24 +481,6 @@ export async function POST(request: NextRequest) {
     },
     { status: metaResult.status }
   )
-}
-
-// Sólo es alcanzable cuando el parser falló con un `code`, y para eso ya tuvo
-// que haber validado los tres campos de destino: es una lectura, no una segunda
-// validación. Si el parser cambiara de orden y empezara a devolver códigos
-// antes de mirar el destino, los gates 6 y 7 se encargarían igual —una cuenta
-// inexistente da 404 y una conversación que no coincide da 400—.
-function readSendTarget(body: object) {
-  const { pageId, recipientId, conversationId } = body as Record<
-    string,
-    unknown
-  >
-  return {
-    pageId: typeof pageId === "string" ? pageId.trim() : "",
-    recipientId: typeof recipientId === "string" ? recipientId.trim() : "",
-    conversationId:
-      typeof conversationId === "string" ? conversationId.trim() : undefined,
-  }
 }
 
 function idempotentReplayResponse(message: MessageRecord) {

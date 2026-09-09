@@ -8,6 +8,8 @@ import { getDictionary, type Locale } from "@/content/i18n"
 // Snippets reales del endpoint de salida (ver app/api/meta/send y /docs).
 // Placeholders obvios, nunca secretos reales. Lo único que varía por idioma es
 // el texto de ejemplo del campo `reply`; el resto son identificadores de la API.
+// Se responde con el `conversation.id` del webhook (ADR 0019): es lo único que
+// hay que copiar del push.
 function buildSnippets(reply: string) {
   return [
     {
@@ -18,8 +20,7 @@ function buildSnippets(reply: string) {
   -H "Authorization: Bearer pk_live_..." \\
   -H "Content-Type: application/json" \\
   -d '{
-    "pageId": "1029384756",
-    "recipientId": "6543210987",
+    "conversationId": "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a",
     "reply": "${reply}"
   }'`,
     },
@@ -34,8 +35,7 @@ function buildSnippets(reply: string) {
     "Content-Type": "application/json",
   },
   body: JSON.stringify({
-    pageId: "1029384756",
-    recipientId: "6543210987",
+    conversationId: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a",
     reply: "${reply}",
   }),
 })`,
@@ -50,8 +50,7 @@ requests.post(
     "https://resender.dev/api/meta/send",
     headers={"Authorization": f"Bearer {key}"},
     json={
-        "pageId": "1029384756",
-        "recipientId": "6543210987",
+        "conversationId": "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a",
         "reply": "${reply}",
     },
 )`,

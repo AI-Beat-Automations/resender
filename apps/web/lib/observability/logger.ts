@@ -116,6 +116,7 @@ export type LogReason =
   // salida hacia Meta
   | "meta_rejected"
   | "page_not_connected"
+  | "conversation_not_found" // ADR 0019: `conversationId` que el tenant no tiene
   | "comment_not_found"
   | "reply_too_long"
   // gates de las rutas salientes

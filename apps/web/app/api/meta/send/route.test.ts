@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   authenticateApiKey: vi.fn(),
+  getActivePageWithTokenByConnectionId: vi.fn(),
   getActivePageWithTokenForTenant: vi.fn(),
   getConversationById: vi.fn(),
   getOutboundMessageByIdempotencyKey: vi.fn(),
@@ -44,6 +45,8 @@ vi.mock("@/lib/messages/message-log", () => ({
 }))
 
 vi.mock("@/lib/pages/page-registry", () => ({
+  getActivePageWithTokenByConnectionId:
+    mocks.getActivePageWithTokenByConnectionId,
   getActivePageWithTokenForTenant: mocks.getActivePageWithTokenForTenant,
   markPageTokenInvalid: mocks.markPageTokenInvalid,
 }))
@@ -73,6 +76,14 @@ const sendRequest = (body: Record<string, unknown>) =>
     body: JSON.stringify({ pageId: "page-1", recipientId: "psid-1", ...body }),
   }) as unknown as NextRequest
 
+// Sin `pageId` ni `recipientId`: la forma de la ADR 0019.
+const sendByConversation = (body: Record<string, unknown>) =>
+  new Request("https://resender.test/api/meta/send", {
+    method: "POST",
+    headers: { authorization: "Bearer rk_test" },
+    body: JSON.stringify({ conversationId: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a", ...body }),
+  }) as unknown as NextRequest
+
 const attachment = {
   type: "image",
   url: "https://cdn.example.com/foto.png",
@@ -99,7 +110,7 @@ describe("POST /api/meta/send", () => {
       pageAccessToken: "page-token-1",
     })
     mocks.upsertConversation.mockResolvedValue({
-      id: "conv-1",
+      id: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a",
       connectedPageId: "conn-1",
       contactId: "psid-1",
     })
@@ -227,5 +238,100 @@ describe("POST /api/meta/send", () => {
     )
     const body = await response.json()
     expect(body.resender.status).toBe("sent")
+  })
+
+  // ADR 0019: con el `conversation.id` del push alcanza. La página sale por id
+  // de conexión, el destinatario de la conversación, y a Meta va lo mismo que
+  // con el par `pageId` + `recipientId`.
+  it("sends with conversationId alone", async () => {
+    mocks.getConversationById.mockResolvedValue({
+      id: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a",
+      connectedPageId: "conn-1",
+      contactId: "psid-1",
+    })
+    mocks.getActivePageWithTokenByConnectionId.mockResolvedValue({
+      page: {
+        id: "conn-1",
+        tenantId: "tenant-1",
+        channel: "messenger",
+        metaPageId: "page-1",
+        username: null,
+      },
+      pageAccessToken: "page-token-1",
+    })
+
+    const response = await POST(sendByConversation({ reply: "hola" }))
+
+    expect(response.status).toBe(200)
+    expect(mocks.getConversationById).toHaveBeenCalledWith("tenant-1", "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a")
+    expect(mocks.getActivePageWithTokenByConnectionId).toHaveBeenCalledWith(
+      "tenant-1",
+      "conn-1"
+    )
+    expect(mocks.getActivePageWithTokenForTenant).not.toHaveBeenCalled()
+    expect(mocks.upsertConversation).not.toHaveBeenCalled()
+    expect(mocks.sendMetaMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pageId: "page-1",
+        pageAccessToken: "page-token-1",
+        recipientId: "psid-1",
+        message: { text: "hola" },
+      })
+    )
+    expect(mocks.insertOutboundMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a",
+        connectedPageId: "conn-1",
+        contactId: "psid-1",
+      })
+    )
+    const body = await response.json()
+    expect(body.resender).toEqual({
+      conversationId: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a",
+      messageId: "msg-1",
+      status: "sent",
+    })
+  })
+
+  // Una conversación de Instagram en la ruta de Messenger: 400 con código y
+  // la ruta correcta en el texto.
+  it("400s a conversation from another channel", async () => {
+    mocks.getConversationById.mockResolvedValue({
+      id: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a",
+      connectedPageId: "conn-ig",
+      contactId: "igsid-1",
+    })
+    mocks.getActivePageWithTokenByConnectionId.mockResolvedValue({
+      page: {
+        id: "conn-ig",
+        tenantId: "tenant-1",
+        channel: "instagram",
+        metaPageId: "ig-1",
+        username: "cuenta",
+      },
+      pageAccessToken: "ig-token-1",
+    })
+
+    const response = await POST(sendByConversation({ reply: "hola" }))
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({
+      code: "conversation_channel_mismatch",
+      error: "conversation belongs to instagram; use /api/meta/instagram/send",
+    })
+    expect(mocks.sendMetaMessage).not.toHaveBeenCalled()
+    expect(mocks.insertOutboundMessage).not.toHaveBeenCalled()
+  })
+
+  it("404s an unknown conversationId", async () => {
+    mocks.getConversationById.mockResolvedValue(null)
+
+    const response = await POST(sendByConversation({ reply: "hola" }))
+
+    expect(response.status).toBe(404)
+    await expect(response.json()).resolves.toEqual({
+      error: "conversation not found",
+    })
+    expect(mocks.sendMetaMessage).not.toHaveBeenCalled()
   })
 })

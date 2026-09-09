@@ -229,8 +229,7 @@ El `eventId` es determinista y sale del uuid del sujeto, así que el mismo event
 
 ### API externa de salida
 La API externa de salida usa API key opaca por header `Authorization: Bearer ...`.
-`POST /api/meta/send` recibe `pageId`, `recipientId`, y exactamente uno de `reply` (texto) o un [Adjunto de salida]. Puede recibir `conversationId` opcional para facilitar persistencia y auditoria del mensaje saliente.
-Si `conversationId` viene informado, debe coincidir con `pageId` y `recipientId`; si no coincide, la request se rechaza con `400`.
+`POST /api/meta/send` recibe exactamente uno de `reply` (texto) o un [Adjunto de salida], y acepta **dos formas** de destino: `conversationId` solo (el `conversation.id` del push; Resender resuelve página, token y contacto), o `pageId` + `recipientId` para iniciar una conversación. Si vienen los tres, deben coincidir o es `400`. Un `conversationId` desconocido para el tenant es `404`; uno que pertenece a otro canal que el de la ruta es `400`.
 Los mensajes salientes se persisten tanto en exito como en fallo, usando `status` para distinguir el resultado del envio.
 Instagram no agrega un campo `channel` al endpoint de Messenger: usa **rutas propias**, que son las de Facebook con `/instagram` insertado. En `apps/web`: `POST /api/meta/instagram/send` (DM, mismo body que Messenger, donde `pageId` es el IG id de la cuenta), `POST /api/meta/instagram/comments/reply` (respuesta pública) y `POST /api/meta/instagram/comments/private-reply` (DM al que comentó).
 El body de un DM de Instagram es el mismo que el de Messenger, pero un [Adjunto de salida] se rechaza: ese canal todavía no los acepta.
@@ -328,7 +327,7 @@ La pagina publica `/docs` documenta, en ingles y para developers externos, el fl
 - **Inbound message** = mensaje del cliente que Resender hace push al `webhookUrl` del developer (ver [Entrega de entrantes al sistema externo]). Tiene `direction: "inbound"`, `status: "received"`. NO se llama "response"/"respuesta".
 - **Reply** = respuesta del developer al cliente via `POST /api/meta/send` (ver [API externa de salida]). Es texto o un [Adjunto de salida], nunca los dos.
 Resuelto: en el spec original "respuesta" apuntaba al mensaje que llega al webhook; eso es un **inbound message**, no una response. La unica "response" es el **reply** que sale por el endpoint.
-Gotcha documentado: el campo `pageId` de `POST /api/meta/send` se matchea contra `meta_page_id`, asi que el developer debe pasar el `page.metaPageId` del payload entrante (no el `page.id` interno). `recipientId` = el `conversation.contactId` del payload entrante.
+Gotcha documentado: la forma recomendada de responder es `conversationId` (el `conversation.id` del payload entrante); el gotcha de `pageId` = `page.metaPageId` (no el `page.id` interno) sigue aplicando al modo de inicio, donde `recipientId` = el `conversation.contactId` del payload entrante.
 
 ### Borrado de cuenta (account deletion)
 "Delete account" en `Settings` borra **todo** el tenant (cuenta, paginas, conversaciones, mensajes, API keys); no hay borrado parcial en el MVP. Es inmediato y transaccional en produccion; los backups se purgan en ≤30 dias. Antes de borrar, se intenta best-effort dar de baja cada pagina activa del webhook de Meta. Requiere confirmacion destructiva (reescribir el email de la cuenta). Se implementa con FKs `on delete cascade` (migracion `0002`), que reemplazan el `on delete restrict` original. Cuidado: con cascade, borrar una fila de `connected_pages` arrastraria su historial; hoy nada borra paginas (ver [Desconexión de páginas], que es UPDATE no DELETE).
