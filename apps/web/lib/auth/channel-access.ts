@@ -2,11 +2,11 @@ import { getSql } from "@/lib/db"
 
 import type { PageChannel } from "@/lib/pages/page-registry"
 
-// Permiso por cuenta, canal por canal (ADR 0010). Instagram y WhatsApp están
-// implementados pero Meta todavía no concedió el Advanced Access de ninguno de
-// los dos, así que cada canal se abre para las cuentas que se aprueban a mano:
-//   update users set instagram_enabled = true where email = '...';
-//   update users set whatsapp_enabled  = true where email = '...';
+// Permiso por cuenta, canal por canal (ADR 0010). Desde la 0024 Instagram nace
+// abierto (`instagram_enabled` default true) y solo se cierra a mano; WhatsApp
+// sigue cerrado por defecto y se abre para las cuentas que se aprueban a mano:
+//   update users set instagram_enabled = false where email = '...';
+//   update users set whatsapp_enabled  = true  where email = '...';
 //
 // Son dos banderas y no una: son dos permisos distintos de Meta, se conceden
 // por separado y un tenant puede tener uno sin el otro.
@@ -36,7 +36,9 @@ export type ChannelAccess = Record<PageChannel, boolean>
 // Fail closed: una fila ausente —cuenta borrada con la sesión todavía viva— o
 // una bandera ilegible se tratan como "sin acceso", nunca como puerta abierta.
 // Es lo contrario del gate de la 0004, donde el `true` era el bloqueo: acá el
-// `true` es el permiso, así que el default de la columna ya es el cierre.
+// `true` es el permiso. Para WhatsApp el default de la columna es el cierre;
+// para Instagram el default es `true` desde la 0024 y solo la fila ausente
+// cierra.
 export function hasInstagramAccess(row: MaybeRow): boolean {
   return row?.instagram_enabled === true
 }

@@ -27,8 +27,9 @@ const RECOMMENDED_PLAN = "pro_monthly"
 // `(product)` a propósito: ese layout rebota aquí a los tenants sin
 // suscripción, así que esta página no puede estar envuelta por él.
 //
-// Los dos rebotes de abajo son el gate de acceso, que volvió a morder con la
-// 0019 (`users.waitlisted` nace otra vez en `true`). Se separan porque se
+// Los dos rebotes de abajo son el gate de acceso. Desde la 0024 ninguna
+// cuenta nace en `waitlisted = true`, así que solo muerde a cuentas cerradas a
+// mano por SQL. Se separan porque se
 // arreglan distinto: una sesión huérfana necesita volver a
 // autenticarse, y una cuenta en lista de espera necesita que alguien le levante
 // la bandera.

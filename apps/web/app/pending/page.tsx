@@ -25,8 +25,9 @@ import { Button } from "@workspace/ui/components/button"
 // acceso a la cookie de idioma.
 export const metadata = privatePageMetadata("Lista de espera")
 
-// Aterrizaje de la cuenta que acaba de registrarse con el gate encendido
-// (migración 0019: `users.waitlisted` vuelve a nacer en `true`). Es la pantalla
+// Aterrizaje de la cuenta bloqueada por el gate de acceso. Desde la 0024
+// ninguna cuenta nace en `waitlisted = true`, así que solo llega aquí una
+// cuenta cerrada a mano por SQL (la 0019 la había vuelto default). Es la pantalla
 // que la ADR 0007 había borrado, de vuelta en `/pending` porque `/waitlist` ya
 // es la lista de espera pública de captación: aquella pide un correo que esta
 // persona ya dio, así que mandarla ahí la dejaba pidiendo lo que ya tiene.
