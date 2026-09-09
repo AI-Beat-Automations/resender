@@ -26,8 +26,11 @@ export function ConnectionsEmptyState({
 
   return (
     <>
-      {/* Mock `1f`: tres tarjetas de canal en fila, CTA outline anclado abajo. */}
-      <div className="grid gap-3.5 sm:grid-cols-3">
+      {/* Mock `1f`: tarjetas de canal en fila, CTA outline anclado abajo. Las
+          columnas se auto-ajustan y no van fijas a tres: sin permiso de
+          Instagram/WhatsApp solo hay una tarjeta y debe ocupar todo el ancho,
+          no un tercio. */}
+      <div className="grid gap-3.5 sm:grid-cols-[repeat(auto-fit,minmax(240px,1fr))]">
         <ChannelCard
           channel="messenger"
           title={t.connections.empty.facebookTitle}
