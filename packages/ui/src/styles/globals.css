@@ -89,6 +89,7 @@
   --color-surface-app: var(--surface-app);
   --color-surface-sunken: var(--surface-sunken);
   --color-border-subtle: var(--border-subtle);
+  --color-border-faint: var(--border-faint);
   --color-border-strong: var(--border-strong);
   --color-bubble-in: var(--bubble-in);
   --color-bubble-in-border: var(--bubble-in-border);
@@ -364,6 +365,7 @@
 
   /* --- bordes --- */
   --border-subtle: #ececec;
+  --border-faint: #f0f0f0; /* divisores internos de tarjeta y de lista */
   --border-default: #e5e5e5;
   --border-strong: #d4d4d4;
   --border-accent: var(--violet-500);
@@ -489,6 +491,7 @@
   --text-inverse: #0a0a0a;
 
   --border-subtle: #1f1f1f;
+  --border-faint: #1f1f1f;
   --border-default: #262626;
   --border-strong: #404040;
   --border-accent: var(--violet-400);

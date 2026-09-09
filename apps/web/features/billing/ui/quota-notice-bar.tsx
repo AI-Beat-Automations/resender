@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { TriangleAlert } from "lucide-react"
 
 import { fmt, type AppDict } from "@/content/i18n/app"
 
@@ -61,10 +62,16 @@ export function QuotaNoticeBar({
     : "border-warning-soft-border bg-warning-soft text-warning-soft-foreground"
 
   return (
+    // Franja del mock `1e`: 10/24 de padding, 13px, icono de aviso y el CTA
+    // subrayado a la derecha.
     <div
-      className={`flex flex-col gap-1 border-b px-9 py-3 text-[13.5px] leading-[1.55] sm:flex-row sm:items-center sm:justify-between sm:gap-4 ${tone}`}
+      className={`flex flex-col gap-1 border-b px-6 py-2.5 text-[13px] leading-[1.5] sm:flex-row sm:items-center sm:gap-3 ${tone}`}
     >
-      <p>
+      <TriangleAlert
+        className="hidden size-[15px] shrink-0 sm:block"
+        aria-hidden
+      />
+      <p className="flex-1">
         <span className="font-semibold">
           {restricted ? t.quota.restrictedTitle : t.quota.warningTitle}
         </span>{" "}
@@ -97,7 +104,7 @@ export function QuotaNoticeBar({
 }
 
 const ctaClassName =
-  "font-medium whitespace-nowrap underline underline-offset-4"
+  "font-medium whitespace-nowrap underline underline-offset-[3px]"
 
 function formatCount(value: number | null, intl: string): string {
   if (value === null) return "—"

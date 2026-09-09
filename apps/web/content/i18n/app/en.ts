@@ -23,6 +23,7 @@ export const en: AppDict = {
     navInbox: "Inbox",
     navSettings: "Settings",
     navDocs: "Documentation",
+    breadcrumbConsole: "Console",
     theme: "theme",
     signOut: "Sign out",
   },
@@ -129,6 +130,7 @@ export const en: AppDict = {
     },
     connectedAccountsHeading: "CONNECTED ACCOUNTS",
     quota: "{activePageCount} of {maxPages} connections",
+    quotaActiveSuffix: "active connections",
     quotaUnresolved: "quota unresolved · write to info@resender.dev",
     noticeConnectedGeneric: "Connected: the authorization completed.",
     noticeInstagramNamed:
@@ -149,9 +151,9 @@ export const en: AppDict = {
         "Register a new number, or connect the one you already use in the WhatsApp Business App without giving it up on your phone. You can only reply within 24 hours of the customer's last message.",
       title: "No accounts connected yet.",
       body: "Once you authorize an account it shows up here, with its webhook and its status. Reconnecting refreshes the token and the metadata without duplicating accounts.",
-      step1: "1 · authorize the account",
-      step2: "2 · point your webhook",
-      step3: "3 · the first message arrives",
+      step1: "authorize the account",
+      step2: "point your webhook",
+      step3: "the first message arrives",
     },
   },
 
@@ -193,6 +195,7 @@ export const en: AppDict = {
       "Every POST carries the resender-signature, resender-event-id and resender-timestamp headers. Rotating invalidates the previous secret.",
     secretWithoutBody:
       "No signature yet: the receiver can't verify that the POST comes from Resender.",
+    secretMissingValue: "no secret yet",
     disconnectedOn: "Disconnected on {date}. ",
     disconnectedNoDate: "Disconnected. ",
     disconnectedHistoryKept:
@@ -217,6 +220,9 @@ export const en: AppDict = {
     planUnresolvedBody:
       "Write to info@resender.dev so we can review your subscription before you connect pages.",
     planHeading: "Your plan",
+    planUsageBefore: "You have ",
+    planUsageRange: "{activePageCount} of {maxPages}",
+    planUsageAfter: " connections.",
     planUsage: "You have {activePageCount} of {maxPages} connections.",
     allowanceOne: "You can add {count} more page.",
     allowanceMany: "You can add {count} more pages.",
