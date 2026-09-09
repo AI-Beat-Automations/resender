@@ -76,10 +76,9 @@ export default async function ProductLayout({
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
             {/* La franja de cuota va debajo del header, al ancho de la columna. */}
             <QuotaNoticeBar notice={notice} t={t} />
-            {/* PADDING DEL LAYOUT (mock): 24px horizontales, 28px arriba y 32px
-              abajo. Cada pantalla dibuja su cabecera y su cuerpo sin repetir
-              estos paddings y acota su propio ancho máximo. */}
-            <div className="px-6 pt-7 pb-8">{children}</div>
+            {/* El padding de página lo pone cada pantalla con `ConsolePage`:
+              Inbox va a sangre completa (ADR 0018) y el resto lo pide. */}
+            {children}
           </div>
         </main>
       </AppI18nProvider>

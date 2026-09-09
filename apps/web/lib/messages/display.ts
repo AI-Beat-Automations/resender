@@ -28,10 +28,14 @@ export type ConversationRowView = {
   id: string
   /** `@lori_surianno`, con caída a `psid <id>` si Graph no lo resolvió. */
   contactLabel: string
+  /** El contacto es un id crudo (PSID, teléfono): la fila lo pinta en mono. */
+  contactMono: boolean
   /** Nombre de perfil, cuando Graph lo dio y no es igual al @handle. */
   contactName: string | null
   /** `Café Rioja · 104233889761204`, o `@cafe.rioja · ig_id 178414…`. */
   pageLabel: string
+  /** `@cafe.rioja` · `Café Rioja` · `+52 55 1234 5678`: la cuenta a secas. */
+  accountLabel: string
   /** Canal de la cuenta conectada, para el badge de la fila. */
   channel: PageChannel
   /** `hoy 14:02`, `ayer 19:12`, `24 jul`, `24 jul 2025`. */
@@ -40,9 +44,15 @@ export type ConversationRowView = {
   timestampIso: string
   /** Renglón principal: el último mensaje, con `Tú: ` en los salientes. */
   content: string
+  /** `Tú: ` cuando el último mensaje es propio; la fila lo atenúa aparte. */
+  previewPrefix: string | null
+  /** El renglón sin el prefijo. */
+  previewText: string
   hasMessages: boolean
   /** El último mensaje es un saliente que Meta rechazó. */
   failed: boolean
+  /** `entrega: no entregado`, solo cuando `failed` (mock `1h`). */
+  failedLabel: string | null
 }
 
 export type ThreadReactionView = {
@@ -62,7 +72,7 @@ export type ThreadMessageView = {
   text: string
   /** Qué pintar por el adjunto (preview o fila); null si el mensaje no trae. */
   attachment: AttachmentDisplay | null
-  /** `outbound · 14:02:11 · sent`, con `· respuesta a comentario` si lo es. */
+  /** `respuesta · 14:02`, con `· respuesta a comentario` si lo es. */
   meta: string
   /** El saliente es la respuesta privada a un comentario de Instagram. */
   fromComment: boolean
@@ -71,7 +81,9 @@ export type ThreadMessageView = {
    * (`entrega: leído`). Es **otra cosa** que el `status` interno que va en
    * `meta`, y por eso va en su propio campo y lleva el prefijo: `sent` interno
    * significa «lo mandamos a Meta» y `delivered` significa «llegó al teléfono».
-   * Null en Messenger e Instagram, que no reportan entrega.
+   * Null en Messenger e Instagram, que no reportan entrega, salvo en el
+   * saliente fallido: ahí se pinta `entrega: no entregado` aunque Meta no haya
+   * dicho nada, porque el `status` interno ya no va en `meta` (ADR 0018).
    */
   delivery: string | null
   /** Reacciones colgadas de este mensaje; nunca burbujas propias. */
@@ -135,6 +147,24 @@ export function formatPageLabel(page: {
   return `${page.name} · ${page.metaPageId}`
 }
 
+/**
+ * `@cafe.rioja` en Instagram, el número en WhatsApp y el nombre en Messenger:
+ * la cuenta como la dibuja el mock `1h`, sin el id de soporte que sí lleva
+ * `formatPageLabel`.
+ */
+export function formatAccountShortLabel(page: {
+  channel: PageChannel
+  name: string
+  username: string | null
+  whatsappPhoneE164?: string | null
+}) {
+  if (page.channel === "instagram" && page.username) return `@${page.username}`
+  if (page.channel === "whatsapp" && page.whatsappPhoneE164) {
+    return page.whatsappPhoneE164
+  }
+  return page.name
+}
+
 /** Renglón principal del log: el último mensaje, con `Tú: ` si es saliente. */
 export function formatConversationContent(
   latestMessage: ConversationListItem["latestMessage"],
@@ -159,10 +189,15 @@ export function toConversationRowView(
 ): ConversationRowView {
   const { latestMessage } = conversation
   const name = conversation.contactName?.trim()
+  const failed = latestMessage?.status === "failed"
+  const content = formatConversationContent(latestMessage, t)
+  const previewPrefix =
+    latestMessage?.direction === "outbound" ? t.log.you : null
 
   return {
     id: conversation.id,
     contactLabel: formatContactHandle(conversation),
+    contactMono: !conversation.contactUsername?.trim(),
     // El nombre solo entra si aporta algo: Instagram devuelve muchas cuentas
     // donde `name` y `username` son lo mismo, y repetirlo es ruido.
     contactName:
@@ -170,12 +205,16 @@ export function toConversationRowView(
         ? name
         : null,
     pageLabel: formatPageLabel(conversation.page),
+    accountLabel: formatAccountShortLabel(conversation.page),
     channel: conversation.page.channel,
     timestamp: formatLogTimestamp(conversation.lastMessageAt, now, t),
     timestampIso: conversation.lastMessageAt.toISOString(),
-    content: formatConversationContent(latestMessage, t),
+    content,
+    previewPrefix,
+    previewText: previewPrefix ? content.slice(previewPrefix.length) : content,
     hasMessages: latestMessage !== null,
-    failed: latestMessage?.status === "failed",
+    failed,
+    failedLabel: failed ? formatDeliveryLabel("failed", t) : null,
   }
 }
 
@@ -361,7 +400,10 @@ export function toThreadMessageViews(
         ? `${formatMessageMeta(message, t)} · ${t.log.fromCommentSuffix}`
         : formatMessageMeta(message, t),
       fromComment,
-      delivery: formatDeliveryLabel(message.deliveryStatus, t),
+      delivery: formatDeliveryLabel(
+        message.deliveryStatus ?? (failed ? "failed" : null),
+        t
+      ),
       reactions: reactionsByMessageId[message.id] ?? [],
       error: failed ? message.error : null,
       dayLabel: isNewDay ? dayLabel : null,

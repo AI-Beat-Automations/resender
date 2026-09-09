@@ -15,6 +15,7 @@ import {
   formatPageAllowance,
 } from "@/lib/pages/page-selection"
 import { fmt, type AppDict } from "@/content/i18n/app"
+import { ConsolePage } from "@/features/shell/ui/console-page"
 import { getAppDict } from "@/lib/i18n/app-dict"
 import {
   Alert,
@@ -129,7 +130,7 @@ export default async function SelectPagesPage() {
 
 function Shell({ children, t }: { children: React.ReactNode; t: AppDict }) {
   return (
-    <div className="flex max-w-[720px] flex-col gap-5">
+    <ConsolePage className="flex max-w-[calc(720px+3rem)] flex-col gap-5">
       <header>
         <h1 className="font-heading text-2xl font-bold tracking-[-0.02em]">
           {t.select.title}
@@ -139,7 +140,7 @@ function Shell({ children, t }: { children: React.ReactNode; t: AppDict }) {
         </p>
       </header>
       {children}
-    </div>
+    </ConsolePage>
   )
 }
 
