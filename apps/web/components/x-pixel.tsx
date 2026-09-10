@@ -2,19 +2,19 @@
 
 import Script from "next/script"
 import { usePathname } from "next/navigation"
-import { useSyncExternalStore } from "react"
+import { useEffect, useSyncExternalStore } from "react"
 
 import { useConsent } from "@/components/consent-provider"
 import { isXPixelHost, isXPixelPath } from "@/lib/consent"
+import { readXRegistration, sendXRegistration } from "@/lib/x-registration"
 
-// Pixel de conversión de X (Twitter Ads). Solo el código base: `config` emite
-// un PageView por carga completa. Los eventos de conversión (registro,
-// waitlist) se agregan cuando existan sus ids `tw-rf63m-…` en X Ads.
+// `config` mide la visita; el recibo emitido por user.create.after permite
+// enviar Lead una vez, también al volver de Google a una ruta privada.
 //
 // El id va fijo a propósito: no hay entorno de X que no sea producción, y la
 // condición de «solo producción» la resuelve el hostname (ver lib/consent.ts).
-// Carga únicamente con consentimiento, fuera de la app logueada y en
-// resender.dev. Las tres condiciones se evalúan en el navegador.
+// Carga con consentimiento en producción: rutas públicas o un registro
+// recién completado. El recibo no contiene datos de la cuenta.
 export const X_PIXEL_ID = "rf63m"
 
 const subscribeNoop = () => () => {}
@@ -34,11 +34,30 @@ export function XPixel() {
     () => window.location.hostname,
     () => ""
   )
+  const registration = useSyncExternalStore(
+    subscribeNoop,
+    () => readXRegistration(document.cookie),
+    () => null
+  )
+
+  useEffect(() => {
+    if (!registration || !isXPixelHost(hostname)) return
+    if (sendXRegistration() || consent !== "granted") return
+    // Also covers a persistent root layout after a server-action redirect.
+    const timer = window.setInterval(() => {
+      if (sendXRegistration()) window.clearInterval(timer)
+    }, 250)
+    const timeout = window.setTimeout(() => window.clearInterval(timer), 15_000)
+    return () => {
+      window.clearInterval(timer)
+      window.clearTimeout(timeout)
+    }
+  }, [consent, hostname, pathname, registration])
 
   if (
     consent !== "granted" ||
     !isXPixelHost(hostname) ||
-    !isXPixelPath(pathname)
+    (!isXPixelPath(pathname) && !registration)
   ) {
     return null
   }
