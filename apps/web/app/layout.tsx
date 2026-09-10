@@ -3,7 +3,10 @@ import { Inter, Space_Mono } from "next/font/google"
 import localFont from "next/font/local"
 
 import "@workspace/ui/globals.css"
+import { ConsentProvider } from "@/components/consent-provider"
+import { CookieConsent } from "@/components/cookie-consent"
 import { PostHogProvider } from "@/components/posthog-provider"
+import { XPixel } from "@/components/x-pixel"
 import { ThemeProvider } from "@/components/theme-provider"
 import { cn } from "@workspace/ui/lib/utils"
 import { SITE_LEGAL_NAME, SITE_NAME, SITE_URL } from "@/lib/site-config"
@@ -87,7 +90,17 @@ export default function RootLayout({
             del árbol alcance `usePostHog()`. El init no vive aquí: lo hace
             `instrumentation-client.ts` antes de la hidratación. */}
         <PostHogProvider>
-          <ThemeProvider>{children}</ThemeProvider>
+          {/* El consentimiento gobierna PostHog y el pixel de X a la vez. La
+              tarjeta y el pixel van dentro del ThemeProvider para heredar los
+              tokens de color, y fuera del árbol de la página para existir en
+              todas las rutas. */}
+          <ConsentProvider>
+            <ThemeProvider>
+              {children}
+              <CookieConsent />
+              <XPixel />
+            </ThemeProvider>
+          </ConsentProvider>
         </PostHogProvider>
       </body>
     </html>

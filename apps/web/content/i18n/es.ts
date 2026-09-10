@@ -593,6 +593,7 @@ export const es: Dict = {
       privacy: "Privacidad",
       terms: "Términos",
       dataDeletion: "Eliminación de datos",
+      cookies: "Cookies",
     },
   },
 

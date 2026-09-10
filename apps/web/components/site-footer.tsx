@@ -1,5 +1,6 @@
 import Link from "next/link"
 
+import { CookieSettingsLink } from "@/components/cookie-settings-link"
 import { SiteLogo } from "@/components/site-logo"
 import {
   DISCORD_INVITE_URL,
@@ -113,6 +114,16 @@ export function SiteFooter({ lang }: { lang: Locale }) {
                       </Link>
                     </li>
                   )
+                )}
+                {/* «Cookies» no navega: reabre la tarjeta de consentimiento.
+                    Va en la columna legal, junto a la política que la explica. */}
+                {column.title === dict.footer.columns.legal && (
+                  <li>
+                    <CookieSettingsLink
+                      label={dict.footer.links.cookies}
+                      className="transition-colors hover:text-background"
+                    />
+                  </li>
                 )}
               </ul>
             </div>
