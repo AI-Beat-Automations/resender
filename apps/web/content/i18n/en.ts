@@ -41,13 +41,13 @@ export const en: Dict = {
     kicker: "the problem",
     title: "The same old pain",
     subtitle:
-      "If you've ever tried to process Facebook messages, you know exactly what we mean.",
+      "If you've ever tried to process Facebook or Instagram messages, you know exactly what we mean.",
     questions: [
       "How do I connect my n8n to Facebook?",
-      "Connecting any automation to Facebook is a headache",
+      "Connecting any automation to Instagram is a headache",
       "I just need the API — does anyone know something cheaper?",
       "I want one place to manage the agents for all my clients",
-      "I need something simple and fast to connect to a client's Page",
+      "I need something simple and fast to connect to a client's account",
     ],
     items: [
       {
@@ -57,18 +57,18 @@ export const en: Dict = {
       },
       {
         icon: "unplug",
-        title: "Connecting to Facebook is a maze",
+        title: "Connecting to Meta is a maze",
         body: "Reviewers, expiring tokens, permissions and webhooks. Maybe you already tried the direct route and gave up halfway.",
       },
       {
         icon: "users",
         title: "Juggling multiple clients",
-        body: "You're an agency, and every client is another Page, another automation and another account to keep in order.",
+        body: "You're an agency, and every client is another connected account, another automation and another webhook to keep in order.",
       },
       {
         icon: "zap",
         title: "You need something simple and fast",
-        body: "Connecting to a client's Page should take minutes, not a whole afternoon of setup.",
+        body: "Connecting to a client's account should take minutes, not a whole afternoon of setup.",
       },
     ],
   },
@@ -80,8 +80,8 @@ export const en: Dict = {
     stepLabel: "Step",
     steps: [
       {
-        title: "Connect your Page",
-        body: "Link your Facebook Page in a couple of clicks.",
+        title: "Connect your account",
+        body: "Link your Facebook Page or your Instagram account in a couple of clicks.",
       },
       {
         title: "Set up your webhook",
@@ -121,15 +121,15 @@ export const en: Dict = {
     items: [
       {
         q: "Which channels does Resender work with?",
-        a: "Today Resender works with Facebook Pages (Messenger). You connect your Page and start receiving messages at your webhook.",
+        a: "Today Resender works with Facebook Pages (Messenger) and Instagram: direct messages and comments. You connect your account and start receiving messages at your webhook.",
       },
       {
-        q: "Do I need Facebook approval to use Resender?",
-        a: "Resender handles the integration with Facebook's APIs for you. Depending on your use case, Facebook review may be required, but we guide you through the process.",
+        q: "Do I need Meta approval to use Resender?",
+        a: "Resender handles the integration with Meta's APIs for you. Depending on your use case, Meta review may be required, but we guide you through the process.",
       },
       {
         q: "How does the webhook work?",
-        a: "You set an HTTPS URL per Page. When a message comes in, Resender persists it and forwards it to your endpoint as JSON. You reply with a POST to our outbound API.",
+        a: "You set an HTTPS URL per connection. When a message comes in, Resender persists it and forwards it to your endpoint as JSON. You reply with a POST to our outbound API.",
       },
       {
         q: "Can I use Resender with n8n, Make or Zapier?",
@@ -153,7 +153,7 @@ export const en: Dict = {
   finalCta: {
     title: "Ready to get started?",
     subtitle:
-      "Connect your first Page and receive messages in minutes. No card to get going.",
+      "Connect your first account and receive messages in minutes. No card to get going.",
     cta: "Get started",
   },
 
@@ -163,7 +163,7 @@ export const en: Dict = {
     subtitle:
       "A plan for every stage. No contracts, no surprises. Cancel whenever you want.",
     intro: [
-      "All three plans include the same thing: the full API, inbound and outbound webhooks, and support. The only difference is how many messages you process per month and how many Facebook Pages you connect.",
+      "All three plans include the same thing: the full API, inbound and outbound webhooks, and support. The only difference is how many messages you process per month and how many connections you keep active.",
       "A message is every event that crosses the relay, in either direction: the one a user sends you and that lands at your webhook counts as one, and your reply through the API counts as another. A ten-turn back-and-forth uses twenty messages. Webhook retries after an outage are not billed.",
       "If in doubt, start with Starter. 50,000 messages a month is roughly 25,000 short conversations, plenty for a side project or your first clients. We warn you as you approach the limit, and moving up to Pro is immediate: no downtime and nothing to reconnect.",
       "We charge per message processed rather than per contact reached, which is the difference that shows most against ManyChat as you grow: your bill tracks real traffic, not the accumulated size of your audience.",
@@ -179,7 +179,7 @@ export const en: Dict = {
         cta: "Get started with Starter",
         features: [
           "50,000 messages per month",
-          "2 Facebook Pages",
+          "2 connections",
           "Email + Discord support",
         ],
       },
@@ -223,7 +223,7 @@ export const en: Dict = {
     kicker: "vs manychat",
     title: "Resender vs ManyChat",
     subtitle:
-      "If all you need is the Facebook API, you're overpaying. See the difference.",
+      "If all you need is the Meta API, you're overpaying. See the difference.",
     yes: "Yes",
     no: "No",
     headers: { feature: "", resender: "Resender", manychat: "ManyChat" },
@@ -250,10 +250,10 @@ export const en: Dict = {
     kicker: "comparison",
     title: "Resender vs ManyChat",
     subtitle:
-      "Both connect to Facebook Messenger. One is a full no-code platform; the other is the relay API you need when you already have somewhere to run your logic.",
+      "Both connect to Facebook Messenger and Instagram. One is a full no-code platform; the other is the relay API you need when you already have somewhere to run your logic.",
     intro: [
       "ManyChat is a conversational marketing platform: a visual flow builder, broadcast sequences, templates and engagement analytics. If your team builds campaigns without writing code, that toolbox makes sense and you'll use all of it.",
-      "Resender doesn't compete with that. It does one thing: it pushes every message your Facebook Page receives to your webhook, and lets you reply with a POST. The logic lives wherever you want it — n8n, Make, an AI agent or your own backend.",
+      "Resender doesn't compete with that. It does one thing: it pushes every message your Facebook Page or Instagram account receives to your webhook, and lets you reply with a POST. The logic lives wherever you want it — n8n, Make, an AI agent or your own backend.",
       "The practical difference shows up in the bill and in the ceiling. ManyChat starts at $39/mo for a platform whose builder you won't open if your flow already runs elsewhere. Resender charges $15/mo for the transport, and your logic is limited only by your own code.",
     ],
     verdict: {
@@ -265,15 +265,15 @@ export const en: Dict = {
         },
         {
           when: "Your logic already lives in n8n, Make, Zapier or your backend",
-          pick: "Resender. All you're missing is the transport to Facebook, and that's the only thing you'll pay for.",
+          pick: "Resender. All you're missing is the transport to Meta, and that's the only thing you'll pay for.",
         },
         {
-          when: "You're wiring an AI agent to Facebook",
+          when: "You're wiring an AI agent to Facebook or Instagram",
           pick: "Resender. The agent needs the raw message at its webhook and a direct way to reply, not a builder in between.",
         },
         {
-          when: "You manage Pages for several clients",
-          pick: "Resender. Connect multiple Pages under one account and route them by webhook, without one subscription per client.",
+          when: "You manage accounts for several clients",
+          pick: "Resender. Connect multiple Pages and Instagram accounts under one login and route them by webhook, without one subscription per client.",
         },
         {
           when: "You need broadcasts, sequences and engagement analytics",
@@ -297,19 +297,19 @@ export const en: Dict = {
           a: "Yes, and it's the main use case. Point Resender's webhook at your n8n workflow, receive the message there and reply with an HTTP Request node against Resender's API.",
         },
         {
-          q: "Do I need Facebook approval to migrate?",
-          a: "Resender already has the Messenger permissions approved, so you connect your Page with Facebook Login and you're done. No app review of your own.",
+          q: "Do I need Meta approval to migrate?",
+          a: "Resender already has the Messenger and Instagram permissions approved, so you connect your account with Facebook Login and you're done. No app review of your own.",
         },
         {
           q: "Can I use both at once?",
-          a: "A Facebook Page sends its webhooks to one app at a time, so it's best to pick one per Page. What you can do is keep some Pages on ManyChat and others on Resender.",
+          a: "A Facebook Page or Instagram account sends its webhooks to one app at a time, so it's best to pick one per account. What you can do is keep some accounts on ManyChat and others on Resender.",
         },
       ],
     },
     cta: {
       title: "Try the direct relay",
       subtitle:
-        "Connect your Page, point your webhook and reply with a POST. No contracts.",
+        "Connect your account, point your webhook and reply with a POST. No contracts.",
       cta: "Get started",
     },
     metaTitle: "Resender vs ManyChat: the API-first alternative",
@@ -342,26 +342,27 @@ export const en: Dict = {
         a: "No. If your webhook goes down and we retry delivery, the message is billed once. We count unique events, not network attempts.",
       },
       {
-        q: "Can I connect more Pages than my plan includes?",
+        q: "Can I connect more accounts than my plan includes?",
         a: "The connection limit is per plan: 2 on Starter, 5 on Pro and 40 on Business. If you need more, move up a plan or write to us and we'll put something together for your volume.",
       },
       {
         q: "What happens to my data if I cancel?",
-        a: "Your connections go inactive and we stop receiving messages from your Pages. You can request deletion of your data at any time from the data deletion page.",
+        a: "Your connections go inactive and we stop receiving messages from your accounts. You can request deletion of your data at any time from the data deletion page.",
       },
     ],
   },
 
   pricingCta: {
     title: "Start building today",
-    subtitle: "Create your account and connect your first Page in minutes.",
+    subtitle:
+      "Create your account and connect your first Meta account in minutes.",
     cta: "Get started",
   },
 
   blog: {
-    metaTitle: "Blog: integrating Facebook Messenger via API",
+    metaTitle: "Blog: integrating Facebook Messenger and Instagram via API",
     metaDescription:
-      "Tutorials on webhooks, AI agents and automations with n8n, Make and Zapier on top of Facebook messages, plus Resender product news.",
+      "Tutorials on webhooks, AI agents and automations with n8n, Make and Zapier on top of Facebook and Instagram messages, plus Resender product news.",
     title: "Blog",
     intro:
       "We write about what we run into while building Resender: how to set boundaries for an AI agent handling customers, how to pick an AI model for your agent, and how many AI agents your automation should have. Concrete cases, with the code we actually use.",
@@ -369,7 +370,7 @@ export const en: Dict = {
     back: "← Back to blog",
     reading: {
       title: "Ready to get started?",
-      subtitle: "Connect your first Page and receive messages in minutes.",
+      subtitle: "Connect your first account and receive messages in minutes.",
       cta: "Get started",
     },
     categories: { tutorial: "Tutorial", actualizacion: "News" },
@@ -516,11 +517,11 @@ export const en: Dict = {
       title: "One webhook for every channel.",
       titleAccent: "Developer-first.",
       subtitle:
-        "Today Resender works with Facebook Messenger only, but we're already working on the Instagram and WhatsApp integrations. Leave your email and we'll tell you when they're available.",
+        "Today Resender works with Facebook Messenger and Instagram, and we're already working on the WhatsApp integration. Leave your email and we'll tell you when it's available.",
       breadcrumb: "Waitlist",
-      registerTitle: "Already on Messenger?",
+      registerTitle: "Already on Messenger or Instagram?",
       registerBody:
-        "Then there's nothing to wait for. Create your account, connect your Page and get your first message at your webhook today.",
+        "Then there's nothing to wait for. Create your account, connect your Meta account and get your first message at your webhook today.",
       registerCta: "Create account",
     },
     form: {
@@ -587,7 +588,7 @@ export const en: Dict = {
     pricing: {
       title: "Pricing and plans from $15 per month",
       description:
-        "Resender plans from $15/mo with 50,000 messages and 2 Facebook Pages. No contracts, no per-contact charges, and you can cancel whenever you want.",
+        "Resender plans from $15/mo with 50,000 messages and 2 connections. No contracts, no per-contact charges, and you can cancel whenever you want.",
       ogTitle: "Pricing and plans from $15 per month",
       ogDescription:
         "Simple plans from $15/mo. The developer-first alternative to ManyChat.",
@@ -597,10 +598,10 @@ export const en: Dict = {
     waitlist: {
       title: "Waitlist: get the product updates",
       description:
-        "Resender works with Facebook Messenger only for now. Leave your email on the waitlist and we'll tell you when there are product updates.",
+        "Resender works with Facebook Messenger and Instagram today. Leave your email on the waitlist and we'll tell you when there are product updates.",
       ogTitle: "Waitlist: get the product updates",
       ogDescription:
-        "Today Resender works with Facebook Messenger only. Leave your email and we'll tell you when the product changes.",
+        "Today Resender works with Facebook Messenger and Instagram. Leave your email and we'll tell you when the product changes.",
     },
   },
 
@@ -609,7 +610,7 @@ export const en: Dict = {
       "One webhook for all your channels. Receive WhatsApp, Instagram and Facebook messages at your webhook and reply with a POST — no visual builders, no features you'll never use. A developer-first alternative to ManyChat, from $15/mo. Operated by Lorna Suriano Hernandez.",
     context: [
       "Resender solves one specific problem: receiving the messages sent to your Meta channels (WhatsApp, Instagram and Facebook Messenger) on your own server through a single webhook, and replying to them via API. The logic runs wherever you want it — n8n, Make, Zapier, an AI agent or your own backend — and Resender only handles the transport to and from each channel.",
-      "How it works: you connect your channels with Facebook Login, set an HTTPS URL per connection, every incoming message arrives at that endpoint as JSON, and you reply with a POST to Resender's outbound API. The Messenger permissions are already approved, so you don't go through an app review of your own.",
+      "How it works: you connect your channels with Facebook Login, set an HTTPS URL per connection, every incoming message arrives at that endpoint as JSON, and you reply with a POST to Resender's outbound API. The Messenger and Instagram permissions are already approved, so you don't go through an app review of your own.",
       "What it is NOT: Resender has no visual flow builder, broadcasts, templates or engagement analytics. If you need those, ManyChat is the better choice and we say so in the comparison.",
       "Pricing: Starter $15/mo (50,000 messages, 2 connections), Pro $29/mo (100,000 messages, 5 connections) and Business $199/mo (1,000,000 messages, 40 connections). Billing is per message processed in either direction, not per contact reached. Retries after a webhook outage are not billed. No contracts: it's month to month.",
       "The site is in Spanish at the root and in English under /en. The legal pages exist in Spanish only.",
