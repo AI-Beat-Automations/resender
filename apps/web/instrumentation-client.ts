@@ -30,6 +30,11 @@ if (isPostHogEnabled) {
     // el default del SDK, explícito aquí para que no lo cambie una subida de
     // versión.
     person_profiles: "identified_only",
+    // Nada se captura hasta que el visitante acepte en la tarjeta de cookies
+    // (`components/consent-provider.tsx` llama a `opt_in_capturing`). El SDK
+    // recuerda la preferencia, así que en visitas siguientes con consentimiento
+    // ya dado el $pageview inicial sí se captura.
+    opt_out_capturing_by_default: true,
     // El `?token=` del [Enlace de recuperacion] es una credencial viva durante
     // una hora, y `$current_url` lo llevaría entero a PostHog. La lógica vive
     // en `lib/posthog-redact.ts` porque vitest no ejecuta este archivo.

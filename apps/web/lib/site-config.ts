@@ -25,7 +25,7 @@ export const DOCS_URL = "https://docs.resender.dev/"
 // enseña a Google a desconfiar de la señal. Se sube A MANO cuando el copy cambia
 // de verdad. La consumen el sitemap y el encabezado de /llms-full.txt, así que
 // las dos declaran lo mismo.
-export const STATIC_CONTENT_UPDATED_AT = "2026-08-19"
+export const STATIC_CONTENT_UPDATED_AT = "2026-09-10"
 
 // Invitación de Discord. Si alguna vez vuelve a ser null, el footer oculta la
 // entrada en lugar de dejar un link muerto en todas las páginas del sitio.

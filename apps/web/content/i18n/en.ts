@@ -571,6 +571,7 @@ export const en: Dict = {
       privacy: "Privacy",
       terms: "Terms",
       dataDeletion: "Data deletion",
+      cookies: "Cookies",
     },
   },
 

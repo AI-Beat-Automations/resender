@@ -11,7 +11,7 @@ export const metadata: Metadata = {
     "How Resender, operated by Lorna Suriano Hernandez, handles account, Messenger, Instagram and WhatsApp data.",
 }
 
-const LAST_UPDATED = "August 24, 2026"
+const LAST_UPDATED = "September 10, 2026"
 const CONTACT_EMAIL = "info@resender.dev"
 
 export default function PrivacyPage() {
@@ -261,10 +261,33 @@ export default function PrivacyPage() {
 
           <Section title="Cookies and tracking">
             <p>
-              We use no analytics and no third-party trackers. The only cookie
-              is the functional session cookie used to keep you signed in. Fonts
-              are self-hosted, so loading the site makes no third-party font
-              request.
+              Two cookies are strictly functional and need no consent: the
+              session cookie that keeps you signed in, and the cookie that
+              remembers your language. Fonts are self-hosted, so loading the
+              site makes no third-party font request.
+            </p>
+            <p className="mt-2">
+              Measurement only runs after you accept it in the cookie banner.
+              Until you decide, and if you reject, nothing below is loaded:
+            </p>
+            <ul className="mt-2 list-disc space-y-1 pl-5">
+              <li>
+                <strong className="text-foreground">PostHog</strong> — product
+                analytics (page views and in-app events). Visitors stay
+                anonymous; a profile is only created once you sign in.
+              </li>
+              <li>
+                <strong className="text-foreground">X (Twitter) pixel</strong> —
+                measures the results of our ads on X. It loads only on the
+                public site and the sign-in pages, never inside the app.
+                X&apos;s own policy applies to that data; you can opt out of X
+                ads personalization in your X settings.
+              </li>
+            </ul>
+            <p className="mt-2">
+              Your choice is stored in a first-party cookie for one year. Use
+              the &quot;Cookies&quot; link in the footer to change it at any
+              time.
             </p>
           </Section>
 
