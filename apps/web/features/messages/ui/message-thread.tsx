@@ -1,24 +1,28 @@
-import { Eye, Inbox, TriangleAlert } from "lucide-react"
+import Link from "next/link"
+import { ArrowRight, Inbox, MessageSquare, TriangleAlert } from "lucide-react"
 
+import { Bubble } from "@/features/inbox/ui/bubble"
 import { ChannelBadge } from "@/features/inbox/ui/channel-badge"
-import type { AppDict } from "@/content/i18n/app"
 import { EmptyPane } from "@/features/inbox/ui/empty-pane"
+import { ThreadHeader } from "@/features/inbox/ui/thread-header"
+import type { AppDict } from "@/content/i18n/app"
 import type { AttachmentDisplay } from "@/lib/inbox/message-media"
 import type {
   ThreadMessageView,
   ThreadReactionView,
 } from "@/lib/messages/display"
 import type { PageChannel } from "@/lib/pages/page-registry"
-import { Badge } from "@workspace/ui/components/badge"
 import { cn } from "@workspace/ui/lib/utils"
 
-// Hilo de solo lectura (ADR 0005). Las burbujas usan los tokens `--bubble-*`
-// del DS (spec C.3) en lugar del amarillo/verde crudo de Tailwind, y el
-// saliente fallido se "vacía" y se orla en rojo en vez de rellenarse.
+// Hilo de solo lectura (ADR 0005), al mock `1h` (ADR 0018): cabecera de 52px,
+// burbujas sobre el fondo hundido y, al pie, la franja que explica que las
+// respuestas salen por la API externa. No hay «Abrir en Instagram» en
+// Mensajes: deuda declarada.
 
 export type ThreadHeaderView = {
   contactLabel: string
-  pageLabel: string
+  /** `@cafe.rioja` · `Café Rioja` · `+52 55 1234 5678`. */
+  accountLabel: string
   channel: PageChannel
 }
 
@@ -32,26 +36,14 @@ export function MessageThread({
   t: AppDict
 }) {
   return (
-    <section className="flex min-w-0 flex-1 flex-col bg-surface-app">
-      <header className="flex items-center gap-3 border-b border-border bg-card px-6 py-4">
-        <div className="min-w-0 flex-1">
-          <h2 className="truncate font-mono text-[14px] font-semibold">
-            {header.contactLabel}
-          </h2>
-          <p className="mt-1 flex items-center gap-1.5 font-mono text-[11px] text-[var(--text-subtle)]">
-            <ChannelBadge channel={header.channel} t={t} />
-            <span className="truncate">{header.pageLabel}</span>
-          </p>
-        </div>
-        {/* El badge declara lo que la pantalla no tiene: no hay compositor,
-            las respuestas salen por la API externa. */}
-        <Badge variant="info" title={t.inbox.readOnlyHint}>
-          <Eye aria-hidden />
-          {t.inbox.readOnly}
-        </Badge>
-      </header>
+    <section className="flex min-w-0 flex-1 flex-col bg-surface-sunken">
+      <ThreadHeader
+        title={header.contactLabel}
+        pill={<ChannelBadge channel={header.channel} size="header" t={t} />}
+        account={header.accountLabel}
+      />
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto p-6">
+      <div className="flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto px-7 py-6">
         {messages.length === 0 ? (
           <p className="m-auto max-w-[22rem] text-center text-[14px] leading-relaxed text-muted-foreground">
             {t.inbox.threadEmpty}
@@ -62,6 +54,20 @@ export function MessageThread({
           ))
         )}
       </div>
+
+      <footer className="flex shrink-0 items-center gap-2.5 border-t border-border-subtle bg-card px-5 py-3 text-[12.5px] text-muted-foreground">
+        <MessageSquare className="size-3.5 shrink-0" aria-hidden />
+        <span>{t.inbox.readOnlyFooter}</span>
+        <Link
+          href="/docs"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="ml-auto inline-flex shrink-0 items-center gap-1 font-medium text-foreground hover:underline"
+        >
+          {t.inbox.readOnlyFooterCta}
+          <ArrowRight className="size-3" aria-hidden />
+        </Link>
+      </footer>
     </section>
   )
 }
@@ -100,85 +106,50 @@ function MessageBubble({
   const { outbound, failed } = message
 
   return (
-    <>
-      {message.dayLabel ? (
-        <p className="self-center font-mono text-[10.5px] text-[var(--text-subtle)]">
-          {message.dayLabel}
-        </p>
-      ) : null}
-      <article
-        className={cn(
-          "flex max-w-[62%] flex-col",
-          outbound ? "items-end self-end" : "items-start self-start"
-        )}
-      >
-        <div
-          className={cn(
-            "rounded-[var(--radius-3xl)] border px-[15px] py-[11px] text-[14px] leading-[1.55] break-words whitespace-pre-wrap",
-            outbound ? "rounded-br-[6px]" : "rounded-bl-[6px]",
-            failed
-              ? "border-[var(--danger-soft-border)] bg-card text-foreground"
-              : outbound
-                ? "border-bubble-out-border bg-bubble-out text-bubble-out-foreground"
-                : "border-bubble-in-border bg-bubble-in text-bubble-in-foreground"
-          )}
-        >
-          {/* El adjunto va dentro de la misma burbuja, sin cambiar color ni
-              dirección (CONTEXT.md, «Semantica visual de Inbox»); si además
-              hay texto, se ven los dos, adjunto arriba como en Messenger. */}
-          {message.attachment ? (
-            <div className={cn(message.text !== "" && "mb-2")}>
-              <BubbleAttachment attachment={message.attachment} t={t} />
-            </div>
-          ) : null}
-          {message.text !== "" ? message.text : null}
-        </div>
-        {/* Las reacciones no son burbujas: cuelgan del mensaje al que apuntan
-            (`groupThreadReactions`). Dibujarlas como mensajes propios parte la
-            conversación en «ok», «👍», «dale» y la vuelve ilegible. */}
-        {message.reactions.length > 0 ? (
+    <Bubble
+      outbound={outbound}
+      failed={failed}
+      dayLabel={message.dayLabel}
+      metaPlacement="below"
+      error={message.error}
+      after={
+        // Las reacciones no son burbujas: cuelgan del mensaje al que apuntan
+        // (`groupThreadReactions`). Dibujarlas como mensajes propios parte la
+        // conversación en «ok», «👍», «dale» y la vuelve ilegible.
+        message.reactions.length > 0 ? (
           <ReactionChips reactions={message.reactions} t={t} />
-        ) : null}
-        <p
-          className={cn(
-            "mt-[5px] flex items-center gap-1.5 font-mono text-[10.5px]",
-            failed ? "text-[var(--danger-text)]" : "text-[var(--text-subtle)]"
-          )}
-          // El sufijo `· respuesta a comentario` es lo único que distingue a
-          // una respuesta privada de un DM cualquiera; el title explica de
-          // dónde salió sin gastar otro renglón.
+        ) : null
+      }
+      meta={
+        // El sufijo `· respuesta a comentario` es lo único que distingue a
+        // una respuesta privada de un DM cualquiera; el title explica de
+        // dónde salió sin gastar otro renglón. La entrega va detrás con su
+        // prefijo «entrega:» (mock `1h`): es lo que reporta Meta, distinto
+        // del estado interno del envío.
+        <span
+          className="flex items-center gap-1.5"
           title={message.fromComment ? t.inbox.fromCommentTitle : undefined}
         >
           {failed ? (
             <TriangleAlert className="size-3 shrink-0" aria-hidden />
           ) : null}
           {message.meta}
-          {/* La entrega va en su propio chip y con el prefijo «entrega:»: en la
-              misma línea conviven dos `sent` que no significan lo mismo — el
-              `status` interno es «se lo mandamos a Meta» y el `delivery_status`
-              es «Meta lo mandó al teléfono». Son dos columnas distintas y
-              pintarlas iguales las confunde. */}
           {message.delivery ? (
-            <span
-              className="rounded-full bg-surface-sunken px-1.5 py-px"
-              title={t.inbox.deliveryTitle}
-            >
-              {message.delivery}
-            </span>
+            <span title={t.inbox.deliveryTitle}>· {message.delivery}</span>
           ) : null}
-        </p>
-        {message.error ? (
-          <p
-            className={cn(
-              "mt-1 font-mono text-[10.5px] text-[var(--danger-text)]",
-              outbound ? "text-right" : "text-left"
-            )}
-          >
-            {message.error}
-          </p>
-        ) : null}
-      </article>
-    </>
+        </span>
+      }
+    >
+      {/* El adjunto va dentro de la misma burbuja, sin cambiar color ni
+          dirección (CONTEXT.md, «Semantica visual de Inbox»); si además hay
+          texto, se ven los dos, adjunto arriba como en Messenger. */}
+      {message.attachment ? (
+        <div className={cn(message.text !== "" && "mb-2")}>
+          <BubbleAttachment attachment={message.attachment} t={t} />
+        </div>
+      ) : null}
+      {message.text !== "" ? message.text : null}
+    </Bubble>
   )
 }
 
@@ -236,7 +207,7 @@ function BubbleAttachment({
         <img
           src={attachment.url}
           alt={t.inbox.imageAlt}
-          className="max-h-72 max-w-full rounded-[12px]"
+          className="max-h-72 max-w-full rounded-[10px]"
         />
       )
     case "video":
@@ -244,7 +215,7 @@ function BubbleAttachment({
         <video
           controls
           src={attachment.url}
-          className="max-h-72 max-w-full rounded-[12px]"
+          className="max-h-72 max-w-full rounded-[10px]"
         />
       )
     case "audio":

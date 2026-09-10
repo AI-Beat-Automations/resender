@@ -105,6 +105,59 @@ describe("toConversationRowView", () => {
     expect(row.contactName).toBeNull()
   })
 
+  it("separa el prefijo «Tú:» y nombra la cuenta a secas (mock `1h`)", () => {
+    const row = toConversationRowView(
+      conversation({
+        contactUsername: "mariana.gz",
+        page: {
+          id: "page-2",
+          channel: "instagram",
+          metaPageId: "17841400000000000",
+          name: "Clínica Dental",
+          username: "clinica.dental.mx",
+          whatsappPhoneE164: null,
+        },
+        latestMessage: {
+          text: "¡Sí! Te espero hoy a las 15:00",
+          direction: "outbound",
+          status: "sent",
+          createdAt: new Date(2026, 6, 27, 14, 2),
+          attachmentType: null,
+        },
+      }),
+      NOW,
+      es
+    )
+
+    expect(row.contactMono).toBe(false)
+    expect(row.accountLabel).toBe("@clinica.dental.mx")
+    expect(row.previewPrefix).toBe("Tú: ")
+    expect(row.previewText).toBe("¡Sí! Te espero hoy a las 15:00")
+    expect(row.content).toBe("Tú: ¡Sí! Te espero hoy a las 15:00")
+    expect(row.failedLabel).toBeNull()
+  })
+
+  it("pinta el PSID en mono y el fallo como entrega no entregada", () => {
+    const row = toConversationRowView(
+      conversation({
+        latestMessage: {
+          text: "Perfecto, te confirmo por acá.",
+          direction: "outbound",
+          status: "failed",
+          createdAt: new Date(2026, 6, 27, 14, 2),
+          attachmentType: null,
+        },
+      }),
+      NOW,
+      es
+    )
+
+    expect(row.contactMono).toBe(true)
+    expect(row.accountLabel).toBe("Café Rioja")
+    expect(row.failed).toBe(true)
+    expect(row.failedLabel).toBe("entrega: no entregado")
+  })
+
   it("cae al PSID mientras no haya @handle", () => {
     // Es el caso de Messenger, donde no hay perfil que pedir, y el de una
     // conversación que todavía nadie miró.
@@ -278,9 +331,9 @@ describe("toThreadMessageViews", () => {
       "27 jul 2026",
       null,
     ])
-    expect(views[1]?.meta).toBe("outbound · 14:02:11 · sent")
+    expect(views[1]?.meta).toBe("respuesta · 14:02")
     expect(views[1]?.outbound).toBe(true)
-    expect(views[2]?.meta).toBe("inbound · 14:02:40 · received")
+    expect(views[2]?.meta).toBe("entrante · 14:02")
   })
 
   it("solo expone el error del proveedor en los mensajes fallidos", () => {
@@ -308,8 +361,12 @@ describe("toThreadMessageViews", () => {
     expect(failed?.error).toBe(
       "OAuthException 190 · Error validating access token"
     )
-    expect(failed?.meta).toBe("outbound · 14:05:02 · failed")
+    expect(failed?.meta).toBe("respuesta · 14:05")
+    // Sin `status` en el metadato, el fallo se lee en la entrega (mock `1h`)
+    // aunque Messenger no reporte entrega.
+    expect(failed?.delivery).toBe("entrega: no entregado")
     expect(sent?.failed).toBe(false)
+    expect(sent?.delivery).toBeNull()
     expect(sent?.error).toBeNull()
   })
 
@@ -335,10 +392,10 @@ describe("toThreadMessageViews", () => {
 
     expect(privateReply?.fromComment).toBe(true)
     expect(privateReply?.meta).toBe(
-      "outbound · 14:02:11 · sent · respuesta a comentario"
+      "respuesta · 14:02 · respuesta a comentario"
     )
     expect(plain?.fromComment).toBe(false)
-    expect(plain?.meta).toBe("outbound · 14:03:00 · sent")
+    expect(plain?.meta).toBe("respuesta · 14:03")
   })
 
   it("resuelve el adjunto del mensaje sin tocar el texto", () => {
@@ -471,7 +528,7 @@ describe("formatDeliveryLabel", () => {
       es
     )
 
-    expect(view?.meta).toBe("outbound · 14:02:11 · sent")
+    expect(view?.meta).toBe("respuesta · 14:02")
     expect(view?.delivery).toBe("entrega: leído")
   })
 

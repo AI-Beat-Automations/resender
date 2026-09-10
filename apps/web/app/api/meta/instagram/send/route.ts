@@ -11,10 +11,8 @@ import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
 import { incrementUsage } from "@/lib/billing/usage-counter"
 import {
-  getConversationById,
   getOutboundMessageByIdempotencyKey,
   insertOutboundMessage,
-  upsertConversation,
   type MessageRecord,
 } from "@/lib/messages/message-log"
 import {
@@ -25,6 +23,7 @@ import {
   isMetaExpiredTokenError,
   sendInstagramTextMessage,
 } from "@/lib/outbound/instagram-send"
+import { resolveSendTarget } from "@/lib/outbound/resolve-send-target"
 import {
   getBearerToken,
   parseOutboundSendInput,
@@ -34,14 +33,12 @@ import {
   outboundLogger,
   resolveRequestId,
 } from "@/lib/observability/outbound-log"
-import {
-  getActivePageWithTokenForTenant,
-  markPageTokenInvalid,
-} from "@/lib/pages/page-registry"
+import { markPageTokenInvalid } from "@/lib/pages/page-registry"
 import { captureDeferred } from "@/lib/posthog"
 
 // Envía un mensaje directo por Instagram.
-// Body: { pageId, recipientId, reply, conversationId? }.
+// Body: { conversationId } | { pageId, recipientId, conversationId? }, más
+// { reply } (ADR 0019).
 // Header opcional `Idempotency-Key`: si se repite, se devuelve el resultado
 // almacenado sin reenviar a Meta.
 //
@@ -52,8 +49,8 @@ import { captureDeferred } from "@/lib/posthog"
 // se lee raro en Instagram; el costo de que fueran dos contratos distintos es
 // peor.
 //
-// El token de la cuenta se resuelve en el servidor por `pageId` y nunca viaja
-// en la request, igual que en Messenger.
+// El token de la cuenta se resuelve en el servidor y nunca viaja en la
+// request, igual que en Messenger.
 export const runtime = "nodejs"
 
 export async function POST(request: NextRequest) {
@@ -249,65 +246,41 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const connectedPage = await getActivePageWithTokenForTenant(
-    apiKey.tenantId,
-    input.value.pageId,
-    "instagram"
-  )
-  if (!connectedPage) {
+  // Dos formas de destino (ADR 0019): `conversationId` solo, o `pageId` +
+  // `recipientId`. El resolvedor devuelve la cuenta, su token y la conversación
+  // en las dos, y ya trae armados el status, el `code` y la razón del log.
+  const resolved = await resolveSendTarget({
+    tenantId: apiKey.tenantId,
+    channel: "instagram",
+    target: input.value.target,
+  })
+  if (!resolved.ok) {
     return trace.drop(
-      "page_not_connected",
+      resolved.reason,
       Response.json(
         {
-          error: "Instagram account is not connected for this tenant",
+          ...(resolved.code ? { code: resolved.code } : {}),
+          error: resolved.error,
         },
-        { status: 404 }
+        { status: resolved.status }
       ),
-      { errorMessage: `accountId=${input.value.pageId}` }
+      {
+        ...(resolved.code ? { errorCode: resolved.code } : {}),
+        ...(resolved.errorMessage
+          ? { errorMessage: resolved.errorMessage }
+          : {}),
+      }
     )
   }
-  trace.setAccount(connectedPage.page)
-
-  let conversation = input.value.conversationId
-    ? await getConversationById(apiKey.tenantId, input.value.conversationId)
-    : null
-
-  if (input.value.conversationId) {
-    if (
-      !conversation ||
-      conversation.connectedPageId !== connectedPage.page.id ||
-      conversation.contactId !== input.value.recipientId
-    ) {
-      return trace.drop(
-        "invalid_request",
-        Response.json(
-          { error: "conversationId does not match pageId and recipientId" },
-          { status: 400 }
-        )
-      )
-    }
-  } else {
-    conversation = await upsertConversation({
-      tenantId: apiKey.tenantId,
-      connectedPageId: connectedPage.page.id,
-      contactId: input.value.recipientId,
-      lastMessageAt: new Date(),
-    })
-  }
-
-  if (!conversation) {
-    return trace.drop(
-      "invalid_request",
-      Response.json({ error: "conversation not found" }, { status: 400 })
-    )
-  }
+  const { page, pageAccessToken, conversation } = resolved.value
+  trace.setAccount(page)
 
   const sentAt = new Date()
   // Sin `pageId`: el endpoint de Instagram es `/me/messages` y la cuenta sale
   // del token.
   const metaResult = await sendInstagramTextMessage({
-    accessToken: connectedPage.pageAccessToken,
-    recipientId: input.value.recipientId,
+    accessToken: pageAccessToken,
+    recipientId: conversation.contactId,
     text: input.value.reply,
   })
   const metaDurationMs = Date.now() - sentAt.getTime()
@@ -316,7 +289,7 @@ export async function POST(request: NextRequest) {
     try {
       await markPageTokenInvalid({
         tenantId: apiKey.tenantId,
-        connectionId: connectedPage.page.id,
+        connectionId: page.id,
         error:
           metaResult.error ??
           "Meta rejected the Instagram token. Reconnect the account in Resender.",
@@ -329,9 +302,9 @@ export async function POST(request: NextRequest) {
         reason: "internal_error",
         requestId,
         tenantId: apiKey.tenantId,
-        connectionId: connectedPage.page.id,
+        connectionId: page.id,
         channel: "instagram",
-        accountId: connectedPage.page.metaPageId,
+        accountId: page.metaPageId,
         errorMessage: describeError(error),
       })
     }
@@ -345,8 +318,8 @@ export async function POST(request: NextRequest) {
     message = await insertOutboundMessage({
       tenantId: apiKey.tenantId,
       conversationId: conversation.id,
-      connectedPageId: connectedPage.page.id,
-      contactId: input.value.recipientId,
+      connectedPageId: page.id,
+      contactId: conversation.contactId,
       text: input.value.reply,
       status: metaResult.ok ? "sent" : "failed",
       metaMessageId: extractMetaMessageId(metaResult.data),
@@ -378,7 +351,7 @@ export async function POST(request: NextRequest) {
   const traceFields = {
     subjectId: message.id,
     providerId: extractMetaMessageId(metaResult.data) ?? undefined,
-    contactId: input.value.recipientId,
+    contactId: conversation.contactId,
     textLength: instagramTextByteLength(input.value.reply),
     status: metaResult.status,
     durationMs: metaDurationMs,
@@ -411,7 +384,7 @@ export async function POST(request: NextRequest) {
         requestId,
         tenantId: apiKey.tenantId,
         channel: "instagram",
-        accountId: connectedPage.page.metaPageId,
+        accountId: page.metaPageId,
         errorMessage: describeError(error),
       })
     }
@@ -423,7 +396,7 @@ export async function POST(request: NextRequest) {
     properties: {
       message_id: message.id,
       conversation_id: conversation.id,
-      page_id: input.value.pageId,
+      page_id: page.metaPageId,
       channel: "instagram",
       status: message.status,
       meta_ok: metaResult.ok,

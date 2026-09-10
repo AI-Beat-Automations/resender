@@ -10,21 +10,17 @@ import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
 import { incrementUsage } from "@/lib/billing/usage-counter"
 import {
-  getConversationById,
   getOutboundMessageByIdempotencyKey,
   insertOutboundMessage,
-  upsertConversation,
   type MessageRecord,
 } from "@/lib/messages/message-log"
-import {
-  getActivePageWithTokenForTenant,
-  markPageTokenInvalid,
-} from "@/lib/pages/page-registry"
+import { markPageTokenInvalid } from "@/lib/pages/page-registry"
 import {
   extractMetaMessageId,
   isMetaExpiredTokenError,
   sendMetaMessage,
 } from "@/lib/outbound/meta-send"
+import { resolveSendTarget } from "@/lib/outbound/resolve-send-target"
 import {
   getBearerToken,
   parseOutboundSendInput,
@@ -37,10 +33,11 @@ import {
 import { captureDeferred } from "@/lib/posthog"
 
 // Envía una respuesta al contacto: texto o un adjunto por URL, nunca ambos.
-// Body: { pageId, recipientId, conversationId? } + { reply } | { attachment }.
+// Body: { conversationId } | { pageId, recipientId, conversationId? }, más
+// { reply } | { attachment } (ADR 0019).
 // Header opcional `Idempotency-Key`: si se repite, se devuelve el resultado
 // almacenado sin reenviar a Meta.
-// El page access token se resuelve en el servidor por pageId (no viaja en el curl).
+// El page access token se resuelve en el servidor (no viaja en el curl).
 export const runtime = "nodejs"
 
 export async function POST(request: NextRequest) {
@@ -184,70 +181,43 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  // Canal explícito: este endpoint es el de Messenger. Instagram tiene el suyo
-  // en `/api/meta/instagram/send`, y desde la migración 0013 el mismo
-  // `meta_page_id` puede existir en los dos canales.
-  const connectedPage = await getActivePageWithTokenForTenant(
-    apiKey.tenantId,
-    input.value.pageId,
-    "messenger"
-  )
-  if (!connectedPage) {
+  // Dos formas de destino (ADR 0019): `conversationId` solo, o `pageId` +
+  // `recipientId`. El resolvedor devuelve la cuenta, su token y la conversación
+  // en las dos, y ya trae armados el status, el `code` y la razón del log.
+  const resolved = await resolveSendTarget({
+    tenantId: apiKey.tenantId,
+    channel: "messenger",
+    target: input.value.target,
+  })
+  if (!resolved.ok) {
     return trace.drop(
-      "page_not_connected",
+      resolved.reason,
       Response.json(
         {
-          error: "page is not connected for this tenant",
+          ...(resolved.code ? { code: resolved.code } : {}),
+          error: resolved.error,
         },
-        { status: 404 }
+        { status: resolved.status }
       ),
-      { errorMessage: `accountId=${input.value.pageId}` }
+      {
+        ...(resolved.code ? { errorCode: resolved.code } : {}),
+        ...(resolved.errorMessage
+          ? { errorMessage: resolved.errorMessage }
+          : {}),
+      }
     )
   }
-  trace.setAccount(connectedPage.page)
-
-  let conversation = input.value.conversationId
-    ? await getConversationById(apiKey.tenantId, input.value.conversationId)
-    : null
-
-  if (input.value.conversationId) {
-    if (
-      !conversation ||
-      conversation.connectedPageId !== connectedPage.page.id ||
-      conversation.contactId !== input.value.recipientId
-    ) {
-      return trace.drop(
-        "invalid_request",
-        Response.json(
-          { error: "conversationId does not match pageId and recipientId" },
-          { status: 400 }
-        )
-      )
-    }
-  } else {
-    conversation = await upsertConversation({
-      tenantId: apiKey.tenantId,
-      connectedPageId: connectedPage.page.id,
-      contactId: input.value.recipientId,
-      lastMessageAt: new Date(),
-    })
-  }
-
-  if (!conversation) {
-    return trace.drop(
-      "invalid_request",
-      Response.json({ error: "conversation not found" }, { status: 400 })
-    )
-  }
+  const { page, pageAccessToken, conversation } = resolved.value
+  trace.setAccount(page)
 
   const sentAt = new Date()
   // La unión discriminada del parser garantiza exactamente uno de los dos:
   // texto o adjunto. Con adjunto Meta descarga el archivo desde la URL;
   // nosotros nunca subimos bytes.
   const metaResult = await sendMetaMessage({
-    pageId: input.value.pageId,
-    pageAccessToken: connectedPage.pageAccessToken,
-    recipientId: input.value.recipientId,
+    pageId: page.metaPageId,
+    pageAccessToken,
+    recipientId: conversation.contactId,
     message: input.value.attachment
       ? { attachment: input.value.attachment }
       : { text: input.value.reply },
@@ -257,7 +227,7 @@ export async function POST(request: NextRequest) {
     try {
       await markPageTokenInvalid({
         tenantId: apiKey.tenantId,
-        connectionId: connectedPage.page.id,
+        connectionId: page.id,
         error:
           metaResult.error ??
           "Meta rejected the Page token. Reconnect the Page in Resender.",
@@ -270,9 +240,9 @@ export async function POST(request: NextRequest) {
         reason: "internal_error",
         requestId,
         tenantId: apiKey.tenantId,
-        connectionId: connectedPage.page.id,
+        connectionId: page.id,
         channel: "messenger",
-        accountId: connectedPage.page.metaPageId,
+        accountId: page.metaPageId,
         errorMessage: describeError(error),
       })
     }
@@ -283,8 +253,8 @@ export async function POST(request: NextRequest) {
     message = await insertOutboundMessage({
       tenantId: apiKey.tenantId,
       conversationId: conversation.id,
-      connectedPageId: connectedPage.page.id,
-      contactId: input.value.recipientId,
+      connectedPageId: page.id,
+      contactId: conversation.contactId,
       // Para un adjunto no hay texto: se persiste "" y el contenido queda en
       // attachment_type/attachment_url.
       text: input.value.reply ?? "",
@@ -322,7 +292,7 @@ export async function POST(request: NextRequest) {
   const traceFields = {
     subjectId: message.id,
     providerId: extractMetaMessageId(metaResult.data) ?? undefined,
-    contactId: input.value.recipientId,
+    contactId: conversation.contactId,
     // Del adjunto se loguea solo el tipo, nunca la URL: puede ser firmada y
     // llevar credenciales en la query. Del texto, el largo, como siempre.
     ...(input.value.attachment
@@ -360,7 +330,7 @@ export async function POST(request: NextRequest) {
         requestId,
         tenantId: apiKey.tenantId,
         channel: "messenger",
-        accountId: connectedPage.page.metaPageId,
+        accountId: page.metaPageId,
         errorMessage: describeError(error),
       })
     }
@@ -372,7 +342,7 @@ export async function POST(request: NextRequest) {
     properties: {
       message_id: message.id,
       conversation_id: conversation.id,
-      page_id: input.value.pageId,
+      page_id: page.metaPageId,
       status: message.status,
       meta_ok: metaResult.ok,
     },

@@ -1,8 +1,8 @@
 import { getSql } from "@/lib/db"
 
 // Access gate for the waitlist launch: a user only reaches the product once
-// `users.waitlisted` is explicitly false. New signups default to true, so the
-// product stays closed until someone flips the flag for that account.
+// `users.waitlisted` is explicitly false. Since migration 0024 new signups
+// default to false, so the gate only bites accounts closed by hand via SQL.
 export type WaitlistAccessRow = { waitlisted: boolean }
 
 type MaybeRow = WaitlistAccessRow | null | undefined

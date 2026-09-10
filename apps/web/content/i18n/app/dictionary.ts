@@ -61,6 +61,8 @@ export type AppDict = {
     navInbox: string
     navSettings: string
     navDocs: string
+    /** Primer nivel del breadcrumb del header de la consola. */
+    breadcrumbConsole: string
     theme: string
     signOut: string
   }
@@ -105,6 +107,8 @@ export type AppDict = {
     connectedAccountsHeading: string
     /** `{activePageCount}`, `{maxPages}` */
     quota: string
+    /** Sufijo del contador `n / m` de la cabecera. */
+    quotaActiveSuffix: string
     quotaUnresolved: string
     noticeConnectedGeneric: string
     /** `{username}` */
@@ -125,6 +129,7 @@ export type AppDict = {
       whatsappBody: string
       title: string
       body: string
+      /** Sin numerar: el número lo dibuja la píldora. */
       step1: string
       step2: string
       step3: string
@@ -169,6 +174,8 @@ export type AppDict = {
     secretRevealTitle: string
     secretWithBody: string
     secretWithoutBody: string
+    /** Valor del campo del secreto cuando todavía no hay uno. */
+    secretMissingValue: string
     /** `{date}` */
     disconnectedOn: string
     disconnectedNoDate: string
@@ -190,6 +197,11 @@ export type AppDict = {
     planUnresolvedTitle: string
     planUnresolvedBody: string
     planHeading: string
+    /** Alrededor del rango en mono: `{before}{range}{after}`. */
+    planUsageBefore: string
+    /** `{activePageCount}`, `{maxPages}` */
+    planUsageRange: string
+    planUsageAfter: string
     /** `{activePageCount}`, `{maxPages}` */
     planUsage: string
     /** `{count}` */
@@ -212,15 +224,17 @@ export type AppDict = {
   }
 
   inbox: {
-    eyebrow: string
     title: string
-    subtitle: string
     tabs: Record<InboxTab, string>
     tabsAria: string
     filterAll: string
-    conversationsHeading: string
-    publicationsHeading: string
-    sortedByActivity: string
+    /** Combobox de cuenta (mock `1i`): aria del botón, placeholder y vacío. */
+    accountPickerLabel: string
+    accountPickerSearch: string
+    accountPickerEmpty: string
+    /** Franja al pie del hilo de mensajes (mock `1h`), con su enlace a docs. */
+    readOnlyFooter: string
+    readOnlyFooterCta: string
     emptyConversations: string
     emptyConversationsFiltered: string
     emptyComments: string
@@ -263,6 +277,10 @@ export type AppDict = {
     /** Prefijo del último mensaje propio en el renglón del log. */
     you: string
     noMessages: string
+    /** Dirección traducida en el metadato de burbuja (mock `1h`). */
+    direction: Record<"inbound" | "outbound", string>
+    /** Metadato del comentario propio: `respuesta pública · 09:10`. */
+    publicReply: string
     /** `{status}` */
     deliveryPrefix: string
     delivery: Record<DeliveryStatus, string>

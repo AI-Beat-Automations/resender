@@ -9,20 +9,37 @@ export type OutboundAttachmentType = (typeof OUTBOUND_ATTACHMENT_TYPES)[number]
 export type OutboundAttachment = { type: OutboundAttachmentType; url: string }
 
 export type OutboundSendErrorCode =
+  | "send_destination_missing"
+  | "send_destination_incomplete"
   | "send_target_missing"
   | "send_target_conflict"
   | "attachment_type_invalid"
   | "attachment_url_missing"
   | "attachment_url_invalid"
 
+// A quién va el mensaje, en una de dos formas. `conversation` es la de
+// responder a un webhook: con el `conversation.id` del push alcanza, y Resender
+// resuelve página, token y contacto. `contact` es la de iniciar (o la de los
+// clientes anteriores a la ADR 0019): `pageId` es el `meta_page_id` de la
+// cuenta conectada y `recipientId` el id del contacto en Meta. Si en esa forma
+// viene además `conversationId`, la ruta exige que coincida con el par.
+export type SendTarget =
+  | { kind: "conversation"; conversationId: string }
+  | {
+      kind: "contact"
+      pageId: string
+      recipientId: string
+      conversationId?: string
+    }
+
+export type SendTargetResult =
+  | { ok: true; value: SendTarget }
+  | { ok: false; code: OutboundSendErrorCode | null; error: string }
+
 // Un envío lleva exactamente una de las dos cosas: texto o adjunto. La unión
 // discriminada obliga al que consume el valor a contemplar ambos casos en vez
 // de asumir que `reply` siempre existe.
-export type OutboundSendInput = {
-  pageId: string
-  recipientId: string
-  conversationId?: string
-} & (
+export type OutboundSendInput = { target: SendTarget } & (
   | { reply: string; attachment: null }
   | { reply: null; attachment: OutboundAttachment }
 )
@@ -95,28 +112,88 @@ export function parseCommentReplyInput(body: unknown): CommentReplyInputResult {
   }
 }
 
-export function parseOutboundSendInput(body: unknown): OutboundSendInputResult {
+// Solo el destino del body, sin mirar `reply`/`attachment`. Es lo que la ruta
+// de WhatsApp valida primero para poder diferir los errores de contenido hasta
+// después de la ventana de 24 h; `parseOutboundSendInput` lo reutiliza.
+//
+// `conversationId` solo, o `pageId` + `recipientId`; los tres juntos también
+// valen (la coincidencia se verifica al resolver, no acá). Un par a medias
+// sigue diciendo `missing pageId` / `missing recipientId` al principio del
+// texto, como antes de la ADR 0019, pero ahora con código estable: el cliente
+// viejo que leía la prosa la sigue reconociendo y el nuevo distingue por código.
+export function parseSendTarget(body: unknown): SendTargetResult {
   if (!body || typeof body !== "object") {
     return { ok: false, code: null, error: "invalid body" }
   }
 
-  const { pageId, recipientId, reply, attachment, conversationId } =
-    body as Record<string, unknown>
+  const { pageId, recipientId, conversationId } = body as Record<
+    string,
+    unknown
+  >
 
-  // Errores viejos, sin código estable: los clientes existentes ya dependen
-  // del texto y no hace falta que la API los distinga por código.
-  if (typeof pageId !== "string" || pageId.trim().length === 0) {
-    return { ok: false, code: null, error: "missing pageId" }
-  }
-  if (typeof recipientId !== "string" || recipientId.trim().length === 0) {
-    return { ok: false, code: null, error: "missing recipientId" }
-  }
   if (
     conversationId !== undefined &&
     (typeof conversationId !== "string" || conversationId.trim().length === 0)
   ) {
     return { ok: false, code: null, error: "invalid conversationId" }
   }
+
+  const hasPageId = typeof pageId === "string" && pageId.trim().length > 0
+  const hasRecipientId =
+    typeof recipientId === "string" && recipientId.trim().length > 0
+  const hasConversationId = typeof conversationId === "string"
+
+  if (hasPageId && hasRecipientId) {
+    return {
+      ok: true,
+      value: {
+        kind: "contact",
+        pageId: (pageId as string).trim(),
+        recipientId: (recipientId as string).trim(),
+        conversationId: hasConversationId
+          ? (conversationId as string).trim()
+          : undefined,
+      },
+    }
+  }
+
+  if (hasPageId || hasRecipientId) {
+    return {
+      ok: false,
+      code: "send_destination_incomplete",
+      error: hasPageId
+        ? "missing recipientId: send pageId and recipientId together, or conversationId alone"
+        : "missing pageId: send pageId and recipientId together, or conversationId alone",
+    }
+  }
+
+  if (hasConversationId) {
+    return {
+      ok: true,
+      value: {
+        kind: "conversation",
+        conversationId: (conversationId as string).trim(),
+      },
+    }
+  }
+
+  return {
+    ok: false,
+    code: "send_destination_missing",
+    error:
+      "missing destination: send conversationId, or pageId and recipientId",
+  }
+}
+
+export function parseOutboundSendInput(body: unknown): OutboundSendInputResult {
+  if (!body || typeof body !== "object") {
+    return { ok: false, code: null, error: "invalid body" }
+  }
+
+  const target = parseSendTarget(body)
+  if (!target.ok) return target
+
+  const { reply, attachment } = body as Record<string, unknown>
 
   // XOR texto/adjunto. "reply presente" exige contenido tras trim (igual que
   // siempre); "attachment presente" es que la clave venga con algo distinto de
@@ -144,13 +221,7 @@ export function parseOutboundSendInput(body: unknown): OutboundSendInputResult {
   if (hasReply) {
     return {
       ok: true,
-      value: {
-        pageId: pageId.trim(),
-        recipientId: recipientId.trim(),
-        reply: reply.trim(),
-        attachment: null,
-        conversationId: conversationId?.trim(),
-      },
+      value: { target: target.value, reply: reply.trim(), attachment: null },
     }
   }
 
@@ -211,11 +282,9 @@ export function parseOutboundSendInput(body: unknown): OutboundSendInputResult {
   return {
     ok: true,
     value: {
-      pageId: pageId.trim(),
-      recipientId: recipientId.trim(),
+      target: target.value,
       reply: null,
       attachment: { type, url: trimmedUrl },
-      conversationId: conversationId?.trim(),
     },
   }
 }

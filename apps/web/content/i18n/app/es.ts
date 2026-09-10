@@ -25,6 +25,7 @@ export const es: AppDict = {
     navInbox: "Inbox",
     navSettings: "Ajustes",
     navDocs: "Documentación",
+    breadcrumbConsole: "Consola",
     theme: "tema",
     signOut: "Cerrar sesión",
   },
@@ -131,6 +132,7 @@ export const es: AppDict = {
     },
     connectedAccountsHeading: "CUENTAS CONECTADAS",
     quota: "{activePageCount} de {maxPages} conexiones",
+    quotaActiveSuffix: "conexiones activas",
     quotaUnresolved: "cupo sin resolver · escríbenos a info@resender.dev",
     noticeConnectedGeneric: "Conectado: la autorización se completó.",
     noticeInstagramNamed:
@@ -151,9 +153,9 @@ export const es: AppDict = {
         "Da de alta un número nuevo, o conecta el que ya usas en WhatsApp Business App sin dejar de usarlo desde el teléfono. Solo se puede responder dentro de las 24 horas posteriores al último mensaje del cliente.",
       title: "Todavía no hay cuentas conectadas.",
       body: "Cuando autorices una cuenta aparecerá acá, con su webhook y su estado. Reconectar actualiza el token y los metadatos sin duplicar cuentas.",
-      step1: "1 · autorizas la cuenta",
-      step2: "2 · apuntas tu webhook",
-      step3: "3 · llega el primer mensaje",
+      step1: "autorizas la cuenta",
+      step2: "apuntas tu webhook",
+      step3: "llega el primer mensaje",
     },
   },
 
@@ -195,6 +197,7 @@ export const es: AppDict = {
       "Cada POST lleva las cabeceras resender-signature, resender-event-id y resender-timestamp. Rotar invalida el secreto anterior.",
     secretWithoutBody:
       "Todavía sin firma: el receptor no puede verificar que el POST venga de Resender.",
+    secretMissingValue: "todavía sin secreto",
     disconnectedOn: "Desconectada el {date}. ",
     disconnectedNoDate: "Desconectada. ",
     disconnectedHistoryKept:
@@ -219,6 +222,9 @@ export const es: AppDict = {
     planUnresolvedBody:
       "Escríbenos a info@resender.dev para revisar tu suscripción antes de conectar páginas.",
     planHeading: "Tu plan",
+    planUsageBefore: "Tienes ",
+    planUsageRange: "{activePageCount} de {maxPages}",
+    planUsageAfter: " conexiones.",
     planUsage: "Tienes {activePageCount} de {maxPages} conexiones.",
     allowanceOne: "Puedes añadir {count} página más.",
     allowanceMany: "Puedes añadir {count} páginas más.",
@@ -242,16 +248,16 @@ export const es: AppDict = {
   },
 
   inbox: {
-    eyebrow: "inbox",
     title: "Inbox",
-    subtitle:
-      "Log durable de mensajes y comentarios. Las respuestas salen de la API externa; esta pantalla es de solo lectura.",
     tabs: { mensajes: "Mensajes", comentarios: "Comentarios" },
     tabsAria: "Modo de la bandeja",
     filterAll: "Todas las cuentas",
-    conversationsHeading: "Conversaciones",
-    publicationsHeading: "Publicaciones",
-    sortedByActivity: "Ordenadas por actividad reciente.",
+    accountPickerLabel: "Filtrar por cuenta",
+    accountPickerSearch: "Buscar cuenta…",
+    accountPickerEmpty: "Ninguna cuenta coincide.",
+    readOnlyFooter:
+      "Las respuestas salen por la API externa. Esta pantalla es de solo lectura.",
+    readOnlyFooterCta: "Ver la API de envío",
     emptyConversations: "Todavía no hay conversaciones.",
     emptyConversationsFiltered: "No hay conversaciones para este filtro.",
     emptyComments: "Todavía no hay comentarios.",
@@ -298,6 +304,8 @@ export const es: AppDict = {
     yesterday: "ayer {time}",
     you: "Tú: ",
     noMessages: "Todavía no hay mensajes.",
+    direction: { inbound: "entrante", outbound: "respuesta" },
+    publicReply: "respuesta pública",
     deliveryPrefix: "entrega: {status}",
     delivery: {
       accepted: "aceptado",
@@ -334,7 +342,7 @@ export const es: AppDict = {
       body: "El idioma de la consola. No cambia el idioma de la API ni el de los correos de Meta.",
       label: "Idioma de la consola",
       es: "Español",
-      en: "English",
+      en: "Inglés",
     },
   },
 

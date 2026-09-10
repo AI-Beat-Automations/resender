@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   authenticateApiKey: vi.fn(),
+  getActivePageWithTokenByConnectionId: vi.fn(),
   getActivePageWithTokenForTenant: vi.fn(),
   getConversationById: vi.fn(),
   getOutboundMessageByIdempotencyKey: vi.fn(),
@@ -49,6 +50,8 @@ vi.mock("@/lib/messages/message-log", () => ({
 }))
 
 vi.mock("@/lib/pages/page-registry", () => ({
+  getActivePageWithTokenByConnectionId:
+    mocks.getActivePageWithTokenByConnectionId,
   getActivePageWithTokenForTenant: mocks.getActivePageWithTokenForTenant,
   markPageTokenInvalid: mocks.markPageTokenInvalid,
 }))
@@ -97,6 +100,16 @@ const sendRequest = (
     }),
   }) as unknown as NextRequest
 
+// Sin `pageId` ni `recipientId`: la forma de la ADR 0019.
+const sendByConversation = (
+  body: Record<string, unknown> = { reply: "hola" }
+) =>
+  new Request("https://resender.test/api/meta/whatsapp/send", {
+    method: "POST",
+    headers: { authorization: "Bearer rk_test", "idempotency-key": "key-1" },
+    body: JSON.stringify({ conversationId: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a", ...body }),
+  }) as unknown as NextRequest
+
 describe("POST /api/meta/whatsapp/send", () => {
   beforeEach(() => {
     vi.useFakeTimers()
@@ -121,14 +134,24 @@ describe("POST /api/meta/whatsapp/send", () => {
       },
       pageAccessToken: "waba-token-1",
     })
+    mocks.getActivePageWithTokenByConnectionId.mockResolvedValue({
+      page: {
+        id: "conn-1",
+        tenantId: "tenant-1",
+        channel: "whatsapp",
+        metaPageId: "phone-1",
+        username: null,
+      },
+      pageAccessToken: "waba-token-1",
+    })
     mocks.upsertConversation.mockResolvedValue({
-      id: "conv-1",
+      id: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a",
       connectedPageId: "conn-1",
       contactId: "5491100000000",
       lastInboundAt: OPEN,
     })
     mocks.getConversationById.mockResolvedValue({
-      id: "conv-1",
+      id: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a",
       connectedPageId: "conn-1",
       contactId: "5491100000000",
       lastInboundAt: OPEN,
@@ -214,7 +237,7 @@ describe("POST /api/meta/whatsapp/send", () => {
     mocks.resolveWhatsappAccess.mockResolvedValue(false)
     mocks.getOutboundMessageByIdempotencyKey.mockResolvedValue({
       id: "msg-old",
-      conversationId: "conv-1",
+      conversationId: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a",
       status: "sent",
       error: null,
       providerResponse: {},
@@ -254,7 +277,7 @@ describe("POST /api/meta/whatsapp/send", () => {
   it("replays a stored send without calling Meta", async () => {
     mocks.getOutboundMessageByIdempotencyKey.mockResolvedValue({
       id: "msg-old",
-      conversationId: "conv-1",
+      conversationId: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a",
       status: "sent",
       error: null,
       providerResponse: { messages: [{ id: "wamid.old" }] },
@@ -294,14 +317,14 @@ describe("POST /api/meta/whatsapp/send", () => {
   // ---- 7 ----------------------------------------------------------------
   it("400s when conversationId does not match pageId and recipientId", async () => {
     mocks.getConversationById.mockResolvedValue({
-      id: "conv-9",
+      id: "9b8a7c6d-2222-4f0e-9d1c-3b4a5f6e7d8c",
       connectedPageId: "otra-conn",
       contactId: "5491100000000",
       lastInboundAt: OPEN,
     })
 
     const response = await POST(
-      sendRequest({ reply: "hola", conversationId: "conv-9" })
+      sendRequest({ reply: "hola", conversationId: "9b8a7c6d-2222-4f0e-9d1c-3b4a5f6e7d8c" })
     )
 
     expect(response.status).toBe(400)
@@ -313,14 +336,14 @@ describe("POST /api/meta/whatsapp/send", () => {
   // se toca: ni una llamada, ni una fila persistida, ni cuota consumida.
   it("409s with the closed window and never calls Meta", async () => {
     mocks.getConversationById.mockResolvedValue({
-      id: "conv-1",
+      id: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a",
       connectedPageId: "conn-1",
       contactId: "5491100000000",
       lastInboundAt: CLOSED,
     })
 
     const response = await POST(
-      sendRequest({ reply: "hola", conversationId: "conv-1" })
+      sendRequest({ reply: "hola", conversationId: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a" })
     )
 
     expect(response.status).toBe(409)
@@ -352,7 +375,7 @@ describe("POST /api/meta/whatsapp/send", () => {
   // El borde exacto: a las 24 h clavadas ya está cerrada.
   it("closes the window exactly 24 hours after the last inbound", async () => {
     mocks.upsertConversation.mockResolvedValue({
-      id: "conv-1",
+      id: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a",
       connectedPageId: "conn-1",
       contactId: "5491100000000",
       lastInboundAt: new Date(NOW.getTime() - 24 * 60 * 60 * 1000),
@@ -366,7 +389,7 @@ describe("POST /api/meta/whatsapp/send", () => {
 
   it("sends when the window is one second from closing", async () => {
     mocks.upsertConversation.mockResolvedValue({
-      id: "conv-1",
+      id: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a",
       connectedPageId: "conn-1",
       contactId: "5491100000000",
       lastInboundAt: new Date(NOW.getTime() - (24 * 60 * 60 * 1000 - 1000)),
@@ -382,7 +405,7 @@ describe("POST /api/meta/whatsapp/send", () => {
   // cliente hasta que el contacto escriba, así que el 409 gana al 400.
   it("reports the closed window before a malformed attachment", async () => {
     mocks.upsertConversation.mockResolvedValue({
-      id: "conv-1",
+      id: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a",
       connectedPageId: "conn-1",
       contactId: "5491100000000",
       lastInboundAt: CLOSED,
@@ -531,7 +554,7 @@ describe("POST /api/meta/whatsapp/send", () => {
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({
         id: "msg-ganador",
-        conversationId: "conv-1",
+        conversationId: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a",
         status: "sent",
         error: null,
         providerResponse: {},
@@ -543,5 +566,107 @@ describe("POST /api/meta/whatsapp/send", () => {
     const body = await response.json()
     expect(body.resender.messageId).toBe("msg-ganador")
     expect(body.resender.idempotentReplay).toBe(true)
+  })
+
+  // ---- ADR 0019: conversationId solo -----------------------------------
+  // Con el `conversation.id` del push alcanza: el número sale por id de
+  // conexión, el `to` de la conversación, y la ventana se evalúa igual.
+  it("sends with conversationId alone", async () => {
+    const response = await POST(sendByConversation())
+
+    expect(response.status).toBe(200)
+    expect(mocks.getConversationById).toHaveBeenCalledWith("tenant-1", "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a")
+    expect(mocks.getActivePageWithTokenByConnectionId).toHaveBeenCalledWith(
+      "tenant-1",
+      "conn-1"
+    )
+    expect(mocks.getActivePageWithTokenForTenant).not.toHaveBeenCalled()
+    expect(mocks.upsertConversation).not.toHaveBeenCalled()
+    expect(mocks.sendWhatsappOutboundMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accessToken: "waba-token-1",
+        phoneNumberId: "phone-1",
+        to: "5491100000000",
+      })
+    )
+    expect(mocks.insertOutboundMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a",
+        connectedPageId: "conn-1",
+        contactId: "5491100000000",
+      })
+    )
+  })
+
+  // La ventana manda también en esta forma: cerrada es 409 y Meta no se toca.
+  it("409s a closed window when sending by conversationId", async () => {
+    mocks.getConversationById.mockResolvedValue({
+      id: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a",
+      connectedPageId: "conn-1",
+      contactId: "5491100000000",
+      lastInboundAt: CLOSED,
+    })
+
+    const response = await POST(sendByConversation())
+
+    expect(response.status).toBe(409)
+    expect(mocks.sendWhatsappOutboundMessage).not.toHaveBeenCalled()
+  })
+
+  // Una conversación de Messenger en la ruta de WhatsApp: 400 con código y la
+  // ruta correcta en el texto.
+  it("400s a conversation from another channel", async () => {
+    mocks.getActivePageWithTokenByConnectionId.mockResolvedValue({
+      page: {
+        id: "conn-1",
+        tenantId: "tenant-1",
+        channel: "messenger",
+        metaPageId: "page-1",
+        username: null,
+      },
+      pageAccessToken: "page-token-1",
+    })
+
+    const response = await POST(sendByConversation())
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({
+      code: "conversation_channel_mismatch",
+      error: "conversation belongs to messenger; use /api/meta/send",
+    })
+    expect(mocks.sendWhatsappOutboundMessage).not.toHaveBeenCalled()
+    expect(mocks.insertOutboundMessage).not.toHaveBeenCalled()
+  })
+
+  it("404s an unknown conversationId", async () => {
+    mocks.getConversationById.mockResolvedValue(null)
+
+    const response = await POST(sendByConversation())
+
+    expect(response.status).toBe(404)
+    await expect(response.json()).resolves.toEqual({
+      error: "conversation not found",
+    })
+    expect(mocks.sendWhatsappOutboundMessage).not.toHaveBeenCalled()
+  })
+
+  // Sin destino de ninguna forma: 400 con código, antes de mirar el contenido.
+  it("400s a body with no destination", async () => {
+    const response = await POST(
+      new Request("https://resender.test/api/meta/whatsapp/send", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer rk_test",
+          "idempotency-key": "key-1",
+        },
+        body: JSON.stringify({ reply: "hola" }),
+      }) as unknown as NextRequest
+    )
+
+    expect(response.status).toBe(400)
+    const body = await response.json()
+    expect(body.code).toBe("send_destination_missing")
+    expect(mocks.getConversationById).not.toHaveBeenCalled()
+    expect(mocks.sendWhatsappOutboundMessage).not.toHaveBeenCalled()
   })
 })

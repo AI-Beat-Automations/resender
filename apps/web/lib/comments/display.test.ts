@@ -226,9 +226,20 @@ describe("toPublicationRowView", () => {
     })
 
     expect(row.mediaLabel).toBe("New website made with Claude Code")
+    // El título de la fila antepone el sustantivo (mock `1i`); sin caption es
+    // el mismo `mediaLabel`, que ya lo lleva.
+    expect(row.mediaTitle).toBe("reel · New website made with Claude Code")
+    expect(row.mediaNoun).toBe("reel")
+    expect(row.mediaKind).toBe("reels")
+    expect(row.accountHandle).toBe("@cafe.rioja")
     expect(row.mediaPermalink).toBe(
       "https://www.instagram.com/reel/DaYn7QRSZXn/"
     )
+  })
+
+  it("sin caption el título es el sustantivo con el id, sin repetirlo", () => {
+    const row = toPublicationRowView(publication(), NOW, es)
+    expect(row.mediaTitle).toBe("reel 17841400000000000")
   })
 
   it("cae al id si Graph resolvió el permalink pero la publicación no tiene caption", () => {
@@ -291,9 +302,9 @@ describe("toCommentBubbleViews", () => {
       "27 jul 2026",
       null,
     ])
-    expect(views[1]?.meta).toBe("@cafe.rioja · outbound · 14:02:11 · sent")
+    expect(views[1]?.meta).toBe("respuesta pública · 14:02")
     expect(views[1]?.outbound).toBe(true)
-    expect(views[2]?.meta).toBe("@juanpi · inbound · 14:02:40 · received")
+    expect(views[2]?.meta).toBe("@juanpi · 14:02")
   })
 
   it("nombra a quién contesta un saliente cuando el padre está en el hilo", () => {
@@ -316,7 +327,7 @@ describe("toCommentBubbleViews", () => {
     )
 
     expect(reply?.meta).toBe(
-      "@cafe.rioja · outbound · 14:03:00 · sent · respondiendo a @juanpi"
+      "respuesta pública · 14:03 · respondiendo a @juanpi"
     )
   })
 
@@ -336,7 +347,7 @@ describe("toCommentBubbleViews", () => {
       es
     )
 
-    expect(orphan?.meta).toBe("@cafe.rioja · outbound · 14:03:00 · sent")
+    expect(orphan?.meta).toBe("respuesta pública · 14:03")
   })
 
   it("solo expone el error del proveedor en las respuestas rechazadas", () => {

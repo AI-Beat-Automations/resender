@@ -37,16 +37,24 @@ describe("formatDayLabel", () => {
 })
 
 describe("formatMessageMeta", () => {
-  it("compone dirección, hora con segundos y estado", () => {
+  it("traduce la dirección y pone la hora sin segundos", () => {
     expect(
       formatMessageMeta(
         {
           direction: "outbound",
-          status: "sent",
           createdAt: new Date(2026, 6, 27, 14, 2, 11),
         },
         es
       )
-    ).toBe("outbound · 14:02:11 · sent")
+    ).toBe("respuesta · 14:02")
+    expect(
+      formatMessageMeta(
+        {
+          direction: "inbound",
+          createdAt: new Date(2026, 6, 27, 14, 1, 59),
+        },
+        es
+      )
+    ).toBe("entrante · 14:01")
   })
 })

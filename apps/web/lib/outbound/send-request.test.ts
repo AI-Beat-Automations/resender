@@ -4,6 +4,7 @@ import {
   getBearerToken,
   parseCommentReplyInput,
   parseOutboundSendInput,
+  parseSendTarget,
 } from "./send-request"
 
 describe("outbound send request", () => {
@@ -26,18 +27,127 @@ describe("outbound send request", () => {
     ).toEqual({
       ok: true,
       value: {
-        pageId: "page",
-        recipientId: "psid",
+        target: {
+          kind: "contact",
+          pageId: "page",
+          recipientId: "psid",
+          conversationId: "conversation",
+        },
         reply: "hola",
         attachment: null,
-        conversationId: "conversation",
       },
     })
     // Los errores viejos no tienen código estable: viajan con `code: null`.
-    expect(parseOutboundSendInput({ pageId: "page" })).toEqual({
+    expect(
+      parseOutboundSendInput({ pageId: "page", conversationId: "" })
+    ).toEqual({ ok: false, code: null, error: "invalid conversationId" })
+  })
+
+  // ADR 0019: las tres formas válidas de destino. `conversationId` solo es la
+  // de responder a un webhook; el par es la de iniciar; los tres juntos siguen
+  // valiendo (la coincidencia la verifica el resolvedor, no el parser).
+  it("accepts conversationId alone as the destination", () => {
+    expect(parseSendTarget({ conversationId: " conv-1 " })).toEqual({
+      ok: true,
+      value: { kind: "conversation", conversationId: "conv-1" },
+    })
+    expect(
+      parseOutboundSendInput({ conversationId: "conv-1", reply: "hola" })
+    ).toEqual({
+      ok: true,
+      value: {
+        target: { kind: "conversation", conversationId: "conv-1" },
+        reply: "hola",
+        attachment: null,
+      },
+    })
+  })
+
+  it("accepts pageId and recipientId with and without conversationId", () => {
+    expect(parseSendTarget({ pageId: "page", recipientId: "psid" })).toEqual({
+      ok: true,
+      value: {
+        kind: "contact",
+        pageId: "page",
+        recipientId: "psid",
+        conversationId: undefined,
+      },
+    })
+    expect(
+      parseSendTarget({
+        pageId: "page",
+        recipientId: "psid",
+        conversationId: "conv-1",
+      })
+    ).toEqual({
+      ok: true,
+      value: {
+        kind: "contact",
+        pageId: "page",
+        recipientId: "psid",
+        conversationId: "conv-1",
+      },
+    })
+  })
+
+  it("rejects a body with no destination at all", () => {
+    expect(parseSendTarget({})).toEqual({
       ok: false,
-      code: null,
-      error: "missing recipientId",
+      code: "send_destination_missing",
+      error:
+        "missing destination: send conversationId, or pageId and recipientId",
+    })
+    // Y el parser completo corta ahí, antes de mirar el contenido.
+    expect(parseOutboundSendInput({ reply: "hola" })).toMatchObject({
+      ok: false,
+      code: "send_destination_missing",
+    })
+  })
+
+  // Medio par es un error propio y no «falta conversationId»: el cliente
+  // claramente quiso iniciar, y el texto le dice qué mitad le falta.
+  it("rejects half a pageId + recipientId pair", () => {
+    expect(parseSendTarget({ pageId: "page" })).toMatchObject({
+      ok: false,
+      code: "send_destination_incomplete",
+      error: expect.stringMatching(/^missing recipientId/),
+    })
+    expect(parseSendTarget({ recipientId: "psid" })).toMatchObject({
+      ok: false,
+      code: "send_destination_incomplete",
+      error: expect.stringMatching(/^missing pageId/),
+    })
+    // Aunque venga `conversationId`: el par a medias no se ignora en silencio.
+    expect(
+      parseSendTarget({ pageId: "page", conversationId: "conv-1" })
+    ).toMatchObject({ ok: false, code: "send_destination_incomplete" })
+  })
+
+  // El XOR texto/adjunto no depende de la forma del destino.
+  it("keeps the reply/attachment XOR with conversationId alone", () => {
+    expect(parseOutboundSendInput({ conversationId: "conv-1" })).toMatchObject({
+      ok: false,
+      code: "send_target_missing",
+    })
+    expect(
+      parseOutboundSendInput({
+        conversationId: "conv-1",
+        reply: "hola",
+        attachment: { type: "image", url: "https://cdn.example.com/a.jpg" },
+      })
+    ).toMatchObject({ ok: false, code: "send_target_conflict" })
+    expect(
+      parseOutboundSendInput({
+        conversationId: "conv-1",
+        attachment: { type: "image", url: "https://cdn.example.com/a.jpg" },
+      })
+    ).toEqual({
+      ok: true,
+      value: {
+        target: { kind: "conversation", conversationId: "conv-1" },
+        reply: null,
+        attachment: { type: "image", url: "https://cdn.example.com/a.jpg" },
+      },
     })
   })
 
@@ -151,11 +261,14 @@ describe("outbound send request", () => {
     ).toEqual({
       ok: true,
       value: {
-        pageId: "page",
-        recipientId: "psid",
+        target: {
+          kind: "contact",
+          pageId: "page",
+          recipientId: "psid",
+          conversationId: undefined,
+        },
         reply: null,
         attachment: { type: "file", url: signed },
-        conversationId: undefined,
       },
     })
   })

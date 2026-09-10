@@ -1,6 +1,6 @@
 import Link from "next/link"
 import { redirect } from "next/navigation"
-import { Link2, TriangleAlert } from "lucide-react"
+import { TriangleAlert } from "lucide-react"
 
 import { ConnectFacebookButton } from "@/features/connect-meta/ui/connect-facebook-button"
 import { PageSelectionForm } from "@/features/connect-meta/ui/page-selection-form"
@@ -15,11 +15,19 @@ import {
   formatPageAllowance,
 } from "@/lib/pages/page-selection"
 import { fmt, type AppDict } from "@/content/i18n/app"
+import { ConsolePage } from "@/features/shell/ui/console-page"
 import { getAppDict } from "@/lib/i18n/app-dict"
+import {
+  Alert,
+  AlertContent,
+  AlertDescription,
+  AlertTitle,
+} from "@workspace/ui/components/alert"
 
-// v2 no dibuja esta pantalla (ADR 0005): se resuelve con el mismo lenguaje
-// visual de B1/B2 y sus cuatro estados propios — sin autorización de Meta,
-// plan sin resolver, lista clasificada y error de validación al confirmar.
+// Mock `1g`: columna de 720px, barra de plan, lista clasificada en tarjeta y
+// pie con «volver» a la izquierda y el primario a la derecha. Sus cuatro
+// estados propios — sin autorización de Meta, plan sin resolver, lista
+// clasificada y error de validación al confirmar — se conservan.
 export default async function SelectPagesPage() {
   const session = await getSession()
   if (!session?.user?.id) redirect("/login")
@@ -32,23 +40,21 @@ export default async function SelectPagesPage() {
   if (!userToken) {
     return (
       <Shell t={t}>
-        <section className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-[22px] shadow-[var(--shadow-sm)] sm:flex-row sm:items-center">
-          <span
-            className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[var(--primary-tint)] text-primary"
-            aria-hidden
-          >
-            <Link2 className="size-5" />
-          </span>
-          <div className="flex-1">
-            <h2 className="font-heading text-base font-semibold">
-              {t.select.noAuthTitle}
-            </h2>
-            <p className="mt-1 text-[13.5px]/[1.55] text-muted-foreground">
+        <Alert className="flex-col sm:flex-row sm:items-center">
+          <AlertContent>
+            <AlertTitle>{t.select.noAuthTitle}</AlertTitle>
+            <AlertDescription className="text-muted-foreground">
               {t.select.noAuthBody}
-            </p>
-          </div>
-          <ConnectFacebookButton label={t.connections.connectFacebook} />
-        </section>
+            </AlertDescription>
+          </AlertContent>
+          <ConnectFacebookButton
+            label={t.connections.connectFacebook}
+            variant="outline"
+            size="default"
+            className="shrink-0 self-start sm:self-center"
+          />
+        </Alert>
+        <BackLink t={t} />
       </Shell>
     )
   }
@@ -73,17 +79,14 @@ export default async function SelectPagesPage() {
   if (!limits) {
     return (
       <Shell t={t}>
-        <section className="flex items-start gap-3 rounded-2xl border border-destructive-soft-border bg-destructive-soft p-[22px] text-destructive-soft-foreground">
-          <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
-          <div>
-            <p className="text-[13.5px] font-medium">
-              {t.select.planUnresolvedTitle}
-            </p>
-            <p className="mt-1 text-[13px]/[1.55]">
-              {t.select.planUnresolvedBody}
-            </p>
-          </div>
-        </section>
+        <Alert variant="destructive">
+          <TriangleAlert />
+          <AlertContent>
+            <AlertTitle>{t.select.planUnresolvedTitle}</AlertTitle>
+            <AlertDescription>{t.select.planUnresolvedBody}</AlertDescription>
+          </AlertContent>
+        </Alert>
+        <BackLink t={t} />
       </Shell>
     )
   }
@@ -102,19 +105,24 @@ export default async function SelectPagesPage() {
   return (
     <Shell t={t}>
       {/* Cuántas puede añadir, antes de elegir: el mismo texto que devuelve la
-          validación del servidor, desde el módulo de dominio. */}
-      <section className="rounded-2xl border border-border bg-card p-[22px] shadow-[var(--shadow-sm)]">
-        <h2 className="font-heading text-base font-semibold">
-          {t.select.planHeading}
-        </h2>
-        <p className="mt-1 text-[13.5px] text-muted-foreground">
-          {fmt(t.select.planUsage, {
-            activePageCount: view.activePageCount,
-            maxPages: view.maxPages,
-          })}{" "}
-          {formatPageAllowance(view, t)}
+          validación del servidor, desde el módulo de dominio. El rango va en
+          mono, como en el mock. */}
+      <div className="flex flex-col gap-1 rounded-xl border border-border bg-surface-sunken px-4 py-3 text-[13.5px] sm:flex-row sm:items-center sm:justify-between">
+        <p>
+          <span className="text-muted-foreground">
+            {t.select.planHeading} ·{" "}
+          </span>
+          {t.select.planUsageBefore}
+          <span className="font-mono">
+            {fmt(t.select.planUsageRange, {
+              activePageCount: view.activePageCount,
+              maxPages: view.maxPages,
+            })}
+          </span>
+          {t.select.planUsageAfter}
         </p>
-      </section>
+        <p className="font-medium">{formatPageAllowance(view, t)}</p>
+      </div>
       <PageSelectionForm view={view} />
     </Shell>
   )
@@ -122,27 +130,29 @@ export default async function SelectPagesPage() {
 
 function Shell({ children, t }: { children: React.ReactNode; t: AppDict }) {
   return (
-    <div>
+    <ConsolePage className="flex max-w-[calc(720px+3rem)] flex-col gap-5">
       <header>
-        <p className="font-mono text-[11px] tracking-[0.08em] text-[var(--text-subtle)]">
-          {`// ${t.select.eyebrow}`}
-        </p>
-        <h1 className="mt-1.5 font-heading text-[26px] font-bold tracking-[-0.02em]">
+        <h1 className="font-heading text-2xl font-bold tracking-[-0.02em]">
           {t.select.title}
         </h1>
-        <p className="mt-2 max-w-[620px] text-[14.5px]/[1.6] text-muted-foreground">
+        <p className="mt-1.5 text-sm/[1.55] text-muted-foreground">
           {t.select.subtitle}
         </p>
       </header>
-      <div className="mt-6 flex flex-col gap-3.5">{children}</div>
-      <p className="mt-5 text-[13.5px]">
-        <Link
-          href="/connections"
-          className="text-muted-foreground underline underline-offset-4"
-        >
-          {t.select.back}
-        </Link>
-      </p>
-    </div>
+      {children}
+    </ConsolePage>
+  )
+}
+
+function BackLink({ t }: { t: AppDict }) {
+  return (
+    <p>
+      <Link
+        href="/connections"
+        className="text-[13px] text-muted-foreground hover:text-foreground"
+      >
+        {t.select.back}
+      </Link>
+    </p>
   )
 }

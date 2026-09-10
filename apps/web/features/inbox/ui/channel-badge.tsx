@@ -1,12 +1,11 @@
 import type { AppDict } from "@/content/i18n/app"
 import type { PageChannel } from "@/lib/pages/page-registry"
-import { Badge } from "@workspace/ui/components/badge"
+import { cn } from "@workspace/ui/lib/utils"
 
-// Mismo texto y misma variante que la tarjeta de Conexiones: con tres canales
-// mezclados en el mismo log es el dato que ordena todo lo demás —qué superficie
-// de Graph contesta, qué ventana de respuesta corre—, y sin él dos filas de
-// cuentas distintas solo se distinguen por el id. Se achica a la densidad de la
-// fila, donde el resto del renglón es mono de 10.5px.
+// Píldora del canal (mock `1h`): borde, fondo de tarjeta y sin tinte. Con tres
+// canales mezclados en el mismo log es el dato que ordena todo lo demás —qué
+// superficie de Graph contesta, qué ventana de respuesta corre—, y sin él dos
+// filas de cuentas distintas solo se distinguen por el id.
 //
 // El nombre sale del catálogo del diccionario y no de un ternario: con
 // `channel === "instagram" ? "Instagram" : "Messenger"` una conversación de
@@ -19,17 +18,24 @@ import { Badge } from "@workspace/ui/components/badge"
 // más largas del producto, y volverlo cliente mandaría una isla por fila.
 export function ChannelBadge({
   channel,
+  size = "row",
   t,
 }: {
   channel: PageChannel
+  /** `row` (11px, en la fila) o `header` (11.5px, en la cabecera del hilo). */
+  size?: "row" | "header"
   t: AppDict
 }) {
   return (
-    <Badge
-      variant="outline"
-      className="h-4 shrink-0 px-1.5 text-[10px] font-normal"
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center rounded-full border border-border whitespace-nowrap",
+        size === "row"
+          ? "bg-card px-[7px] py-px text-[11px] text-muted-foreground"
+          : "px-2 py-0.5 text-[11.5px] text-text-secondary"
+      )}
     >
       {t.channels.label[channel]}
-    </Badge>
+    </span>
   )
 }
