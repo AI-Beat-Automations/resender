@@ -15,6 +15,7 @@ import { sendPasswordResetEmail } from "@/lib/email/password-reset-email"
 import { sendVerifyEmail } from "@/lib/email/verify-email-email"
 import { describeError, log } from "@/lib/observability/logger"
 import { posthog } from "@/lib/posthog"
+import { markXRegistration } from "@/lib/x-registration"
 
 // El idioma del [Enlace de recuperacion] es el de la pantalla donde se lo
 // pidió, no el de la cuenta: no existe idioma por cuenta (CONTEXT.md →
@@ -427,6 +428,13 @@ function createAuth() {
     // `ctx` trae `request` solo cuando la llamada entró por HTTP —el callback
     // de Google sí—, y es de donde sale el idioma del correo.
     databaseHooks: {
+      user: {
+        create: {
+          after: async (_user, ctx) => {
+            markXRegistration(ctx)
+          },
+        },
+      },
       account: {
         create: {
           after: (account, ctx) => notifyAccountLinked(account, ctx),
