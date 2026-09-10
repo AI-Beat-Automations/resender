@@ -371,6 +371,7 @@ export type Dict = {
       privacy: string
       terms: string
       dataDeletion: string
+      cookies: string
     }
   }
   meta: {
