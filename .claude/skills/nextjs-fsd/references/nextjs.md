@@ -207,7 +207,7 @@ Los ejemplos oficiales usan el alias `@/` apuntando a `src/` (p. ej. `@/_pages/e
 }
 ```
 
-Nota para este repo: `apps/web` hoy tiene `app/` en la raíz del paquete y alias `@/*` → `./*` (sin `src/`). Al adoptar FSD aquí, crea `apps/web/src/` con las capas FSD, apunta el alias `@/*` a `./src/*` (o añade un alias dedicado) y deja `apps/web/app/` solo con archivos de ruta que re-exportan desde `src/`.
+Nota para este repo: la app vive en la raíz del repo (no hay monorepo), con `app/` en la raíz y alias `@/*` → `./*` (sin `src/`). Al adoptar FSD aquí, crea `src/` con las capas FSD, apunta el alias `@/*` a `./src/*` (o añade un alias dedicado) y deja `app/` solo con archivos de ruta que re-exportan desde `src/`.
 
 ## Layouts
 

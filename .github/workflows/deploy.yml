@@ -25,12 +25,12 @@ jobs:
       # Las migraciones corren en Node ANTES del deploy del Worker.
       # Usar el connection string directo (no pooled) de Neon para DDL.
       - name: Run database migrations
-        run: npm run db:migrate -w web
+        run: npm run db:migrate
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_MIGRATIONS }}
 
       - name: Build and deploy to Cloudflare Workers
-        run: npm run deploy -w web
+        run: npm run deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
