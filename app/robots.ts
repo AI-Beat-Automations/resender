@@ -17,6 +17,7 @@ const PRIVATE_PATHS = [
   "/en/register",
   "/billing",
   "/pending",
+  "/access",
   "/connections",
   "/inbox",
   "/settings",

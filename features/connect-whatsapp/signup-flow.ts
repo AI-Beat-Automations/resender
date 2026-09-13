@@ -358,8 +358,7 @@ export type WhatsappPlanSlotDeps = {
 }
 
 export type WhatsappPlanSlotResult =
-  | { ok: true }
-  | { ok: false; reason: LogReason; message: string }
+  { ok: true } | { ok: false; reason: LogReason; message: string }
 
 /**
  * El cupo del plan, **antes** de tocar Meta —y por tanto antes del canje, que
@@ -420,7 +419,12 @@ export async function checkWhatsappPlanSlot(
   }
 
   const slot = checkAccountSlotAvailable(
-    { activePageCount, maxPages, reconnectingActiveAccount },
+    {
+      activePageCount,
+      maxPages,
+      reconnectingActiveAccount,
+      agencyClient: !input.scope.owner,
+    },
     t
   )
   if (slot.ok) return { ok: true }

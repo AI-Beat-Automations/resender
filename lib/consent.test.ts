@@ -62,6 +62,7 @@ describe("isXPixelPath", () => {
       "/billing",
       "/billing/success",
       "/pending",
+      "/access",
     ]) {
       expect(isXPixelPath(path), path).toBe(false)
     }

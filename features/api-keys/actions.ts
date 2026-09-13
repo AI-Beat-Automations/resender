@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 
-import { getSession } from "@/lib/auth/session"
+import { describeActorDenial, requireOwner } from "@/lib/auth/actor"
 import { getAppDict } from "@/lib/i18n/app-dict"
 import {
   createApiKey,
@@ -27,15 +27,18 @@ export async function createApiKeyAction(
   formData: FormData
 ): Promise<CreateApiKeyState> {
   const t = await getAppDict()
-  const session = await getSession()
-  if (!session?.user?.id) return { error: t.actions.notSignedIn }
+  // Las API keys son de la integración de la agencia: la persona de un cliente
+  // de agencia no las crea ni las revoca (ADR 0020).
+  const gate = await requireOwner()
+  if (!gate.ok) return { error: describeActorDenial(gate.denial, t.actions) }
+  const { actor } = gate
 
   try {
-    const created = await createApiKey(session.user.id, formData.get("label"))
+    const created = await createApiKey(actor.tenantId, formData.get("label"))
 
     if (posthog) {
       posthog.capture({
-        distinctId: session.user.id,
+        distinctId: actor.userId,
         event: "api key created",
         properties: {
           api_key_id: created.record.id,
@@ -68,20 +71,21 @@ export async function revokeApiKeyAction(
   formData: FormData
 ): Promise<RevokeApiKeyState> {
   const t = await getAppDict()
-  const session = await getSession()
-  if (!session?.user?.id) return { error: t.actions.notSignedIn }
+  const gate = await requireOwner()
+  if (!gate.ok) return { error: describeActorDenial(gate.denial, t.actions) }
+  const { actor } = gate
 
   const apiKeyId = formData.get("apiKeyId")
   if (typeof apiKeyId !== "string" || !apiKeyId) {
     return { error: t.actions.invalidApiKey }
   }
 
-  const revoked = await revokeApiKey(session.user.id, apiKeyId)
+  const revoked = await revokeApiKey(actor.tenantId, apiKeyId)
   if (!revoked) return { error: t.actions.apiKeyNotFound }
 
   if (posthog) {
     posthog.capture({
-      distinctId: session.user.id,
+      distinctId: actor.userId,
       event: "api key revoked",
       properties: { api_key_id: revoked.id, label: revoked.label },
     })

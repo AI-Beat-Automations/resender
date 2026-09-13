@@ -81,6 +81,8 @@ export type AppDict = {
     ctaManagePages: string
     ctaContact: string
     ctaUpgrade: string
+    /** Para la persona de un cliente de agencia: no gestiona el plan. */
+    askAgency: string
   }
 
   channels: {
@@ -438,6 +440,19 @@ export type AppDict = {
     }
   }
 
+  /**
+   * `/access`: la persona de un cliente de agencia cuya agencia no tiene acceso
+   * activo —sin suscripción, cerrada a mano o borrada— (ADR 0020). Nunca ve
+   * precios: quien paga es la agencia.
+   */
+  accessAgency: {
+    eyebrow: string
+    title: string
+    body: string
+    emailLabel: string
+    signOut: string
+  }
+
   billing: {
     metaTitle: string
     eyebrow: string
@@ -484,6 +499,8 @@ export type AppDict = {
     instagramAccountOwned: string
     whatsappNotEnabled: string
     whatsappPageLimitReached: string
+    /** Cupo lleno visto por la persona de un cliente de agencia, sin números. */
+    agencyPageLimitReached: string
     whatsappExchangeFailed: string
     whatsappAssetsFailed: string
     whatsappRegisterFailed: string
@@ -533,6 +550,8 @@ export type AppDict = {
     whatsappNoPin: string
     /** `{maxPages}`, `{activePageCount}` */
     accountSlotFull: string
+    /** Cupo lleno para la persona de un cliente de agencia: sin números. */
+    accountSlotFullAgency: string
     invalidSelection: string
     /** `{maxPages}`, `{activePageCount}` */
     pageLimitPlan: string

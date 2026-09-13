@@ -2,7 +2,11 @@
 
 import { revalidatePath } from "next/cache"
 
-import { describeActorDenial, requireActor } from "@/lib/auth/actor"
+import {
+  describeActorDenial,
+  requireActor,
+  requireOwner,
+} from "@/lib/auth/actor"
 import { getAppDict } from "@/lib/i18n/app-dict"
 import {
   disconnectPage,
@@ -31,12 +35,11 @@ export async function saveWebhookUrlAction(
   formData: FormData
 ): Promise<ConnectionActionState> {
   const t = await getAppDict()
-  const gate = await requireActor()
-  if (!gate.ok) return { error: describeActorDenial(gate.denial, t.actions) }
   // El webhook es la integración de la agencia con su bot: la persona de un
   // cliente de agencia no lo ve ni lo toca (ADR 0020). Se chequea acá y no solo
   // en la tarjeta porque la acción se puede invocar por POST directo.
-  if (gate.actor.kind !== "owner") return { error: t.actions.ownerOnly }
+  const gate = await requireOwner()
+  if (!gate.ok) return { error: describeActorDenial(gate.denial, t.actions) }
   const { actor } = gate
 
   const connectionId = formData.get("connectionId")
@@ -201,11 +204,10 @@ export async function rotateWebhookSecretAction(
   formData: FormData
 ): Promise<ConnectionActionState> {
   const t = await getAppDict()
-  const gate = await requireActor()
-  if (!gate.ok) return { error: describeActorDenial(gate.denial, t.actions) }
   // Mismo criterio que la `webhookUrl`: el secreto es de la integración de la
   // agencia (ADR 0020).
-  if (gate.actor.kind !== "owner") return { error: t.actions.ownerOnly }
+  const gate = await requireOwner()
+  if (!gate.ok) return { error: describeActorDenial(gate.denial, t.actions) }
   const { actor } = gate
 
   const connectionId = formData.get("connectionId")

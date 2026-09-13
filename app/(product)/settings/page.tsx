@@ -4,6 +4,7 @@ import { listApiKeys } from "@/lib/auth/api-keys"
 import { isEmailVerified } from "@/lib/auth/email-verified"
 import { isGoogleEnabled } from "@/lib/auth/google"
 import { getSession } from "@/lib/auth/session"
+import { getProductActor } from "@/features/shell/queries"
 import { listSignInMethods } from "@/lib/auth/sign-in-methods"
 import { AccountIdentityPanel } from "@/features/account/ui/account-identity-panel"
 import { ChangePasswordPanel } from "@/features/account/ui/change-password-panel"
@@ -25,7 +26,10 @@ import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
 import type { TenantEntitlement } from "@/lib/billing/entitlements"
 import { getPlanByLookupKey } from "@/lib/billing/plans"
 import { getSubscriptionByTenantId } from "@/lib/billing/subscription"
-import { resolveSettingsTab } from "@/lib/settings/settings-tabs"
+import {
+  resolveSettingsTab,
+  settingsTabsFor,
+} from "@/lib/settings/settings-tabs"
 import type { Locale } from "@/content/i18n"
 import type { AppDict } from "@/content/i18n/app"
 import { getAppI18n } from "@/lib/i18n/app-dict"
@@ -39,17 +43,25 @@ type SettingsPageProps = {
 
 // Ajustes en tres pestañas con el estado en la URL (ADR 0005). Cada pestaña
 // consulta solo lo suyo: entrar a Cuenta no lee las API keys ni Stripe.
+//
+// La persona de un cliente de agencia (ADR 0020) solo ve Cuenta, sin el ID de
+// tenant ni el borrado de cuenta: las API keys, la suscripción y la cuenta
+// entera son de la agencia. Las acciones de esas pestañas también lo verifican
+// en el servidor.
 export default async function SettingsPage({
   searchParams,
 }: SettingsPageProps) {
-  const [session, params, { lang, t }] = await Promise.all([
+  const [actor, session, params, { lang, t }] = await Promise.all([
+    getProductActor(),
     getSession(),
     searchParams,
     getAppI18n(),
   ])
-  if (!session?.user?.id) redirect("/login")
+  if (!actor || !session?.user?.id) redirect("/login")
 
-  const tab = resolveSettingsTab(params.tab)
+  const viewer = actor.kind
+  const tabs = settingsTabsFor(viewer)
+  const tab = resolveSettingsTab(params.tab, viewer)
 
   return (
     <ConsolePage className="flex flex-col">
@@ -65,14 +77,16 @@ export default async function SettingsPage({
             {t.settings.subtitle}
           </p>
         ) : null}
-        <SettingsTabsNav active={tab} t={t} />
+        <SettingsTabsNav tabs={tabs} active={tab} t={t} />
       </header>
 
       <div className="mt-6">
         {tab === "cuenta" ? (
           <AccountTab
             email={session.user.email ?? ""}
-            tenantId={session.user.id}
+            userId={actor.userId}
+            tenantId={viewer === "owner" ? actor.tenantId : null}
+            canDeleteAccount={viewer === "owner"}
             lang={lang}
             t={t}
             oauthError={params.error}
@@ -80,7 +94,7 @@ export default async function SettingsPage({
         ) : null}
         {tab === "api-keys" ? <ApiKeysTab t={t} /> : null}
         {tab === "suscripcion" ? (
-          <SubscriptionTab tenantId={session.user.id} t={t} />
+          <SubscriptionTab tenantId={actor.tenantId} t={t} />
         ) : null}
       </div>
     </ConsolePage>
@@ -92,19 +106,25 @@ export default async function SettingsPage({
 // `listUserAccounts`. Las dos consultas son el costo aceptado en el issue #98.
 async function AccountTab({
   email,
+  userId,
   tenantId,
+  canDeleteAccount,
   lang,
   t,
   oauthError,
 }: {
   email: string
-  tenantId: string
+  /** La persona: el correo y las credenciales son suyos, no del tenant. */
+  userId: string
+  /** `null` para la persona de un cliente de agencia. */
+  tenantId: string | null
+  canDeleteAccount: boolean
   lang: Locale
   t: AppDict
   oauthError?: string
 }) {
   const [verified, methods] = await Promise.all([
-    isEmailVerified(tenantId),
+    isEmailVerified(userId),
     listSignInMethods(),
   ])
 
@@ -130,7 +150,7 @@ async function AccountTab({
       />
       {/* La zona de peligro va separada del resto: borrar la cuenta no puede
           leerse a la misma altura que cambiar la contraseña. */}
-      {email ? (
+      {email && canDeleteAccount ? (
         <>
           <Separator className="my-2" />
           <DeleteAccountPanel email={email} />

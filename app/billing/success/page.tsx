@@ -2,6 +2,7 @@ import Link from "next/link"
 import { redirect } from "next/navigation"
 import { LoaderCircle } from "lucide-react"
 
+import { requireOwner } from "@/lib/auth/actor"
 import { getSession } from "@/lib/auth/session"
 import { ActivationPoller } from "@/features/billing/ui/activation-poller"
 import { AccessCard, AccessShell } from "@/features/auth/ui/access-shell"
@@ -33,6 +34,13 @@ export default async function BillingSuccessPage({
     getAppI18n(),
   ])
   if (!session?.user?.id) redirect("/login")
+  // Ver `/billing`: la persona de un cliente de agencia no pasa por Stripe.
+  const gate = await requireOwner()
+  if (!gate.ok) {
+    if (gate.denial === "waitlisted") redirect("/pending")
+    if (gate.denial === "not_signed_in") redirect("/login")
+    redirect("/access")
+  }
   if (await hasActiveSubscription(session.user.id)) redirect("/connections")
 
   if (!(await isOwnCompletedCheckout(params.session_id, session.user.id))) {

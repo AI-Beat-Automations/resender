@@ -25,6 +25,29 @@ const ownedBy = (
   status,
 })
 
+describe("validatePageSelection para un cliente de agencia", () => {
+  it("rechaza el exceso de cupo sin contar los números de la agencia", () => {
+    const view = classifyPagesForSelection({
+      metaPages: [metaPage("a"), metaPage("b")],
+      ownership: [],
+      scope: { tenantId: "juan", owner: false, clientId: "pedro" },
+      activePageCount: 4,
+      maxPages: 5,
+    })
+
+    expect(
+      validatePageSelection(
+        { view, selectedPageIds: ["a", "b"], agencyClient: true },
+        es
+      )
+    ).toEqual({
+      ok: false,
+      code: "page_limit_exceeded",
+      message: es.actions.accountSlotFullAgency,
+    })
+  })
+})
+
 describe("page selection classification", () => {
   // Modo agencia (ADR 0020): la persona de un cliente solo ve como propias las
   // páginas de su cliente. La de otro cliente y la sin asignar del mismo tenant
@@ -276,6 +299,22 @@ describe("page selection copy", () => {
 })
 
 describe("checkAccountSlotAvailable", () => {
+  // Modo agencia (ADR 0020): el cupo es de la agencia. A la persona de un
+  // cliente no se le cuentan números ni se la manda a desconectar.
+  it("a un cliente de agencia le habla del plan de su agencia, sin números", () => {
+    expect(
+      checkAccountSlotAvailable(
+        {
+          activePageCount: 2,
+          maxPages: 2,
+          reconnectingActiveAccount: false,
+          agencyClient: true,
+        },
+        es
+      )
+    ).toEqual({ ok: false, message: es.actions.accountSlotFullAgency })
+  })
+
   it("deja conectar mientras quede hueco", () => {
     expect(
       checkAccountSlotAvailable(

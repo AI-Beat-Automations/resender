@@ -110,19 +110,23 @@ export default async function SelectPagesPage() {
           validación del servidor, desde el módulo de dominio. El rango va en
           mono, como en el mock. */}
       <div className="flex flex-col gap-1 rounded-xl border border-border bg-surface-sunken px-4 py-3 text-[13.5px] sm:flex-row sm:items-center sm:justify-between">
-        <p>
-          <span className="text-muted-foreground">
-            {t.select.planHeading} ·{" "}
-          </span>
-          {t.select.planUsageBefore}
-          <span className="font-mono">
-            {fmt(t.select.planUsageRange, {
-              activePageCount: view.activePageCount,
-              maxPages: view.maxPages,
-            })}
-          </span>
-          {t.select.planUsageAfter}
-        </p>
+        {/* La persona de un cliente de agencia no ve cuántas conexiones usa la
+            agencia, solo cuántas puede añadir (ADR 0020). */}
+        {actor.kind === "owner" ? (
+          <p>
+            <span className="text-muted-foreground">
+              {t.select.planHeading} ·{" "}
+            </span>
+            {t.select.planUsageBefore}
+            <span className="font-mono">
+              {fmt(t.select.planUsageRange, {
+                activePageCount: view.activePageCount,
+                maxPages: view.maxPages,
+              })}
+            </span>
+            {t.select.planUsageAfter}
+          </p>
+        ) : null}
         <p className="font-medium">{formatPageAllowance(view, t)}</p>
       </div>
       <PageSelectionForm view={view} />

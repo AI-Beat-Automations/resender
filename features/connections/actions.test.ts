@@ -32,21 +32,30 @@ vi.mock("@/lib/auth/session", () => ({
 // `mockReset` de cada test no le borre la implementación.
 vi.mock("@/lib/auth/actor", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/lib/auth/actor")>()
+  const requireActor = async () => {
+    const override = mocks.actorOverride()
+    if (override) return { ok: true, actor: override }
+    const session = await mocks.getSession()
+    if (!session) return { ok: false, denial: "not_signed_in" }
+    return {
+      ok: true,
+      actor: {
+        kind: "owner",
+        userId: session.user.id,
+        tenantId: session.user.id,
+      },
+    }
+  }
   return {
     ...original,
-    requireActor: async () => {
-      const override = mocks.actorOverride()
-      if (override) return { ok: true, actor: override }
-      const session = await mocks.getSession()
-      if (!session) return { ok: false, denial: "not_signed_in" }
-      return {
-        ok: true,
-        actor: {
-          kind: "owner",
-          userId: session.user.id,
-          tenantId: session.user.id,
-        },
+    requireActor,
+    requireOwner: async () => {
+      const gate = await requireActor()
+      if (!gate.ok) return gate
+      if (gate.actor.kind !== "owner") {
+        return { ok: false, denial: "not_owner" }
       }
+      return gate
     },
   }
 })

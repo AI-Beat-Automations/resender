@@ -77,6 +77,7 @@ export default async function ProductLayout({
         <AppSidebar
           name={session.user.name}
           email={session.user.email}
+          agencyClientName={actor.kind === "client" ? actor.clientName : null}
           signOutAction={signOutAction}
         />
         <main className="flex min-w-0 flex-1 flex-col">
@@ -84,7 +85,11 @@ export default async function ProductLayout({
           {header}
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
             {/* La franja de cuota va debajo del header, al ancho de la columna. */}
-            <QuotaNoticeBar notice={notice} t={t} />
+            <QuotaNoticeBar
+              notice={notice}
+              canManageBilling={actor.kind === "owner"}
+              t={t}
+            />
             {/* El padding de página lo pone cada pantalla con `ConsolePage`:
               Inbox va a sangre completa (ADR 0018) y el resto lo pide. */}
             {children}

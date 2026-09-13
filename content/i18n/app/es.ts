@@ -46,6 +46,7 @@ export const es: AppDict = {
     ctaManagePages: "Administrar páginas",
     ctaContact: "Escríbenos",
     ctaUpgrade: "Subir de plan",
+    askAgency: "Habla con tu agencia.",
   },
 
   channels: {
@@ -459,6 +460,14 @@ export const es: AppDict = {
     },
   },
 
+  accessAgency: {
+    eyebrow: "acceso",
+    title: "Tu agencia no tiene acceso activo",
+    body: "La cuenta de Resender de tu agencia no está activa ahora mismo, así que no puedes ver tus conexiones ni tus mensajes. Tus datos siguen guardados. Habla con tu agencia para que la reactive.",
+    emailLabel: "Entraste como",
+    signOut: "Cerrar sesión",
+  },
+
   billing: {
     metaTitle: "Suscripción",
     eyebrow: "pricing",
@@ -512,6 +521,8 @@ export const es: AppDict = {
       "No se pudo conectar: el canal de WhatsApp no está habilitado para tu cuenta.",
     whatsappPageLimitReached:
       "No se pudo conectar: el cupo de conexiones de tu plan está completo. Desconecta una conexión en Conexiones para liberar cupo.",
+    agencyPageLimitReached:
+      "No se pudo conectar: el plan de tu agencia no tiene conexiones libres. Pídele que libere una.",
     whatsappExchangeFailed:
       "No se pudo conectar: Meta no completó el intercambio de credenciales de WhatsApp. Vuelve a intentarlo.",
     whatsappAssetsFailed:
@@ -575,6 +586,8 @@ export const es: AppDict = {
       "Este número no tiene un PIN generado por Resender. Si lo elegiste tú, revísalo en WhatsApp Manager.",
     accountSlotFull:
       "Tu plan permite {maxPages} conexiones y ya tienes {activePageCount} activas. Desconecta una en Conexiones para liberar un hueco y vuelve a lanzar la conexión.",
+    accountSlotFullAgency:
+      "El plan de tu agencia no tiene conexiones libres. Pídele que libere una y vuelve a lanzar la conexión.",
     invalidSelection:
       "Esa selección incluye una página que no puedes conectar. Recarga la pantalla e inténtalo de nuevo.",
     pageLimitPlan:

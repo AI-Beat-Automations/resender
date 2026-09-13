@@ -449,6 +449,23 @@ describe("checkWhatsappPlanSlot", () => {
     ...overrides,
   })
 
+  it("a un cliente de agencia le dice que el cupo es de su agencia", async () => {
+    const result = await checkWhatsappPlanSlot(
+      slotDeps({ countActivePages: vi.fn(async () => 2) }),
+      {
+        scope: { tenantId: "tenant-1", owner: false, clientId: "client-1" },
+        phoneNumberId: "phone-1",
+      },
+      es
+    )
+
+    expect(result).toEqual({
+      ok: false,
+      reason: "page_limit_reached",
+      message: es.actions.accountSlotFullAgency,
+    })
+  })
+
   it("deja pasar cuando queda hueco", async () => {
     expect(
       await checkWhatsappPlanSlot(

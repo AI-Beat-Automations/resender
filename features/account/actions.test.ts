@@ -14,6 +14,22 @@ const mocks = vi.hoisted(() => ({
   revalidatePath: vi.fn(),
   redirect: vi.fn(),
   log: vi.fn(),
+  requireOwner: vi.fn(),
+  loadTenantDeletionContext: vi.fn(),
+}))
+
+// Solo `requireOwner` se reemplaza: el resto del módulo (el texto de la
+// denegación) es el real.
+vi.mock("@/lib/auth/actor", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/auth/actor")>()),
+  requireOwner: mocks.requireOwner,
+}))
+
+vi.mock("@/lib/account/account-repository", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/lib/account/account-repository")
+  >()),
+  loadTenantDeletionContext: mocks.loadTenantDeletionContext,
 }))
 
 // El idioma de la acción sale de la cookie `lang`. Sin store —lo que devuelve
@@ -72,9 +88,32 @@ import { es } from "@/content/i18n/app/es"
 
 import {
   changePasswordAction,
+  deleteAccountAction,
   linkGoogleAction,
   unlinkGoogleAction,
 } from "./actions"
+
+// Modo agencia (ADR 0020): borrar la cuenta borra el tenant entero, así que la
+// persona de un cliente de agencia no puede, ni por POST directo.
+describe("deleteAccountAction para un cliente de agencia", () => {
+  beforeEach(() => {
+    for (const mock of Object.values(mocks)) mock.mockReset()
+    mocks.cookieGet.mockReturnValue(undefined)
+    mocks.getSession.mockResolvedValue({ user: { id: "user-pedro" } })
+    mocks.requireOwner.mockResolvedValue({ ok: false, denial: "not_owner" })
+  })
+
+  it("no borra nada y responde que es solo del dueño", async () => {
+    const formData = new FormData()
+    formData.set("confirmEmail", "pedro@example.com")
+
+    await expect(deleteAccountAction({}, formData)).resolves.toEqual({
+      error: es.actions.ownerOnly,
+    })
+    expect(mocks.loadTenantDeletionContext).not.toHaveBeenCalled()
+    expect(mocks.signOut).not.toHaveBeenCalled()
+  })
+})
 
 function passwordForm(password = "contraseñaNueva") {
   const formData = new FormData()
