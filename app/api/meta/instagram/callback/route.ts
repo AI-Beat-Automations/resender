@@ -219,7 +219,12 @@ export async function GET(request: NextRequest) {
         )
       }
       if (!existing) {
-        return fail("instagram_page_limit_reached", "page_limit_reached")
+        return fail(
+          scope.owner
+            ? "instagram_page_limit_reached"
+            : "agency_page_limit_reached",
+          "page_limit_reached"
+        )
       }
     }
 

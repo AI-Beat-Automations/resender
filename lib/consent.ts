@@ -51,6 +51,7 @@ export const X_PIXEL_PRIVATE_PREFIXES = [
   "/settings",
   "/billing",
   "/pending",
+  "/access",
 ] as const
 
 export function isXPixelPath(pathname: string): boolean {

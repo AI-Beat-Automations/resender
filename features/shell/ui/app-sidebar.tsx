@@ -40,18 +40,29 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/docs", label: "navDocs", icon: BookOpen, external: true },
 ]
 
+// La persona de un cliente de agencia (ADR 0020) no integra nada: la
+// documentación de la API es para la agencia.
+const CLIENT_NAV_ITEMS = NAV_ITEMS.filter((item) => item.href !== "/docs")
+
 export function AppSidebar({
   name,
   email,
+  agencyClientName,
   signOutAction,
 }: {
   /** Puede venir vacío: las cuentas anteriores al alta con nombre. */
   name: string
   email: string
+  /**
+   * El cliente de agencia de quien entra, o `null` si es el dueño. Solo es
+   * presentación: lo que puede ver lo decide el servidor en cada request.
+   */
+  agencyClientName: string | null
   signOutAction: () => Promise<void>
 }) {
   const pathname = usePathname()
   const t = useAppDict().shell
+  const navItems = agencyClientName === null ? NAV_ITEMS : CLIENT_NAV_ITEMS
 
   return (
     <aside className="flex h-svh w-[var(--sidebar-w)] shrink-0 flex-col border-r border-sidebar-border bg-sidebar px-3 pt-5 pb-3.5">
@@ -66,7 +77,7 @@ export function AppSidebar({
       </Link>
 
       <nav className="mt-6 flex flex-col gap-0.5">
-        {NAV_ITEMS.map((item) => {
+        {navItems.map((item) => {
           // La documentación nunca se marca activa: sale de la consola.
           const active = !item.external && isActiveRoute(pathname, item.href)
           const Icon = item.icon
@@ -117,11 +128,21 @@ export function AppSidebar({
           >
             {accountInitials(name, email)}
           </span>
-          <span
-            className="min-w-0 flex-1 truncate text-[12px] text-muted-foreground"
-            title={email}
-          >
-            {email}
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span
+              className="truncate text-[12px] text-muted-foreground"
+              title={email}
+            >
+              {email}
+            </span>
+            {agencyClientName !== null ? (
+              <span
+                className="truncate text-[11px] text-[var(--text-subtle)]"
+                title={agencyClientName}
+              >
+                {agencyClientName}
+              </span>
+            ) : null}
           </span>
           {/* `SignOutForm` hace el `posthog.reset()` antes de la server action:
               sin él la identidad del usuario anterior sobrevive al logout. */}

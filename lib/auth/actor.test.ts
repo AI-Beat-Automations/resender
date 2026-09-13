@@ -1,6 +1,11 @@
-import { describe, expect, it } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 
-import { decideActor, type ActorRow } from "./actor"
+const mocks = vi.hoisted(() => ({ getSession: vi.fn(), sql: vi.fn() }))
+
+vi.mock("@/lib/auth/session", () => ({ getSession: mocks.getSession }))
+vi.mock("@/lib/db", () => ({ getSql: () => mocks.sql }))
+
+import { decideActor, requireOwner, type ActorRow } from "./actor"
 
 const OWNER = "00000000-0000-0000-0000-00000000000a"
 const PEDRO = "00000000-0000-0000-0000-00000000000b"
@@ -89,5 +94,42 @@ describe("decideActor", () => {
     expect(decideActor(clientRow({ agency_client_id: null }))).toEqual({
       status: "agency_unavailable",
     })
+  })
+})
+
+describe("requireOwner", () => {
+  beforeEach(() => {
+    mocks.getSession.mockReset()
+    mocks.sql.mockReset()
+  })
+
+  it("deja pasar al dueño", async () => {
+    mocks.getSession.mockResolvedValue({ user: { id: OWNER } })
+    mocks.sql.mockResolvedValue([ownerRow()])
+
+    await expect(requireOwner()).resolves.toEqual({
+      ok: true,
+      actor: { kind: "owner", userId: OWNER, tenantId: OWNER },
+    })
+  })
+
+  it("rechaza a la persona de un cliente de agencia", async () => {
+    mocks.getSession.mockResolvedValue({ user: { id: PEDRO } })
+    mocks.sql.mockResolvedValue([clientRow()])
+
+    await expect(requireOwner()).resolves.toEqual({
+      ok: false,
+      denial: "not_owner",
+    })
+  })
+
+  it("sin sesión no llega a la base", async () => {
+    mocks.getSession.mockResolvedValue(null)
+
+    await expect(requireOwner()).resolves.toEqual({
+      ok: false,
+      denial: "not_signed_in",
+    })
+    expect(mocks.sql).not.toHaveBeenCalled()
   })
 })

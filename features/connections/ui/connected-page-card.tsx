@@ -98,9 +98,17 @@ export type ConnectedPageView = {
 
 export function ConnectedPageCard({
   page,
+  viewer,
   showWebhookHint = false,
 }: {
   page: ConnectedPageView
+  /**
+   * Quién mira (ADR 0020). La persona de un cliente de agencia no ve el webhook
+   * ni el secreto de firma: son la integración de la agencia con su bot. El
+   * servidor además no se los manda (`webhookUrl` llega `null`) y las acciones
+   * los rechazan.
+   */
+  viewer: "owner" | "client"
   // El hint del webhook se dice una vez por lista, no una vez por tarjeta.
   showWebhookHint?: boolean
 }) {
@@ -375,7 +383,7 @@ export function ConnectedPageCard({
         </div>
       )}
 
-      {active && (
+      {active && viewer === "owner" && (
         // Cuerpo del mock: dos columnas (webhook | secreto) sobre un divisor
         // tenue, con 16/20 de padding.
         <div className="grid gap-5 border-t border-border-faint px-5 py-4 sm:grid-cols-2">

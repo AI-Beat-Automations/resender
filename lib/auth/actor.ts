@@ -138,12 +138,37 @@ export async function requireActor(): Promise<ActorGate> {
   return { ok: true, actor: resolution.actor }
 }
 
-/** El mensaje de una denegación de `requireActor`, en el idioma de la acción. */
+export type OwnerGate =
+  | { ok: true; actor: Extract<Actor, { kind: "owner" }> }
+  | {
+      ok: false
+      denial: Extract<ActorGate, { ok: false }>["denial"] | "not_owner"
+    }
+
+/**
+ * Para lo que es solo del dueño de la cuenta (ADR 0020): API keys, facturación,
+ * borrar la cuenta, el webhook y administrar clientes. Ocultarlo en la pantalla
+ * no alcanza: una server action se puede invocar por POST directo.
+ */
+export async function requireOwner(): Promise<OwnerGate> {
+  const gate = await requireActor()
+  if (!gate.ok) return gate
+  if (!isOwner(gate.actor)) return { ok: false, denial: "not_owner" }
+  return { ok: true, actor: gate.actor }
+}
+
+/** El mensaje de una denegación, en el idioma de la acción. */
 export function describeActorDenial(
-  denial: Extract<ActorGate, { ok: false }>["denial"],
-  t: { notSignedIn: string; waitlisted: string; agencyUnavailable: string }
+  denial: Extract<OwnerGate, { ok: false }>["denial"],
+  t: {
+    notSignedIn: string
+    waitlisted: string
+    agencyUnavailable: string
+    ownerOnly: string
+  }
 ): string {
   if (denial === "not_signed_in") return t.notSignedIn
   if (denial === "waitlisted") return t.waitlisted
+  if (denial === "not_owner") return t.ownerOnly
   return t.agencyUnavailable
 }

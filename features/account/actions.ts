@@ -5,6 +5,7 @@ import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { APIError } from "better-auth/api"
 
+import { describeActorDenial, requireOwner } from "@/lib/auth/actor"
 import { getAuth } from "@/lib/auth/auth"
 import { isEmailVerified } from "@/lib/auth/email-verified"
 import { isGoogleEnabled } from "@/lib/auth/google"
@@ -143,6 +144,11 @@ export async function deleteAccountAction(
   const t = await getAppDict()
   const session = await getSession()
   if (!session?.user?.id) return { error: t.actions.notSignedIn }
+  // Borrar la cuenta borra el tenant entero —conexiones, historial, API keys,
+  // suscripción—: es solo del dueño (ADR 0020). La persona de un cliente de
+  // agencia no ve el panel, y esto cierra el POST directo.
+  const gate = await requireOwner()
+  if (!gate.ok) return { error: describeActorDenial(gate.denial, t.actions) }
 
   const context = await loadTenantDeletionContext(session.user.id)
   if (!context) return { error: t.actions.accountNotFound }

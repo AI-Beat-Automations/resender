@@ -5,7 +5,7 @@ import { PostHogIdentify } from "@/components/posthog-identify"
 import { SignOutForm } from "@/components/sign-out-form"
 import { AccessEyebrow, AccessShell } from "@/features/auth/ui/access-shell"
 import { startCheckout } from "@/features/billing/actions"
-import { resolveProductAccess } from "@/lib/auth/waitlist"
+import { resolveActor } from "@/lib/auth/actor"
 import { PLANS } from "@/lib/billing/plans"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
 import { privatePageMetadata } from "@/lib/seo"
@@ -38,10 +38,16 @@ export default async function BillingPage() {
   const numberFormat = new Intl.NumberFormat(t.intl)
   const session = await getSession()
   if (!session?.user?.id) redirect("/login")
-  const access = await resolveProductAccess(session.user.id)
-  if (access === "unknown_user") redirect("/login")
-  if (access === "waitlisted") redirect("/pending")
-  if (await hasActiveSubscription(session.user.id)) redirect("/connections")
+  const resolution = await resolveActor(session.user.id)
+  if (resolution.status === "unknown_user") redirect("/login")
+  if (resolution.status === "waitlisted") redirect("/pending")
+  // La persona de un cliente de agencia no paga ni ve precios: quien paga es
+  // la agencia (ADR 0020).
+  if (resolution.status === "agency_unavailable") redirect("/access")
+  if (resolution.actor.kind !== "owner") redirect("/access")
+  if (await hasActiveSubscription(resolution.actor.tenantId)) {
+    redirect("/connections")
+  }
 
   async function signOutAction() {
     "use server"

@@ -15,10 +15,7 @@ export type QuotaNoticeView = {
   limit: number | null
   // Motivo de la restricción, cuando la cuenta ya está bloqueada.
   blockCode:
-    | "quota_exceeded"
-    | "page_limit_exceeded"
-    | "plan_unavailable"
-    | null
+    "quota_exceeded" | "page_limit_exceeded" | "plan_unavailable" | null
   activePageCount: number
   maxPages: number | null
 }
@@ -48,9 +45,16 @@ function restrictedMessage(notice: QuotaNoticeView, t: AppDict): string {
 
 export function QuotaNoticeBar({
   notice,
+  canManageBilling,
   t,
 }: {
   notice: QuotaNoticeView | null
+  /**
+   * `false` para la persona de un cliente de agencia (ADR 0020): la cuota es
+   * de la agencia, así que en vez de mandarla a un plan que no puede tocar se
+   * le dice con quién hablar.
+   */
+  canManageBilling: boolean
   t: AppDict
 }) {
   if (!notice) return null
@@ -82,7 +86,11 @@ export function QuotaNoticeBar({
               limit: formatCount(notice.limit, t.intl),
             })}
       </p>
-      {notice.blockCode === "page_limit_exceeded" ? (
+      {!canManageBilling ? (
+        <span className="font-medium whitespace-nowrap">
+          {t.quota.askAgency}
+        </span>
+      ) : notice.blockCode === "page_limit_exceeded" ? (
         <Link href="/connections" className={ctaClassName}>
           {t.quota.ctaManagePages}
         </Link>

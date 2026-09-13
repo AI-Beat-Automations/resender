@@ -99,6 +99,12 @@ describe("formatMetaConnectionError", () => {
     )
   })
 
+  it("a un cliente de agencia le dice que el cupo es de su agencia", () => {
+    expect(format("agency_page_limit_reached")).toBe(
+      "No se pudo conectar: el plan de tu agencia no tiene conexiones libres. Pídele que libere una."
+    )
+  })
+
   it("falls back to the raw reason and to the bare message without one", () => {
     expect(format("something_odd")).toBe("No se pudo conectar: something_odd.")
     expect(format()).toBe("No se pudo conectar.")
@@ -119,6 +125,7 @@ describe("formatMetaConnectionError", () => {
       "instagram_account_owned:1",
       "instagram_not_enabled",
       "instagram_page_limit_reached",
+      "agency_page_limit_reached",
       "whatsapp_not_enabled",
       "whatsapp_page_limit_reached",
       "whatsapp_exchange_failed",

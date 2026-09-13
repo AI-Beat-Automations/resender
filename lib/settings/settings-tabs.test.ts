@@ -7,6 +7,7 @@ import {
   DEFAULT_SETTINGS_TAB,
   resolveSettingsTab,
   SETTINGS_TABS,
+  settingsTabsFor,
 } from "./settings-tabs"
 
 describe("settings tab resolution", () => {
@@ -58,5 +59,17 @@ describe("settings tab resolution", () => {
     expect(resolveSettingsTab(tab.searchParams.get("tab") ?? undefined)).toBe(
       "suscripcion"
     )
+  })
+
+  // Modo agencia (ADR 0020): la persona de un cliente solo ve Cuenta.
+  it("a un cliente de agencia solo le muestra Cuenta", () => {
+    expect(settingsTabsFor("client")).toEqual(["cuenta"])
+    expect(settingsTabsFor("owner")).toEqual(SETTINGS_TABS)
+  })
+
+  it("un cliente que pide API keys o Suscripción por URL cae en Cuenta", () => {
+    expect(resolveSettingsTab("api-keys", "client")).toBe("cuenta")
+    expect(resolveSettingsTab("suscripcion", "client")).toBe("cuenta")
+    expect(resolveSettingsTab("suscripcion", "owner")).toBe("suscripcion")
   })
 })

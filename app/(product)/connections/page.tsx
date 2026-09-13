@@ -65,8 +65,10 @@ export default async function ConnectionsPage({
   const connected = parseConnectedPages(pages)
   const actor = await getProductActor()
   const tenantId = actor?.tenantId ?? null
+  const viewer = actor?.kind ?? "client"
   const tenantPages = actor ? await listTenantPagesCached(scopeOf(actor)) : []
-  const quota = tenantId ? await resolvePageQuota(tenantId) : null
+  const quota =
+    tenantId && viewer === "owner" ? await resolvePageQuota(tenantId) : null
   // Permiso por canal del tenant (ADR 0010). Sin sesión no hay a quién
   // preguntarle, así que se cierran los dos. Se resuelven de una sola consulta
   // porque la pantalla los necesita juntos.
@@ -96,7 +98,11 @@ export default async function ConnectionsPage({
             {t.connections.subtitle}
           </p>
         </div>
-        {tenantPages.length > 0 && <PageQuota quota={quota} t={t} />}
+        {/* El cupo es del plan de la agencia: la persona de un cliente de
+            agencia no lo gestiona (ADR 0020). */}
+        {tenantPages.length > 0 && viewer === "owner" && (
+          <PageQuota quota={quota} t={t} />
+        )}
       </header>
 
       {meta === "connected" && (
@@ -139,8 +145,9 @@ export default async function ConnectionsPage({
         sortedPages.map((page) => (
           <ConnectedPageCard
             key={page.id}
-            page={toPageView(page, access, t)}
-            showWebhookHint={page.id === firstActiveId}
+            page={toPageView(page, access, viewer, t)}
+            viewer={viewer}
+            showWebhookHint={viewer === "owner" && page.id === firstActiveId}
           />
         ))
       )}
@@ -221,9 +228,15 @@ async function resolvePageQuota(tenantId: string): Promise<PageQuotaView> {
 function toPageView(
   page: Awaited<ReturnType<typeof listTenantPages>>[number],
   access: ChannelAccess,
+  viewer: "owner" | "client",
   t: AppDict
 ): ConnectedPageView {
   const dateTimeFormat = dateTimeFormatFor(t.intl)
+  // A la persona de un cliente de agencia no le llega ni la URL del webhook ni
+  // si hay secreto (ADR 0020): ocultar el formulario no alcanza, porque las
+  // props de un componente cliente viajan en el payload de la página, y las
+  // URLs de n8n suelen llevar un token en el path.
+  const owner = viewer === "owner"
 
   return {
     id: page.id,
@@ -241,8 +254,8 @@ function toPageView(
     status: page.status,
     tokenStatus: page.tokenStatus,
     tokenError: page.tokenError,
-    webhookUrl: page.webhookUrl,
-    hasSigningSecret: page.hasSigningSecret,
+    webhookUrl: owner ? page.webhookUrl : null,
+    hasSigningSecret: owner ? page.hasSigningSecret : false,
     connectedAt: page.connectedAt.toISOString(),
     connectedAtLabel: dateTimeFormat.format(page.connectedAt),
     tokenErrorAt: page.tokenErrorAt?.toISOString() ?? null,

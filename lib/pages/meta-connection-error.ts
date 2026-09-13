@@ -74,6 +74,12 @@ export function formatMetaConnectionError(
     return e.instagramPageLimitReached
   }
 
+  // El mismo rebote visto por la persona de un cliente de agencia (ADR 0020):
+  // el cupo es de la agencia y no tiene cómo liberarlo.
+  if (reason === "agency_page_limit_reached") {
+    return e.agencyPageLimitReached
+  }
+
   if (reason === "instagram_exchange_failed") {
     return e.instagramExchangeFailed
   }

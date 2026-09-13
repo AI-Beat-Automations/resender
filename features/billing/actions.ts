@@ -4,6 +4,7 @@ import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 
 import { getSession } from "@/lib/auth/session"
+import { requireOwner } from "@/lib/auth/actor"
 import { isUserWaitlisted } from "@/lib/auth/waitlist"
 import { isPlanLookupKey } from "@/lib/billing/plans"
 import { getStripe } from "@/lib/billing/stripe"
@@ -36,6 +37,9 @@ export async function startCheckout(lookupKey: string): Promise<void> {
   const session = await getSession()
   if (!session?.user?.id) redirect("/login")
   if (await isUserWaitlisted(session.user.id)) redirect("/waitlist")
+  // La facturación es del dueño de la cuenta: la persona de un cliente de
+  // agencia nunca llega a Stripe (ADR 0020).
+  if (!(await isOwnerSession())) redirect("/access")
 
   // Con suscripción activa no hay segundo Checkout: la gestión (cambiar plan,
   // cancelar) vive en el Customer Portal.
@@ -83,6 +87,7 @@ export async function startCheckout(lookupKey: string): Promise<void> {
 export async function openPortal(): Promise<void> {
   const session = await getSession()
   if (!session?.user?.id) redirect("/login")
+  if (!(await isOwnerSession())) redirect("/access")
 
   const customerId = await getStripeCustomerId(session.user.id)
   if (!customerId) redirect("/billing")
@@ -115,4 +120,11 @@ async function ensureStripeCustomer(
   )
   await setStripeCustomerId(userId, customer.id)
   return customer.id
+}
+
+// Solo el dueño paga. `requireOwner` vuelve a leer la sesión, pero estas dos
+// acciones redirigen a Stripe y no están en ningún hot path.
+async function isOwnerSession(): Promise<boolean> {
+  const gate = await requireOwner()
+  return gate.ok
 }

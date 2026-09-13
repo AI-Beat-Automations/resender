@@ -22,9 +22,7 @@ export type PageOwnershipRow = {
 }
 
 export type SelectablePageState =
-  | "selectable"
-  | "already_connected"
-  | "owned_by_other_tenant"
+  "selectable" | "already_connected" | "owned_by_other_tenant"
 
 export type SelectablePage = {
   metaPageId: string
@@ -130,11 +128,18 @@ export function checkAccountSlotAvailable(
     // y contarlo dos veces dejaría a quien está al límite sin poder renovar el
     // token de una cuenta que ya tiene.
     reconnectingActiveAccount: boolean
+    // La persona de un cliente de agencia (ADR 0020): el cupo es de la agencia,
+    // así que el mensaje no le cuenta números que no gestiona ni le dice que
+    // desconecte cuentas de otros.
+    agencyClient?: boolean
   },
   t: AppDict
 ): AccountSlotResult {
   if (input.reconnectingActiveAccount) return { ok: true }
   if (input.activePageCount < input.maxPages) return { ok: true }
+  if (input.agencyClient) {
+    return { ok: false, message: t.actions.accountSlotFullAgency }
+  }
 
   return {
     ok: false,
@@ -165,6 +170,8 @@ export function validatePageSelection(
   input: {
     view: PageSelectionView
     selectedPageIds: string[]
+    /** Ver `checkAccountSlotAvailable`: sin números para un cliente de agencia. */
+    agencyClient?: boolean
   },
   t: AppDict
 ): PageSelectionResult {
@@ -188,6 +195,13 @@ export function validatePageSelection(
   }
 
   if (newPages.length > input.view.remainingSlots) {
+    if (input.agencyClient) {
+      return {
+        ok: false,
+        code: "page_limit_exceeded",
+        message: t.actions.accountSlotFullAgency,
+      }
+    }
     const { maxPages, activePageCount, remainingSlots } = input.view
     // El cupo se dice en **conexiones** (ADR 0011): cuenta todas, y las
     // `activePageCount` de este tenant pueden incluir cuentas de Instagram que

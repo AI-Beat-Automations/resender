@@ -18,16 +18,32 @@ export const SETTINGS_TABS: readonly SettingsTab[] = [
   "suscripcion",
 ]
 
+/** Quién mira Ajustes (ADR 0020). Es `Actor["kind"]`. */
+export type SettingsViewer = "owner" | "client"
+
+// La persona de un cliente de agencia solo ve Cuenta: las API keys y la
+// suscripción son de la agencia. Pedir `?tab=api-keys` por URL la deja en
+// Cuenta igual que un valor desconocido.
+export function settingsTabsFor(
+  viewer: SettingsViewer
+): readonly SettingsTab[] {
+  return viewer === "owner" ? SETTINGS_TABS : [DEFAULT_SETTINGS_TAB]
+}
+
 export function isSettingsTab(value: unknown): value is SettingsTab {
   return SETTINGS_TABS.some((tab) => tab === value)
 }
 
 // `searchParams` de Next puede entregar `string`, `string[]` (`?tab=a&tab=b`)
 // o `undefined`. El parámetro es entrada del usuario, no un contrato: cualquier
-// valor que no sea una pestaña conocida cae en la de por defecto.
+// valor que no sea una pestaña conocida —o que quien mira no puede ver— cae en
+// la de por defecto.
 export function resolveSettingsTab(
-  param: string | string[] | undefined
+  param: string | string[] | undefined,
+  viewer: SettingsViewer = "owner"
 ): SettingsTab {
   const value = Array.isArray(param) ? param[0] : param
-  return isSettingsTab(value) ? value : DEFAULT_SETTINGS_TAB
+  return settingsTabsFor(viewer).some((tab) => tab === value)
+    ? (value as SettingsTab)
+    : DEFAULT_SETTINGS_TAB
 }

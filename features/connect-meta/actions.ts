@@ -157,7 +157,10 @@ async function connectSelectedPages(
     maxPages: limits.maxPages,
   })
 
-  const validated = validatePageSelection({ view, selectedPageIds }, t)
+  const validated = validatePageSelection(
+    { view, selectedPageIds, agencyClient: !scope.owner },
+    t
+  )
   if (!validated.ok) return failed(validated.message)
   if (validated.value.length === 0) {
     return failed(t.actions.selectOneNewPage)
