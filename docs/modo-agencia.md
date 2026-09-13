@@ -62,13 +62,13 @@ Con el modo agencia:
 
 ## Estado de los PRs
 
-El orden importa: **#144 → #145 → PR 3 → PR 4**. Los PRs 2 y 3 están apilados.
+El orden importa: **#144 → #145 → #146 → PR 4**. Los PRs 2 y 3 están apilados.
 
 | PR | Rama | Base | Estado |
 |---|---|---|---|
 | [#144](https://github.com/AI-Beat-Automations/resender/pull/144) Base | `agency-model` | `dev` | Abierto, sin mergear |
 | [#145](https://github.com/AI-Beat-Automations/resender/pull/145) Acceso acotado | `agency-model-pr2` | `agency-model` | Abierto, sin mergear |
-| PR 3 Clientes e invitaciones | `agency-model-pr3` | (irá sobre `agency-model-pr2`) | **Hecho localmente, sin commit ni PR** |
+| [#146](https://github.com/AI-Beat-Automations/resender/pull/146) Clientes e invitaciones | `agency-model-pr3` | `agency-model-pr2` | Abierto, sin mergear |
 | PR 4 Correo y documentación | — | — | Pendiente |
 
 **Cómo mergear sin perder cambios:**
@@ -77,7 +77,7 @@ El orden importa: **#144 → #145 → PR 3 → PR 4**. Los PRs 2 y 3 están apil
    staging**.
 2. Cambiar la base de #145 a `dev` y recién ahí mergearlo. Si se mergea con la base
    `agency-model`, los cambios no llegan a `dev`.
-3. Lo mismo con el PR 3: cambiar la base a `dev` antes de mergear.
+3. Lo mismo con #146: cambiar la base a `dev` antes de mergearlo.
 
 ### PR 1 — Base (#144)
 
@@ -112,7 +112,7 @@ Sin cambio de comportamiento para las cuentas actuales.
 - **Cupo lleno para un cliente,** en los tres canales: "El plan de tu agencia no tiene conexiones
   libres", sin números.
 
-### PR 3 — Clientes e invitaciones (local, sin commit)
+### PR 3 — Clientes e invitaciones (#146)
 
 - **Conexiones para el dueño:**
   - "+ Nuevo cliente" en la cabecera.
@@ -144,7 +144,7 @@ Sin cambio de comportamiento para las cuentas actuales.
 
 ## Verificación hecha
 
-- **1358 tests pasan** en el PR 3 (1314 en el 1, 1327 en el 2). Typecheck, lint y formato están
+- **1358 tests pasan** en #146 (1314 en #144, 1327 en #145). Typecheck, lint y formato están
   limpios en lo que tocó cada PR.
 - **Pruebas contra un Postgres real en memoria:**
   - `db/migrations/migrations.test.ts`: foreign keys cross-tenant, `set null` al borrar un cliente,
@@ -165,7 +165,7 @@ Sin cambio de comportamiento para las cuentas actuales.
 
 Todo en `staging.resender.dev` y su base, **nunca en producción**.
 
-**Con #144 y #145 mergeados, antes del PR 3**, la membresía se crea a mano en la base de staging:
+**Con #144 y #145 mergeados, antes de #146**, la membresía se crea a mano en la base de staging:
 
 ```sql
 insert into agency_clients (tenant_id, name)
@@ -174,7 +174,7 @@ insert into agency_client_members (user_id, agency_client_id, tenant_id)
   values ('<uuid persona>', '<id cliente>', '<uuid dueño>');
 ```
 
-**Con el PR 3 mergeado**, desde la app, usando tres navegadores (Juan, Pedro y María):
+**Con #146 mergeado**, desde la app, usando tres navegadores (Juan, Pedro y María):
 
 1. Juan crea "Panadería Pedro", invita y copia el enlace.
 2. Pedro abre el enlace, crea su cuenta, acepta y conecta Instagram. La conexión aparece en el
@@ -195,8 +195,8 @@ insert into agency_client_members (user_id, agency_client_id, tenant_id)
 
 ### Inmediato
 
-- [ ] **PR 3:** commit, push y PR apilado sobre `agency-model-pr2`.
-- [ ] Revisar y mergear #144, #145 y el PR 3 en orden, cambiando la base a `dev` antes de cada
+- [x] **PR 3:** commit, push y PR apilado sobre `agency-model-pr2` (#146).
+- [ ] Revisar y mergear #144, #145 y #146 en orden, cambiando la base a `dev` antes de cada
   merge.
 - [ ] Probar en staging el recorrido de arriba.
 
