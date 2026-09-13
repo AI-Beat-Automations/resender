@@ -4,10 +4,11 @@ import { TriangleAlert } from "lucide-react"
 
 import { ConnectFacebookButton } from "@/features/connect-meta/ui/connect-facebook-button"
 import { PageSelectionForm } from "@/features/connect-meta/ui/page-selection-form"
-import { getSession } from "@/lib/auth/session"
+import { getProductActor } from "@/features/shell/queries"
 import { resolvePlanLimits } from "@/lib/billing/entitlements"
 import { getSubscriptionByTenantId } from "@/lib/billing/subscription"
 import { listAuthorizedPages, type ConnectedPage } from "@/lib/meta"
+import { scopeOf } from "@/lib/pages/connection-scope"
 import { getMetaUserAccessToken } from "@/lib/pages/meta-user-token"
 import { countActivePages, getPageOwnership } from "@/lib/pages/page-registry"
 import {
@@ -29,14 +30,15 @@ import {
 // estados propios — sin autorización de Meta, plan sin resolver, lista
 // clasificada y error de validación al confirmar — se conservan.
 export default async function SelectPagesPage() {
-  const session = await getSession()
-  if (!session?.user?.id) redirect("/login")
-  const tenantId = session.user.id
+  const actor = await getProductActor()
+  if (!actor) redirect("/login")
+  const { tenantId } = actor
   const t = await getAppDict()
 
   // Sin user access token guardado no hay nada que listar: el usuario todavía
-  // no pasó por el diálogo de Meta (o su credencial dejó de ser legible).
-  const userToken = await getMetaUserAccessToken(tenantId)
+  // no pasó por el diálogo de Meta (o su credencial dejó de ser legible). El
+  // token es de la persona, no del tenant (ADR 0020).
+  const userToken = await getMetaUserAccessToken(actor.userId)
   if (!userToken) {
     return (
       <Shell t={t}>
@@ -97,7 +99,7 @@ export default async function SelectPagesPage() {
       name: page.name,
     })),
     ownership,
-    tenantId,
+    scope: scopeOf(actor),
     activePageCount,
     maxPages: limits.maxPages,
   })

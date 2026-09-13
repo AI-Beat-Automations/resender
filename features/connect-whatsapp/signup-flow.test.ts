@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 
+import { ownerScope } from "@/lib/pages/connection-scope"
+
 import { es } from "@/content/i18n/app/es"
 
 import {
@@ -47,8 +49,8 @@ const target = (
 const ownership = (
   overrides: Partial<WhatsappNumberOwnership> = {}
 ): WhatsappNumberOwnership => ({
-  ownedByOtherTenant: false,
-  activeForTenant: false,
+  ownedByOther: false,
+  activeForScope: false,
   connectionId: null,
   storedPin: null,
   storedPinGenerated: false,
@@ -67,7 +69,7 @@ const page = (): ConnectedPageRecord =>
 const request = (
   overrides: Partial<WhatsappSignupRequest> = {}
 ): WhatsappSignupRequest => ({
-  tenantId: "tenant-1",
+  scope: ownerScope("tenant-1"),
   code: "AQD-code",
   wabaId: "waba-1",
   phoneNumberId: "phone-1",
@@ -97,7 +99,7 @@ function deps(overrides: Partial<WhatsappSignupDeps> = {}) {
     }),
     subscribe: async () => {},
     resolveOwnership: async () => ownership(),
-    connect: async (_tenantId, input) => {
+    connect: async (_scope, input) => {
       connected.push(input)
       return page()
     },
@@ -168,7 +170,7 @@ describe("runWhatsappSignup — flujo A (estándar)", () => {
   it("reusa el PIN guardado al reconectar, sin marcarlo como del cliente", async () => {
     const { deps: d, connected } = deps({
       resolveOwnership: vi.fn(async () =>
-        ownership({ activeForTenant: true, storedPin: "111111" })
+        ownership({ activeForScope: true, storedPin: "111111" })
       ),
     })
 
@@ -326,7 +328,7 @@ describe("runWhatsappSignup — propiedad y fallos", () => {
   it("comprueba la propiedad entre la mitad reversible y la irreversible", async () => {
     const { deps: d, calls } = deps({
       resolveOwnership: vi.fn(async () => {
-        return ownership({ ownedByOtherTenant: true })
+        return ownership({ ownedByOther: true })
       }),
     })
 
@@ -452,7 +454,7 @@ describe("checkWhatsappPlanSlot", () => {
       await checkWhatsappPlanSlot(
         slotDeps(),
         {
-          tenantId: "tenant-1",
+          scope: ownerScope("tenant-1"),
           phoneNumberId: "phone-1",
         },
         es
@@ -463,14 +465,14 @@ describe("checkWhatsappPlanSlot", () => {
   it("deja reconectar un número que ya está activo aunque no quede cupo", async () => {
     const d = slotDeps({
       countActivePages: vi.fn(async () => 2),
-      resolveOwnership: vi.fn(async () => ownership({ activeForTenant: true })),
+      resolveOwnership: vi.fn(async () => ownership({ activeForScope: true })),
     })
 
     expect(
       await checkWhatsappPlanSlot(
         d,
         {
-          tenantId: "tenant-1",
+          scope: ownerScope("tenant-1"),
           phoneNumberId: "phone-1",
         },
         es
@@ -486,7 +488,7 @@ describe("checkWhatsappPlanSlot", () => {
     const result = await checkWhatsappPlanSlot(
       d,
       {
-        tenantId: "tenant-1",
+        scope: ownerScope("tenant-1"),
         phoneNumberId: null,
       },
       es
@@ -499,7 +501,7 @@ describe("checkWhatsappPlanSlot", () => {
   it("falla cerrado si el plan no se puede resolver", async () => {
     const result = await checkWhatsappPlanSlot(
       slotDeps({ resolveMaxPages: vi.fn(async () => null) }),
-      { tenantId: "tenant-1", phoneNumberId: "phone-1" },
+      { scope: ownerScope("tenant-1"), phoneNumberId: "phone-1" },
       es
     )
 
@@ -513,7 +515,7 @@ describe("checkWhatsappPlanSlot", () => {
           throw new Error("neon is down")
         }),
       }),
-      { tenantId: "tenant-1", phoneNumberId: "phone-1" },
+      { scope: ownerScope("tenant-1"), phoneNumberId: "phone-1" },
       es
     )
 

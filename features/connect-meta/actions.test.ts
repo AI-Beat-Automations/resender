@@ -34,9 +34,30 @@ vi.mock("@/lib/auth/session", () => ({
   getSession: mocks.getSession,
 }))
 
-vi.mock("@/lib/auth/waitlist", () => ({
-  isUserWaitlisted: mocks.isUserWaitlisted,
-}))
+// El actor se deriva de la sesión y de la bandera de lista de espera mockeadas:
+// una sesión es un dueño. Es una función y no un `vi.fn` para que el
+// `mockReset` de cada test no le borre la implementación.
+vi.mock("@/lib/auth/actor", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/auth/actor")>()
+  return {
+    ...original,
+    requireActor: async () => {
+      const session = await mocks.getSession()
+      if (!session) return { ok: false, denial: "not_signed_in" }
+      if (await mocks.isUserWaitlisted(session.user.id)) {
+        return { ok: false, denial: "waitlisted" }
+      }
+      return {
+        ok: true,
+        actor: {
+          kind: "owner",
+          userId: session.user.id,
+          tenantId: session.user.id,
+        },
+      }
+    },
+  }
+})
 
 vi.mock("@/lib/billing/subscription", () => ({
   getSubscriptionByTenantId: mocks.getSubscriptionByTenantId,
@@ -137,9 +158,10 @@ describe("connectSelectedPagesAction", () => {
     expect(mocks.subscribePagesToWebhook).toHaveBeenCalledWith([
       authorizedPage("page-2"),
     ])
-    expect(mocks.connectAuthorizedPages).toHaveBeenCalledWith("tenant-1", [
-      authorizedPage("page-2"),
-    ])
+    expect(mocks.connectAuthorizedPages).toHaveBeenCalledWith(
+      { tenantId: "tenant-1", owner: true, clientId: null },
+      [authorizedPage("page-2")]
+    )
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/connections")
     expect(mocks.redirect).toHaveBeenCalledWith(
       `/connections?meta=connected&pages=${encodeURIComponent(

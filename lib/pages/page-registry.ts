@@ -2,6 +2,7 @@ import type { ConnectedPage as MetaConnectedPage } from "@/lib/meta"
 import { decryptSecret, encryptSecret } from "@/lib/crypto/encryption"
 import { getSql } from "@/lib/db"
 
+import { scopeOwnsRow, type ConnectionScope } from "./connection-scope"
 import type {
   HistorySyncStatus,
   WhatsappOnboardingMode,
@@ -66,6 +67,10 @@ export type ConnectedPageRecord = {
   // Solo si existe, nunca el valor: el secreto cifrado no tiene por qué salir
   // de la base, y menos cruzar el límite serializable hacia el cliente.
   hasSigningSecret: boolean
+  // A qué [Cliente de agencia] está asignada (ADR 0020). `null` es "sin
+  // asignar": solo la ve el dueño. El nombre solo lo trae `listTenantPages`.
+  agencyClientId: string | null
+  agencyClientName: string | null
   connectedAt: Date
   disconnectedAt: Date | null
   createdAt: Date
@@ -97,6 +102,8 @@ type ConnectedPageRow = {
   // significa «no consta», y no consta se trata como «no lo enseñes».
   whatsapp_pin_generated?: boolean
   has_signing_secret?: boolean
+  agency_client_id?: string | null
+  agency_client_name?: string | null
   connected_at: Date
   disconnected_at: Date | null
   created_at: Date
@@ -114,6 +121,32 @@ export class PageOwnershipError extends Error {
   }
 }
 
+type ExistingConnectionRow = Pick<
+  ConnectedPageRow,
+  "id" | "tenant_id" | "agency_client_id"
+>
+
+// Una fila que ya existe se puede reconectar solo si cae dentro del alcance de
+// quien conecta (ADR 0020): la de otro tenant nunca, y para la persona de un
+// cliente de agencia tampoco la de otro cliente ni la "sin asignar" —esa la
+// asigna el dueño—. Es el mismo error de propiedad y el mismo mensaje: desde
+// afuera, "es de otra cuenta" es lo único que hay que saber.
+function assertExistingInScope(
+  existing: ExistingConnectionRow | undefined,
+  scope: ConnectionScope,
+  metaPageId: string
+) {
+  if (!existing) return
+  const owned = scopeOwnsRow(
+    {
+      tenantId: existing.tenant_id,
+      agencyClientId: existing.agency_client_id ?? null,
+    },
+    scope
+  )
+  if (!owned) throw new PageOwnershipError(metaPageId)
+}
+
 // Lleva el **código** de `normalizeWebhookUrl`, no un mensaje: quien la atrapa
 // es la server action, que sí tiene el idioma del usuario a mano. El `message`
 // del Error se queda con el código para que un log no salga vacío.
@@ -125,7 +158,7 @@ export class InvalidWebhookUrlError extends Error {
 }
 
 export async function connectAuthorizedPages(
-  tenantId: string,
+  scope: ConnectionScope,
   pages: MetaConnectedPage[]
 ) {
   if (pages.length === 0) return []
@@ -133,9 +166,9 @@ export async function connectAuthorizedPages(
   const sql = getSql()
 
   // Fase de lectura (verifica propiedad) + batch atómico de escrituras: el
-  // driver HTTP de Neon no soporta transacciones interactivas. Las guardas
-  // `tenant_id = ${tenantId}` en el update y el unique `(channel, meta_page_id)`
-  // en el insert cubren la carrera entre ambas fases.
+  // driver HTTP de Neon no soporta transacciones interactivas. Las guardas de
+  // alcance en el update y el unique `(channel, meta_page_id)` en el insert
+  // cubren la carrera entre ambas fases.
   const writes: Promise<unknown>[] = []
   for (const page of pages) {
     const encryptedToken = encryptSecret(page.pageAccessToken)
@@ -143,16 +176,14 @@ export async function connectAuthorizedPages(
     // existir en Instagram, y sin este predicado una cuenta de IG de otro tenant
     // haría fallar la conexión de una página de Facebook por un choque que no
     // significa nada.
-    const [existing] = await sql<Pick<ConnectedPageRow, "id" | "tenant_id">[]>`
-      select id, tenant_id
+    const [existing] = await sql<ExistingConnectionRow[]>`
+      select id, tenant_id, agency_client_id
       from connected_pages
       where channel = 'messenger' and meta_page_id = ${page.pageId}
       limit 1
     `
 
-    if (existing && existing.tenant_id !== tenantId) {
-      throw new PageOwnershipError(page.pageId)
-    }
+    assertExistingInScope(existing, scope, page.pageId)
 
     writes.push(
       existing
@@ -167,10 +198,11 @@ export async function connectAuthorizedPages(
                 connected_at = now(),
                 disconnected_at = null,
                 updated_at = now()
-            where id = ${existing.id} and tenant_id = ${tenantId}
+            where id = ${existing.id} and tenant_id = ${scope.tenantId}
+              and (${scope.owner} or agency_client_id = ${scope.clientId}::uuid)
             returning id, tenant_id, channel, meta_page_id, name, username,
               status, token_status, token_error, token_error_at,
-              token_expires_at, webhook_url,
+              token_expires_at, webhook_url, agency_client_id,
               (webhook_signing_secret_encrypted is not null) as has_signing_secret,
               connected_at, disconnected_at,
               created_at, updated_at
@@ -181,15 +213,16 @@ export async function connectAuthorizedPages(
               channel,
               meta_page_id,
               name,
-              page_access_token_encrypted
+              page_access_token_encrypted,
+              agency_client_id
             )
             values (
-              ${tenantId}, 'messenger', ${page.pageId}, ${page.name},
-              ${encryptedToken}
+              ${scope.tenantId}, 'messenger', ${page.pageId}, ${page.name},
+              ${encryptedToken}, ${scope.clientId}::uuid
             )
             returning id, tenant_id, channel, meta_page_id, name, username,
               status, token_status, token_error, token_error_at,
-              token_expires_at, webhook_url,
+              token_expires_at, webhook_url, agency_client_id,
               (webhook_signing_secret_encrypted is not null) as has_signing_secret,
               connected_at, disconnected_at,
               created_at, updated_at
@@ -277,9 +310,12 @@ export async function getPageOwnership(
 
   const sql = getSql()
   const rows = await sql<
-    Pick<ConnectedPageRow, "meta_page_id" | "tenant_id" | "status">[]
+    Pick<
+      ConnectedPageRow,
+      "meta_page_id" | "tenant_id" | "status" | "agency_client_id"
+    >[]
   >`
-    select meta_page_id, tenant_id, status
+    select meta_page_id, tenant_id, status, agency_client_id
     from connected_pages
     where channel = 'messenger'
       and meta_page_id = any(${metaPageIds}::text[])
@@ -288,23 +324,31 @@ export async function getPageOwnership(
   return rows.map((row) => ({
     metaPageId: row.meta_page_id,
     tenantId: row.tenant_id,
+    agencyClientId: row.agency_client_id ?? null,
     status: row.status,
   }))
 }
 
-export async function listTenantPages(tenantId: string) {
+// Las conexiones que quien opera puede ver: todas las del tenant para el dueño,
+// solo las de su cliente para la persona de un cliente de agencia (ADR 0020).
+export async function listTenantPages(scope: ConnectionScope) {
   const sql = getSql()
   const rows = await sql<ConnectedPageRow[]>`
-    select id, tenant_id, channel, meta_page_id, name, username, status,
-      token_status, token_error, token_error_at, token_expires_at, webhook_url,
-      waba_id, whatsapp_phone_e164, onboarding_mode, coexistence_status,
-      history_sync_status,
-      coalesce(whatsapp_pin_generated, false) as whatsapp_pin_generated,
-      (webhook_signing_secret_encrypted is not null) as has_signing_secret,
-      connected_at, disconnected_at, created_at, updated_at
-    from connected_pages
-    where tenant_id = ${tenantId}
-    order by case when status = 'active' then 0 else 1 end, updated_at desc
+    select p.id, p.tenant_id, p.channel, p.meta_page_id, p.name, p.username,
+      p.status, p.token_status, p.token_error, p.token_error_at,
+      p.token_expires_at, p.webhook_url,
+      p.waba_id, p.whatsapp_phone_e164, p.onboarding_mode,
+      p.coexistence_status, p.history_sync_status,
+      coalesce(p.whatsapp_pin_generated, false) as whatsapp_pin_generated,
+      (p.webhook_signing_secret_encrypted is not null) as has_signing_secret,
+      p.agency_client_id, c.name as agency_client_name,
+      p.connected_at, p.disconnected_at, p.created_at, p.updated_at
+    from connected_pages p
+    left join agency_clients c
+      on c.id = p.agency_client_id and c.tenant_id = p.tenant_id
+    where p.tenant_id = ${scope.tenantId}
+      and (${scope.owner} or p.agency_client_id = ${scope.clientId}::uuid)
+    order by case when p.status = 'active' then 0 else 1 end, p.updated_at desc
   `
 
   return rows.map(mapConnectedPage)
@@ -374,14 +418,18 @@ export async function ensureWebhookSigningSecret(
   return rows[0] ? secret : null
 }
 
-export async function disconnectPage(tenantId: string, connectionId: string) {
+export async function disconnectPage(
+  scope: ConnectionScope,
+  connectionId: string
+) {
   const sql = getSql()
   const [row] = await sql<ConnectedPageRow[]>`
     update connected_pages
     set status = 'disconnected',
         disconnected_at = coalesce(disconnected_at, now()),
         updated_at = now()
-    where id = ${connectionId} and tenant_id = ${tenantId}
+    where id = ${connectionId} and tenant_id = ${scope.tenantId}
+      and (${scope.owner} or agency_client_id = ${scope.clientId}::uuid)
     returning id, tenant_id, channel, meta_page_id, name, username, status,
       token_status, token_error, token_error_at, token_expires_at, webhook_url,
       (webhook_signing_secret_encrypted is not null) as has_signing_secret,
@@ -443,7 +491,7 @@ export async function getActivePageWithTokenForTenant(
 }
 
 export async function getActivePageWithTokenByConnectionId(
-  tenantId: string,
+  scope: ConnectionScope,
   connectionId: string
 ) {
   const sql = getSql()
@@ -455,7 +503,8 @@ export async function getActivePageWithTokenByConnectionId(
       page_access_token_encrypted
     from connected_pages
     where id = ${connectionId}
-      and tenant_id = ${tenantId}
+      and tenant_id = ${scope.tenantId}
+      and (${scope.owner} or agency_client_id = ${scope.clientId}::uuid)
       and status = 'active'
     limit 1
   `
@@ -479,6 +528,7 @@ export async function getActivePageByMetaPageId(
       waba_id, whatsapp_phone_e164, onboarding_mode,
       coexistence_status, history_sync_status,
       (webhook_signing_secret_encrypted is not null) as has_signing_secret,
+      agency_client_id,
       connected_at, disconnected_at, created_at, updated_at
     from connected_pages
     where channel = ${channel}
@@ -509,22 +559,20 @@ export type InstagramAccountInput = {
 // necesitamos distinguir «es de otro tenant» (error de propiedad, con su
 // mensaje) de «es una reconexión», y un upsert ciego pisaría la fila ajena.
 export async function connectInstagramAccount(
-  tenantId: string,
+  scope: ConnectionScope,
   account: InstagramAccountInput
 ): Promise<ConnectedPageRecord> {
   const sql = getSql()
   const encryptedToken = encryptSecret(account.accessToken)
 
-  const [existing] = await sql<Pick<ConnectedPageRow, "id" | "tenant_id">[]>`
-    select id, tenant_id
+  const [existing] = await sql<ExistingConnectionRow[]>`
+    select id, tenant_id, agency_client_id
     from connected_pages
     where channel = 'instagram' and meta_page_id = ${account.igUserId}
     limit 1
   `
 
-  if (existing && existing.tenant_id !== tenantId) {
-    throw new PageOwnershipError(account.igUserId)
-  }
+  assertExistingInScope(existing, scope, account.igUserId)
 
   // El nombre visible puede venir vacío (Meta no siempre lo devuelve); el
   // @handle siempre está, y es además lo que el usuario reconoce.
@@ -544,10 +592,12 @@ export async function connectInstagramAccount(
             connected_at = now(),
             disconnected_at = null,
             updated_at = now()
-        where id = ${existing.id} and tenant_id = ${tenantId}
+        where id = ${existing.id} and tenant_id = ${scope.tenantId}
+          and (${scope.owner} or agency_client_id = ${scope.clientId}::uuid)
         returning id, tenant_id, channel, meta_page_id, name, username, status,
           token_status, token_error, token_error_at, token_expires_at,
-          webhook_url, connected_at, disconnected_at, created_at, updated_at
+          webhook_url, agency_client_id, connected_at, disconnected_at,
+          created_at, updated_at
       `
     : await sql<ConnectedPageRow[]>`
         insert into connected_pages (
@@ -557,20 +607,23 @@ export async function connectInstagramAccount(
           name,
           username,
           page_access_token_encrypted,
-          token_expires_at
+          token_expires_at,
+          agency_client_id
         )
         values (
-          ${tenantId}, 'instagram', ${account.igUserId}, ${displayName},
-          ${account.username}, ${encryptedToken}, ${account.tokenExpiresAt}
+          ${scope.tenantId}, 'instagram', ${account.igUserId}, ${displayName},
+          ${account.username}, ${encryptedToken}, ${account.tokenExpiresAt},
+          ${scope.clientId}::uuid
         )
         returning id, tenant_id, channel, meta_page_id, name, username, status,
           token_status, token_error, token_error_at, token_expires_at,
-          webhook_url, connected_at, disconnected_at, created_at, updated_at
+          webhook_url, agency_client_id, connected_at, disconnected_at,
+          created_at, updated_at
       `
 
-  // El update filtra por `tenant_id`: si otro tenant se quedó con la fila entre
-  // la lectura y la escritura no devuelve nada, y eso es el mismo conflicto de
-  // propiedad que arriba, no un fallo genérico.
+  // El update filtra por alcance: si la fila cambió de dueño entre la lectura y
+  // la escritura no devuelve nada, y eso es el mismo conflicto de propiedad que
+  // arriba, no un fallo genérico.
   if (!row) throw new PageOwnershipError(account.igUserId)
 
   return mapConnectedPage(row)
@@ -596,13 +649,17 @@ export async function connectInstagramAccount(
 export type WhatsappPinOrigin = "generated" | "stored" | "customer"
 
 export type WhatsappNumberOwnership = {
-  /** La fila existe y es de otro tenant: el número no se puede tomar. */
-  ownedByOtherTenant: boolean
   /**
-   * Ya está `active` para **este** tenant: es una reconexión y no consume un
-   * hueco nuevo del plan.
+   * La fila existe y cae fuera del alcance de quien conecta —otro tenant, o
+   * para la persona de un cliente de agencia, otro cliente o sin asignar—: el
+   * número no se puede tomar.
    */
-  activeForTenant: boolean
+  ownedByOther: boolean
+  /**
+   * Ya está `active` dentro de **este** alcance: es una reconexión y no consume
+   * un hueco nuevo del plan.
+   */
+  activeForScope: boolean
   connectionId: string | null
   /**
    * El PIN que ya teníamos guardado, descifrado. Es lo que hace posible
@@ -610,8 +667,8 @@ export type WhatsappNumberOwnership = {
    * esto la segunda conexión fallaría siempre con 133005 pidiéndole al cliente
    * un PIN que inventamos nosotros.
    *
-   * `null` cuando la fila es de otro tenant: el PIN es del número, pero no se
-   * le entrega a quien no es su dueño en Resender, ni siquiera para usarlo.
+   * `null` cuando la fila cae fuera del alcance: el PIN es del número, pero no
+   * se le entrega a quien no es su dueño en Resender, ni siquiera para usarlo.
    */
   storedPin: string | null
   /** Si el PIN guardado lo generamos nosotros (`coalesce(..., false)`). */
@@ -628,7 +685,7 @@ export type WhatsappNumberOwnership = {
  * cambia de dueño entre pregunta y pregunta.
  */
 export async function resolveWhatsappNumberOwnership(
-  tenantId: string,
+  scope: ConnectionScope,
   phoneNumberId: string
 ): Promise<WhatsappNumberOwnership> {
   const sql = getSql()
@@ -636,12 +693,13 @@ export async function resolveWhatsappNumberOwnership(
     {
       id: string
       tenant_id: string
+      agency_client_id: string | null
       status: PageStatus
       whatsapp_pin_encrypted: string | null
       whatsapp_pin_generated: boolean
     }[]
   >`
-    select id, tenant_id, status, whatsapp_pin_encrypted,
+    select id, tenant_id, agency_client_id, status, whatsapp_pin_encrypted,
       coalesce(whatsapp_pin_generated, false) as whatsapp_pin_generated
     from connected_pages
     where channel = 'whatsapp' and meta_page_id = ${phoneNumberId}
@@ -650,18 +708,22 @@ export async function resolveWhatsappNumberOwnership(
 
   if (!row) {
     return {
-      ownedByOtherTenant: false,
-      activeForTenant: false,
+      ownedByOther: false,
+      activeForScope: false,
       connectionId: null,
       storedPin: null,
       storedPinGenerated: false,
     }
   }
 
-  if (row.tenant_id !== tenantId) {
+  const inScope = scopeOwnsRow(
+    { tenantId: row.tenant_id, agencyClientId: row.agency_client_id },
+    scope
+  )
+  if (!inScope) {
     return {
-      ownedByOtherTenant: true,
-      activeForTenant: false,
+      ownedByOther: true,
+      activeForScope: false,
       connectionId: null,
       storedPin: null,
       storedPinGenerated: false,
@@ -669,8 +731,8 @@ export async function resolveWhatsappNumberOwnership(
   }
 
   return {
-    ownedByOtherTenant: false,
-    activeForTenant: row.status === "active",
+    ownedByOther: false,
+    activeForScope: row.status === "active",
     connectionId: row.id,
     storedPin: row.whatsapp_pin_encrypted
       ? decryptSecret(row.whatsapp_pin_encrypted)
@@ -720,7 +782,7 @@ export type WhatsappNumberInput = {
  * re-registrarse nunca más.
  */
 export async function connectWhatsappNumber(
-  tenantId: string,
+  scope: ConnectionScope,
   input: WhatsappNumberInput
 ): Promise<ConnectedPageRecord> {
   const sql = getSql()
@@ -748,16 +810,14 @@ export async function connectWhatsappNumber(
     input.wabaName ??
     input.phoneNumberId
 
-  const [existing] = await sql<Pick<ConnectedPageRow, "id" | "tenant_id">[]>`
-    select id, tenant_id
+  const [existing] = await sql<ExistingConnectionRow[]>`
+    select id, tenant_id, agency_client_id
     from connected_pages
     where channel = 'whatsapp' and meta_page_id = ${input.phoneNumberId}
     limit 1
   `
 
-  if (existing && existing.tenant_id !== tenantId) {
-    throw new PageOwnershipError(input.phoneNumberId)
-  }
+  assertExistingInScope(existing, scope, input.phoneNumberId)
 
   const [row] = existing
     ? await sql<ConnectedPageRow[]>`
@@ -778,10 +838,12 @@ export async function connectWhatsappNumber(
             connected_at = now(),
             disconnected_at = null,
             updated_at = now()
-        where id = ${existing.id} and tenant_id = ${tenantId}
+        where id = ${existing.id} and tenant_id = ${scope.tenantId}
+          and (${scope.owner} or agency_client_id = ${scope.clientId}::uuid)
         returning id, tenant_id, channel, meta_page_id, name, username, status,
           token_status, token_error, token_error_at, token_expires_at,
-          webhook_url, waba_id, whatsapp_phone_e164, onboarding_mode,
+          webhook_url, agency_client_id, waba_id, whatsapp_phone_e164,
+          onboarding_mode,
           coexistence_status, history_sync_status,
           coalesce(whatsapp_pin_generated, false) as whatsapp_pin_generated,
           (webhook_signing_secret_encrypted is not null) as has_signing_secret,
@@ -800,27 +862,29 @@ export async function connectWhatsappNumber(
           onboarding_mode,
           history_sync_status,
           whatsapp_pin_encrypted,
-          whatsapp_pin_generated
+          whatsapp_pin_generated,
+          agency_client_id
         )
         values (
-          ${tenantId}, 'whatsapp', ${input.phoneNumberId}, ${displayName},
+          ${scope.tenantId}, 'whatsapp', ${input.phoneNumberId}, ${displayName},
           ${encryptedToken}, ${input.tokenExpiresAt}, ${input.wabaId},
           ${input.phoneE164}, ${input.onboardingMode},
           ${input.historySyncStatus}, ${encryptedPin},
-          ${pinGenerated ?? false}
+          ${pinGenerated ?? false}, ${scope.clientId}::uuid
         )
         returning id, tenant_id, channel, meta_page_id, name, username, status,
           token_status, token_error, token_error_at, token_expires_at,
-          webhook_url, waba_id, whatsapp_phone_e164, onboarding_mode,
+          webhook_url, agency_client_id, waba_id, whatsapp_phone_e164,
+          onboarding_mode,
           coexistence_status, history_sync_status,
           coalesce(whatsapp_pin_generated, false) as whatsapp_pin_generated,
           (webhook_signing_secret_encrypted is not null) as has_signing_secret,
           connected_at, disconnected_at, created_at, updated_at
       `
 
-  // El update filtra por `tenant_id`: si otro tenant se quedó con la fila entre
-  // la lectura y la escritura no devuelve nada, y eso es el mismo conflicto de
-  // propiedad que arriba, no un fallo genérico.
+  // El update filtra por alcance: si la fila cambió de dueño entre la lectura y
+  // la escritura no devuelve nada, y eso es el mismo conflicto de propiedad que
+  // arriba, no un fallo genérico.
   if (!row) throw new PageOwnershipError(input.phoneNumberId)
 
   return mapConnectedPage(row)
@@ -829,17 +893,17 @@ export async function connectWhatsappNumber(
 /**
  * El PIN que **generamos nosotros**, en claro, para enseñárselo a su dueño.
  *
- * Devuelve `null` en los tres casos que no son ese: la conexión no es de este
- * tenant, no hay PIN guardado, o el PIN lo aportó el cliente
+ * Devuelve `null` en los tres casos que no son ese: la conexión cae fuera del
+ * alcance de quien pregunta (ADR 0020), no hay PIN guardado, o el PIN lo aportó el cliente
  * (`whatsapp_pin_generated = false`). El `coalesce` es lo que hace que «no
  * consta» caiga del lado de no enseñarlo.
  *
  * Es la única salida del PIN de este módulo y es deliberadamente estrecha: pide
- * el tenant, pide la conexión concreta y no acepta un `meta_page_id`, que es lo
+ * el alcance, pide la conexión concreta y no acepta un `meta_page_id`, que es lo
  * que una consulta de soporte tendría a mano.
  */
 export async function getWhatsappGeneratedPin(
-  tenantId: string,
+  scope: ConnectionScope,
   connectionId: string
 ): Promise<string | null> {
   const sql = getSql()
@@ -847,7 +911,8 @@ export async function getWhatsappGeneratedPin(
     select whatsapp_pin_encrypted
     from connected_pages
     where id = ${connectionId}
-      and tenant_id = ${tenantId}
+      and tenant_id = ${scope.tenantId}
+      and (${scope.owner} or agency_client_id = ${scope.clientId}::uuid)
       and channel = 'whatsapp'
       and coalesce(whatsapp_pin_generated, false) = true
     limit 1
@@ -934,6 +999,8 @@ function mapConnectedPage(row: ConnectedPageRow): ConnectedPageRecord {
     // reconectando.
     whatsappPinGenerated: row.whatsapp_pin_generated === true,
     hasSigningSecret: row.has_signing_secret === true,
+    agencyClientId: row.agency_client_id ?? null,
+    agencyClientName: row.agency_client_name ?? null,
     connectedAt: row.connected_at,
     disconnectedAt: row.disconnected_at,
     createdAt: row.created_at,

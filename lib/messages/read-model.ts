@@ -1,4 +1,5 @@
 import { getSql } from "@/lib/db"
+import type { ConnectionScope } from "@/lib/pages/connection-scope"
 import type { PageChannel } from "@/lib/pages/page-registry"
 
 import type { MessageDirection, MessageStatus } from "./message-log"
@@ -110,10 +111,13 @@ type ThreadMessageRow = {
   created_at: Date
 }
 
+// Acotado al alcance de quien mira (ADR 0020): la persona de un cliente de
+// agencia solo ve las conversaciones de las conexiones de su cliente.
 export async function listConversationReadModel(input: {
-  tenantId: string
+  scope: ConnectionScope
   connectedPageId?: string
 }) {
+  const { scope } = input
   const sql = getSql()
   const rows = await sql<ConversationListRow[]>`
     select
@@ -144,7 +148,9 @@ export async function listConversationReadModel(input: {
       order by m.created_at desc
       limit 1
     ) latest on true
-    where c.tenant_id = ${input.tenantId}
+    where c.tenant_id = ${scope.tenantId}
+      and p.tenant_id = ${scope.tenantId}
+      and (${scope.owner} or p.agency_client_id = ${scope.clientId}::uuid)
       and (${input.connectedPageId ?? null}::uuid is null or c.connected_page_id = ${input.connectedPageId ?? null}::uuid)
     order by c.last_message_at desc
   `
@@ -153,9 +159,10 @@ export async function listConversationReadModel(input: {
 }
 
 export async function listThreadMessages(input: {
-  tenantId: string
+  scope: ConnectionScope
   conversationId: string
 }) {
+  const { scope } = input
   const sql = getSql()
   // El join con `connected_pages` trae el canal, que es lo que decide de dónde
   // sale la URL del adjunto: el CDN de Meta en Messenger e Instagram, la ruta
@@ -169,7 +176,9 @@ export async function listThreadMessages(input: {
            p.channel as page_channel
     from messages m
     join connected_pages p on p.id = m.connected_page_id
-    where m.tenant_id = ${input.tenantId}
+    where m.tenant_id = ${scope.tenantId}
+      and p.tenant_id = ${scope.tenantId}
+      and (${scope.owner} or p.agency_client_id = ${scope.clientId}::uuid)
       and m.conversation_id = ${input.conversationId}
     order by m.created_at asc
   `

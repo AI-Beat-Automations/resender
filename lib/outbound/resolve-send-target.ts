@@ -5,6 +5,7 @@ import {
 } from "@/lib/messages/message-log"
 import type { LogReason } from "@/lib/observability/logger"
 import type { SendTarget } from "@/lib/outbound/send-request"
+import { ownerScope } from "@/lib/pages/connection-scope"
 import {
   getActivePageWithTokenByConnectionId,
   getActivePageWithTokenForTenant,
@@ -100,8 +101,10 @@ export async function resolveSendTarget(input: {
     // Por id de conexión y no por `meta_page_id`: la conversación ya sabe de
     // qué cuenta es. Sin filtrar por canal, para poder decirle al cliente a qué
     // ruta tenía que ir en vez de un 404 que lo deje adivinando.
+    // La API externa se autentica con una API key, que es del dueño: ve todo
+    // el tenant, sin importar a qué cliente de agencia esté asignada la cuenta.
     const connectedPage = await getActivePageWithTokenByConnectionId(
-      tenantId,
+      ownerScope(tenantId),
       conversation.connectedPageId
     )
     if (!connectedPage) {

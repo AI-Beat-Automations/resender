@@ -1,6 +1,7 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare"
 
 import { getSql } from "@/lib/db"
+import type { ConnectionScope } from "@/lib/pages/connection-scope"
 
 import { effectiveStatus, type AttachmentStatus } from "./media-retention"
 
@@ -29,21 +30,28 @@ export type MediaLookup =
   | { ok: false; reason: "not_available"; status: AttachmentStatus }
 
 /**
- * Busca el medio de un mensaje **dentro del tenant**, y decide si se puede
- * servir. El `tenant_id` va en el `where` y no en un `if` posterior: así no hay
- * forma de olvidarse de comprobarlo.
+ * Busca el medio de un mensaje **dentro del alcance** de quien lo pide, y
+ * decide si se puede servir. El alcance va en el `where` y no en un `if`
+ * posterior: así no hay forma de olvidarse de comprobarlo. Para la persona de
+ * un cliente de agencia (ADR 0020) el join a la conexión es lo que impide bajar
+ * el medio de otro cliente del mismo tenant adivinando el id.
  */
 export async function lookupMediaForTenant(input: {
-  tenantId: string
+  scope: ConnectionScope
   messageId: string
   now?: Date
 }): Promise<MediaLookup> {
+  const { scope } = input
   const sql = getSql()
   const [row] = await sql<MediaRow[]>`
-    select attachment_r2_key, attachment_status, attachment_meta, created_at
-    from messages
-    where id = ${input.messageId}
-      and tenant_id = ${input.tenantId}
+    select m.attachment_r2_key, m.attachment_status, m.attachment_meta,
+      m.created_at
+    from messages m
+    join connected_pages p on p.id = m.connected_page_id
+    where m.id = ${input.messageId}
+      and m.tenant_id = ${scope.tenantId}
+      and p.tenant_id = ${scope.tenantId}
+      and (${scope.owner} or p.agency_client_id = ${scope.clientId}::uuid)
     limit 1
   `
 

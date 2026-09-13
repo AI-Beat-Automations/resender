@@ -2,6 +2,7 @@ import {
   fetchInstagramContactProfile,
   fetchInstagramMedia,
 } from "@/lib/instagram"
+import type { ConnectionScope } from "@/lib/pages/connection-scope"
 import { getActivePageWithTokenByConnectionId } from "@/lib/pages/page-registry"
 
 import {
@@ -60,7 +61,7 @@ export type ResolvedMedia = {
  * propia fila.
  */
 export async function resolveContactProfiles(
-  tenantId: string,
+  scope: ConnectionScope,
   contacts: ResolvableContact[]
 ): Promise<Map<string, ResolvedContact>> {
   const resolved = new Map<string, ResolvedContact>()
@@ -79,7 +80,7 @@ export async function resolveContactProfiles(
   if (pending.length === 0) return resolved
 
   const tokens = await loadTokens(
-    tenantId,
+    scope,
     pending.map((contact) => contact.connectedPageId)
   )
 
@@ -95,7 +96,7 @@ export async function resolveContactProfiles(
       // Se persiste también el fallo (`profile === null` deja los dos campos en
       // null pero sella `contact_synced_at`), que es lo que corta el reintento.
       await saveContactProfile({
-        tenantId,
+        tenantId: scope.tenantId,
         conversationId: contact.conversationId,
         username: profile?.username ?? null,
         name: profile?.name ?? null,
@@ -112,7 +113,7 @@ export async function resolveContactProfiles(
  * recién pedido en el mismo mapa. La clave es la misma que usa `?media=`.
  */
 export async function resolveMedia(
-  tenantId: string,
+  scope: ConnectionScope,
   publications: ResolvablePublication[]
 ): Promise<Map<string, ResolvedMedia>> {
   const resolved = new Map<string, ResolvedMedia>()
@@ -158,7 +159,7 @@ export async function resolveMedia(
   if (pending.length === 0) return resolved
 
   const tokens = await loadTokens(
-    tenantId,
+    scope,
     pending.map((publication) => publication.connectedPageId)
   )
 
@@ -197,13 +198,14 @@ function isStale(syncedAt: Date | null) {
 }
 
 // Un token por cuenta, no por fila: un log filtrado por cuenta hace una sola
-// lectura, y uno sin filtrar hace tantas como cuentas conectadas tenga.
-async function loadTokens(tenantId: string, connectedPageIds: string[]) {
+// lectura, y uno sin filtrar hace tantas como cuentas conectadas tenga. El
+// alcance es defensa en profundidad: los ids ya salen de listas acotadas.
+async function loadTokens(scope: ConnectionScope, connectedPageIds: string[]) {
   const unique = [...new Set(connectedPageIds)]
   const entries = await Promise.all(
     unique.map(async (connectedPageId) => {
       const resolved = await getActivePageWithTokenByConnectionId(
-        tenantId,
+        scope,
         connectedPageId
       )
       return [connectedPageId, resolved?.pageAccessToken ?? null] as const

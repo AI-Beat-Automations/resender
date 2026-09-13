@@ -3,9 +3,9 @@ import { revalidatePath } from "next/cache"
 import { cookies } from "next/headers"
 import { NextResponse, type NextRequest } from "next/server"
 
+import { resolveActor } from "@/lib/auth/actor"
 import { getSession } from "@/lib/auth/session"
 import { resolveWhatsappAccess } from "@/lib/auth/channel-access"
-import { resolveProductAccess } from "@/lib/auth/waitlist"
 import { resolvePlanLimits } from "@/lib/billing/entitlements"
 import {
   getSubscriptionByTenantId,
@@ -39,6 +39,7 @@ import {
   resolveWhatsappNumberOwnership,
   updateWhatsappHistorySyncStatus,
 } from "@/lib/pages/page-registry"
+import { scopeOf } from "@/lib/pages/connection-scope"
 import { posthog } from "@/lib/posthog"
 
 import { parseWhatsappMode } from "@/features/connect-whatsapp/signup-launch"
@@ -94,18 +95,26 @@ export async function POST(request: NextRequest) {
   if (!session?.user?.id) {
     return gate("not_authenticated", t.actions.notSignedIn, 401)
   }
-  const tenantId = session.user.id
 
   // Los mismos gates de las rutas de los otros dos canales y en el mismo orden.
   // Se repiten aunque el layout de `(product)` ya los aplique: esto se puede
-  // invocar por POST directo sin renderizar la pantalla.
-  const access = await resolveProductAccess(tenantId)
-  if (access === "unknown_user") {
+  // invocar por POST directo sin renderizar la pantalla. Acceso de la persona;
+  // suscripción y permiso de canal del tenant (ADR 0020).
+  const resolution = await resolveActor(session.user.id)
+  if (resolution.status === "unknown_user") {
     return gate("not_authenticated", t.actions.notSignedIn, 401)
   }
-  if (access === "waitlisted") {
+  if (resolution.status === "waitlisted") {
     return gate("waitlisted", t.actions.waitlisted)
   }
+  if (resolution.status === "agency_unavailable") {
+    return gate("waitlisted", t.actions.agencyUnavailable)
+  }
+  const { actor } = resolution
+  const { tenantId } = actor
+  // El número que conecta la persona de un cliente de agencia queda asignado a
+  // su cliente; el del dueño, sin asignar.
+  const scope = scopeOf(actor)
   if (!(await hasActiveSubscription(tenantId))) {
     return gate("no_active_subscription", t.actions.noSubscription)
   }
@@ -151,7 +160,7 @@ export async function POST(request: NextRequest) {
   // cuerpo es ilegible —un cierre que no se puede leer gastó el nonce igual—.
   const validNonce = consumeSignupNonce(
     store,
-    tenantId,
+    actor.userId,
     readField(body, "nonce")
   )
   if (!validNonce) {
@@ -229,7 +238,7 @@ export async function POST(request: NextRequest) {
       },
       resolveOwnership: resolveWhatsappNumberOwnership,
     },
-    { tenantId, phoneNumberId },
+    { scope, phoneNumberId },
     t
   )
   if (!slot.ok) {
@@ -279,7 +288,7 @@ export async function POST(request: NextRequest) {
       markHistorySyncStatus: (connectionId, status) =>
         updateWhatsappHistorySyncStatus({ connectionId, status, tenantId }),
     },
-    { tenantId, code, wabaId, phoneNumberId, mode, pin }
+    { scope, code, wabaId, phoneNumberId, mode, pin }
   )
 
   if (outcome.kind === "pin_required") {
@@ -315,7 +324,7 @@ export async function POST(request: NextRequest) {
     if (posthog) {
       posthog.captureException(
         new Error(`whatsapp signup failed at ${outcome.step}`),
-        tenantId
+        actor.userId
       )
     }
     // El paso exacto, en el log y en el motivo de la pantalla. Sin secretos: el
@@ -361,7 +370,7 @@ export async function POST(request: NextRequest) {
 
   if (posthog) {
     posthog.capture({
-      distinctId: tenantId,
+      distinctId: actor.userId,
       event: "whatsapp number connected",
       properties: {
         connection_id: page.id,

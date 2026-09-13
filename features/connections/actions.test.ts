@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
+  // Si devuelve un actor, reemplaza al dueño que se deriva de `getSession`.
+  actorOverride: vi.fn(),
   cookieGet: vi.fn(),
   disconnectPage: vi.fn(),
   getActivePageWithTokenByConnectionId: vi.fn(),
@@ -24,6 +26,30 @@ vi.mock("next/headers", () => ({
 vi.mock("@/lib/auth/session", () => ({
   getSession: mocks.getSession,
 }))
+
+// El actor se deriva de la sesión mockeada: una sesión es un dueño, salvo que
+// el test pida otro actor. Es una función y no un `vi.fn` para que el
+// `mockReset` de cada test no le borre la implementación.
+vi.mock("@/lib/auth/actor", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/auth/actor")>()
+  return {
+    ...original,
+    requireActor: async () => {
+      const override = mocks.actorOverride()
+      if (override) return { ok: true, actor: override }
+      const session = await mocks.getSession()
+      if (!session) return { ok: false, denial: "not_signed_in" }
+      return {
+        ok: true,
+        actor: {
+          kind: "owner",
+          userId: session.user.id,
+          tenantId: session.user.id,
+        },
+      }
+    },
+  }
+})
 
 // Se mockea el despachador por canal y no `@/lib/meta`: la acción ya no elige
 // el endpoint, lo elige `channel-webhook` a partir del canal de la fila.
@@ -83,11 +109,11 @@ describe("disconnectPageAction", () => {
     })
 
     expect(mocks.getActivePageWithTokenByConnectionId).toHaveBeenCalledWith(
-      "tenant-1",
+      { tenantId: "tenant-1", owner: true, clientId: null },
       "connection-1"
     )
     expect(mocks.disconnectPage).toHaveBeenCalledWith(
-      "tenant-1",
+      { tenantId: "tenant-1", owner: true, clientId: null },
       "connection-1"
     )
     expect(mocks.unsubscribeChannelWebhook).toHaveBeenCalledWith({
@@ -135,7 +161,7 @@ describe("disconnectPageAction", () => {
     })
 
     expect(mocks.disconnectPage).toHaveBeenCalledWith(
-      "tenant-1",
+      { tenantId: "tenant-1", owner: true, clientId: null },
       "connection-1"
     )
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/connections")
@@ -157,7 +183,7 @@ describe("disconnectPageAction", () => {
     })
 
     expect(mocks.disconnectPage).toHaveBeenCalledWith(
-      "tenant-1",
+      { tenantId: "tenant-1", owner: true, clientId: null },
       "connection-1"
     )
     expect(mocks.unsubscribeChannelWebhook).not.toHaveBeenCalled()
@@ -199,6 +225,69 @@ describe("disconnectPageAction", () => {
     await expect(disconnectPageAction({}, formData)).resolves.toEqual({
       error: "No encontramos esa página.",
     })
+  })
+})
+
+// Modo agencia (ADR 0020): la persona de un cliente desconecta, pero solo
+// dentro de su cliente; el webhook no lo toca.
+const pedro = {
+  kind: "client",
+  userId: "user-pedro",
+  tenantId: "tenant-1",
+  clientId: "client-pedro",
+  clientName: "Panadería Pedro",
+}
+
+describe("disconnectPageAction para un cliente de agencia", () => {
+  beforeEach(() => {
+    for (const mock of Object.values(mocks)) mock.mockReset()
+    mocks.cookieGet.mockReturnValue(undefined)
+    mocks.actorOverride.mockReturnValue(pedro)
+    mocks.getActivePageWithTokenByConnectionId.mockResolvedValue(null)
+    mocks.disconnectPage.mockResolvedValue({
+      id: "connection-1",
+      metaPageId: "meta-page-1",
+    })
+  })
+
+  it("desconecta dentro del alcance de su cliente", async () => {
+    const formData = new FormData()
+    formData.set("connectionId", "connection-1")
+
+    await disconnectPageAction({}, formData)
+
+    const clientScope = {
+      tenantId: "tenant-1",
+      owner: false,
+      clientId: "client-pedro",
+    }
+    expect(mocks.getActivePageWithTokenByConnectionId).toHaveBeenCalledWith(
+      clientScope,
+      "connection-1"
+    )
+    expect(mocks.disconnectPage).toHaveBeenCalledWith(
+      clientScope,
+      "connection-1"
+    )
+  })
+})
+
+describe("saveWebhookUrlAction para un cliente de agencia", () => {
+  beforeEach(() => {
+    for (const mock of Object.values(mocks)) mock.mockReset()
+    mocks.cookieGet.mockReturnValue(undefined)
+    mocks.actorOverride.mockReturnValue(pedro)
+  })
+
+  it("no deja tocar el webhook y no llega a la base", async () => {
+    const formData = new FormData()
+    formData.set("connectionId", "connection-1")
+    formData.set("webhookUrl", "https://evil.example/hook")
+
+    await expect(saveWebhookUrlAction({}, formData)).resolves.toEqual({
+      error: es.actions.ownerOnly,
+    })
+    expect(mocks.updatePageWebhookUrl).not.toHaveBeenCalled()
   })
 })
 

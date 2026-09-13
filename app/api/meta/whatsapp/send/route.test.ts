@@ -577,7 +577,7 @@ describe("POST /api/meta/whatsapp/send", () => {
     expect(response.status).toBe(200)
     expect(mocks.getConversationById).toHaveBeenCalledWith("tenant-1", "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a")
     expect(mocks.getActivePageWithTokenByConnectionId).toHaveBeenCalledWith(
-      "tenant-1",
+      { tenantId: "tenant-1", owner: true, clientId: null },
       "conn-1"
     )
     expect(mocks.getActivePageWithTokenForTenant).not.toHaveBeenCalled()

@@ -1,8 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server"
 
+import { resolveActor } from "@/lib/auth/actor"
+import { scopeOf, scopeOwnsRow } from "@/lib/pages/connection-scope"
 import { getSession } from "@/lib/auth/session"
 import { resolveInstagramAccess } from "@/lib/auth/channel-access"
-import { resolveProductAccess } from "@/lib/auth/waitlist"
 import { resolvePlanLimits } from "@/lib/billing/entitlements"
 import {
   getSubscriptionByTenantId,
@@ -70,16 +71,30 @@ export async function GET(request: NextRequest) {
   }
 
   // Ver el comentario en `/api/meta/instagram/start`.
-  const access = await resolveProductAccess(session.user.id)
-  if (access === "unknown_user") {
+  //
+  // Acceso de la persona; suscripción y permiso de canal del tenant (ADR 0020).
+  // La persona de un cliente de agencia no ve precios: si la agencia no paga,
+  // va a `/access`.
+  const resolution = await resolveActor(session.user.id)
+  if (resolution.status === "unknown_user") {
     return gate("not_authenticated", "/login")
   }
-  if (access === "waitlisted") {
+  if (resolution.status === "waitlisted") {
     return gate("waitlisted", "/pending")
   }
+  if (resolution.status === "agency_unavailable") {
+    return gate("waitlisted", "/access")
+  }
+  const { actor } = resolution
+  // La cuenta que conecta la persona de un cliente de agencia queda asignada a
+  // su cliente; la del dueño, sin asignar.
+  const scope = scopeOf(actor)
 
-  if (!(await hasActiveSubscription(session.user.id))) {
-    return gate("no_active_subscription", "/billing")
+  if (!(await hasActiveSubscription(actor.tenantId))) {
+    return gate(
+      "no_active_subscription",
+      actor.kind === "owner" ? "/billing" : "/access"
+    )
   }
 
   const params = request.nextUrl.searchParams
@@ -116,7 +131,7 @@ export async function GET(request: NextRequest) {
       reason: logReason,
       channel: "instagram",
       route: "/api/meta/instagram/callback",
-      tenantId: session.user.id,
+      tenantId: actor.tenantId,
       ...extra,
     })
     return finish({ instagram: "error", reason })
@@ -132,7 +147,7 @@ export async function GET(request: NextRequest) {
   // cuenta que el canal no puede atender. Va por `fail` y no por `gate` para
   // que se limpie la cookie de `state` del intento que queda trunco, y después
   // de mirar `error` para que una cancelación no se registre como revocación.
-  if (!(await resolveInstagramAccess(session.user.id))) {
+  if (!(await resolveInstagramAccess(actor.tenantId))) {
     return fail("instagram_not_enabled", "channel_not_enabled")
   }
 
@@ -164,7 +179,7 @@ export async function GET(request: NextRequest) {
   // abajo, sabiendo el IG id. El costo de esa demora es un `code` quemado en el
   // único caso que igual iba a rebotar: el que está al tope y conecta una
   // cuenta nueva.
-  const subscription = await getSubscriptionByTenantId(session.user.id)
+  const subscription = await getSubscriptionByTenantId(actor.tenantId)
   const limits = resolvePlanLimits(subscription?.priceLookupKey ?? null)
   if (!limits) {
     return fail("configuration_failed", "configuration_failed", {
@@ -172,7 +187,7 @@ export async function GET(request: NextRequest) {
     })
   }
   const atPageLimit =
-    (await countActivePages(session.user.id)) >= limits.maxPages
+    (await countActivePages(actor.tenantId)) >= limits.maxPages
 
   let step: "exchange" | "profile" | "subscribe" | "persist" = "exchange"
   try {
@@ -184,8 +199,9 @@ export async function GET(request: NextRequest) {
     const profile = await fetchInstagramProfile(token.accessToken)
 
     // Con el IG id en la mano: sin cupo libre solo pasa la reconexión de una
-    // cuenta que ya está activa para este tenant. Comparar el `tenantId` es lo
-    // que impide que la cuenta ajena abra la puerta.
+    // cuenta que ya está activa dentro del alcance de quien conecta. Comparar
+    // el alcance es lo que impide que la cuenta ajena —de otro tenant, o de
+    // otro cliente de agencia— abra la puerta.
     // La cuenta de otro tenant rebota por propiedad y no por cupo: decirle
     // "liberá un slot" a quien intenta conectar una cuenta que no es suya lo
     // manda a desconectar conexiones para nada, porque después va a rebotar
@@ -195,7 +211,7 @@ export async function GET(request: NextRequest) {
         profile.igUserId,
         "instagram"
       )
-      if (existing && existing.tenantId !== session.user.id) {
+      if (existing && !scopeOwnsRow(existing, scope)) {
         return fail(
           instagramAccountOwnedReason(profile.igUserId),
           "account_owned_by_other_tenant",
@@ -211,7 +227,7 @@ export async function GET(request: NextRequest) {
     await subscribeInstagramWebhook(token.accessToken)
 
     step = "persist"
-    const account = await connectInstagramAccount(session.user.id, {
+    const account = await connectInstagramAccount(scope, {
       igUserId: profile.igUserId,
       username: profile.username,
       name: profile.name,
@@ -221,7 +237,7 @@ export async function GET(request: NextRequest) {
 
     if (posthog) {
       posthog.capture({
-        distinctId: session.user.id,
+        distinctId: actor.userId,
         event: "instagram account connected",
         properties: {
           connection_id: account.id,
@@ -244,7 +260,7 @@ export async function GET(request: NextRequest) {
     // IG ID no le dice nada al usuario.
     return finish({ instagram: "connected", username: profile.username })
   } catch (error) {
-    if (posthog) posthog.captureException(error, session.user.id)
+    if (posthog) posthog.captureException(error, actor.userId)
     const errorMessage = describeError(error)
 
     if (error instanceof SecretEncryptionConfigError) {

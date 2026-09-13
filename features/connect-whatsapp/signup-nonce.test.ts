@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
-  bindNonceToTenant,
+  bindNonceToActor,
   consumeSignupNonce,
   constantTimeEquals,
   generateSignupNonce,
@@ -35,7 +35,7 @@ describe("issueSignupNonce", () => {
 
     expect(nonce).not.toContain("tenant-1")
     expect(store.jar.get(SIGNUP_NONCE_COOKIE)).toBe(
-      bindNonceToTenant("tenant-1", nonce)
+      bindNonceToActor("tenant-1", nonce)
     )
   })
 

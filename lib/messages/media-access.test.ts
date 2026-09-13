@@ -7,6 +7,8 @@ vi.mock("@opennextjs/cloudflare", () => ({
   getCloudflareContext: () => ({ env: { WHATSAPP_MEDIA: {} } }),
 }))
 
+import { ownerScope } from "@/lib/pages/connection-scope"
+
 import { lookupMediaForTenant } from "./media-access"
 
 const NOW = new Date("2026-08-24T12:00:00Z")
@@ -27,7 +29,11 @@ describe("autorización de un medio entrante", () => {
     })
 
     await expect(
-      lookupMediaForTenant({ tenantId: "t1", messageId: "m1", now: NOW })
+      lookupMediaForTenant({
+        scope: ownerScope("t1"),
+        messageId: "m1",
+        now: NOW,
+      })
     ).resolves.toEqual({
       ok: true,
       key: "wa/t1/m1/abc",
@@ -42,7 +48,11 @@ describe("autorización de un medio entrante", () => {
   it("no encuentra el mensaje de otro tenant", async () => {
     rows(null)
     await expect(
-      lookupMediaForTenant({ tenantId: "otro", messageId: "m1", now: NOW })
+      lookupMediaForTenant({
+        scope: ownerScope("otro"),
+        messageId: "m1",
+        now: NOW,
+      })
     ).resolves.toEqual({ ok: false, reason: "not_found" })
   })
 
@@ -56,7 +66,11 @@ describe("autorización de un medio entrante", () => {
       created_at: NOW,
     })
     await expect(
-      lookupMediaForTenant({ tenantId: "t1", messageId: "m1", now: NOW })
+      lookupMediaForTenant({
+        scope: ownerScope("t1"),
+        messageId: "m1",
+        now: NOW,
+      })
     ).resolves.toEqual({ ok: false, reason: "not_found" })
   })
 
@@ -74,7 +88,11 @@ describe("autorización de un medio entrante", () => {
         created_at: NOW,
       })
       await expect(
-        lookupMediaForTenant({ tenantId: "t1", messageId: "m1", now: NOW })
+        lookupMediaForTenant({
+          scope: ownerScope("t1"),
+          messageId: "m1",
+          now: NOW,
+        })
       ).resolves.toEqual({
         ok: false,
         reason: "not_available",
@@ -96,7 +114,11 @@ describe("autorización de un medio entrante", () => {
     })
 
     await expect(
-      lookupMediaForTenant({ tenantId: "t1", messageId: "m1", now: NOW })
+      lookupMediaForTenant({
+        scope: ownerScope("t1"),
+        messageId: "m1",
+        now: NOW,
+      })
     ).resolves.toEqual({
       ok: false,
       reason: "not_available",
@@ -113,7 +135,11 @@ describe("autorización de un medio entrante", () => {
     })
 
     await expect(
-      lookupMediaForTenant({ tenantId: "t1", messageId: "m1", now: NOW })
+      lookupMediaForTenant({
+        scope: ownerScope("t1"),
+        messageId: "m1",
+        now: NOW,
+      })
     ).resolves.toMatchObject({
       ok: true,
       mimeType: "application/octet-stream",

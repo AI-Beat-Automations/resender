@@ -16,10 +16,11 @@ import { randomBytes, timingSafeEqual } from "crypto"
 // —cualquier copia vale hasta que caduca—, y consumirlo es justo lo que se
 // pide. La cookie da el uso único gratis: se borra al leerla.
 //
-// El valor lleva el tenant delante (`${tenantId}.${nonce}`) porque la cookie
+// El valor lleva a la persona delante (`${userId}.${nonce}`) porque la cookie
 // sobrevive a un cambio de sesión en el mismo navegador: sin esa atadura, el
 // nonce que emitió una cuenta serviría para cerrar el onboarding de la
-// siguiente que iniciara sesión ahí.
+// siguiente que iniciara sesión ahí. Es la persona y no el tenant (ADR 0020):
+// el dueño y la persona de un cliente de agencia comparten tenant.
 //
 // El módulo es puro respecto de Next a propósito —recibe el almacén de cookies
 // por parámetro— para que la emisión y el consumo se puedan probar sin
@@ -60,21 +61,21 @@ export function generateSignupNonce(): string {
   return randomBytes(32).toString("base64url")
 }
 
-export function bindNonceToTenant(tenantId: string, nonce: string): string {
-  return `${tenantId}.${nonce}`
+export function bindNonceToActor(userId: string, nonce: string): string {
+  return `${userId}.${nonce}`
 }
 
-// Emite el nonce y lo siembra. Devuelve el valor **sin** el tenant delante: lo
+// Emite el nonce y lo siembra. Devuelve el valor **sin** la persona delante: lo
 // que el launcher necesita reenviar es el secreto, y mandarle el par completo
-// solo publicaría el id del tenant en el DOM sin ganar nada.
+// solo publicaría el id de la persona en el DOM sin ganar nada.
 export function issueSignupNonce(
   store: SignupNonceCookieStore,
-  tenantId: string
+  userId: string
 ): string {
   const nonce = generateSignupNonce()
   store.set(
     SIGNUP_NONCE_COOKIE,
-    bindNonceToTenant(tenantId, nonce),
+    bindNonceToActor(userId, nonce),
     SIGNUP_NONCE_COOKIE_OPTIONS
   )
   return nonce
@@ -87,14 +88,14 @@ export function issueSignupNonce(
 // pedir otro, que es el lado correcto en el que equivocarse.
 export function consumeSignupNonce(
   store: SignupNonceCookieStore,
-  tenantId: string,
+  userId: string,
   submitted: string | null
 ): boolean {
   const cookie = store.get(SIGNUP_NONCE_COOKIE)?.value ?? null
   store.delete(SIGNUP_NONCE_COOKIE)
 
   if (!cookie || !submitted) return false
-  return constantTimeEquals(cookie, bindNonceToTenant(tenantId, submitted))
+  return constantTimeEquals(cookie, bindNonceToActor(userId, submitted))
 }
 
 // Comparación en tiempo constante. El `===` del `state` de Instagram alcanza
