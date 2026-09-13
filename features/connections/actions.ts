@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 
-import { getSession } from "@/lib/auth/session"
+import { describeActorDenial, requireActor } from "@/lib/auth/actor"
 import { getAppDict } from "@/lib/i18n/app-dict"
 import {
   disconnectPage,
@@ -12,6 +12,7 @@ import {
   rotateWebhookSigningSecret,
   updatePageWebhookUrl,
 } from "@/lib/pages/page-registry"
+import { scopeOf } from "@/lib/pages/connection-scope"
 import { unsubscribeChannelWebhook } from "@/lib/pages/channel-webhook"
 import { accountFields, describeError, log } from "@/lib/observability/logger"
 import { posthog } from "@/lib/posthog"
@@ -30,8 +31,13 @@ export async function saveWebhookUrlAction(
   formData: FormData
 ): Promise<ConnectionActionState> {
   const t = await getAppDict()
-  const session = await getSession()
-  if (!session?.user?.id) return { error: t.actions.notSignedIn }
+  const gate = await requireActor()
+  if (!gate.ok) return { error: describeActorDenial(gate.denial, t.actions) }
+  // El webhook es la integración de la agencia con su bot: la persona de un
+  // cliente de agencia no lo ve ni lo toca (ADR 0020). Se chequea acá y no solo
+  // en la tarjeta porque la acción se puede invocar por POST directo.
+  if (gate.actor.kind !== "owner") return { error: t.actions.ownerOnly }
+  const { actor } = gate
 
   const connectionId = formData.get("connectionId")
   if (typeof connectionId !== "string" || !connectionId) {
@@ -40,7 +46,7 @@ export async function saveWebhookUrlAction(
 
   try {
     const updated = await updatePageWebhookUrl(
-      session.user.id,
+      actor.tenantId,
       connectionId,
       formData.get("webhookUrl")
     )
@@ -58,7 +64,7 @@ export async function saveWebhookUrlAction(
 
     if (posthog) {
       posthog.capture({
-        distinctId: session.user.id,
+        distinctId: actor.userId,
         event: "webhook url saved",
         properties: {
           connection_id: connectionId,
@@ -73,7 +79,7 @@ export async function saveWebhookUrlAction(
     // firma existe. Si ya tenía uno, no se toca — rotarlo al guardar la URL
     // invalidaría el que el receptor tiene configurado.
     const secret = updated.webhookUrl
-      ? await ensureWebhookSigningSecret(session.user.id, connectionId)
+      ? await ensureWebhookSigningSecret(actor.tenantId, connectionId)
       : null
 
     revalidatePath("/connections")
@@ -104,8 +110,12 @@ export async function disconnectPageAction(
   formData: FormData
 ): Promise<ConnectionActionState> {
   const t = await getAppDict()
-  const session = await getSession()
-  if (!session?.user?.id) return { error: t.actions.notSignedIn }
+  const gate = await requireActor()
+  if (!gate.ok) return { error: describeActorDenial(gate.denial, t.actions) }
+  const { actor } = gate
+  // Desconectar es de los dos roles, pero dentro del alcance: la persona de un
+  // cliente de agencia solo desconecta las de su cliente (ADR 0020).
+  const scope = scopeOf(actor)
 
   const connectionId = formData.get("connectionId")
   if (typeof connectionId !== "string" || !connectionId) {
@@ -117,7 +127,7 @@ export async function disconnectPageAction(
   > = null
   try {
     pageToUnsubscribe = await getActivePageWithTokenByConnectionId(
-      session.user.id,
+      scope,
       connectionId
     )
   } catch (error) {
@@ -128,13 +138,13 @@ export async function disconnectPageAction(
       action: "webhook_unsubscribe",
       outcome: "failed",
       reason: "internal_error",
-      tenantId: session.user.id,
+      tenantId: actor.tenantId,
       connectionId,
       errorMessage: describeError(error),
     })
   }
 
-  const disconnected = await disconnectPage(session.user.id, connectionId)
+  const disconnected = await disconnectPage(scope, connectionId)
   if (!disconnected) return { error: t.actions.pageNotFound }
 
   log({
@@ -146,7 +156,7 @@ export async function disconnectPageAction(
 
   if (posthog) {
     posthog.capture({
-      distinctId: session.user.id,
+      distinctId: actor.userId,
       event: "page disconnected",
       properties: {
         connection_id: connectionId,
@@ -191,22 +201,26 @@ export async function rotateWebhookSecretAction(
   formData: FormData
 ): Promise<ConnectionActionState> {
   const t = await getAppDict()
-  const session = await getSession()
-  if (!session?.user?.id) return { error: t.actions.notSignedIn }
+  const gate = await requireActor()
+  if (!gate.ok) return { error: describeActorDenial(gate.denial, t.actions) }
+  // Mismo criterio que la `webhookUrl`: el secreto es de la integración de la
+  // agencia (ADR 0020).
+  if (gate.actor.kind !== "owner") return { error: t.actions.ownerOnly }
+  const { actor } = gate
 
   const connectionId = formData.get("connectionId")
   if (typeof connectionId !== "string" || !connectionId) {
     return { error: t.actions.invalidPage }
   }
 
-  const secret = await rotateWebhookSigningSecret(session.user.id, connectionId)
+  const secret = await rotateWebhookSigningSecret(actor.tenantId, connectionId)
   if (!secret) return { error: t.actions.pageNotFound }
 
   log({
     entrypoint: "action",
     action: "webhook_secret_rotate",
     outcome: "ok",
-    tenantId: session.user.id,
+    tenantId: actor.tenantId,
     connectionId,
     // El secreto no se loguea, obviamente. Que la línea exista es lo que
     // permite responder «¿cuándo dejó de validar mi firma?» sin adivinar.

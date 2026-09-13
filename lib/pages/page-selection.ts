@@ -1,5 +1,6 @@
 import { fmt, type AppDict } from "@/content/i18n/app"
 
+import { scopeOwnsRow, type ConnectionScope } from "./connection-scope"
 import type { PageStatus } from "./page-registry"
 
 // Módulo puro de selección de páginas (ADR 0004). Sin base de datos, sin red:
@@ -15,6 +16,8 @@ export type MetaPageSummary = { pageId: string; name: string }
 export type PageOwnershipRow = {
   metaPageId: string
   tenantId: string
+  /** A qué cliente de agencia está asignada; `null` es sin asignar. */
+  agencyClientId: string | null
   status: PageStatus
 }
 
@@ -39,7 +42,9 @@ export type PageSelectionView = {
 export function classifyPagesForSelection(input: {
   metaPages: MetaPageSummary[]
   ownership: PageOwnershipRow[]
-  tenantId: string
+  // Quién elige: el dueño ve como propias todas las del tenant; la persona de
+  // un cliente de agencia, solo las de su cliente (ADR 0020).
+  scope: ConnectionScope
   // Páginas `active` del tenant; puede incluir páginas que no están en
   // `metaPages` (el usuario dejó de administrarlas en Meta pero siguen
   // ocupando cupo hasta que las desconecte).
@@ -54,7 +59,7 @@ export function classifyPagesForSelection(input: {
   const pages = input.metaPages.map<SelectablePage>((page) => ({
     metaPageId: page.pageId,
     name: page.name,
-    state: resolveState(byPageId.get(page.pageId), input.tenantId),
+    state: resolveState(byPageId.get(page.pageId), input.scope),
   }))
 
   return {
@@ -65,15 +70,19 @@ export function classifyPagesForSelection(input: {
   }
 }
 
-// Una página `disconnected` del mismo tenant vuelve a ser seleccionable: no
+// Una página `disconnected` del mismo alcance vuelve a ser seleccionable: no
 // ocupa cupo mientras está desconectada, pero reconectarla consume un slot
 // igual que conectar una nueva.
+//
+// Para la persona de un cliente de agencia, una página de otro cliente o sin
+// asignar se muestra igual que la de otro tenant: "ya está conectada en otra
+// cuenta". Tomarla es decisión del dueño, que la asigna desde Conexiones.
 function resolveState(
   row: PageOwnershipRow | undefined,
-  tenantId: string
+  scope: ConnectionScope
 ): SelectablePageState {
   if (!row) return "selectable"
-  if (row.tenantId !== tenantId) return "owned_by_other_tenant"
+  if (!scopeOwnsRow(row, scope)) return "owned_by_other_tenant"
   return row.status === "active" ? "already_connected" : "selectable"
 }
 

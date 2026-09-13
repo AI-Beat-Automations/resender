@@ -1,4 +1,5 @@
 import { getSql } from "@/lib/db"
+import type { ConnectionScope } from "@/lib/pages/connection-scope"
 import type { PageChannel } from "@/lib/pages/page-registry"
 
 import type { CommentDirection, CommentStatus } from "./comment-log"
@@ -83,9 +84,10 @@ type PublicationCommentRow = {
 }
 
 export async function listPublicationReadModel(input: {
-  tenantId: string
+  scope: ConnectionScope
   connectedPageId?: string
 }) {
+  const { scope } = input
   const sql = getSql()
   // `count(*)::int` con el cast puesto: el driver HTTP de Neon entrega `bigint`
   // como string. Es el mismo cast que `countActivePages`.
@@ -94,6 +96,10 @@ export async function listPublicationReadModel(input: {
   // filtró: sin RLS, un scan correlacionado que no lo lleve podría salirse del
   // slice del tenant si alguien reordena el join. Es `join` y no `left join`
   // porque una publicación agrupada siempre tiene último comentario.
+  //
+  // El alcance (ADR 0020) se aplica **dentro** de la agregación y no solo en el
+  // join de afuera: así los comentarios de conexiones ajenas a un cliente de
+  // agencia ni siquiera se cuentan.
   const rows = await sql<PublicationListRow[]>`
     select
       agg.connected_page_id,
@@ -122,7 +128,12 @@ export async function listPublicationReadModel(input: {
         -- nulls, así que alcanza con que una sola fila del grupo lo traiga.
         max(media_product_type) as media_product_type
       from instagram_comments
-      where tenant_id = ${input.tenantId}
+      where tenant_id = ${scope.tenantId}
+        and connected_page_id in (
+          select id from connected_pages
+          where tenant_id = ${scope.tenantId}
+            and (${scope.owner} or agency_client_id = ${scope.clientId}::uuid)
+        )
         and (${input.connectedPageId ?? null}::uuid is null or connected_page_id = ${input.connectedPageId ?? null}::uuid)
       group by connected_page_id, media_id
     ) agg
@@ -130,7 +141,7 @@ export async function listPublicationReadModel(input: {
     join lateral (
       select text, direction, status, from_ig_id, from_username, created_at
       from instagram_comments c
-      where c.tenant_id = ${input.tenantId}
+      where c.tenant_id = ${scope.tenantId}
         and c.connected_page_id = agg.connected_page_id
         and c.media_id = agg.media_id
       order by c.created_at desc
@@ -143,10 +154,11 @@ export async function listPublicationReadModel(input: {
 }
 
 export async function listPublicationComments(input: {
-  tenantId: string
+  scope: ConnectionScope
   connectedPageId: string
   mediaId: string
 }) {
+  const { scope } = input
   const sql = getSql()
   // Orden cronológico ascendente, no inverso: un hilo se entiende de arriba
   // hacia abajo. Es el orden del índice `instagram_comments_media_idx`, que
@@ -158,8 +170,13 @@ export async function listPublicationComments(input: {
     select id, ig_comment_id, parent_ig_comment_id, direction, status, text,
       error, from_ig_id, from_username, created_at
     from instagram_comments
-    where tenant_id = ${input.tenantId}
+    where tenant_id = ${scope.tenantId}
       and connected_page_id = ${input.connectedPageId}
+      and connected_page_id in (
+        select id from connected_pages
+        where tenant_id = ${scope.tenantId}
+          and (${scope.owner} or agency_client_id = ${scope.clientId}::uuid)
+      )
       and media_id = ${input.mediaId}
     order by created_at asc
   `

@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
+  // Si devuelve un actor, reemplaza al dueño que se deriva de la sesión.
+  actorOverride: vi.fn(),
   resolveProductAccess: vi.fn(),
   resolveInstagramAccess: vi.fn(),
   hasActiveSubscription: vi.fn(),
@@ -17,8 +19,20 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/auth/session", () => ({ getSession: mocks.getSession }))
 
-vi.mock("@/lib/auth/waitlist", () => ({
-  resolveProductAccess: mocks.resolveProductAccess,
+// El actor se deriva del gate de acceso mockeado: una cuenta permitida es
+// dueña de su tenant. Es una función y no un `vi.fn` para que el `mockReset`
+// no le borre la implementación.
+vi.mock("@/lib/auth/actor", () => ({
+  resolveActor: async (userId: string) => {
+    const override = mocks.actorOverride()
+    if (override) return { status: "ok", actor: override }
+    const access = await mocks.resolveProductAccess(userId)
+    if (access !== "allowed") return { status: access }
+    return {
+      status: "ok",
+      actor: { kind: "owner", userId, tenantId: userId },
+    }
+  },
 }))
 
 vi.mock("@/lib/auth/channel-access", () => ({
@@ -160,6 +174,7 @@ describe("GET /api/meta/instagram/callback", () => {
     mocks.getActivePageByMetaPageId.mockResolvedValue({
       id: "connection-1",
       tenantId: "tenant-1",
+      agencyClientId: null,
       metaPageId: IG_USER_ID,
     })
 
@@ -178,6 +193,7 @@ describe("GET /api/meta/instagram/callback", () => {
     mocks.getActivePageByMetaPageId.mockResolvedValue({
       id: "connection-9",
       tenantId: "tenant-2",
+      agencyClientId: null,
       metaPageId: IG_USER_ID,
     })
 
@@ -185,6 +201,46 @@ describe("GET /api/meta/instagram/callback", () => {
 
     expect(reasonOf(response)).toBe(`instagram_account_owned:${IG_USER_ID}`)
     expect(mocks.connectInstagramAccount).not.toHaveBeenCalled()
+  })
+
+  // Modo agencia (ADR 0020): para la persona de un cliente, la cuenta sin
+  // asignar del mismo tenant tampoco es una reconexión. La asigna el dueño.
+  it("no deja que un cliente de agencia tome una cuenta sin asignar", async () => {
+    mocks.actorOverride.mockReturnValue({
+      kind: "client",
+      userId: "user-pedro",
+      tenantId: "tenant-1",
+      clientId: "client-pedro",
+      clientName: "Panadería Pedro",
+    })
+    mocks.countActivePages.mockResolvedValue(2)
+    mocks.getActivePageByMetaPageId.mockResolvedValue({
+      id: "connection-1",
+      tenantId: "tenant-1",
+      agencyClientId: null,
+      metaPageId: IG_USER_ID,
+    })
+
+    const response = await GET(callbackRequest())
+
+    expect(reasonOf(response)).toBe(`instagram_account_owned:${IG_USER_ID}`)
+    expect(mocks.connectInstagramAccount).not.toHaveBeenCalled()
+  })
+
+  it("un cliente de agencia sin suscripción de la agencia va a /access", async () => {
+    mocks.actorOverride.mockReturnValue({
+      kind: "client",
+      userId: "user-pedro",
+      tenantId: "tenant-1",
+      clientId: "client-pedro",
+      clientName: "Panadería Pedro",
+    })
+    mocks.hasActiveSubscription.mockResolvedValue(false)
+
+    const response = await GET(callbackRequest())
+
+    expect(mocks.hasActiveSubscription).toHaveBeenCalledWith("tenant-1")
+    expect(response.headers.get("location")).toContain("/access")
   })
 
   // El orden de los gates (ADR 0010 y 0011): la suscripción primero, después el

@@ -2,12 +2,12 @@
 
 import { cookies } from "next/headers"
 
-import { getSession } from "@/lib/auth/session"
+import { describeActorDenial, requireActor } from "@/lib/auth/actor"
 import { getAppDict } from "@/lib/i18n/app-dict"
 import { resolveWhatsappAccess } from "@/lib/auth/channel-access"
-import { isUserWaitlisted } from "@/lib/auth/waitlist"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
 import { describeError, log } from "@/lib/observability/logger"
+import { scopeOf } from "@/lib/pages/connection-scope"
 import { getWhatsappGeneratedPin } from "@/lib/pages/page-registry"
 
 import { issueSignupNonce } from "./signup-nonce"
@@ -39,24 +39,26 @@ export type WhatsappSignupNonceState = {
  */
 export async function issueWhatsappSignupNonce(): Promise<WhatsappSignupNonceState> {
   const t = await getAppDict()
-  const session = await getSession()
-  if (!session?.user?.id) return { error: t.actions.notSignedIn }
 
   // Los mismos gates que el cierre, y por el mismo motivo: emitir un nonce a
   // quien no puede conectar sería dejarle abrir el diálogo de Meta para que su
-  // autorización muera al volver.
-  if (await isUserWaitlisted(session.user.id)) {
-    return { error: t.actions.waitlisted }
-  }
-  if (!(await hasActiveSubscription(session.user.id))) {
+  // autorización muera al volver. Acceso de la persona; suscripción y permiso
+  // de canal del tenant (ADR 0020).
+  const gate = await requireActor()
+  if (!gate.ok) return { error: describeActorDenial(gate.denial, t.actions) }
+  const { actor } = gate
+  if (!(await hasActiveSubscription(actor.tenantId))) {
     return { error: t.actions.noSubscription }
   }
-  if (!(await resolveWhatsappAccess(session.user.id))) {
+  if (!(await resolveWhatsappAccess(actor.tenantId))) {
     return { error: t.actions.whatsappNotEnabled }
   }
 
+  // Atado a la **persona** y no al tenant: el dueño y la persona de un cliente
+  // de agencia comparten tenant, y el nonce de uno no puede cerrar el
+  // onboarding del otro en el mismo navegador.
   const store = await cookies()
-  return { nonce: issueSignupNonce(store, session.user.id) }
+  return { nonce: issueSignupNonce(store, actor.userId) }
 }
 
 export type WhatsappPinState = {
@@ -82,17 +84,24 @@ export async function revealWhatsappPin(
   connectionId: string
 ): Promise<WhatsappPinState> {
   const t = await getAppDict()
-  const session = await getSession()
-  if (!session?.user?.id) return { error: t.actions.notSignedIn }
+  const gate = await requireActor()
+  if (!gate.ok) return { error: describeActorDenial(gate.denial, t.actions) }
+  const { actor } = gate
 
   // El gate de canal también acá: quitarle el permiso a una cuenta tiene que
-  // cerrar todas las puertas del canal, no solo la de conectar.
-  if (!(await resolveWhatsappAccess(session.user.id))) {
+  // cerrar todas las puertas del canal, no solo la de conectar. Y la
+  // suscripción, igual que el resto de las puertas del canal.
+  if (!(await hasActiveSubscription(actor.tenantId))) {
+    return { error: t.actions.noSubscription }
+  }
+  if (!(await resolveWhatsappAccess(actor.tenantId))) {
     return { error: t.actions.whatsappNotEnabled }
   }
 
   try {
-    const pin = await getWhatsappGeneratedPin(session.user.id, connectionId)
+    // El PIN es del número y el número es de su negocio: lo ven el dueño y la
+    // persona del cliente de agencia al que está asignado, nadie más (ADR 0020).
+    const pin = await getWhatsappGeneratedPin(scopeOf(actor), connectionId)
     if (!pin) {
       // El mismo mensaje para «no es tuya», «no existe» y «el PIN lo pusiste
       // tú»: distinguirlos le contaría a quien prueba ids ajenos cuáles
@@ -107,7 +116,7 @@ export async function revealWhatsappPin(
       action: "account_connect",
       outcome: "ok",
       channel: "whatsapp",
-      tenantId: session.user.id,
+      tenantId: actor.tenantId,
       connectionId,
     })
 
@@ -119,7 +128,7 @@ export async function revealWhatsappPin(
       outcome: "failed",
       reason: "internal_error",
       channel: "whatsapp",
-      tenantId: session.user.id,
+      tenantId: actor.tenantId,
       connectionId,
       // Nunca el PIN, ni siquiera al fallar de descifrarlo.
       errorMessage: describeError(error),

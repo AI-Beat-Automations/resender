@@ -3,8 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 
-import { getSession } from "@/lib/auth/session"
-import { isUserWaitlisted } from "@/lib/auth/waitlist"
+import { describeActorDenial, requireActor, type Actor } from "@/lib/auth/actor"
 import { resolvePlanLimits } from "@/lib/billing/entitlements"
 import {
   getSubscriptionByTenantId,
@@ -24,6 +23,7 @@ import {
   formatMetaConnectionError,
   metaPageOwnedReason,
 } from "@/lib/pages/meta-connection-error"
+import { scopeOf } from "@/lib/pages/connection-scope"
 import { getMetaUserAccessToken } from "@/lib/pages/meta-user-token"
 import {
   connectAuthorizedPages,
@@ -69,17 +69,16 @@ export async function connectSelectedPagesAction(
   formData: FormData
 ): Promise<ConnectMetaActionState> {
   const t = await getAppDict()
-  const session = await getSession()
-  if (!session?.user?.id) return { error: t.actions.notSignedIn }
 
   // Los mismos gates que protegen `/api/meta/start` y `/api/meta/callback`. El
   // layout de `(product)` no alcanza: una server action se puede invocar por
   // POST directo sin renderizar la pantalla, y la fila de `subscriptions` de un
-  // tenant dado de baja conserva su `price_lookup_key`.
-  if (await isUserWaitlisted(session.user.id)) {
-    return { error: t.actions.waitlisted }
-  }
-  if (!(await hasActiveSubscription(session.user.id))) {
+  // tenant dado de baja conserva su `price_lookup_key`. El gate de acceso mira
+  // a la persona y la suscripción al tenant que paga (ADR 0020).
+  const gate = await requireActor()
+  if (!gate.ok) return { error: describeActorDenial(gate.denial, t.actions) }
+  const { actor } = gate
+  if (!(await hasActiveSubscription(actor.tenantId))) {
     return { error: t.actions.noSubscription }
   }
 
@@ -90,7 +89,7 @@ export async function connectSelectedPagesAction(
     return { error: t.actions.selectOnePage }
   }
 
-  const result = await connectSelectedPages(session.user.id, selectedPageIds, t)
+  const result = await connectSelectedPages(actor, selectedPageIds, t)
   if (!result.ok) return result.state
 
   revalidatePath("/connections")
@@ -108,11 +107,16 @@ export async function connectSelectedPagesAction(
 // subconjunto seleccionado** (ADR 0004): los page access tokens de las páginas
 // que no eligió nunca se persisten.
 async function connectSelectedPages(
-  tenantId: string,
+  actor: Actor,
   selectedPageIds: string[],
   t: AppDict
 ): Promise<ConnectOutcome> {
-  const userToken = await getMetaUserAccessToken(tenantId)
+  const { tenantId } = actor
+  // Lo que conecta la persona de un cliente de agencia queda asignado a su
+  // cliente; lo que conecta el dueño, sin asignar (ADR 0020).
+  const scope = scopeOf(actor)
+  // El token de Meta es de la persona que autorizó, no del tenant.
+  const userToken = await getMetaUserAccessToken(actor.userId)
   if (!userToken) return failed(expiredAuthorization(t))
 
   let metaPages: ConnectedPage[]
@@ -148,7 +152,7 @@ async function connectSelectedPages(
       name: page.name,
     })),
     ownership,
-    tenantId,
+    scope,
     activePageCount,
     maxPages: limits.maxPages,
   })
@@ -168,7 +172,7 @@ async function connectSelectedPages(
   try {
     assertSecretEncryptionConfigured()
     await subscribePagesToWebhook(selected)
-    const connectedPages = await connectAuthorizedPages(tenantId, selected)
+    const connectedPages = await connectAuthorizedPages(scope, selected)
 
     for (const page of connectedPages) {
       log({
@@ -182,7 +186,7 @@ async function connectSelectedPages(
     if (posthog) {
       for (const page of connectedPages) {
         posthog.capture({
-          distinctId: tenantId,
+          distinctId: actor.userId,
           event: "page connected",
           properties: { page_id: page.metaPageId, page_name: page.name },
         })
@@ -199,7 +203,7 @@ async function connectSelectedPages(
       })),
     }
   } catch (error) {
-    if (posthog) posthog.captureException(error, tenantId)
+    if (posthog) posthog.captureException(error, actor.userId)
     if (error instanceof WebhookSubscriptionError) {
       // Una línea por página que no quedó suscrita: una cuenta guardada que no
       // recibe eventos se ve conectada y está muda, que es el modo de falla más

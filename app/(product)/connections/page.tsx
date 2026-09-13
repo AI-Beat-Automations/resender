@@ -11,8 +11,9 @@ import {
   listTenantPagesCached,
   resolveChannelAccessCached,
 } from "@/features/connections/queries"
-import { getSession } from "@/lib/auth/session"
+import { getProductActor } from "@/features/shell/queries"
 import type { ChannelAccess } from "@/lib/auth/channel-access"
+import { scopeOf } from "@/lib/pages/connection-scope"
 
 // Sin sesión no hay permisos que leer y la pantalla no ofrece ningún canal
 // cerrado. Messenger queda en `true` porque no tiene bandera: lo que decide si
@@ -62,9 +63,9 @@ export default async function ConnectionsPage({
   const { meta, pages, reason, instagram, username } = await searchParams
   const t = await getAppDict()
   const connected = parseConnectedPages(pages)
-  const session = await getSession()
-  const tenantId = session?.user?.id ?? null
-  const tenantPages = tenantId ? await listTenantPagesCached(tenantId) : []
+  const actor = await getProductActor()
+  const tenantId = actor?.tenantId ?? null
+  const tenantPages = actor ? await listTenantPagesCached(scopeOf(actor)) : []
   const quota = tenantId ? await resolvePageQuota(tenantId) : null
   // Permiso por canal del tenant (ADR 0010). Sin sesión no hay a quién
   // preguntarle, así que se cierran los dos. Se resuelven de una sola consulta

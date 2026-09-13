@@ -1,4 +1,4 @@
-import { getSession } from "@/lib/auth/session"
+import { requireActor } from "@/lib/auth/actor"
 import { authenticateApiKey } from "@/lib/auth/api-keys"
 import {
   getMediaBucket,
@@ -6,6 +6,11 @@ import {
 } from "@/lib/messages/media-access"
 import { log } from "@/lib/observability/logger"
 import { getBearerToken } from "@/lib/outbound/send-request"
+import {
+  ownerScope,
+  scopeOf,
+  type ConnectionScope,
+} from "@/lib/pages/connection-scope"
 
 // Descarga de un medio entrante de WhatsApp. **Una ruta, dos autenticaciones**:
 // la API key del tenant (es la URL que viaja en el push a su webhook) o la
@@ -19,17 +24,20 @@ import { getBearerToken } from "@/lib/outbound/send-request"
 // al archivo, mientras que esta pide credencial en cada request.
 export const runtime = "nodejs"
 
-async function resolveTenantId(request: Request): Promise<string | null> {
+async function resolveScope(request: Request): Promise<ConnectionScope | null> {
   // La API key va primero: el push al webhook del tenant la manda por
-  // `Authorization`, y ese es el camino caliente. La sesión es el del Inbox.
+  // `Authorization`, y ese es el camino caliente. Es del dueño y ve todo el
+  // tenant.
   const bearer = getBearerToken(request.headers.get("authorization"))
   if (bearer) {
     const apiKey = await authenticateApiKey(bearer)
-    if (apiKey) return apiKey.tenantId
+    if (apiKey) return ownerScope(apiKey.tenantId)
   }
 
-  const session = await getSession()
-  return session?.user?.id ?? null
+  // La sesión es la del Inbox. La persona de un cliente de agencia solo baja
+  // medios de las conexiones de su cliente (ADR 0020).
+  const gate = await requireActor()
+  return gate.ok ? scopeOf(gate.actor) : null
 }
 
 export async function GET(
@@ -39,12 +47,13 @@ export async function GET(
   const { id } = await context.params
   const requestId = crypto.randomUUID()
 
-  const tenantId = await resolveTenantId(request)
-  if (!tenantId) {
+  const scope = await resolveScope(request)
+  if (!scope) {
     return Response.json({ error: "unauthorized" }, { status: 401 })
   }
+  const { tenantId } = scope
 
-  const media = await lookupMediaForTenant({ tenantId, messageId: id })
+  const media = await lookupMediaForTenant({ scope, messageId: id })
 
   if (!media.ok && media.reason === "not_found") {
     // 404 y no 403 también cuando el mensaje existe pero es de otro tenant: un

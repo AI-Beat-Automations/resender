@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import { es } from "@/content/i18n/app/es"
 
+import { ownerScope } from "./connection-scope"
 import {
   checkAccountSlotAvailable,
   classifyPagesForSelection,
@@ -15,15 +16,63 @@ const metaPage = (pageId: string) => ({ pageId, name: `Page ${pageId}` })
 const ownedBy = (
   pageId: string,
   tenantId: string,
-  status: PageOwnershipRow["status"] = "active"
-): PageOwnershipRow => ({ metaPageId: pageId, tenantId, status })
+  status: PageOwnershipRow["status"] = "active",
+  agencyClientId: string | null = null
+): PageOwnershipRow => ({
+  metaPageId: pageId,
+  tenantId,
+  agencyClientId,
+  status,
+})
 
 describe("page selection classification", () => {
+  // Modo agencia (ADR 0020): la persona de un cliente solo ve como propias las
+  // páginas de su cliente. La de otro cliente y la sin asignar del mismo tenant
+  // se muestran como de otra cuenta, igual que la de otro tenant.
+  it("para un cliente de agencia, solo las páginas de su cliente son suyas", () => {
+    const view = classifyPagesForSelection({
+      metaPages: [metaPage("a"), metaPage("b"), metaPage("c"), metaPage("d")],
+      ownership: [
+        ownedBy("a", "juan", "active", "pedro"),
+        ownedBy("b", "juan", "active", "maria"),
+        ownedBy("c", "juan", "active", null),
+      ],
+      scope: { tenantId: "juan", owner: false, clientId: "pedro" },
+      activePageCount: 3,
+      maxPages: 5,
+    })
+
+    expect(view.pages.map((page) => page.state)).toEqual([
+      "already_connected",
+      "owned_by_other_tenant",
+      "owned_by_other_tenant",
+      "selectable",
+    ])
+  })
+
+  it("el dueño ve como propias las asignadas y las sin asignar", () => {
+    const view = classifyPagesForSelection({
+      metaPages: [metaPage("a"), metaPage("b")],
+      ownership: [
+        ownedBy("a", "juan", "active", "pedro"),
+        ownedBy("b", "juan", "active", null),
+      ],
+      scope: ownerScope("juan"),
+      activePageCount: 2,
+      maxPages: 5,
+    })
+
+    expect(view.pages.map((page) => page.state)).toEqual([
+      "already_connected",
+      "already_connected",
+    ])
+  })
+
   it("keeps the pages free for this tenant selectable when others are taken", () => {
     const view = classifyPagesForSelection({
       metaPages: [metaPage("a"), metaPage("b"), metaPage("c"), metaPage("d")],
       ownership: [ownedBy("a", "arturo"), ownedBy("b", "arturo")],
-      tenantId: "felipe",
+      scope: ownerScope("felipe"),
       activePageCount: 0,
       maxPages: 2,
     })
@@ -50,7 +99,7 @@ describe("page selection classification", () => {
     const view = classifyPagesForSelection({
       metaPages: [metaPage("a"), metaPage("b")],
       ownership: [ownedBy("a", "felipe")],
-      tenantId: "felipe",
+      scope: ownerScope("felipe"),
       activePageCount: 1,
       maxPages: 2,
     })
@@ -67,7 +116,7 @@ describe("page selection classification", () => {
         ownedBy("a", "felipe", "disconnected"),
         ownedBy("b", "felipe"),
       ],
-      tenantId: "felipe",
+      scope: ownerScope("felipe"),
       activePageCount: 1,
       maxPages: 2,
     })
@@ -104,7 +153,7 @@ describe("page selection classification", () => {
         ownedBy("a", "arturo"),
         ownedBy("b", "arturo", "disconnected"),
       ],
-      tenantId: "felipe",
+      scope: ownerScope("felipe"),
       activePageCount: 0,
       maxPages: 2,
     })
@@ -123,7 +172,7 @@ describe("page selection classification", () => {
     const view = classifyPagesForSelection({
       metaPages: [metaPage("a"), metaPage("b"), metaPage("c")],
       ownership: [],
-      tenantId: "felipe",
+      scope: ownerScope("felipe"),
       activePageCount: 0,
       maxPages: 2,
     })
@@ -149,7 +198,7 @@ describe("page selection classification", () => {
     const view = classifyPagesForSelection({
       metaPages: [metaPage("a"), metaPage("b")],
       ownership: [ownedBy("a", "felipe")],
-      tenantId: "felipe",
+      scope: ownerScope("felipe"),
       activePageCount: 1,
       maxPages: 2,
     })
@@ -176,7 +225,7 @@ describe("page selection copy", () => {
     classifyPagesForSelection({
       metaPages: [metaPage("a"), metaPage("b"), metaPage("c")],
       ownership: [],
-      tenantId: "felipe",
+      scope: ownerScope("felipe"),
       activePageCount,
       maxPages,
     })
@@ -211,7 +260,7 @@ describe("page selection copy", () => {
     const view = classifyPagesForSelection({
       metaPages: [metaPage("a")],
       ownership: [ownedBy("a", "arturo")],
-      tenantId: "felipe",
+      scope: ownerScope("felipe"),
       activePageCount: 0,
       maxPages: 2,
     })

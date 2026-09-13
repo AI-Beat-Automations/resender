@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 
+import { resolveActor } from "@/lib/auth/actor"
 import { getSession } from "@/lib/auth/session"
-import { resolveProductAccess } from "@/lib/auth/waitlist"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
 import {
   assertSecretEncryptionConfigured,
@@ -44,16 +44,27 @@ export async function GET(request: NextRequest) {
   }
 
   // Ver el comentario en `/api/meta/start`.
-  const access = await resolveProductAccess(session.user.id)
-  if (access === "unknown_user") {
+  //
+  // Acceso de la persona; suscripción y permiso de canal del tenant (ADR 0020).
+  // La persona de un cliente de agencia no ve precios: si la agencia no paga,
+  // va a `/access`.
+  const resolution = await resolveActor(session.user.id)
+  if (resolution.status === "unknown_user") {
     return gate("not_authenticated", "/login")
   }
-  if (access === "waitlisted") {
+  if (resolution.status === "waitlisted") {
     return gate("waitlisted", "/pending")
   }
+  if (resolution.status === "agency_unavailable") {
+    return gate("waitlisted", "/access")
+  }
+  const { actor } = resolution
 
-  if (!(await hasActiveSubscription(session.user.id))) {
-    return gate("no_active_subscription", "/billing")
+  if (!(await hasActiveSubscription(actor.tenantId))) {
+    return gate(
+      "no_active_subscription",
+      actor.kind === "owner" ? "/billing" : "/access"
+    )
   }
 
   const params = request.nextUrl.searchParams
@@ -74,7 +85,7 @@ export async function GET(request: NextRequest) {
       reason: logReason,
       channel: "messenger",
       route: "/api/meta/callback",
-      tenantId: session.user.id,
+      tenantId: actor.tenantId,
       ...extra,
     })
     connections.searchParams.set("meta", "error")
@@ -97,7 +108,7 @@ export async function GET(request: NextRequest) {
   try {
     assertSecretEncryptionConfigured()
     const userToken = await exchangeCodeForUserToken(code)
-    await saveMetaUserAccessToken(session.user.id, userToken)
+    await saveMetaUserAccessToken(actor.userId, userToken)
 
     log({
       entrypoint: "route",
@@ -105,14 +116,14 @@ export async function GET(request: NextRequest) {
       outcome: "ok",
       channel: "messenger",
       route: "/api/meta/callback",
-      tenantId: session.user.id,
+      tenantId: actor.tenantId,
     })
 
     const res = NextResponse.redirect(new URL("/connections/select", APP_URL))
     res.cookies.delete(STATE_COOKIE)
     return res
   } catch (error) {
-    if (posthog) posthog.captureException(error, session.user.id)
+    if (posthog) posthog.captureException(error, actor.userId)
     const errorMessage = describeError(error)
     if (error instanceof SecretEncryptionConfigError) {
       return fail("configuration_failed", "configuration_failed", {

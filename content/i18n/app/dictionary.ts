@@ -500,6 +500,10 @@ export type AppDict = {
   actions: {
     notSignedIn: string
     waitlisted: string
+    /** La persona es de un cliente de agencia y la agencia no está disponible. */
+    agencyUnavailable: string
+    /** Acción reservada al dueño de la cuenta (ADR 0020). */
+    ownerOnly: string
     noSubscription: string
     invalidPage: string
     pageNotFound: string

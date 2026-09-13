@@ -9,6 +9,7 @@ import {
   type WhatsappSignupTarget,
 } from "@/lib/meta/whatsapp-client"
 import type { HistorySyncStatus } from "@/lib/pages/connection-display"
+import type { ConnectionScope } from "@/lib/pages/connection-scope"
 import {
   PageOwnershipError,
   type ConnectedPageRecord,
@@ -65,11 +66,11 @@ export type WhatsappSignupDeps = {
     options?: { subscribedFields?: readonly string[] }
   ): Promise<void>
   resolveOwnership(
-    tenantId: string,
+    scope: ConnectionScope,
     phoneNumberId: string
   ): Promise<WhatsappNumberOwnership>
   connect(
-    tenantId: string,
+    scope: ConnectionScope,
     input: WhatsappNumberInput
   ): Promise<ConnectedPageRecord>
   /** Encola `{ type: "history_sync_request", connectionId }` en `WHATSAPP_JOBS`. */
@@ -82,7 +83,8 @@ export type WhatsappSignupDeps = {
 }
 
 export type WhatsappSignupRequest = {
-  tenantId: string
+  /** Quién conecta: el tenant y, si es un cliente de agencia, su cliente. */
+  scope: ConnectionScope
   code: string
   /** La pista del navegador. No es autoritativa: Graph la confirma. */
   wabaId: string
@@ -182,10 +184,10 @@ export async function runWhatsappSignup(
     // poder confirmar de quién es el número no es lo mismo que que sea tuyo.
     step = "persist"
     const ownership = await deps.resolveOwnership(
-      request.tenantId,
+      request.scope,
       target.phone.id
     )
-    if (ownership.ownedByOtherTenant) {
+    if (ownership.ownedByOther) {
       return { kind: "owned_by_other_tenant", phoneNumberId: target.phone.id }
     }
 
@@ -244,7 +246,7 @@ async function finishStandard(
   // `phoneNumberId` y el `wabaId` que salen del cliente ya pasaron por
   // `debug_token` y por `/{waba_id}/phone_numbers`. Usar acá los del formulario
   // desharía esa validación entera.
-  const page = await deps.connect(request.tenantId, {
+  const page = await deps.connect(request.scope, {
     phoneNumberId: signup.phoneNumberId,
     wabaId: signup.wabaId,
     wabaName: signup.wabaName,
@@ -288,7 +290,7 @@ async function finishCoexistence(
     subscribedFields: WHATSAPP_COEXISTENCE_WEBHOOK_FIELDS,
   })
 
-  const page = await deps.connect(request.tenantId, {
+  const page = await deps.connect(request.scope, {
     phoneNumberId: target.phone.id,
     wabaId: target.wabaId,
     wabaName: target.wabaName,
@@ -350,7 +352,7 @@ export type WhatsappPlanSlotDeps = {
   countActivePages(tenantId: string): Promise<number>
   resolveMaxPages(tenantId: string): Promise<number | null>
   resolveOwnership(
-    tenantId: string,
+    scope: ConnectionScope,
     phoneNumberId: string
   ): Promise<WhatsappNumberOwnership>
 }
@@ -378,7 +380,7 @@ export type WhatsappPlanSlotResult =
  */
 export async function checkWhatsappPlanSlot(
   deps: WhatsappPlanSlotDeps,
-  input: { tenantId: string; phoneNumberId: string | null },
+  input: { scope: ConnectionScope; phoneNumberId: string | null },
   t: AppDict
 ): Promise<WhatsappPlanSlotResult> {
   let maxPages: number | null
@@ -387,15 +389,15 @@ export async function checkWhatsappPlanSlot(
 
   try {
     ;[maxPages, activePageCount] = await Promise.all([
-      deps.resolveMaxPages(input.tenantId),
-      deps.countActivePages(input.tenantId),
+      deps.resolveMaxPages(input.scope.tenantId),
+      deps.countActivePages(input.scope.tenantId),
     ])
     if (input.phoneNumberId) {
       const ownership = await deps.resolveOwnership(
-        input.tenantId,
+        input.scope,
         input.phoneNumberId
       )
-      reconnectingActiveAccount = ownership.activeForTenant
+      reconnectingActiveAccount = ownership.activeForScope
     }
   } catch {
     // Fail-closed y con mensaje: sin saber el cupo, conectar es apostar a que

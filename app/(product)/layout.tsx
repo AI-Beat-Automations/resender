@@ -9,7 +9,7 @@ import {
 import { AppSidebar } from "@/features/shell/ui/app-sidebar"
 import { AppI18nProvider } from "@/content/i18n/app/provider"
 import { getAppI18n } from "@/lib/i18n/app-dict"
-import { resolveProductAccess } from "@/lib/auth/waitlist"
+import { getActorCached } from "@/features/shell/queries"
 import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
 import type { TenantEntitlement } from "@/lib/billing/entitlements"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
@@ -29,6 +29,7 @@ export default async function ProductLayout({
 }>) {
   const session = await getSession()
   if (!session?.user?.id) redirect("/login")
+  const resolution = await getActorCached()
   // El idioma se resuelve una sola vez por petición y baja por contexto: los
   // componentes cliente del shell (el sidebar) y de cada pantalla lo leen de
   // ahí en vez de recibirlo enhebrado por props.
@@ -36,17 +37,25 @@ export default async function ProductLayout({
   // Sesión firmada que apunta a un usuario inexistente: la credencial es
   // basura y solo se arregla autenticándose de nuevo. `/login` no rebota de
   // vuelta porque comprueba lo mismo antes de mandar al producto.
-  const access = await resolveProductAccess(session.user.id)
-  if (access === "unknown_user") redirect("/login")
-  if (access === "waitlisted") redirect("/pending")
-  if (!(await hasActiveSubscription(session.user.id))) redirect("/billing")
+  //
+  // El actor (ADR 0020) separa a la persona del tenant: el gate de acceso mira
+  // a la persona, y la suscripción, al tenant que paga. Para el dueño son el
+  // mismo uuid; para la persona de un cliente de agencia, el tenant es la
+  // agencia.
+  if (!resolution || resolution.status === "unknown_user") redirect("/login")
+  if (resolution.status === "waitlisted") redirect("/pending")
+  if (resolution.status === "agency_unavailable") redirect("/access")
+  const { actor } = resolution
+  if (!(await hasActiveSubscription(actor.tenantId))) {
+    redirect(actor.kind === "owner" ? "/billing" : "/access")
+  }
 
   // El aviso no debe poder tirar el dashboard: si el entitlement no se puede
   // resolver, la barra simplemente no aparece (los gates del hot path siguen
   // siendo fail-closed por su cuenta).
   let notice: QuotaNoticeView | null = null
   try {
-    notice = toQuotaNoticeView(await getTenantEntitlement(session.user.id))
+    notice = toQuotaNoticeView(await getTenantEntitlement(actor.tenantId))
   } catch (error) {
     console.error("quota notice unavailable", error)
   }

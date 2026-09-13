@@ -288,6 +288,8 @@ describe("migración 0016: adjuntos en messages", () => {
         historySyncStatus: null,
         whatsappPinGenerated: false,
         hasSigningSecret: false,
+        agencyClientId: null,
+        agencyClientName: null,
         connectedAt: new Date(),
         disconnectedAt: null,
         createdAt: new Date(),
@@ -933,5 +935,223 @@ describe("migración 0023: se va api_keys", () => {
     await expect(
       db.query(`delete from users where id = $1`, [doomed])
     ).resolves.toBeTruthy()
+  })
+})
+
+// Modo agencia (ADR 0020). Lo que un mock no puede probar: que las foreign keys
+// compuestas impiden cruzar tenants, que borrar un cliente devuelve sus
+// conexiones a "sin asignar" sin tocar `tenant_id`, y que las cascadas no dejan
+// personas huérfanas cuando se borra la agencia.
+describe("migración 0025: clientes de agencia", () => {
+  async function insertUser(email: string) {
+    const user = await db.query<{ id: string }>(
+      `insert into users (email) values ($1) returning id`,
+      [email]
+    )
+    return user.rows[0]!.id
+  }
+
+  async function insertClient(tenant: string, name = "Panadería Pedro") {
+    const client = await db.query<{ id: string }>(
+      `insert into agency_clients (tenant_id, name) values ($1, $2)
+       returning id`,
+      [tenant, name]
+    )
+    return client.rows[0]!.id
+  }
+
+  async function insertPage(tenant: string, metaPageId: string) {
+    const page = await db.query<{ id: string }>(
+      `insert into connected_pages (
+         tenant_id, channel, meta_page_id, name, page_access_token_encrypted
+       )
+       values ($1, 'instagram', $2, 'Cuenta', 'enc') returning id`,
+      [tenant, metaPageId]
+    )
+    return page.rows[0]!.id
+  }
+
+  it("asigna una conexión a un cliente del mismo tenant", async () => {
+    const agency = await insertUser("agencia-asigna@example.com")
+    const client = await insertClient(agency)
+    const page = await insertPage(agency, "ig_asigna")
+
+    await db.query(
+      `update connected_pages set agency_client_id = $1 where id = $2`,
+      [client, page]
+    )
+
+    const row = await db.query<{ agency_client_id: string | null }>(
+      `select agency_client_id from connected_pages where id = $1`,
+      [page]
+    )
+    expect(row.rows[0]?.agency_client_id).toBe(client)
+  })
+
+  it("rechaza asignar una conexión a un cliente de otro tenant", async () => {
+    const juan = await insertUser("juan-cruce@example.com")
+    const otra = await insertUser("otra-cruce@example.com")
+    const clientDeOtra = await insertClient(otra)
+    const page = await insertPage(juan, "ig_cruce")
+
+    await expect(
+      db.query(
+        `update connected_pages set agency_client_id = $1 where id = $2`,
+        [clientDeOtra, page]
+      )
+    ).rejects.toThrow(/connected_pages_agency_client_fk/)
+  })
+
+  it("borrar un cliente deja sus conexiones sin asignar y en su tenant", async () => {
+    const agency = await insertUser("agencia-borra@example.com")
+    const client = await insertClient(agency)
+    const page = await insertPage(agency, "ig_borra")
+    await db.query(
+      `update connected_pages set agency_client_id = $1 where id = $2`,
+      [client, page]
+    )
+
+    await db.query(`delete from agency_clients where id = $1`, [client])
+
+    const row = await db.query<{
+      agency_client_id: string | null
+      tenant_id: string
+      status: string
+    }>(
+      `select agency_client_id, tenant_id, status from connected_pages
+       where id = $1`,
+      [page]
+    )
+    expect(row.rows[0]).toEqual({
+      agency_client_id: null,
+      tenant_id: agency,
+      status: "active",
+    })
+  })
+
+  it("una persona es miembro de un solo cliente", async () => {
+    const agency = await insertUser("agencia-uno@example.com")
+    const pedro = await insertUser("pedro-uno@example.com")
+    const panaderia = await insertClient(agency, "Panadería")
+    const estetica = await insertClient(agency, "Estética")
+
+    await db.query(
+      `insert into agency_client_members (user_id, agency_client_id, tenant_id)
+       values ($1, $2, $3)`,
+      [pedro, panaderia, agency]
+    )
+
+    await expect(
+      db.query(
+        `insert into agency_client_members (user_id, agency_client_id, tenant_id)
+         values ($1, $2, $3)`,
+        [pedro, estetica, agency]
+      )
+    ).rejects.toThrow(/agency_client_members_pkey/)
+  })
+
+  it("un cliente tiene una sola persona en v1", async () => {
+    const agency = await insertUser("agencia-una-persona@example.com")
+    const pedro = await insertUser("pedro-una-persona@example.com")
+    const socio = await insertUser("socio-una-persona@example.com")
+    const client = await insertClient(agency)
+
+    await db.query(
+      `insert into agency_client_members (user_id, agency_client_id, tenant_id)
+       values ($1, $2, $3)`,
+      [pedro, client, agency]
+    )
+
+    await expect(
+      db.query(
+        `insert into agency_client_members (user_id, agency_client_id, tenant_id)
+         values ($1, $2, $3)`,
+        [socio, client, agency]
+      )
+    ).rejects.toThrow(/agency_client_members_one_per_client/)
+  })
+
+  it("rechaza un miembro apuntando al cliente de otro tenant", async () => {
+    const juan = await insertUser("juan-miembro-cruce@example.com")
+    const otra = await insertUser("otra-miembro-cruce@example.com")
+    const pedro = await insertUser("pedro-miembro-cruce@example.com")
+    const clientDeOtra = await insertClient(otra)
+
+    await expect(
+      db.query(
+        `insert into agency_client_members (user_id, agency_client_id, tenant_id)
+         values ($1, $2, $3)`,
+        [pedro, clientDeOtra, juan]
+      )
+    ).rejects.toThrow(/foreign key/)
+  })
+
+  it("el dueño no puede ser miembro de su propio cliente", async () => {
+    const agency = await insertUser("agencia-propia@example.com")
+    const client = await insertClient(agency)
+
+    await expect(
+      db.query(
+        `insert into agency_client_members (user_id, agency_client_id, tenant_id)
+         values ($1, $2, $1)`,
+        [agency, client]
+      )
+    ).rejects.toThrow(/agency_client_members_check/)
+  })
+
+  it("no admite dos invitaciones con el mismo hash", async () => {
+    const agency = await insertUser("agencia-hash@example.com")
+    const client = await insertClient(agency)
+    const insert = () =>
+      db.query(
+        `insert into agency_client_invitations (
+           tenant_id, agency_client_id, token_hash, expires_at
+         )
+         values ($1, $2, 'hash_repetido', now() + interval '7 days')`,
+        [agency, client]
+      )
+
+    await insert()
+    await expect(insert()).rejects.toThrow(
+      /agency_client_invitations_token_hash_key/
+    )
+  })
+
+  it("rechaza un nombre de cliente vacío", async () => {
+    const agency = await insertUser("agencia-vacio@example.com")
+
+    await expect(insertClient(agency, "   ")).rejects.toThrow(
+      /agency_clients_name_check/
+    )
+  })
+
+  it("borrar la agencia se lleva clientes, miembros e invitaciones", async () => {
+    const agency = await insertUser("agencia-baja@example.com")
+    const pedro = await insertUser("pedro-baja@example.com")
+    const client = await insertClient(agency)
+    await db.query(
+      `insert into agency_client_members (user_id, agency_client_id, tenant_id)
+       values ($1, $2, $3)`,
+      [pedro, client, agency]
+    )
+    await db.query(
+      `insert into agency_client_invitations (
+         tenant_id, agency_client_id, token_hash, expires_at
+       )
+       values ($1, $2, 'hash_baja', now() + interval '7 days')`,
+      [agency, client]
+    )
+
+    await db.query(`delete from users where id = $1`, [agency])
+
+    const leftovers = await db.query<{ n: number }>(
+      `select
+         (select count(*) from agency_clients where tenant_id = $1)
+         + (select count(*) from agency_client_members where tenant_id = $1)
+         + (select count(*) from agency_client_invitations where tenant_id = $1)
+         as n`,
+      [agency]
+    )
+    expect(Number(leftovers.rows[0]?.n)).toBe(0)
   })
 })

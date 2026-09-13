@@ -7,8 +7,9 @@ import {
   listTenantPagesCached,
   resolveChannelAccessCached,
 } from "@/features/connections/queries"
+import { getProductActor } from "@/features/shell/queries"
 import { ConsoleHeader } from "@/features/shell/ui/console-header"
-import { getSession } from "@/lib/auth/session"
+import { scopeOf } from "@/lib/pages/connection-scope"
 import { getAppDict } from "@/lib/i18n/app-dict"
 import { offersChannel } from "@/lib/pages/channel-display"
 
@@ -18,15 +19,14 @@ import { offersChannel } from "@/lib/pages/channel-display"
 // petición, así la página no las repite.
 export default async function ConnectionsHeader() {
   const t = await getAppDict()
-  const session = await getSession()
-  const tenantId = session?.user?.id ?? null
+  const actor = await getProductActor()
   const crumbs = [{ label: t.connections.title }]
 
-  if (!tenantId) return <ConsoleHeader crumbs={crumbs} t={t} />
+  if (!actor) return <ConsoleHeader crumbs={crumbs} t={t} />
 
   const [pages, access] = await Promise.all([
-    listTenantPagesCached(tenantId),
-    resolveChannelAccessCached(tenantId),
+    listTenantPagesCached(scopeOf(actor)),
+    resolveChannelAccessCached(actor.tenantId),
   ])
   if (pages.length === 0) return <ConsoleHeader crumbs={crumbs} t={t} />
 

@@ -2,7 +2,7 @@ import Link from "next/link"
 import type { ReactNode } from "react"
 import { MessageSquare } from "lucide-react"
 
-import { getSession } from "@/lib/auth/session"
+import { getProductActor } from "@/features/shell/queries"
 import { CommentThread } from "@/features/comments/ui/comment-thread"
 import { PublicationLogList } from "@/features/comments/ui/publication-log-list"
 import { EmptyPane } from "@/features/inbox/ui/empty-pane"
@@ -41,6 +41,7 @@ import {
   listConversationReadModel,
   listThreadMessages,
 } from "@/lib/messages/read-model"
+import { scopeOf, type ConnectionScope } from "@/lib/pages/connection-scope"
 import { listTenantPages } from "@/lib/pages/page-registry"
 import type { AppDict } from "@/content/i18n/app"
 import { getAppDict } from "@/lib/i18n/app-dict"
@@ -56,17 +57,20 @@ export default async function InboxPage({
     media?: string | string[]
   }>
 }) {
-  const [session, params, t] = await Promise.all([
-    getSession(),
+  const [actor, params, t] = await Promise.all([
+    getProductActor(),
     searchParams,
     getAppDict(),
   ])
-  const tenantId = session?.user?.id
 
-  if (!tenantId) return null
+  if (!actor) return null
 
+  // Todo el Inbox lee dentro del alcance de quien mira (ADR 0020): la persona
+  // de un cliente de agencia solo ve las cuentas de su cliente, y el `?page=`,
+  // `?conversation=` y `?media=` se validan contra esas listas.
+  const scope = scopeOf(actor)
   const tab = resolveInboxTab(params.tab)
-  const accounts = await listTenantPages(tenantId)
+  const accounts = await listTenantPages(scope)
   // En comentarios el filtro solo lista Instagram: los comentarios no existen
   // en Messenger, y una píldora que siempre devuelve cero es un control muerto.
   // Filtrar acá además invalida solo el `?page=` de una cuenta de Messenger al
@@ -93,7 +97,7 @@ export default async function InboxPage({
 
   return tab === "comentarios" ? (
     <ComentariosMode
-      tenantId={tenantId}
+      scope={scope}
       accountId={accountId}
       mediaParam={firstParam(params.media)}
       hasInstagram={filterable.length > 0}
@@ -102,7 +106,7 @@ export default async function InboxPage({
     />
   ) : (
     <MensajesMode
-      tenantId={tenantId}
+      scope={scope}
       accountId={accountId}
       conversationParam={firstParam(params.conversation)}
       panel={panel}
@@ -120,20 +124,20 @@ type PanelProps = {
 }
 
 async function MensajesMode({
-  tenantId,
+  scope,
   accountId,
   conversationParam,
   panel,
   t,
 }: {
-  tenantId: string
+  scope: ConnectionScope
   accountId: string | undefined
   conversationParam: string | undefined
   panel: PanelProps
   t: AppDict
 }) {
   const conversations = await listConversationReadModel({
-    tenantId,
+    scope,
     connectedPageId: accountId,
   })
   // Al entrar a Inbox se abre la conversación más reciente: el read model ya
@@ -146,7 +150,7 @@ async function MensajesMode({
     null
   const thread = selectedConversation
     ? await listThreadMessages({
-        tenantId,
+        scope,
         conversationId: selectedConversation.id,
       })
     : []
@@ -155,7 +159,7 @@ async function MensajesMode({
   // Graph. Se resuelve acá y no al ingerir para que las conversaciones que ya
   // existían se completen la primera vez que alguien las mira.
   const profiles = await resolveContactProfiles(
-    tenantId,
+    scope,
     conversations.map((conversation) => ({
       conversationId: conversation.id,
       connectedPageId: conversation.page.id,
@@ -212,14 +216,14 @@ async function MensajesMode({
 }
 
 async function ComentariosMode({
-  tenantId,
+  scope,
   accountId,
   mediaParam,
   hasInstagram,
   panel,
   t,
 }: {
-  tenantId: string
+  scope: ConnectionScope
   accountId: string | undefined
   mediaParam: string | undefined
   hasInstagram: boolean
@@ -253,7 +257,7 @@ async function ComentariosMode({
   }
 
   const publications = await listPublicationReadModel({
-    tenantId,
+    scope,
     connectedPageId: accountId,
   })
   // La selección se valida contra la lista ya cargada, nunca parseando el
@@ -267,7 +271,7 @@ async function ComentariosMode({
     null
   const thread = selected
     ? await listPublicationComments({
-        tenantId,
+        scope,
         connectedPageId: selected.connectedPageId,
         mediaId: selected.mediaId,
       })
@@ -275,7 +279,7 @@ async function ComentariosMode({
 
   // Ni el permalink ni el caption vienen en el webhook de comentarios; mismo
   // trato que el @handle del contacto en mensajes.
-  const media = await resolveMedia(tenantId, publications)
+  const media = await resolveMedia(scope, publications)
 
   const now = new Date()
   const rows = publications.map((publication) =>

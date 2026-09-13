@@ -535,6 +535,9 @@ export const es: AppDict = {
   actions: {
     notSignedIn: "No has iniciado sesión.",
     waitlisted: "Tu cuenta está en la lista de espera.",
+    agencyUnavailable:
+      "Tu agencia no tiene acceso activo a Resender ahora mismo.",
+    ownerOnly: "Solo el dueño de la cuenta puede hacer esto.",
     noSubscription: "Tu suscripción no está activa.",
     invalidPage: "Página inválida.",
     pageNotFound: "No encontramos esa página.",
