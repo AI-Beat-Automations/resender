@@ -1,6 +1,7 @@
 import { cache } from "react"
 
 import { resolveChannelAccess } from "@/lib/auth/channel-access"
+import { listAgencyClients } from "@/lib/clients/client-repository"
 import type { ConnectionScope } from "@/lib/pages/connection-scope"
 import { listTenantPages } from "@/lib/pages/page-registry"
 
@@ -24,3 +25,4 @@ export function listTenantPagesCached(scope: ConnectionScope) {
 }
 
 export const resolveChannelAccessCached = cache(resolveChannelAccess)
+export const listAgencyClientsCached = cache(listAgencyClients)

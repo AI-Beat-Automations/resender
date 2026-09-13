@@ -15,6 +15,19 @@ describe("redactUrl", () => {
     ).toBe("https://resender.dev/en/reset-password?token=redacted&ref=mail")
   })
 
+  // Modo agencia (ADR 0020): el enlace de invitación es un secreto portador.
+  it("reescribe el token de invitación en /invite, /login y /register", () => {
+    expect(redactUrl("https://resender.dev/invite?token=abc123")).toBe(
+      "https://resender.dev/invite?token=redacted"
+    )
+    expect(redactUrl("https://resender.dev/login?invite=abc123")).toBe(
+      "https://resender.dev/login?invite=redacted"
+    )
+    expect(redactUrl("https://resender.dev/en/register?invite=abc")).toBe(
+      "https://resender.dev/en/register?invite=redacted"
+    )
+  })
+
   it("devuelve idéntica una URL sin token", () => {
     const url = "https://resender.dev/login?passwordChanged=1"
     expect(redactUrl(url)).toBe(url)

@@ -100,6 +100,7 @@ export function ConnectedPageCard({
   page,
   viewer,
   showWebhookHint = false,
+  headerActions,
 }: {
   page: ConnectedPageView
   /**
@@ -111,6 +112,12 @@ export function ConnectedPageCard({
   viewer: "owner" | "client"
   // El hint del webhook se dice una vez por lista, no una vez por tarjeta.
   showWebhookHint?: boolean
+  /**
+   * Acciones extra en la cabecera, antes de desconectar. Hoy es el menú para
+   * asignar la conexión a un cliente de agencia, que arma el server component
+   * solo para el dueño.
+   */
+  headerActions?: React.ReactNode
 }) {
   const [saveState, saveAction, savePending] = useActionState<
     ConnectionActionState,
@@ -229,6 +236,7 @@ export function ConnectedPageCard({
           )}
         </div>
 
+        {headerActions}
         {active ? (
           <DisconnectDialog page={page} t={t} />
         ) : messenger ? (

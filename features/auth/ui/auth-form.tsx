@@ -19,9 +19,11 @@ type AuthFormProps = {
   action: AuthAction
   mode: "login" | "register"
   lang: Locale
+  /** El token de un [Enlace de invitación], ya validado por la vista. */
+  invite?: string | null
 }
 
-export function AuthForm({ action, mode, lang }: AuthFormProps) {
+export function AuthForm({ action, mode, lang, invite }: AuthFormProps) {
   const [state, formAction, pending] = useActionState(action, {})
   const isLogin = mode === "login"
   const hasError = Boolean(state.error)
@@ -34,6 +36,8 @@ export function AuthForm({ action, mode, lang }: AuthFormProps) {
         {/* El server action no ve el pathname: le pasamos el idioma para que
             devuelva sus errores en el idioma de la página. */}
         <input type="hidden" name="locale" value={lang} />
+        {/* Quien viene de una invitación vuelve a ella al entrar (ADR 0020). */}
+        {invite ? <input type="hidden" name="invite" value={invite} /> : null}
         {/* Solo en el alta: Better Auth exige `name` al crear el usuario, y el
             acceso no lo pide. La regla de "no puede estar vacío" vive en
             `lib/auth/validation`, no acá: vitest no ejecuta `.tsx`. El

@@ -463,6 +463,84 @@ export const en: AppDict = {
     signOut: "Sign out",
   },
 
+  clients: {
+    newClient: "New client",
+    createTitle: "New client",
+    createBody:
+      "A client groups one business's accounts. Then you invite them so the person at the business connects their accounts and sees their messages.",
+    nameLabel: "Business name",
+    namePlaceholder: "Pedro's Bakery",
+    create: "Create client",
+    creating: "Creating…",
+    unassignedTitle: "Unassigned",
+    unassignedBody:
+      "Connections only you can see. Assign them to a client so their person sees them too.",
+    noConnections: "No accounts connected yet.",
+    statusNoPerson: "Not invited",
+    statusPending: "Invitation pending · expires {date}",
+    statusActive: "Has access: {email}",
+    menuAria: "Client actions",
+    invite: "Invite",
+    newLink: "Generate new link",
+    inviteTitle: "Invite {name}",
+    inviteBody:
+      "Generate a link so the person at the business signs in to Resender and connects their accounts. They'll only see this client's connections and messages: nothing about the webhook, API keys or billing.",
+    inviteEmailLabel: "Email (optional)",
+    inviteEmailHint:
+      "If you enter it, only an account with that email can use the link.",
+    generateLink: "Generate link",
+    generating: "Generating…",
+    linkRevealTitle:
+      "Copy the link now: we won't show it again. It works once and expires in 7 days.",
+    copyLink: "Copy link",
+    cancelInvite: "Cancel invitation",
+    revokeAccess: "Remove access",
+    revokeTitle: "Remove {email}'s access?",
+    revokeBody:
+      "Their Resender user is deleted and they're signed out right away. The client's connections and history are kept.",
+    revoking: "Removing…",
+    rename: "Rename",
+    renameTitle: "Rename client",
+    delete: "Delete client",
+    deleteTitle: "Delete {name}?",
+    deleteBody:
+      "Its connections move to Unassigned with all their history. If it has a person with access, their user is deleted.",
+    deleting: "Deleting…",
+    assign: "Assign client",
+    moveTo: "Move to another client",
+    unassign: "Remove from client",
+    assignHint: "The client's person will also see this connection's history.",
+  },
+
+  invite: {
+    eyebrow: "invitation",
+    invalidTitle: "This link no longer works",
+    invalidBody:
+      "It expired, was already used, or your agency generated a new one. Ask your agency for a new link.",
+    title: "{agency} gave you access to {client}",
+    body: "You'll be able to connect your business's Instagram, Facebook and WhatsApp accounts and see their messages in Resender.",
+    boundNote: "You need to sign in with the email you were invited with.",
+    createAccount: "Create account",
+    haveAccount: "I already have an account",
+    accept: "Accept invitation",
+    accepting: "Accepting…",
+    signedInAs: "Signed in as {email}.",
+    signOut: "Sign out",
+    ineligible: {
+      own_account:
+        "You generated this invitation. Open it with the business person's account.",
+      already_member:
+        "This account already has access to a client. Sign out and use another account.",
+      email_mismatch:
+        "This invitation is for another email. Sign out and sign in with the email you were invited with.",
+      has_own_data:
+        "This account already uses Resender on its own. Sign out and create a new account for this access.",
+    },
+    acceptFailed:
+      "We couldn't accept the invitation. Ask your agency for a new link.",
+    clientHasMember: "That client already has a person with access.",
+  },
+
   billing: {
     metaTitle: "Subscription",
     eyebrow: "pricing",
@@ -544,6 +622,18 @@ export const en: AppDict = {
     agencyUnavailable:
       "Your agency doesn't have active access to Resender right now.",
     ownerOnly: "Only the account owner can do this.",
+    clientNameRequired: "Enter the business name.",
+    clientNameTooLong: "The name can't be longer than 80 characters.",
+    clientNotFound: "We couldn't find that client.",
+    clientHasMember: "That client already has a person with access.",
+    inviteEmailInvalid: "That email isn't valid.",
+    clientCreated: "Client created.",
+    clientRenamed: "Client renamed.",
+    clientDeleted: "Client deleted. Its connections are now unassigned.",
+    clientAccessRevoked: "Access removed.",
+    clientInviteCancelled: "Invitation cancelled.",
+    connectionAssignFailed:
+      "We couldn't assign the connection. Reload the screen and try again.",
     noSubscription: "Your subscription isn't active.",
     invalidPage: "Invalid page.",
     pageNotFound: "We couldn't find that page.",

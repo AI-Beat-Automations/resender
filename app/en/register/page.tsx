@@ -7,12 +7,14 @@ export const metadata = privatePageMetadata(
 )
 
 type RegisterPageProps = {
-  searchParams: Promise<{ error?: string }>
+  searchParams: Promise<{ error?: string; invite?: string }>
 }
 
 export default async function EnRegisterPage({
   searchParams,
 }: RegisterPageProps) {
   const params = await searchParams
-  return <RegisterView lang="en" oauthError={params.error} />
+  return (
+    <RegisterView lang="en" oauthError={params.error} invite={params.invite} />
+  )
 }

@@ -17,6 +17,7 @@ import { OauthErrorNotice } from "@/features/auth/ui/oauth-error-notice"
 import { isGoogleEnabled } from "@/lib/auth/google"
 import { classifyOAuthError } from "@/lib/auth/oauth-errors"
 import { resolveProductAccess } from "@/lib/auth/waitlist"
+import { invitePath, isInviteToken } from "@/lib/clients/invite-token"
 
 // Vista de login compartida por `/login` (ES) y `/en/login` (EN). El diseño es
 // el de la consola v2 (ADR 0005); el idioma sale del diccionario (ADR 0006).
@@ -24,12 +25,17 @@ export async function LoginView({
   lang,
   passwordChanged = false,
   oauthError,
+  invite,
 }: {
   lang: Locale
   passwordChanged?: boolean
   /** El `?error=` crudo con el que Better Auth rebota desde el flujo de OAuth. */
   oauthError?: string
+  /** El `?invite=` crudo de un [Enlace de invitación] (ADR 0020). */
+  invite?: string
 }) {
+  // Solo un valor con forma de token viaja al formulario: lo demás se descarta.
+  const inviteToken = isInviteToken(invite) ? invite : null
   // Solo rebota al producto quien de verdad puede entrar. Con `session != null`
   // alcanzaba mientras toda sesión firmada correspondiera a un usuario real;
   // una sesión huérfana (cookie de otra base, cuenta borrada) entraba acá, se
@@ -41,7 +47,7 @@ export async function LoginView({
     session?.user?.id &&
     (await resolveProductAccess(session.user.id)) === "allowed"
   ) {
-    redirect("/connections")
+    redirect(inviteToken ? invitePath(inviteToken) : "/connections")
   }
 
   const t = getDictionary(lang).auth
@@ -71,8 +77,15 @@ export async function LoginView({
         ) : null}
         {/* Google arriba, separador «o», y el formulario de siempre sin tocar.
             Sin credenciales no se dibuja ni el botón ni el separador. */}
-        {googleEnabled ? <GoogleSignIn lang={lang} from="login" /> : null}
-        <AuthForm action={loginAction} mode="login" lang={lang} />
+        {googleEnabled ? (
+          <GoogleSignIn lang={lang} from="login" invite={inviteToken} />
+        ) : null}
+        <AuthForm
+          action={loginAction}
+          mode="login"
+          lang={lang}
+          invite={inviteToken}
+        />
       </AccessCard>
     </AccessShell>
   )

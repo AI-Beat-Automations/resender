@@ -453,6 +453,83 @@ export type AppDict = {
     signOut: string
   }
 
+  /**
+   * Clientes de agencia en Conexiones (ADR 0020): solo los ve el dueño de la
+   * cuenta.
+   */
+  clients: {
+    newClient: string
+    createTitle: string
+    createBody: string
+    nameLabel: string
+    namePlaceholder: string
+    create: string
+    creating: string
+    unassignedTitle: string
+    unassignedBody: string
+    noConnections: string
+    statusNoPerson: string
+    /** `{date}` */
+    statusPending: string
+    /** `{email}` */
+    statusActive: string
+    menuAria: string
+    invite: string
+    newLink: string
+    /** `{name}` */
+    inviteTitle: string
+    inviteBody: string
+    inviteEmailLabel: string
+    inviteEmailHint: string
+    generateLink: string
+    generating: string
+    linkRevealTitle: string
+    copyLink: string
+    cancelInvite: string
+    revokeAccess: string
+    /** `{email}` */
+    revokeTitle: string
+    revokeBody: string
+    revoking: string
+    rename: string
+    renameTitle: string
+    delete: string
+    /** `{name}` */
+    deleteTitle: string
+    deleteBody: string
+    deleting: string
+    assign: string
+    moveTo: string
+    unassign: string
+    assignHint: string
+  }
+
+  /** `/invite`: aceptar el acceso a un cliente de agencia (ADR 0020). */
+  invite: {
+    eyebrow: string
+    invalidTitle: string
+    invalidBody: string
+    /** `{agency}`, `{client}` */
+    title: string
+    body: string
+    boundNote: string
+    createAccount: string
+    haveAccount: string
+    accept: string
+    accepting: string
+    /** `{email}` */
+    signedInAs: string
+    signOut: string
+    ineligible: {
+      own_account: string
+      already_member: string
+      email_mismatch: string
+      has_own_data: string
+    }
+    acceptFailed: string
+    clientHasMember: string
+  }
+
   billing: {
     metaTitle: string
     eyebrow: string
@@ -521,6 +598,17 @@ export type AppDict = {
     agencyUnavailable: string
     /** Acción reservada al dueño de la cuenta (ADR 0020). */
     ownerOnly: string
+    clientNameRequired: string
+    clientNameTooLong: string
+    clientNotFound: string
+    clientHasMember: string
+    inviteEmailInvalid: string
+    clientCreated: string
+    clientRenamed: string
+    clientDeleted: string
+    clientAccessRevoked: string
+    clientInviteCancelled: string
+    connectionAssignFailed: string
     noSubscription: string
     invalidPage: string
     pageNotFound: string

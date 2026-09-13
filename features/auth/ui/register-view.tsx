@@ -16,17 +16,23 @@ import { OauthErrorNotice } from "@/features/auth/ui/oauth-error-notice"
 import { isGoogleEnabled } from "@/lib/auth/google"
 import { classifyOAuthError } from "@/lib/auth/oauth-errors"
 import { resolveProductAccess } from "@/lib/auth/waitlist"
+import { invitePath, isInviteToken } from "@/lib/clients/invite-token"
 
 // Vista de registro compartida por `/register` (ES) y `/en/register` (EN). El
 // diseño es el de la consola v2 (ADR 0005); el idioma, del diccionario (0006).
 export async function RegisterView({
   lang,
   oauthError,
+  invite,
 }: {
   lang: Locale
   /** El `?error=` crudo con el que Better Auth rebota desde el flujo de OAuth. */
   oauthError?: string
+  /** El `?invite=` crudo de un [Enlace de invitación] (ADR 0020). */
+  invite?: string
 }) {
+  // Solo un valor con forma de token viaja al formulario: lo demás se descarta.
+  const inviteToken = isInviteToken(invite) ? invite : null
   // Mismo criterio que `login-view`: rebota solo la sesión que puede entrar al
   // producto, para que una sesión huérfana no rebote contra el gate.
   const session = await getSession()
@@ -34,7 +40,7 @@ export async function RegisterView({
     session?.user?.id &&
     (await resolveProductAccess(session.user.id)) === "allowed"
   ) {
-    redirect("/connections")
+    redirect(inviteToken ? invitePath(inviteToken) : "/connections")
   }
 
   const t = getDictionary(lang).auth
@@ -57,8 +63,15 @@ export async function RegisterView({
           <OauthErrorNotice kind={oauthErrorKind} lang={lang} />
         ) : null}
         {/* Google arriba, separador «o», y el alta de siempre sin tocar. */}
-        {googleEnabled ? <GoogleSignIn lang={lang} from="register" /> : null}
-        <AuthForm action={registerAction} mode="register" lang={lang} />
+        {googleEnabled ? (
+          <GoogleSignIn lang={lang} from="register" invite={inviteToken} />
+        ) : null}
+        <AuthForm
+          action={registerAction}
+          mode="register"
+          lang={lang}
+          invite={inviteToken}
+        />
       </AccessCard>
     </AccessShell>
   )

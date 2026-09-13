@@ -50,6 +50,12 @@ export type LogAction =
   | "webhook_unsubscribe"
   | "webhook_url_save"
   | "webhook_secret_rotate" // el tenant pidió un secreto de firma nuevo
+  // modo agencia (ADR 0020)
+  | "agency_client_invite" // el dueño generó un enlace de invitación
+  | "agency_client_accept" // una persona aceptó y quedó en un cliente
+  | "agency_client_revoke" // el dueño le quitó el acceso a la persona
+  | "agency_client_delete" // el dueño borró un cliente
+  | "connection_assign" // el dueño asignó o desasignó una conexión
   // cuenta y credenciales
   | "password_change" // la persona cambió su contraseña desde Ajustes
   | "session_revoke" // cierre de las demás sesiones tras cambiar la contraseña
