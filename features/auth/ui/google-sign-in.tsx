@@ -18,9 +18,12 @@ import { Button } from "@/components/ui/button"
 export function GoogleSignIn({
   lang,
   from,
+  invite,
 }: {
   lang: Locale
   from: "login" | "register"
+  /** El token de un [Enlace de invitación], ya validado por la vista. */
+  invite?: string | null
 }) {
   const [state, formAction, pending] = useActionState(
     signInWithGoogleAction,
@@ -36,6 +39,7 @@ export function GoogleSignIn({
             pantalla salió, que es a dónde vuelve el `?error=`. */}
         <input type="hidden" name="locale" value={lang} />
         <input type="hidden" name="from" value={from} />
+        {invite ? <input type="hidden" name="invite" value={invite} /> : null}
         {state.error && (
           <p
             role="alert"

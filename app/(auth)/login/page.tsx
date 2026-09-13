@@ -7,7 +7,11 @@ export const metadata = privatePageMetadata(
 )
 
 type LoginPageProps = {
-  searchParams: Promise<{ passwordChanged?: string; error?: string }>
+  searchParams: Promise<{
+    passwordChanged?: string
+    error?: string
+    invite?: string
+  }>
 }
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
@@ -22,6 +26,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       lang="es"
       passwordChanged={params.passwordChanged === "1"}
       oauthError={params.error}
+      invite={params.invite}
     />
   )
 }

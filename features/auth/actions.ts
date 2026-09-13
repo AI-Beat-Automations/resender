@@ -9,6 +9,7 @@ import { getAuth } from "@/lib/auth/auth"
 import { isGoogleEnabled } from "@/lib/auth/google"
 import { allowAuthAttempt } from "@/lib/auth/rate-limit"
 import { getSession } from "@/lib/auth/session"
+import { invitePath, isInviteToken } from "@/lib/clients/invite-token"
 import {
   EMAIL_RE,
   normalizeEmail,
@@ -28,6 +29,15 @@ export type AuthFormState = {
 // un server action no tiene acceso al pathname de la página que lo invocó.
 function localeOf(formData: FormData): Locale {
   return formData.get("locale") === "en" ? "en" : "es"
+}
+
+// A dónde vuelve quien llegó desde un [Enlace de invitación] (ADR 0020): al
+// enlace, para aceptarlo con la cuenta recién abierta. Solo con un valor que
+// tiene forma de token; cualquier otra cosa se ignora, así el `?invite=` no
+// sirve de open redirect.
+function inviteDestination(formData: FormData): string | null {
+  const invite = formData.get("invite")
+  return isInviteToken(invite) ? invitePath(invite) : null
 }
 
 // Los tres caminos de fallo del acceso —email inexistente, cuenta sin
@@ -88,7 +98,7 @@ export async function loginAction(
   // `signInEmail` no redirige: devuelve `{ redirect: false, token, url, user }`.
   // El redirect va acá y **fuera del try**, porque `redirect()` funciona
   // lanzando y un catch lo tragaría.
-  redirect("/connections")
+  redirect(inviteDestination(formData) ?? "/connections")
 }
 
 // Código del validador → clave del diccionario. `Record` sobre la unión: un
@@ -173,7 +183,7 @@ export async function registerAction(
     await posthog.flush()
   }
 
-  redirect("/connections")
+  redirect(inviteDestination(formData) ?? "/connections")
 }
 
 // --- Recuperación de password (CONTEXT.md → [Recuperacion de password]) ---
@@ -307,6 +317,15 @@ function originOf(formData: FormData): "/login" | "/register" {
   return formData.get("from") === "register" ? "/register" : "/login"
 }
 
+// El rebote de error de Google conserva la invitación: sin esto, un fallo en el
+// consentimiento dejaría a la persona en un login que ya no la lleva al enlace.
+function withInvite(path: string, formData: FormData): string {
+  const invite = formData.get("invite")
+  return isInviteToken(invite)
+    ? `${path}?invite=${encodeURIComponent(invite)}`
+    : path
+}
+
 /**
  * «Continuar con Google». Pide a la librería la URL de autorización y redirige
  * ahí. **Sin `authClient`**: el repositorio no tiene cliente de Better Auth y
@@ -337,11 +356,16 @@ export async function signInWithGoogleAction(
         // acceso], no la autenticación**, igual que en `loginAction` y
         // `registerAction`. Una cuenta nueva va a rebotar a `/pending` y eso
         // es correcto.
-        callbackURL: "/connections",
+        //
+        // Quien llegó desde un [Enlace de invitación] vuelve al enlace.
+        callbackURL: inviteDestination(formData) ?? "/connections",
         // La pantalla de origen con su prefijo de idioma: la librería valida
         // el origen del callback de error, y el `?error=` se dibuja en la
         // misma card donde estaba el botón (`lib/auth/oauth-errors.ts`).
-        errorCallbackURL: localePath(originOf(formData), locale),
+        errorCallbackURL: withInvite(
+          localePath(originOf(formData), locale),
+          formData
+        ),
         // La librería devuelve la URL en vez de contestar con `Location`: el
         // redirect lo hace Next, abajo y fuera del `try`.
         disableRedirect: true,

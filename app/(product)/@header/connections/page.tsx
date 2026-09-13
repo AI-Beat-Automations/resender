@@ -3,7 +3,9 @@ import { Plus } from "lucide-react"
 import { ConnectFacebookButton } from "@/features/connect-meta/ui/connect-facebook-button"
 import { ConnectInstagramButton } from "@/features/connect-meta/ui/connect-instagram-button"
 import { ConnectWhatsAppButton } from "@/features/connect-whatsapp/ui/connect-whatsapp-button"
+import { NewClientDialog } from "@/features/clients/ui/new-client-dialog"
 import {
+  listAgencyClientsCached,
   listTenantPagesCached,
   resolveChannelAccessCached,
 } from "@/features/connections/queries"
@@ -24,11 +26,20 @@ export default async function ConnectionsHeader() {
 
   if (!actor) return <ConsoleHeader crumbs={crumbs} t={t} />
 
-  const [pages, access] = await Promise.all([
+  const owner = actor.kind === "owner"
+  const [pages, access, clients] = await Promise.all([
     listTenantPagesCached(scopeOf(actor)),
     resolveChannelAccessCached(actor.tenantId),
+    owner ? listAgencyClientsCached(actor.tenantId) : [],
   ])
-  if (pages.length === 0) return <ConsoleHeader crumbs={crumbs} t={t} />
+  // «Nuevo cliente» es del dueño y va siempre, también con la lista vacía: es
+  // el primer paso del modo agencia (ADR 0020).
+  const newClient = owner ? <NewClientDialog /> : null
+  // Sin cuentas los «Conectar…» viven en el estado vacío. Con clientes el
+  // estado vacío no se dibuja, así que vuelven a la cabecera.
+  if (pages.length === 0 && clients.length === 0) {
+    return <ConsoleHeader crumbs={crumbs} t={t} actions={newClient} />
+  }
 
   return (
     <ConsoleHeader
@@ -36,6 +47,7 @@ export default async function ConnectionsHeader() {
       t={t}
       actions={
         <>
+          {newClient}
           <ConnectFacebookButton
             label={t.connections.connectFacebook}
             variant="outline"

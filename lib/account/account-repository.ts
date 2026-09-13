@@ -67,7 +67,19 @@ export async function loadTenantDeletionContext(
 // Deletes the tenant. The `on delete cascade` foreign keys (migration 0002)
 // remove all dependent rows: connected pages, conversations, messages,
 // external webhook deliveries and API keys.
+//
+// Modo agencia (ADR 0020): también borra a las personas de sus clientes de
+// agencia. Su fila de `users` solo existía para entrar a este tenant, y la
+// cascada de la membresía no la alcanza: sin esto quedarían cuentas huérfanas
+// que al volver a entrar caerían en `/billing`. Es una sola sentencia para que
+// el tenant y sus personas se vayan juntos.
 export async function deleteTenant(tenantId: string): Promise<void> {
   const sql = getSql()
-  await sql`delete from users where id = ${tenantId}`
+  await sql`
+    delete from users
+    where id = ${tenantId}
+      or id in (
+        select user_id from agency_client_members where tenant_id = ${tenantId}
+      )
+  `
 }

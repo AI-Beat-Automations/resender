@@ -13,7 +13,10 @@
 // Query keys cuyo **valor** se reescribe. Es una lista y no un solo literal
 // porque el día que exista verificación de email o un magic link, el token de
 // esos flujos entra por la misma puerta.
-const REDACTED_QUERY_KEYS = ["token"]
+// `invite` es el [Enlace de invitación] de un cliente de agencia (ADR 0020)
+// cuando viaja por `/login?invite=…` o `/register?invite=…`: en `/invite` ya va
+// como `token`.
+const REDACTED_QUERY_KEYS = ["token", "invite"]
 
 const REDACTED = "redacted"
 

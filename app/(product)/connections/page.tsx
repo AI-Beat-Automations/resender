@@ -6,8 +6,14 @@ import {
   type ConnectedPageView,
 } from "@/features/connections/ui/connected-page-card"
 import { ConnectionsEmptyState } from "@/features/connections/ui/empty-state"
+import {
+  AssignConnectionMenu,
+  type AssignableClient,
+} from "@/features/clients/ui/assign-connection-menu"
+import { ClientActionsMenu } from "@/features/clients/ui/client-actions-menu"
 import { ConsolePage } from "@/features/shell/ui/console-page"
 import {
+  listAgencyClientsCached,
   listTenantPagesCached,
   resolveChannelAccessCached,
 } from "@/features/connections/queries"
@@ -29,6 +35,7 @@ import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
 import { offersChannel } from "@/lib/pages/channel-display"
 import { formatMetaConnectionError } from "@/lib/pages/meta-connection-error"
 import type { listTenantPages } from "@/lib/pages/page-registry"
+import type { AgencyClientSummary } from "@/lib/clients/client-repository"
 import { Alert, AlertContent } from "@/components/ui/alert"
 
 type ConnectedPage = { id: string; name: string }
@@ -78,10 +85,54 @@ export default async function ConnectionsPage({
   const offersInstagram = offersChannel("instagram", access)
   const offersWhatsapp = offersChannel("whatsapp", access)
 
+  // Los clientes de agencia solo existen para el dueño (ADR 0020): la persona
+  // de un cliente ve una lista plana con lo suyo.
+  const agencyClients =
+    actor && viewer === "owner"
+      ? await listAgencyClientsCached(actor.tenantId)
+      : []
+  const assignable: AssignableClient[] = agencyClients.map((client) => ({
+    id: client.id,
+    name: client.name,
+  }))
+
   const sortedPages = [...tenantPages].sort(
     (left, right) => cardRank(left) - cardRank(right)
   )
   const firstActiveId = sortedPages.find((page) => page.status === "active")?.id
+  // Cada tarjeta cae en el grupo de su cliente, en el orden de la lista.
+  const pagesByClient = new Map<string, typeof sortedPages>()
+  for (const page of sortedPages) {
+    if (page.agencyClientId === null) continue
+    const group = pagesByClient.get(page.agencyClientId) ?? []
+    group.push(page)
+    pagesByClient.set(page.agencyClientId, group)
+  }
+  const unassignedPages = sortedPages.filter(
+    (page) => page.agencyClientId === null
+  )
+  const dateFormat = new Intl.DateTimeFormat(t.intl, {
+    day: "numeric",
+    month: "short",
+  })
+
+  const renderCard = (page: (typeof sortedPages)[number]) => (
+    <ConnectedPageCard
+      key={page.id}
+      page={toPageView(page, access, viewer, t)}
+      viewer={viewer}
+      showWebhookHint={viewer === "owner" && page.id === firstActiveId}
+      headerActions={
+        assignable.length > 0 ? (
+          <AssignConnectionMenu
+            connectionId={page.id}
+            currentClientId={page.agencyClientId}
+            clients={assignable}
+          />
+        ) : null
+      }
+    />
+  )
 
   return (
     // Mock `1e`/`1f` con 20px de ritmo vertical, pero sin la columna de 880px
@@ -135,24 +186,102 @@ export default async function ConnectionsPage({
         </Alert>
       )}
 
-      {tenantPages.length === 0 ? (
+      {agencyClients.length > 0 ? (
+        // El dueño con clientes ve Conexiones agrupado: un bloque por cliente y
+        // "Sin asignar" al final. Lo habitual es crear el cliente, invitarlo y
+        // ver aparecer acá lo que conecta (ADR 0020).
+        <>
+          {agencyClients.map((client) => (
+            <ClientSection
+              key={client.id}
+              title={client.name}
+              subtitle={describeClientStatus(client, dateFormat, t)}
+              actions={
+                <ClientActionsMenu
+                  client={{
+                    id: client.id,
+                    name: client.name,
+                    memberEmail: client.member?.email ?? null,
+                    hasPendingInvitation: client.pendingInvitation !== null,
+                  }}
+                />
+              }
+            >
+              {(pagesByClient.get(client.id) ?? []).length > 0 ? (
+                (pagesByClient.get(client.id) ?? []).map(renderCard)
+              ) : (
+                <p className="rounded-2xl border border-dashed border-border px-5 py-4 text-[13px] text-muted-foreground">
+                  {t.clients.noConnections}
+                </p>
+              )}
+            </ClientSection>
+          ))}
+          {unassignedPages.length > 0 ? (
+            <ClientSection
+              title={t.clients.unassignedTitle}
+              subtitle={t.clients.unassignedBody}
+            >
+              {unassignedPages.map(renderCard)}
+            </ClientSection>
+          ) : null}
+        </>
+      ) : tenantPages.length === 0 ? (
         <ConnectionsEmptyState
           offersInstagram={offersInstagram}
           offersWhatsapp={offersWhatsapp}
           t={t}
         />
       ) : (
-        sortedPages.map((page) => (
-          <ConnectedPageCard
-            key={page.id}
-            page={toPageView(page, access, viewer, t)}
-            viewer={viewer}
-            showWebhookHint={viewer === "owner" && page.id === firstActiveId}
-          />
-        ))
+        sortedPages.map(renderCard)
       )}
     </ConsolePage>
   )
+}
+
+// Un grupo de Conexiones: un cliente de agencia o "Sin asignar".
+function ClientSection({
+  title,
+  subtitle,
+  actions,
+  children,
+}: {
+  title: string
+  subtitle: string
+  actions?: React.ReactNode
+  children: React.ReactNode
+}) {
+  return (
+    <section className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border-faint pb-2">
+        <div className="min-w-0">
+          <h2 className="font-heading text-[16px] font-semibold tracking-[-0.01em]">
+            {title}
+          </h2>
+          <p className="mt-0.5 text-[12.5px] text-muted-foreground">
+            {subtitle}
+          </p>
+        </div>
+        {actions}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+function describeClientStatus(
+  client: AgencyClientSummary,
+  dateFormat: Intl.DateTimeFormat,
+  t: AppDict
+): string {
+  if (client.member) {
+    return fmt(t.clients.statusActive, { email: client.member.email })
+  }
+  if (client.pendingInvitation) {
+    return fmt(t.clients.statusPending, {
+      date: dateFormat.format(client.pendingInvitation.expiresAt),
+    })
+  }
+  return t.clients.statusNoPerson
 }
 
 // Aviso verde del mock `1e`, descartable: la X vuelve a `/connections` limpio.

@@ -468,6 +468,85 @@ export const es: AppDict = {
     signOut: "Cerrar sesión",
   },
 
+  clients: {
+    newClient: "Nuevo cliente",
+    createTitle: "Nuevo cliente",
+    createBody:
+      "Un cliente agrupa las cuentas de un negocio. Después lo invitas para que la persona del negocio conecte sus cuentas y vea sus mensajes.",
+    nameLabel: "Nombre del negocio",
+    namePlaceholder: "Panadería Pedro",
+    create: "Crear cliente",
+    creating: "Creando…",
+    unassignedTitle: "Sin asignar",
+    unassignedBody:
+      "Conexiones que solo ves tú. Asígnalas a un cliente para que su persona también las vea.",
+    noConnections: "Todavía no conectó ninguna cuenta.",
+    statusNoPerson: "Sin invitar",
+    statusPending: "Invitación pendiente · vence el {date}",
+    statusActive: "Con acceso: {email}",
+    menuAria: "Acciones del cliente",
+    invite: "Invitar",
+    newLink: "Generar enlace nuevo",
+    inviteTitle: "Invitar a {name}",
+    inviteBody:
+      "Genera un enlace para que la persona del negocio entre a Resender y conecte sus cuentas. Solo va a ver las conexiones y los mensajes de este cliente: nada del webhook, las API keys ni la facturación.",
+    inviteEmailLabel: "Correo (opcional)",
+    inviteEmailHint:
+      "Si lo escribes, solo una cuenta con ese correo puede usar el enlace.",
+    generateLink: "Generar enlace",
+    generating: "Generando…",
+    linkRevealTitle:
+      "Copia el enlace ahora: no vamos a volver a mostrarlo. Sirve una sola vez y vence en 7 días.",
+    copyLink: "Copiar enlace",
+    cancelInvite: "Cancelar invitación",
+    revokeAccess: "Quitar acceso",
+    revokeTitle: "¿Quitar el acceso de {email}?",
+    revokeBody:
+      "Su usuario de Resender se borra y deja de entrar en el acto. Las conexiones del cliente y su historial se conservan.",
+    revoking: "Quitando…",
+    rename: "Renombrar",
+    renameTitle: "Renombrar cliente",
+    delete: "Borrar cliente",
+    deleteTitle: "¿Borrar {name}?",
+    deleteBody:
+      "Sus conexiones pasan a Sin asignar con todo su historial. Si tiene una persona con acceso, su usuario se borra.",
+    deleting: "Borrando…",
+    assign: "Asignar cliente",
+    moveTo: "Mover a otro cliente",
+    unassign: "Quitar del cliente",
+    assignHint:
+      "La persona del cliente va a ver también el historial de esta conexión.",
+  },
+
+  invite: {
+    eyebrow: "invitación",
+    invalidTitle: "Este enlace ya no sirve",
+    invalidBody:
+      "Venció, ya se usó o tu agencia generó uno nuevo. Pídele a tu agencia un enlace nuevo.",
+    title: "{agency} te dio acceso a {client}",
+    body: "Vas a poder conectar las cuentas de Instagram, Facebook y WhatsApp de tu negocio y ver sus mensajes en Resender.",
+    boundNote: "Tienes que entrar con el correo al que te invitaron.",
+    createAccount: "Crear cuenta",
+    haveAccount: "Ya tengo cuenta",
+    accept: "Aceptar invitación",
+    accepting: "Aceptando…",
+    signedInAs: "Entraste como {email}.",
+    signOut: "Cerrar sesión",
+    ineligible: {
+      own_account:
+        "Esta invitación la generaste tú. Ábrela con la cuenta de la persona del negocio.",
+      already_member:
+        "Esta cuenta ya tiene acceso a un cliente. Cierra sesión y entra con otra cuenta.",
+      email_mismatch:
+        "Esta invitación es para otro correo. Cierra sesión y entra con el correo al que te invitaron.",
+      has_own_data:
+        "Esta cuenta ya usa Resender por su cuenta. Cierra sesión y crea una cuenta nueva para este acceso.",
+    },
+    acceptFailed:
+      "No pudimos aceptar la invitación. Pídele a tu agencia un enlace nuevo.",
+    clientHasMember: "Ese cliente ya tiene una persona con acceso.",
+  },
+
   billing: {
     metaTitle: "Suscripción",
     eyebrow: "pricing",
@@ -549,6 +628,18 @@ export const es: AppDict = {
     agencyUnavailable:
       "Tu agencia no tiene acceso activo a Resender ahora mismo.",
     ownerOnly: "Solo el dueño de la cuenta puede hacer esto.",
+    clientNameRequired: "Escribe el nombre del negocio.",
+    clientNameTooLong: "El nombre no puede pasar de 80 caracteres.",
+    clientNotFound: "No encontramos ese cliente.",
+    clientHasMember: "Ese cliente ya tiene una persona con acceso.",
+    inviteEmailInvalid: "Ese correo no es válido.",
+    clientCreated: "Cliente creado.",
+    clientRenamed: "Cliente renombrado.",
+    clientDeleted: "Cliente borrado. Sus conexiones quedaron sin asignar.",
+    clientAccessRevoked: "Acceso quitado.",
+    clientInviteCancelled: "Invitación cancelada.",
+    connectionAssignFailed:
+      "No pudimos asignar la conexión. Recarga la pantalla e inténtalo de nuevo.",
     noSubscription: "Tu suscripción no está activa.",
     invalidPage: "Página inválida.",
     pageNotFound: "No encontramos esa página.",

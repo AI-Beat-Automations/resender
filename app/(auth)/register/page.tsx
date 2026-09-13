@@ -7,7 +7,7 @@ export const metadata = privatePageMetadata(
 )
 
 type RegisterPageProps = {
-  searchParams: Promise<{ error?: string }>
+  searchParams: Promise<{ error?: string; invite?: string }>
 }
 
 // `error` es el rebote del flujo de Google (`errorCallbackURL`), crudo: lo
@@ -16,5 +16,7 @@ export default async function RegisterPage({
   searchParams,
 }: RegisterPageProps) {
   const params = await searchParams
-  return <RegisterView lang="es" oauthError={params.error} />
+  return (
+    <RegisterView lang="es" oauthError={params.error} invite={params.invite} />
+  )
 }

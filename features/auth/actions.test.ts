@@ -358,3 +358,56 @@ describe("resetPasswordAction", () => {
     expect(mocks.redirect).toHaveBeenCalledWith("/en/login?passwordChanged=1")
   })
 })
+
+// Modo agencia (ADR 0020): quien llega desde un [Enlace de invitación] vuelve
+// al enlace al entrar. Solo con un valor que tiene forma de token: el
+// `?invite=` no puede servir de open redirect.
+describe("invitación de cliente de agencia en el alta y en Google", () => {
+  const TOKEN = "a".repeat(43)
+
+  it("después del alta vuelve a /invite con el token", async () => {
+    await expect(
+      registerAction(
+        {},
+        form({
+          name: "Pedro",
+          email: "pedro@x.com",
+          password: "contraseña1",
+          invite: TOKEN,
+        })
+      )
+    ).rejects.toThrow(`NEXT_REDIRECT:/invite?token=${TOKEN}`)
+  })
+
+  it("ignora un invite que no tiene forma de token", async () => {
+    await expect(
+      registerAction(
+        {},
+        form({
+          name: "Pedro",
+          email: "pedro@x.com",
+          password: "contraseña1",
+          invite: "https://evil.example/phish",
+        })
+      )
+    ).rejects.toThrow("NEXT_REDIRECT:/connections")
+  })
+
+  it("Google vuelve al enlace, y el error también conserva la invitación", async () => {
+    await expect(
+      signInWithGoogleAction(
+        {},
+        form({ locale: "es", from: "register", invite: TOKEN })
+      )
+    ).rejects.toThrow("NEXT_REDIRECT")
+
+    expect(mocks.signInSocial).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({
+          callbackURL: `/invite?token=${TOKEN}`,
+          errorCallbackURL: `/register?invite=${TOKEN}`,
+        }),
+      })
+    )
+  })
+})
