@@ -1,11 +1,13 @@
 import Link from "next/link"
 import { ArrowRight, Inbox, MessageSquare, TriangleAlert } from "lucide-react"
 
+import { setConversationForwardingPaused } from "@/features/inbox/actions"
 import { Bubble } from "@/features/inbox/ui/bubble"
 import { ChannelBadge } from "@/features/inbox/ui/channel-badge"
 import { EmptyPane } from "@/features/inbox/ui/empty-pane"
 import { ThreadHeader } from "@/features/inbox/ui/thread-header"
-import type { AppDict } from "@/content/i18n/app"
+import { ForwardingPauseSwitch } from "@/components/forwarding-pause-switch"
+import { fmt, type AppDict } from "@/content/i18n/app"
 import type { AttachmentDisplay } from "@/lib/inbox/message-media"
 import type {
   ThreadMessageView,
@@ -17,13 +19,18 @@ import { cn } from "@/lib/utils"
 // Hilo de solo lectura (ADR 0005), al mock `1h` (ADR 0018): cabecera de 52px,
 // burbujas sobre el fondo hundido y, al pie, la franja que explica que las
 // respuestas salen por la API externa. No hay «Abrir en Instagram» en
-// Mensajes: deuda declarada.
+// Mensajes: deuda declarada. El hueco de la derecha de la cabecera lo ocupa
+// desde la ADR 0020 el interruptor de pausa de reenvío.
 
 export type ThreadHeaderView = {
+  conversationId: string
   contactLabel: string
   /** `@cafe.rioja` · `Café Rioja` · `+52 55 1234 5678`. */
   accountLabel: string
   channel: PageChannel
+  /** Pausa de reenvío (ADR 0020): ISO o null, y el «hace…» ya formateado. */
+  pausedAt: string | null
+  pausedSinceLabel: string | null
 }
 
 export function MessageThread({
@@ -41,6 +48,28 @@ export function MessageThread({
         title={header.contactLabel}
         pill={<ChannelBadge channel={header.channel} size="header" t={t} />}
         account={header.accountLabel}
+        action={
+          // Acción ya ligada al id desde el servidor: el `Switch` solo manda
+          // el estado nuevo, y un id ajeno no existe para esta sesión.
+          <ForwardingPauseSwitch
+            size="sm"
+            className="shrink-0"
+            pausedAt={header.pausedAt}
+            label={t.inbox.pauseLabel}
+            ariaLabel={t.inbox.pauseAria}
+            activeLabel={t.inbox.pauseActive}
+            pausedLabel={
+              header.pausedSinceLabel
+                ? fmt(t.inbox.pausePaused, { since: header.pausedSinceLabel })
+                : null
+            }
+            pausedFallbackLabel={t.inbox.pausePausedNow}
+            action={setConversationForwardingPaused.bind(
+              null,
+              header.conversationId
+            )}
+          />
+        }
       />
 
       <div className="flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto px-7 py-6">

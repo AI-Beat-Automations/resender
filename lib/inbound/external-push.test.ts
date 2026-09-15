@@ -56,6 +56,7 @@ describe("inbound push payload", () => {
         tokenErrorAt: null,
         tokenExpiresAt: null,
         webhookUrl: "https://example.com/hook",
+        pausedAt: null,
         wabaId: null,
         whatsappPhoneE164: null,
         onboardingMode: null,
@@ -76,6 +77,7 @@ describe("inbound push payload", () => {
         contactName: null,
         lastMessageAt: new Date("2026-01-02T00:00:00.000Z"),
         lastInboundAt: null,
+        pausedAt: null,
       },
       message: {
         id: "message-1",
@@ -122,6 +124,7 @@ describe("inbound push payload", () => {
         tokenErrorAt: null,
         tokenExpiresAt: null,
         webhookUrl: "https://example.com/hook",
+        pausedAt: null,
         wabaId: null,
         whatsappPhoneE164: null,
         onboardingMode: null,
@@ -142,6 +145,7 @@ describe("inbound push payload", () => {
         contactName: null,
         lastMessageAt: new Date("2026-01-02T00:00:00.000Z"),
         lastInboundAt: null,
+        pausedAt: null,
       },
       message: {
         id: "message-1",
@@ -257,6 +261,7 @@ const whatsappPage = {
   tokenErrorAt: null,
   tokenExpiresAt: null,
   webhookUrl: "https://example.com/hook",
+  pausedAt: null,
   wabaId: "102290129340398",
   whatsappPhoneE164: "+15550783881",
   onboardingMode: "coexistence" as const,
@@ -286,6 +291,7 @@ const buildWhatsapp = (
       contactName: null,
       lastMessageAt: new Date("2026-01-02T00:00:00.000Z"),
       lastInboundAt: new Date("2026-01-02T00:00:00.000Z"),
+      pausedAt: null,
     },
     message: {
       id: "message-1",

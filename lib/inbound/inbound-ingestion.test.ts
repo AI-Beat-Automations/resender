@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   getTenantEntitlement: vi.fn(),
   incrementUsage: vi.fn(),
   upsertConversation: vi.fn(),
+  getConversationPausedAt: vi.fn(),
   insertInboundMessage: vi.fn(),
   insertCoexistenceMessage: vi.fn(),
   updateDeliveryStatus: vi.fn(),
@@ -42,6 +43,7 @@ vi.mock("@/lib/billing/usage-counter", () => ({
 
 vi.mock("@/lib/messages/message-log", () => ({
   upsertConversation: mocks.upsertConversation,
+  getConversationPausedAt: mocks.getConversationPausedAt,
   insertInboundMessage: mocks.insertInboundMessage,
   insertCoexistenceMessage: mocks.insertCoexistenceMessage,
   updateDeliveryStatus: mocks.updateDeliveryStatus,
@@ -320,6 +322,74 @@ describe("Instagram dentro de facturación", () => {
       })
     )
     expect(mocks.enqueueDelivery).not.toHaveBeenCalled()
+  })
+
+  // Pausa de reenvío (ADR 0020), nivel conexión: la llave maestra. El DM se
+  // persiste y se cuenta, y el `skipped` lleva el motivo de la conexión.
+  it("deja de reenviar el DM con la conexión pausada, pero persiste igual", async () => {
+    mocks.getActivePageByMetaPageId.mockResolvedValue(
+      instagramPage({ pausedAt: new Date("2026-09-14T10:00:00Z") })
+    )
+
+    const [ingested] = await ingestInstagramWebhookPayload(
+      instagramPayload({ mid: "mid-1", text: "hola" })
+    )
+    await ingested!.pushJob()
+
+    expect(mocks.insertInboundMessage).toHaveBeenCalledTimes(1)
+    expect(mocks.incrementUsage).toHaveBeenCalledWith(
+      "tenant-1",
+      unrestricted.periodStart
+    )
+    expect(mocks.recordSkippedDelivery).toHaveBeenCalledWith(
+      { kind: "message", id: "message-1" },
+      expect.objectContaining({
+        reason: "forwarding paused for the connection",
+        logReason: "connection_paused",
+      })
+    )
+    expect(mocks.enqueueDelivery).not.toHaveBeenCalled()
+  })
+
+  // Nivel conversación: solo ese contacto. La fila que devuelve el upsert es
+  // la que decide, sin una consulta extra.
+  it("deja de reenviar el DM con la conversación pausada", async () => {
+    mocks.upsertConversation.mockResolvedValue({
+      id: "conversation-1",
+      contactId: "igsid-1",
+      pausedAt: new Date("2026-09-14T10:00:00Z"),
+    })
+
+    const [ingested] = await ingestInstagramWebhookPayload(
+      instagramPayload({ mid: "mid-1", text: "hola" })
+    )
+    await ingested!.pushJob()
+
+    expect(mocks.insertInboundMessage).toHaveBeenCalledTimes(1)
+    expect(mocks.recordSkippedDelivery).toHaveBeenCalledWith(
+      { kind: "message", id: "message-1" },
+      expect.objectContaining({ logReason: "conversation_paused" })
+    )
+    expect(mocks.enqueueDelivery).not.toHaveBeenCalled()
+  })
+
+  // La restricción del tenant explica más que la pausa: si coinciden, el
+  // motivo que se registra es el de la cuenta restringida.
+  it("la restricción gana sobre la pausa en el motivo del salto", async () => {
+    mocks.getTenantEntitlement.mockResolvedValue(restricted)
+    mocks.getActivePageByMetaPageId.mockResolvedValue(
+      instagramPage({ pausedAt: new Date("2026-09-14T10:00:00Z") })
+    )
+
+    const [ingested] = await ingestInstagramWebhookPayload(
+      instagramPayload({ mid: "mid-1", text: "hola" })
+    )
+    await ingested!.pushJob()
+
+    expect(mocks.recordSkippedDelivery).toHaveBeenCalledWith(
+      { kind: "message", id: "message-1" },
+      expect.objectContaining({ logReason: "account_restricted" })
+    )
   })
 
   // Los dos gates que están **antes** de la medición siguen ganando: el
@@ -605,6 +675,79 @@ describe("ingesta de comentarios de Instagram", () => {
       { kind: "comment", id: "comment-row" },
       expect.objectContaining({ context: expect.anything() })
     )
+  })
+
+  // Pausa de reenvío (ADR 0020) sobre comentarios. La conexión pausada los
+  // corta sin consultar la conversación: la llave maestra ya decidió.
+  it("deja de reenviar el comentario con la conexión pausada, sin mirar la conversación", async () => {
+    mocks.getActivePageByMetaPageId.mockResolvedValue(
+      instagramPage({ pausedAt: new Date("2026-09-14T10:00:00Z") })
+    )
+
+    const [ingested] = await ingestInstagramWebhookPayload(
+      commentPayload({
+        id: "ig-comment-1",
+        from: { id: "9876543210", username: "un_seguidor" },
+        text: "hola",
+        media: { id: "media-1" },
+      })
+    )
+    await ingested!.pushJob()
+
+    expect(mocks.insertInboundComment).toHaveBeenCalledTimes(1)
+    expect(mocks.getConversationPausedAt).not.toHaveBeenCalled()
+    expect(mocks.recordSkippedDelivery).toHaveBeenCalledWith(
+      { kind: "comment", id: "comment-row" },
+      expect.objectContaining({ logReason: "connection_paused" })
+    )
+    expect(mocks.enqueueDelivery).not.toHaveBeenCalled()
+  })
+
+  // «Pausar la conversación» es pausar al contacto: su comentario se busca por
+  // `from_ig_id`, que es el mismo id que `contact_id` de sus DMs.
+  it("deja de reenviar el comentario de un contacto con la conversación pausada", async () => {
+    mocks.getConversationPausedAt.mockResolvedValue(
+      new Date("2026-09-14T10:00:00Z")
+    )
+
+    const [ingested] = await ingestInstagramWebhookPayload(
+      commentPayload({
+        id: "ig-comment-1",
+        from: { id: "9876543210", username: "un_seguidor" },
+        text: "hola",
+        media: { id: "media-1" },
+      })
+    )
+    await ingested!.pushJob()
+
+    expect(mocks.getConversationPausedAt).toHaveBeenCalledWith({
+      connectedPageId: "page-row",
+      contactId: "9876543210",
+    })
+    expect(mocks.recordSkippedDelivery).toHaveBeenCalledWith(
+      { kind: "comment", id: "comment-row" },
+      expect.objectContaining({ logReason: "conversation_paused" })
+    )
+    expect(mocks.enqueueDelivery).not.toHaveBeenCalled()
+  })
+
+  it("reenvía el comentario si el contacto no tiene conversación pausada", async () => {
+    mocks.getConversationPausedAt.mockResolvedValue(null)
+
+    const [ingested] = await ingestInstagramWebhookPayload(
+      commentPayload({
+        id: "ig-comment-1",
+        from: { id: "9876543210", username: "un_seguidor" },
+        text: "hola",
+        media: { id: "media-1" },
+      })
+    )
+    await ingested!.pushJob()
+
+    expect(mocks.enqueueDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({ subject: { kind: "comment", id: "comment-row" } })
+    )
+    expect(mocks.recordSkippedDelivery).not.toHaveBeenCalled()
   })
 
   // Un mismo POST de Meta puede traer las dos cosas.

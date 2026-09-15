@@ -165,6 +165,14 @@ export const es: AppDict = {
     reconnectAgain: "Volver a conectar",
     disconnect: "Desconectar",
     tokenInvalidBadge: "token inválido",
+    pausedBadge: "reenvío pausado",
+    forwardingLabel: "Reenvío al webhook",
+    forwardingAria: "Pausar o reanudar el reenvío al webhook",
+    forwardingActive: "Activo",
+    forwardingPaused: "Pausado desde {since}",
+    forwardingPausedNow: "Pausado",
+    forwardingHint:
+      "Pausado, los mensajes y comentarios entrantes se guardan en Inbox pero no se reenvían. Al reanudar, lo que llegó durante la pausa no se envía.",
     noAccessTitle: "El canal de {channel} no está habilitado para tu cuenta.",
     noAccessBody:
       "La conexión sigue en pie y su historial disponible, pero no recibe mensajes nuevos y no puede responder. Escríbenos a info@resender.dev para habilitarlo.",
@@ -290,6 +298,12 @@ export const es: AppDict = {
     reactionOutbound: "Reacción del negocio",
     reactionInbound: "Reacción del contacto",
     imageAlt: "Adjunto de imagen",
+    pauseLabel: "Reenvío",
+    pauseAria: "Pausar o reanudar el reenvío de esta conversación al webhook",
+    pauseActive: "Activa",
+    pausePaused: "Pausada desde {since}",
+    pausePausedNow: "Pausada",
+    pausedRowTitle: "Reenvío al webhook pausado para este contacto",
     attachmentStatus: {
       pending: "descargando…",
       available: "preview / descarga",
@@ -588,6 +602,7 @@ export const es: AppDict = {
     linkFailed: "No pudimos vincular Google. Inténtalo de nuevo.",
     oauthAccountNotLinked:
       "No se vinculó: confirma tu correo primero y vuelve a intentarlo.",
+    conversationNotFound: "No encontramos esa conversación.",
   },
 
   whatsappEvents: {

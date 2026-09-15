@@ -163,6 +163,14 @@ export const en: AppDict = {
     reconnectAgain: "Connect again",
     disconnect: "Disconnect",
     tokenInvalidBadge: "invalid token",
+    pausedBadge: "forwarding paused",
+    forwardingLabel: "Webhook forwarding",
+    forwardingAria: "Pause or resume forwarding to the webhook",
+    forwardingActive: "Active",
+    forwardingPaused: "Paused since {since}",
+    forwardingPausedNow: "Paused",
+    forwardingHint:
+      "While paused, incoming messages and comments are saved in Inbox but not forwarded. Resuming doesn't send what arrived during the pause.",
     noAccessTitle: "The {channel} channel isn't enabled for your account.",
     noAccessBody:
       "The connection is still in place and its history is available, but it doesn't receive new messages and can't reply. Write to info@resender.dev to have it enabled.",
@@ -286,6 +294,12 @@ export const en: AppDict = {
     reactionOutbound: "Reaction from the business",
     reactionInbound: "Reaction from the contact",
     imageAlt: "Image attachment",
+    pauseLabel: "Forwarding",
+    pauseAria: "Pause or resume forwarding this conversation to the webhook",
+    pauseActive: "Active",
+    pausePaused: "Paused since {since}",
+    pausePausedNow: "Paused",
+    pausedRowTitle: "Webhook forwarding paused for this contact",
     attachmentStatus: {
       pending: "downloading…",
       available: "preview / download",
@@ -582,6 +596,7 @@ export const en: AppDict = {
     linkFailed: "We couldn't link Google. Try again.",
     oauthAccountNotLinked:
       "It wasn't linked: confirm your email first and try again.",
+    conversationNotFound: "We couldn't find that conversation.",
   },
 
   whatsappEvents: {

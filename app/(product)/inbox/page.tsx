@@ -27,6 +27,7 @@ import {
   resolveInboxTab,
   type InboxTab,
 } from "@/lib/inbox/inbox-tabs"
+import { formatRelativeTime } from "@/lib/inbox/log-format"
 import {
   mediaKey,
   resolveContactProfiles,
@@ -194,12 +195,17 @@ async function MensajesMode({
           t={t}
         />
       </InboxListPanel>
-      {selectedRow ? (
+      {selectedRow && selectedConversation ? (
         <MessageThread
           header={{
+            conversationId: selectedConversation.id,
             contactLabel: selectedRow.contactLabel,
             accountLabel: selectedRow.accountLabel,
             channel: selectedRow.channel,
+            pausedAt: selectedConversation.pausedAt?.toISOString() ?? null,
+            pausedSinceLabel: selectedConversation.pausedAt
+              ? formatRelativeTime(selectedConversation.pausedAt, now, t)
+              : null,
           }}
           messages={toThreadMessageViews(thread, t)}
           t={t}

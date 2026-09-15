@@ -210,3 +210,16 @@ export function offersPinReveal(page: {
 }): boolean {
   return page.channel === "whatsapp" && page.whatsappPinGenerated
 }
+
+/**
+ * Si la tarjeta ofrece el interruptor de pausa de reenvío (ADR 0020): solo
+ * sobre una conexión activa. Una desconectada no reenvía nada de todos modos,
+ * y su tarjeta no tiene cuerpo. **Con o sin `webhookUrl`**: la pausa es un
+ * estado de la conexión que aplica en cuanto la URL exista, y esconderla hasta
+ * entonces obligaría a volver a buscarla después de guardar la URL.
+ */
+export function offersForwardingPause(page: {
+  status: "active" | "disconnected"
+}): boolean {
+  return page.status === "active"
+}

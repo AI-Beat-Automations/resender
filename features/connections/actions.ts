@@ -10,11 +10,18 @@ import {
   ensureWebhookSigningSecret,
   InvalidWebhookUrlError,
   rotateWebhookSigningSecret,
+  setPageForwardingPaused,
   updatePageWebhookUrl,
 } from "@/lib/pages/page-registry"
 import { unsubscribeChannelWebhook } from "@/lib/pages/channel-webhook"
 import { accountFields, describeError, log } from "@/lib/observability/logger"
 import { posthog } from "@/lib/posthog"
+
+// Resultado de pausar o reanudar el reenvío. `pausedAt` en ISO y no `Date`:
+// cruza al cliente, y el `Switch` solo necesita saber si hay fecha.
+export type ForwardingPauseState =
+  | { pausedAt: string | null; error?: undefined }
+  | { error: string; pausedAt?: undefined }
 
 export type ConnectionActionState = {
   error?: string
@@ -217,4 +224,54 @@ export async function rotateWebhookSecretAction(
     message: t.actions.secretRotated,
     revealedSecret: secret,
   }
+}
+
+// Pausa o reanuda el reenvío al webhook de la conexión entera (ADR 0020). No
+// es un `FormData`: el disparador es un `Switch`, no un formulario, y el
+// componente lo llama dentro de una transición con el valor nuevo.
+//
+// Sin confirmación previa: es reversible al instante y no destruye nada. Lo que
+// llegue mientras está pausada se guarda y se cuenta igual; solo no sale.
+export async function setConnectionForwardingPaused(
+  connectionId: string,
+  paused: boolean
+): Promise<ForwardingPauseState> {
+  const t = await getAppDict()
+  const session = await getSession()
+  if (!session?.user?.id) return { error: t.actions.notSignedIn }
+  if (typeof connectionId !== "string" || !connectionId) {
+    return { error: t.actions.invalidPage }
+  }
+
+  const updated = await setPageForwardingPaused(
+    session.user.id,
+    connectionId,
+    paused === true
+  )
+  if (!updated) return { error: t.actions.pageNotFound }
+
+  log({
+    entrypoint: "action",
+    action: updated.pausedAt ? "forwarding_pause" : "forwarding_resume",
+    outcome: "ok",
+    ...accountFields(updated),
+  })
+
+  if (posthog) {
+    posthog.capture({
+      distinctId: session.user.id,
+      event: updated.pausedAt
+        ? "connection forwarding paused"
+        : "connection forwarding resumed",
+      properties: {
+        connection_id: connectionId,
+        page_id: updated.metaPageId,
+        channel: updated.channel,
+      },
+    })
+    await posthog.flush()
+  }
+
+  revalidatePath("/connections")
+  return { pausedAt: updated.pausedAt?.toISOString() ?? null }
 }

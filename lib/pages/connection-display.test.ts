@@ -7,6 +7,7 @@ import type { PageChannel } from "./page-registry"
 import {
   HISTORY_SYNC_TONE,
   formatConnectionIdentity,
+  offersForwardingPause,
   offersPinReveal,
   resolveHistorySyncNotice,
   resolveReconnectHref,
@@ -261,5 +262,12 @@ describe("PIN de verificación en dos pasos", () => {
     expect(
       offersPinReveal({ channel: "instagram", whatsappPinGenerated: true })
     ).toBe(false)
+  })
+})
+
+describe("offersForwardingPause", () => {
+  it("solo sobre una conexión activa, tenga o no webhookUrl", () => {
+    expect(offersForwardingPause({ status: "active" })).toBe(true)
+    expect(offersForwardingPause({ status: "disconnected" })).toBe(false)
   })
 })

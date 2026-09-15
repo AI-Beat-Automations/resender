@@ -50,6 +50,10 @@ export type LogAction =
   | "webhook_unsubscribe"
   | "webhook_url_save"
   | "webhook_secret_rotate" // el tenant pidió un secreto de firma nuevo
+  // Pausa de reenvío (ADR 0020). Dos verbos y no uno con `reason`: un `ok` no
+  // lleva motivo, y «pausó» y «reanudó» son las dos líneas que se buscan.
+  | "forwarding_pause"
+  | "forwarding_resume"
   // cuenta y credenciales
   | "password_change" // la persona cambió su contraseña desde Ajustes
   | "session_revoke" // cierre de las demás sesiones tras cambiar la contraseña
@@ -105,6 +109,8 @@ export type LogReason =
   | "webhook_url_not_configured"
   | "webhook_url_invalid"
   | "account_restricted" // ADR 0003
+  | "connection_paused" // ADR 0020: la conexión tiene el reenvío pausado
+  | "conversation_paused" // ADR 0020: la conversación (el contacto) lo tiene
   | "http_error"
   | "network_error"
   | "max_attempts_exhausted"

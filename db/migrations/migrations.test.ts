@@ -281,6 +281,7 @@ describe("migración 0016: adjuntos en messages", () => {
         tokenErrorAt: null,
         tokenExpiresAt: null,
         webhookUrl: null,
+        pausedAt: null,
         wabaId: null,
         whatsappPhoneE164: null,
         onboardingMode: null,
@@ -304,6 +305,7 @@ describe("migración 0016: adjuntos en messages", () => {
           contactName: null,
           lastMessageAt: new Date(),
           lastInboundAt: null,
+          pausedAt: null,
         },
         message,
         eventType: "message",
@@ -933,5 +935,50 @@ describe("migración 0023: se va api_keys", () => {
     await expect(
       db.query(`delete from users where id = $1`, [doomed])
     ).resolves.toBeTruthy()
+  })
+})
+
+// Migración 0025: pausa de reenvío por conexión y por conversación (ADR 0020).
+describe("migración 0025: pausa de reenvío", () => {
+  it("añade paused_at nullable a las dos tablas, nacida en null", async () => {
+    const columns = await db.query<{
+      table_name: string
+      is_nullable: string
+      column_default: string | null
+    }>(
+      `select table_name, is_nullable, column_default
+       from information_schema.columns
+       where table_schema = 'public' and column_name = 'paused_at'
+       order by table_name`
+    )
+    expect(columns.rows).toEqual([
+      { table_name: "connected_pages", is_nullable: "YES", column_default: null },
+      { table_name: "conversations", is_nullable: "YES", column_default: null },
+    ])
+  })
+
+  // Lo que ya existía sigue activo: la pausa es opt-in por fila.
+  it("las filas existentes quedan sin pausa", async () => {
+    const page = await db.query<{ paused_at: Date | null }>(
+      `select paused_at from connected_pages where id = $1`,
+      [pageId]
+    )
+    const conversation = await db.query<{ paused_at: Date | null }>(
+      `select paused_at from conversations where id = $1`,
+      [conversationId]
+    )
+    expect(page.rows[0]!.paused_at).toBeNull()
+    expect(conversation.rows[0]!.paused_at).toBeNull()
+  })
+
+  // `status` no cambia: pausar no es desconectar, y el check sigue con sus dos
+  // valores para que `status = 'active'` siga siendo «recibe y envía».
+  it("no amplía el check de connected_pages.status", async () => {
+    await expect(
+      db.query(
+        `update connected_pages set status = 'paused' where id = $1`,
+        [pageId]
+      )
+    ).rejects.toThrow()
   })
 })

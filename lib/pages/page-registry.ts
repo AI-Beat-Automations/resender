@@ -44,6 +44,11 @@ export type ConnectedPageRecord = {
   // días y esta es la fecha que mira el refresh.
   tokenExpiresAt: Date | null
   webhookUrl: string | null
+  // Pausa de reenvío al webhook (migración 0025, ADR 0020). Null = activa; con
+  // fecha = pausada desde entonces. Es la llave maestra de la conexión: pausada,
+  // no se reenvía ningún entrante suyo, ni DMs ni comentarios. No es un estado
+  // de `status`: la conexión sigue activa, recibe, persiste y envía por la API.
+  pausedAt: Date | null
   // Las cinco columnas de WhatsApp (migración 0017). Null en Messenger e
   // Instagram, que no tienen ni WABA ni número ni historial que importar.
   //
@@ -85,6 +90,9 @@ type ConnectedPageRow = {
   token_error_at: Date | null
   token_expires_at: Date | null
   webhook_url: string | null
+  // Opcional por lo mismo que las de WhatsApp: solo la seleccionan las lecturas
+  // que deciden un reenvío o pintan la tarjeta. Ausente se normaliza a null.
+  paused_at?: Date | null
   // Opcionales en la fila y no en el record: no todas las consultas de este
   // módulo las seleccionan —al resolver un token no hace falta el historial—,
   // y `mapConnectedPage` normaliza la ausencia a null.
@@ -297,6 +305,7 @@ export async function listTenantPages(tenantId: string) {
   const rows = await sql<ConnectedPageRow[]>`
     select id, tenant_id, channel, meta_page_id, name, username, status,
       token_status, token_error, token_error_at, token_expires_at, webhook_url,
+      paused_at,
       waba_id, whatsapp_phone_e164, onboarding_mode, coexistence_status,
       history_sync_status,
       coalesce(whatsapp_pin_generated, false) as whatsapp_pin_generated,
@@ -325,6 +334,7 @@ export async function updatePageWebhookUrl(
     where id = ${connectionId} and tenant_id = ${tenantId} and status = 'active'
     returning id, tenant_id, channel, meta_page_id, name, username, status,
       token_status, token_error, token_error_at, token_expires_at, webhook_url,
+      paused_at,
       (webhook_signing_secret_encrypted is not null) as has_signing_secret,
       connected_at, disconnected_at, created_at, updated_at
   `
@@ -350,6 +360,34 @@ export async function rotateWebhookSigningSecret(
     returning id
   `
   return rows[0] ? secret : null
+}
+
+// Pausa o reanuda el reenvío al webhook de una conexión (ADR 0020). Solo sobre
+// una conexión activa: una desconectada no reenvía nada de todos modos y la
+// tarjeta no ofrece el control. Idempotente: pausar lo pausado no mueve la
+// fecha, para que «pausado desde» siga diciendo la verdad.
+export async function setPageForwardingPaused(
+  tenantId: string,
+  connectionId: string,
+  paused: boolean
+) {
+  const sql = getSql()
+  const [row] = await sql<ConnectedPageRow[]>`
+    update connected_pages
+    set paused_at = case
+          when ${paused} then coalesce(paused_at, now())
+          else null
+        end,
+        updated_at = now()
+    where id = ${connectionId} and tenant_id = ${tenantId} and status = 'active'
+    returning id, tenant_id, channel, meta_page_id, name, username, status,
+      token_status, token_error, token_error_at, token_expires_at, webhook_url,
+      paused_at,
+      (webhook_signing_secret_encrypted is not null) as has_signing_secret,
+      connected_at, disconnected_at, created_at, updated_at
+  `
+
+  return row ? mapConnectedPage(row) : null
 }
 
 // Solo si falta. Se llama al guardar la `webhookUrl` para que una conexión nueva
@@ -476,6 +514,7 @@ export async function getActivePageByMetaPageId(
   const [row] = await sql<ConnectedPageRow[]>`
     select id, tenant_id, channel, meta_page_id, name, username, status,
       token_status, token_error, token_error_at, token_expires_at, webhook_url,
+      paused_at,
       waba_id, whatsapp_phone_e164, onboarding_mode,
       coexistence_status, history_sync_status,
       (webhook_signing_secret_encrypted is not null) as has_signing_secret,
@@ -924,6 +963,7 @@ function mapConnectedPage(row: ConnectedPageRow): ConnectedPageRecord {
     tokenErrorAt: row.token_error_at,
     tokenExpiresAt: row.token_expires_at,
     webhookUrl: row.webhook_url,
+    pausedAt: row.paused_at ?? null,
     wabaId: row.waba_id ?? null,
     whatsappPhoneE164: row.whatsapp_phone_e164 ?? null,
     onboardingMode: row.onboarding_mode ?? null,

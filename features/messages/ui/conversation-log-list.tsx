@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { TriangleAlert } from "lucide-react"
+import { Pause, TriangleAlert } from "lucide-react"
 
 import { ChannelBadge } from "@/features/inbox/ui/channel-badge"
 import type { AppDict } from "@/content/i18n/app"
@@ -88,6 +88,16 @@ function ConversationRow({
             <TriangleAlert className="size-3 shrink-0" aria-hidden />
           ) : null}
           <span className="truncate">{row.contactLabel}</span>
+          {/* Pausa de reenvío (ADR 0020): se ve desde la lista, sin abrir la
+              conversación. Solo el icono; el «desde hace» está en el hilo. */}
+          {row.paused ? (
+            <Pause
+              className="size-3 shrink-0 fill-current text-[var(--warning-text)]"
+              aria-label={t.inbox.pausedRowTitle}
+            >
+              <title>{t.inbox.pausedRowTitle}</title>
+            </Pause>
+          ) : null}
           {row.contactName ? (
             <span className="truncate text-[11.5px] font-normal text-[var(--text-subtle)]">
               {row.contactName}

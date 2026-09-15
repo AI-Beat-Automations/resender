@@ -19,6 +19,10 @@ export type ConversationRecord = {
   // Distinta de `lastMessageAt`, que lo bumpean las dos direcciones. Ver
   // `opensCustomerServiceWindow`.
   lastInboundAt: Date | null
+  // Pausa de reenvío de esta conversación (migración 0025, ADR 0020). Null =
+  // activa; con fecha = pausada desde entonces. Se lee como «pausar a este
+  // contacto»: corta sus DMs y, en Instagram, también sus comentarios.
+  pausedAt: Date | null
 }
 
 export type MessageDirection = "inbound" | "outbound"
@@ -85,6 +89,7 @@ type ConversationRow = {
   contact_name: string | null
   last_message_at: Date
   last_inbound_at: Date | null
+  paused_at: Date | null
 }
 
 type MessageRow = {
@@ -198,7 +203,7 @@ export async function upsertConversation(input: {
       last_message_at = greatest(conversations.last_message_at, excluded.last_message_at),
       last_inbound_at = greatest(conversations.last_inbound_at, excluded.last_inbound_at),
       updated_at = now()
-    returning id, tenant_id, connected_page_id, contact_id, contact_name, last_message_at, last_inbound_at
+    returning id, tenant_id, connected_page_id, contact_id, contact_name, last_message_at, last_inbound_at, paused_at
   `
 
   if (!row) throw new Error("conversation upsert failed")
@@ -539,13 +544,56 @@ export async function getConversationById(
 ) {
   const sql = getSql()
   const [row] = await sql<ConversationRow[]>`
-    select id, tenant_id, connected_page_id, contact_id, contact_name, last_message_at, last_inbound_at
+    select id, tenant_id, connected_page_id, contact_id, contact_name, last_message_at, last_inbound_at, paused_at
     from conversations
     where id = ${conversationId} and tenant_id = ${tenantId}
     limit 1
   `
 
   return row ? mapConversation(row) : null
+}
+
+// Pausa o reanuda el reenvío de una conversación (ADR 0020). Idempotente como
+// la de conexión: pausar lo pausado conserva la fecha original.
+export async function setConversationForwardingPaused(
+  tenantId: string,
+  conversationId: string,
+  paused: boolean
+) {
+  const sql = getSql()
+  const [row] = await sql<ConversationRow[]>`
+    update conversations
+    set paused_at = case
+          when ${paused} then coalesce(paused_at, now())
+          else null
+        end,
+        updated_at = now()
+    where id = ${conversationId} and tenant_id = ${tenantId}
+    returning id, tenant_id, connected_page_id, contact_id, contact_name, last_message_at, last_inbound_at, paused_at
+  `
+
+  return row ? mapConversation(row) : null
+}
+
+// Para los comentarios de Instagram, que no cuelgan de una conversación: la
+// pausa «de conversación» se aplica por contacto, y `from_ig_id` es la misma
+// identidad que `contact_id` (migración 0013). Devuelve null si no hay
+// conversación con ese contacto o si la hay y no está pausada: en los dos
+// casos el comentario se reenvía.
+export async function getConversationPausedAt(input: {
+  connectedPageId: string
+  contactId: string
+}): Promise<Date | null> {
+  const sql = getSql()
+  const [row] = await sql<Pick<ConversationRow, "paused_at">[]>`
+    select paused_at
+    from conversations
+    where connected_page_id = ${input.connectedPageId}
+      and contact_id = ${input.contactId}
+    limit 1
+  `
+
+  return row?.paused_at ?? null
 }
 
 export async function insertOutboundMessage(input: {
@@ -706,6 +754,7 @@ function mapConversation(row: ConversationRow): ConversationRecord {
     contactName: row.contact_name,
     lastMessageAt: row.last_message_at,
     lastInboundAt: row.last_inbound_at,
+    pausedAt: row.paused_at ?? null,
   }
 }
 
