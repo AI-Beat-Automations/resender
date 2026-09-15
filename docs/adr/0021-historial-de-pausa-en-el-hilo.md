@@ -51,7 +51,8 @@ presentación mezcla mensajes y eventos por instante (a igual instante, el mensa
 pausa lo hace después de leer lo que acaba de llegar). El separador de día se calcula sobre la
 secuencia mezclada. `toThreadMessageViews` sigue existiendo para quien solo quiera burbujas.
 
-Consola: el interruptor de la cabecera dice solo «Activa» / «Pausada». El hilo dibuja cada evento
+Consola: el interruptor de la cabecera queda en «Automatización» y el switch, sin texto de
+estado: encendido o apagado ya lo dice. El hilo dibuja cada evento
 como una píldora centrada entre las burbujas —aviso al pausar, éxito al reactivar— con fecha
 absoluta: «Automatización pausada desde el 14 sept 2026, 10:32» / «Automatización activada desde
 el 14 sept 2026, 11:05». Los eventos se quedan para siempre. La tarjeta de Conexiones no cambia.

@@ -323,7 +323,7 @@ Las dos resoluciones —@handle y publicacion— corren al **leer la pantalla**,
 
 Los dos modos son de **solo lectura**: no hay compositor en ninguno, las respuestas salen por la API externa. Decision en `docs/adr/0009-inbox-mensajes-y-comentarios.md`.
 
-En **mensajes**, la cabecera del hilo lleva a la derecha el interruptor de [Pausa de reenvío] de esa conversacion, con el estado a secas (`Automatización: Activa` / `Pausada`), y la fila de la lista muestra un icono de pausa junto al contacto para verlo sin abrirla. El **desde cuándo** no va en la cabecera sino dentro del hilo: cada vez que alguien pausa o reactiva queda un [Evento de pausa] dibujado entre las burbujas, en el instante en que ocurrio (`Automatización pausada desde el 14 sept 2026, 10:32` / `Automatización activada desde el …`), con fecha absoluta y para siempre. Asi se lee que mensajes llegaron con el bot apagado. No hay marca por mensaje de «no reenviado»; eso queda en la bitacora de entregas.
+En **mensajes**, la cabecera del hilo lleva a la derecha el interruptor de [Pausa de reenvío] de esa conversacion, solo la etiqueta `Automatización` y el switch, sin texto de estado, y la fila de la lista muestra un icono de pausa junto al contacto para verlo sin abrirla. El **desde cuándo** no va en la cabecera sino dentro del hilo: cada vez que alguien pausa o reactiva queda un [Evento de pausa] dibujado entre las burbujas, en el instante en que ocurrio (`Automatización pausada desde el 14 sept 2026, 10:32` / `Automatización activada desde el …`), con fecha absoluta y para siempre. Asi se lee que mensajes llegaron con el bot apagado. No hay marca por mensaje de «no reenviado»; eso queda en la bitacora de entregas.
 
 ### Primario
 

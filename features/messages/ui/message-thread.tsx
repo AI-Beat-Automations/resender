@@ -29,9 +29,9 @@ import { cn } from "@/lib/utils"
 // burbujas sobre el fondo hundido y, al pie, la franja que explica que las
 // respuestas salen por la API externa. No hay «Abrir en Instagram» en
 // Mensajes: deuda declarada. El hueco de la derecha de la cabecera lo ocupa
-// desde la ADR 0020 el interruptor de pausa de reenvío, que solo dice «Activa»
-// o «Pausada»: el desde cuándo va dentro del hilo, como un evento más entre
-// las burbujas (ADR 0021).
+// desde la ADR 0020 el interruptor de pausa de reenvío, sin texto de estado:
+// el switch ya dice si está encendida, y el desde cuándo va dentro del hilo,
+// como un evento más entre las burbujas (ADR 0021).
 
 export type ThreadHeaderView = {
   conversationId: string
@@ -68,9 +68,7 @@ export function MessageThread({
             pausedAt={header.pausedAt}
             label={t.inbox.pauseLabel}
             ariaLabel={t.inbox.pauseAria}
-            activeLabel={t.inbox.pauseActive}
-            pausedLabel={null}
-            pausedFallbackLabel={t.inbox.pausePausedNow}
+            state={null}
             action={setConversationForwardingPaused.bind(
               null,
               header.conversationId

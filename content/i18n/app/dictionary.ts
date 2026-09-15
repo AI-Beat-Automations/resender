@@ -279,12 +279,11 @@ export type AppDict = {
     attachmentStatus: Record<AttachmentStatus, string>
     /**
      * Pausa de reenvío de la conversación (ADR 0020), en la cabecera del hilo.
-     * Solo «Activa» / «Pausada»: el desde cuándo lo cuenta el hilo (ADR 0021).
+     * Solo etiqueta y switch, sin texto de estado: el desde cuándo lo cuenta
+     * el hilo (ADR 0021).
      */
     pauseLabel: string
     pauseAria: string
-    pauseActive: string
-    pausePausedNow: string
     /**
      * Eventos de pausa dentro del hilo (ADR 0021), `{date}` ya con hora:
      * «Automatización pausada desde el 14 sep 2026, 10:32».
