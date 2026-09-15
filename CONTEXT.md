@@ -267,6 +267,10 @@ Un tenant recibe **mensajes y comentarios en el mismo endpoint**, así que el pa
 ### Pausa de reenvío
 
 Interruptor, por [Conexión] y por conversación, que **deja de reenviar** los entrantes al webhook del tenant sin tocar nada más: el mensaje o comentario se persiste, aparece en Inbox y cuenta como [Mensaje contabilizado]; el envío por la [API externa de salida] sigue funcionando. Es un `skipped` en la bitácora de entregas con motivo `connection_paused` o `conversation_paused`, el mismo trato que «sin `webhookUrl`» o [Cuenta restringida]. Lo que llega durante la pausa **no se encola**: al reanudar no se reenvía nada de lo anterior. Solo se decide al ingerir; un evento que ya estaba en la cola de reintentos al pausar sale igual.
+
+### Evento de pausa
+
+Cada cambio de [Pausa de reenvío] **de una conversación** queda como una fila en `conversation_pause_events` (`paused` true/false y `created_at`), además del `paused_at` que lee la ingesta. Es el historial: `paused_at` solo dice el estado de ahora y se borra al reactivar. El hilo de [Inbox] lo intercala con los mensajes. Pausar lo ya pausado no escribe evento. La pausa de conexión no tiene eventos: no hay hilo donde contarlos.
 Los dos niveles son independientes y la conexión es la **llave maestra**: pausada, no sale nada suyo —DMs ni comentarios— sin importar el estado de cada conversación; reanudarla no reanuda las conversaciones pausadas una a una. Reenviar = conexión activa **y** conversación activa.
 La pausa de conversación se lee como **pausar a este contacto**: en Instagram también corta sus comentarios, porque `from_ig_id` es la misma identidad que `contact_id`. Un comentario de alguien que nunca escribió por DM no tiene conversación que pausar y se reenvía.
 Se guarda en `paused_at` (migración 0025): null es activa, una fecha es «pausada desde». No es un valor de `status`: pausar no es [Desconexión de páginas], la conexión sigue activa y ocupando cupo. Solo desde la consola; la API pública no lo expone. Decisión en `docs/adr/0020-pausa-de-reenvio-al-webhook.md`.
@@ -319,7 +323,7 @@ Las dos resoluciones —@handle y publicacion— corren al **leer la pantalla**,
 
 Los dos modos son de **solo lectura**: no hay compositor en ninguno, las respuestas salen por la API externa. Decision en `docs/adr/0009-inbox-mensajes-y-comentarios.md`.
 
-En **mensajes**, la cabecera del hilo lleva a la derecha el interruptor de [Pausa de reenvío] de esa conversacion, con el estado en claro (`Reenvío: Activa` / `Pausada desde hace 2 h`), y la fila de la lista muestra un icono de pausa junto al contacto para verlo sin abrirla. No hay marca por mensaje de «no reenviado»; eso queda en la bitacora de entregas.
+En **mensajes**, la cabecera del hilo lleva a la derecha el interruptor de [Pausa de reenvío] de esa conversacion, solo la etiqueta `Automatización` y el switch, sin texto de estado, y la fila de la lista muestra un icono de pausa junto al contacto para verlo sin abrirla. El **desde cuándo** no va en la cabecera sino dentro del hilo: cada vez que alguien pausa o reactiva queda un [Evento de pausa] dibujado entre las burbujas, en el instante en que ocurrio (`Automatización pausada desde el 14 sept 2026, 10:32` / `Automatización activada desde el …`), con fecha absoluta y para siempre. Asi se lee que mensajes llegaron con el bot apagado. No hay marca por mensaje de «no reenviado»; eso queda en la bitacora de entregas.
 
 ### Primario
 

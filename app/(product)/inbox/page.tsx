@@ -27,7 +27,6 @@ import {
   resolveInboxTab,
   type InboxTab,
 } from "@/lib/inbox/inbox-tabs"
-import { formatRelativeTime } from "@/lib/inbox/log-format"
 import {
   mediaKey,
   resolveContactProfiles,
@@ -36,9 +35,10 @@ import {
 import {
   formatAccountShortLabel,
   toConversationRowView,
-  toThreadMessageViews,
+  toThreadTimeline,
 } from "@/lib/messages/display"
 import {
+  listConversationPauseEvents,
   listConversationReadModel,
   listThreadMessages,
 } from "@/lib/messages/read-model"
@@ -145,12 +145,20 @@ async function MensajesMode({
     ) ??
     conversations[0] ??
     null
-  const thread = selectedConversation
-    ? await listThreadMessages({
-        tenantId,
-        conversationId: selectedConversation.id,
-      })
-    : []
+  // Los eventos de pausa (ADR 0021) se leen aparte y se intercalan en la
+  // vista: son otra tabla y otra forma, y el hilo los ordena por instante.
+  const [thread, pauseEvents] = selectedConversation
+    ? await Promise.all([
+        listThreadMessages({
+          tenantId,
+          conversationId: selectedConversation.id,
+        }),
+        listConversationPauseEvents({
+          tenantId,
+          conversationId: selectedConversation.id,
+        }),
+      ])
+    : [[], []]
 
   // El @handle del contacto no viene en el webhook de DMs: hay que pedirlo a
   // Graph. Se resuelve acá y no al ingerir para que las conversaciones que ya
@@ -203,11 +211,8 @@ async function MensajesMode({
             accountLabel: selectedRow.accountLabel,
             channel: selectedRow.channel,
             pausedAt: selectedConversation.pausedAt?.toISOString() ?? null,
-            pausedSinceLabel: selectedConversation.pausedAt
-              ? formatRelativeTime(selectedConversation.pausedAt, now, t)
-              : null,
           }}
-          messages={toThreadMessageViews(thread, t)}
+          entries={toThreadTimeline(thread, pauseEvents, t, now)}
           t={t}
         />
       ) : (

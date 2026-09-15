@@ -125,6 +125,16 @@ beforeAll(async () => {
       apiKeyRowsBeforeDrop = seeded.rows.length
     }
 
+    // Antes de la 0026 se pausa una conversación (con la 0025 ya aplicada):
+    // el backfill tiene que darle su evento «pausada» fechado en `paused_at`.
+    if (file.startsWith("0026")) {
+      await db.query(
+        `insert into conversations (tenant_id, connected_page_id, contact_id, paused_at)
+         values ($1, $2, 'psid_pausada', '2026-09-14T10:32:00Z')`,
+        [tenantId, pageId]
+      )
+    }
+
     await db.exec(readFileSync(join(MIGRATIONS_DIR, file), "utf8"))
   }
 }, 60_000)
@@ -980,5 +990,66 @@ describe("migración 0025: pausa de reenvío", () => {
         [pageId]
       )
     ).rejects.toThrow()
+  })
+})
+
+// Migración 0026: historial de pausa por conversación (ADR 0021).
+describe("migración 0026: eventos de pausa", () => {
+  it("nace con un evento «pausada» por cada conversación ya pausada, fechado en paused_at", async () => {
+    const events = await db.query<{
+      conversation_id: string
+      paused: boolean
+      created_at: Date
+      paused_at: Date
+    }>(
+      `select e.conversation_id, e.paused, e.created_at, c.paused_at
+       from conversation_pause_events e
+       join conversations c on c.id = e.conversation_id`
+    )
+    expect(events.rows).toHaveLength(1)
+    const [event] = events.rows
+    expect(event!.paused).toBe(true)
+    expect(new Date(event!.created_at).getTime()).toBe(
+      new Date(event!.paused_at).getTime()
+    )
+  })
+
+  // La conversación sembrada antes de la 0016 sigue activa y no tiene evento.
+  it("no inventa eventos para las conversaciones activas", async () => {
+    const events = await db.query(
+      `select id from conversation_pause_events where conversation_id = $1`,
+      [conversationId]
+    )
+    expect(events.rows).toHaveLength(0)
+  })
+
+  it("acepta la secuencia pausar/reactivar y la devuelve en orden", async () => {
+    await db.query(
+      `insert into conversation_pause_events (tenant_id, conversation_id, paused, created_at)
+       values ($1, $2, true, '2026-09-15T09:00:00Z'),
+              ($1, $2, false, '2026-09-15T09:30:00Z')`,
+      [tenantId, conversationId]
+    )
+    const events = await db.query<{ paused: boolean }>(
+      `select paused from conversation_pause_events
+       where conversation_id = $1 order by created_at asc`,
+      [conversationId]
+    )
+    expect(events.rows.map((row) => row.paused)).toEqual([true, false])
+  })
+
+  // Borrar la conversación (o el tenant, en cascada desde la 0002) se lleva
+  // su historial: un evento huérfano no tiene dónde dibujarse.
+  it("cae en cascada con la conversación", async () => {
+    const paused = await db.query<{ id: string }>(
+      `select id from conversations where contact_id = 'psid_pausada'`
+    )
+    const pausedId = paused.rows[0]!.id
+    await db.query(`delete from conversations where id = $1`, [pausedId])
+    const events = await db.query(
+      `select id from conversation_pause_events where conversation_id = $1`,
+      [pausedId]
+    )
+    expect(events.rows).toHaveLength(0)
   })
 })

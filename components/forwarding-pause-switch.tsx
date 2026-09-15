@@ -25,9 +25,7 @@ import { cn } from "@/lib/utils"
 export function ForwardingPauseSwitch({
   pausedAt,
   label,
-  activeLabel,
-  pausedLabel,
-  pausedFallbackLabel,
+  state,
   ariaLabel,
   action,
   size = "default",
@@ -37,12 +35,20 @@ export function ForwardingPauseSwitch({
   pausedAt: string | null
   /** Encabezado del control: «Automatización». */
   label: string
-  /** Estado en claro cuando reenvía. */
-  activeLabel: string
-  /** Estado en claro cuando está pausado, ya con el «desde hace…». */
-  pausedLabel: string | null
-  /** Mientras la pausa recién puesta no tiene fecha todavía. */
-  pausedFallbackLabel: string
+  /**
+   * Los textos de estado junto al switch, o `null` para no pintar ninguno.
+   * Conexiones los pone («Activa» / «Pausada desde hace 2 h»); el hilo de
+   * Inbox no, porque ahí el desde cuándo lo cuenta el propio hilo (ADR 0021)
+   * y el switch a secas ya dice si está encendida.
+   */
+  state: {
+    /** Cuando reenvía. */
+    active: string
+    /** Cuando está pausado, ya con el «desde hace…»; null si aún no hay fecha. */
+    paused: string | null
+    /** Mientras la pausa recién puesta no tiene fecha todavía. */
+    pausedFallback: string
+  } | null
   ariaLabel: string
   action: (paused: boolean) => Promise<ForwardingPauseState>
   size?: "sm" | "default"
@@ -61,9 +67,11 @@ export function ForwardingPauseSwitch({
     })
   }
 
-  const stateText = paused
-    ? (pausedLabel ?? pausedFallbackLabel)
-    : activeLabel
+  const stateText = state
+    ? paused
+      ? (state.paused ?? state.pausedFallback)
+      : state.active
+    : null
 
   return (
     <div className={cn("flex flex-col gap-1", className)}>
@@ -76,17 +84,19 @@ export function ForwardingPauseSwitch({
           aria-label={ariaLabel}
         />
         <span className="text-[13px] font-medium">{label}</span>
-        <span
-          className={cn(
-            "flex items-center gap-1.5 text-[12.5px]",
-            paused ? "text-[var(--warning-text)]" : "text-success-text"
-          )}
-        >
-          {pending ? (
-            <LoaderCircle className="size-3 animate-spin" aria-hidden />
-          ) : null}
-          {stateText}
-        </span>
+        {stateText !== null || pending ? (
+          <span
+            className={cn(
+              "flex items-center gap-1.5 text-[12.5px]",
+              paused ? "text-[var(--warning-text)]" : "text-success-text"
+            )}
+          >
+            {pending ? (
+              <LoaderCircle className="size-3 animate-spin" aria-hidden />
+            ) : null}
+            {stateText}
+          </span>
+        ) : null}
       </label>
       {error ? (
         <p className="text-[12.5px] text-[var(--danger-text)]">{error}</p>

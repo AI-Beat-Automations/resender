@@ -400,15 +400,15 @@ export function ConnectedPageCard({
             pausedAt={page.pausedAt}
             label={t.connectionCard.forwardingLabel}
             ariaLabel={t.connectionCard.forwardingAria}
-            activeLabel={t.connectionCard.forwardingActive}
-            pausedLabel={
-              page.pausedSinceLabel
+            state={{
+              active: t.connectionCard.forwardingActive,
+              paused: page.pausedSinceLabel
                 ? fmt(t.connectionCard.forwardingPaused, {
                     since: page.pausedSinceLabel,
                   })
-                : null
-            }
-            pausedFallbackLabel={t.connectionCard.forwardingPausedNow}
+                : null,
+              pausedFallback: t.connectionCard.forwardingPausedNow,
+            }}
             action={(next) => setConnectionForwardingPaused(page.id, next)}
           />
           {paused && (

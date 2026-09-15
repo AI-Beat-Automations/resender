@@ -6,9 +6,11 @@ import { en } from "@/content/i18n/app/en"
 import {
   formatContactLabel,
   formatDeliveryLabel,
+  formatPauseEventText,
   groupThreadReactions,
   toConversationRowView,
   toThreadMessageViews,
+  toThreadTimeline,
 } from "./display"
 import type { ConversationListItem, ThreadMessage } from "./read-model"
 
@@ -799,5 +801,102 @@ describe("media de WhatsApp en el hilo", () => {
       kind: "image",
       url: "https://cdn.fbsbx.com/v/foto?oh=abc",
     })
+  })
+})
+
+describe("toThreadTimeline · eventos de pausa (ADR 0021)", () => {
+  it("intercala los eventos entre las burbujas por instante", () => {
+    const entries = toThreadTimeline(
+      [
+        message({ id: "a", createdAt: new Date(2026, 8, 14, 10, 30) }),
+        message({ id: "b", createdAt: new Date(2026, 8, 14, 10, 40) }),
+        message({ id: "c", createdAt: new Date(2026, 8, 14, 11, 10) }),
+      ],
+      [
+        { id: "e1", paused: true, createdAt: new Date(2026, 8, 14, 10, 32) },
+        { id: "e2", paused: false, createdAt: new Date(2026, 8, 14, 11, 5) },
+      ],
+      es,
+      NOW
+    )
+
+    expect(entries.map((entry) => `${entry.kind}:${entry.id}`)).toEqual([
+      "message:a",
+      "pause:pause-e1",
+      "message:b",
+      "pause:pause-e2",
+      "message:c",
+    ])
+    expect(entries[1]).toMatchObject({
+      kind: "pause",
+      paused: true,
+      text: "Automatización pausada desde el 14 sept 2026, 10:32",
+    })
+    expect(entries[3]).toMatchObject({
+      kind: "pause",
+      paused: false,
+      text: "Automatización activada desde el 14 sept 2026, 11:05",
+    })
+  })
+
+  it("abre el separador de día sobre el evento cuando es el primero del día", () => {
+    const entries = toThreadTimeline(
+      [message({ id: "a", createdAt: new Date(2026, 8, 14, 23, 50) })],
+      [{ id: "e1", paused: true, createdAt: new Date(2026, 8, 15, 8, 0) }],
+      es,
+      NOW
+    )
+    expect(entries.map((entry) => entry.dayLabel)).toEqual([
+      "14 sept 2026",
+      "15 sept 2026",
+    ])
+  })
+
+  it("a igual instante el mensaje va antes que el evento", () => {
+    const at = new Date(2026, 8, 14, 10, 30)
+    const entries = toThreadTimeline(
+      [message({ id: "a", createdAt: at })],
+      [{ id: "e1", paused: true, createdAt: at }],
+      es,
+      NOW
+    )
+    expect(entries.map((entry) => entry.kind)).toEqual(["message", "pause"])
+  })
+
+  it("un hilo sin mensajes muestra igual sus eventos", () => {
+    const entries = toThreadTimeline(
+      [],
+      [{ id: "e1", paused: true, createdAt: new Date(2026, 8, 14, 10, 32) }],
+      es,
+      NOW
+    )
+    expect(entries).toHaveLength(1)
+    expect(entries[0]?.kind).toBe("pause")
+  })
+
+  it("no cambia las burbujas respecto de toThreadMessageViews", () => {
+    const messages = [
+      message({ id: "a", createdAt: new Date(2026, 6, 26, 19, 12, 3) }),
+      message({ id: "b", createdAt: new Date(2026, 6, 27, 14, 2, 11) }),
+    ]
+    const bubbles = toThreadTimeline(messages, [], es, NOW)
+    expect(bubbles).toEqual(
+      toThreadMessageViews(messages, es, NOW).map((view) => ({
+        kind: "message",
+        ...view,
+      }))
+    )
+  })
+})
+
+describe("formatPauseEventText", () => {
+  it("dice la fecha absoluta en los dos idiomas", () => {
+    const createdAt = new Date(2026, 8, 14, 10, 32)
+    expect(formatPauseEventText({ paused: true, createdAt }, es)).toBe(
+      "Automatización pausada desde el 14 sept 2026, 10:32"
+    )
+    expect(formatPauseEventText({ paused: false, createdAt }, en)).toBe(
+      "Automation resumed on Sep 14, 2026, 10:32 AM"
+    )
   })
 })

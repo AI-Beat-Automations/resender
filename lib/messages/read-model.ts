@@ -199,6 +199,35 @@ export async function listThreadMessages(input: {
   }))
 }
 
+// Historial de pausa de la conversación (ADR 0021): cada vez que alguien la
+// pausó o la reactivó, en orden. El hilo lo intercala con los mensajes.
+export type ConversationPauseEvent = {
+  id: string
+  /** true = se pausó, false = se reactivó. */
+  paused: boolean
+  createdAt: Date
+}
+
+export async function listConversationPauseEvents(input: {
+  tenantId: string
+  conversationId: string
+}): Promise<ConversationPauseEvent[]> {
+  const sql = getSql()
+  const rows = await sql<{ id: string; paused: boolean; created_at: Date }[]>`
+    select id, paused, created_at
+    from conversation_pause_events
+    where tenant_id = ${input.tenantId}
+      and conversation_id = ${input.conversationId}
+    order by created_at asc
+  `
+
+  return rows.map((row) => ({
+    id: row.id,
+    paused: row.paused,
+    createdAt: row.created_at,
+  }))
+}
+
 function mapConversationListItem(
   row: ConversationListRow
 ): ConversationListItem {
