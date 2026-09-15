@@ -31,6 +31,43 @@ function buildFormats(intl: string) {
   }
 }
 
+// Un `RelativeTimeFormat` por locale, por lo mismo que los de fecha.
+const relativeFormats = new Map<string, Intl.RelativeTimeFormat>()
+
+function relativeFormatFor(intl: string) {
+  const cached = relativeFormats.get(intl)
+  if (cached) return cached
+  const built = new Intl.RelativeTimeFormat(intl, { numeric: "auto" })
+  relativeFormats.set(intl, built)
+  return built
+}
+
+// Umbrales de la unidad, del más fino al más grueso. Se elige la primera
+// unidad cuyo tamaño ya no cabe en el siguiente umbral.
+const RELATIVE_UNITS: Array<[Intl.RelativeTimeFormatUnit, number]> = [
+  ["second", 60],
+  ["minute", 60],
+  ["hour", 24],
+  ["day", 30],
+  ["month", 12],
+]
+
+/**
+ * `hace 2 horas` · `ayer` · `hace 3 semanas`, para «pausado desde hace…».
+ * Sale del `Intl` del locale, así que no hay copy que traducir: el
+ * diccionario solo pone el «desde» de delante. Un instante en el futuro (reloj
+ * desfasado) se trata como «ahora».
+ */
+export function formatRelativeTime(value: Date, now: Date, t: AppDict) {
+  const format = relativeFormatFor(t.intl)
+  let amount = Math.max(0, Math.round((now.getTime() - value.getTime()) / 1000))
+  for (const [unit, next] of RELATIVE_UNITS) {
+    if (amount < next) return format.format(-amount, unit)
+    amount = Math.round(amount / next)
+  }
+  return format.format(-amount, "year")
+}
+
 function formatsFor(intl: string) {
   const cached = formats.get(intl)
   if (cached) return cached

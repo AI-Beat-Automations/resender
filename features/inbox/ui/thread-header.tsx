@@ -3,8 +3,9 @@ import type { ReactNode } from "react"
 // Cabecera del hilo (mock `1h`/`1i`): 52px, alineada con la del panel de
 // lista, título en HK, píldora del canal o del tipo de publicación, y la
 // cuenta en mono detrás de un punto medio. El hueco de la derecha lo llena
-// cada modo: Comentarios pone «Abrir en Instagram»; Mensajes lo deja vacío
-// (deuda declarada en la ADR 0018).
+// cada modo: Comentarios pone «Abrir en Instagram»; Mensajes, el interruptor
+// de pausa de reenvío (ADR 0020), que cerró el hueco que la ADR 0018 dejó
+// declarado.
 export function ThreadHeader({
   title,
   pill,

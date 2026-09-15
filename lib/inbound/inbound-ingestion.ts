@@ -11,6 +11,7 @@ import {
 import { hasActiveSubscription } from "@/lib/billing/subscription"
 import { incrementUsage } from "@/lib/billing/usage-counter"
 import {
+  getConversationPausedAt,
   insertCoexistenceMessage,
   insertInboundMessage,
   updateDeliveryStatus,
@@ -37,6 +38,10 @@ import {
 // reenvío en sí pasa en el consumidor de la cola (`worker.ts`), fuera del techo
 // de 30 s de `after()`.
 import { enqueueDelivery } from "./webhook-delivery"
+import {
+  FORWARDING_PAUSE_SKIP_REASON,
+  resolveForwardingPause,
+} from "./forwarding-pause"
 import type { InboundEvent } from "./inbound-event"
 import { extractInstagramComments } from "./instagram-comments"
 import { extractInstagramDirectMessages } from "./instagram-webhook"
@@ -591,6 +596,15 @@ async function ingestInboundEvents(
     // El contexto de log viaja adentro del closure: cuando el `pushJob` corre,
     // la request ya terminó y no hay de dónde volver a sacarlo.
     const deliveryContext = { requestId, ...accountFields(page), ...logSubject }
+    // Pausa de reenvío (ADR 0020): la conexión es la llave maestra y la
+    // conversación se pausa una a una. Se resuelve acá, con la fila que el
+    // upsert acaba de devolver, y no al entregar: lo que ya estaba encolado al
+    // pausar sale igual. Va después de la restricción a propósito: la
+    // restricción es del tenant y explica más que una pausa que él mismo puso.
+    const pause = resolveForwardingPause({
+      connectionPausedAt: page.pausedAt ?? null,
+      conversationPausedAt: conversation.pausedAt ?? null,
+    })
     let pushJob: InboundPushJob
     if (!shouldPushInbound(entitlement)) {
       // Cuenta restringida (ADR 0003): el mensaje ya quedó persistido y
@@ -599,6 +613,14 @@ async function ingestInboundEvents(
         recordSkippedDelivery(subject, {
           reason: RESTRICTED_SKIP_REASON,
           logReason: "account_restricted",
+          context: deliveryContext,
+        })
+    } else if (pause) {
+      // Igual que la restricción: persistido y contabilizado, sin POST.
+      pushJob = () =>
+        recordSkippedDelivery(subject, {
+          reason: FORWARDING_PAUSE_SKIP_REASON[pause],
+          logReason: pause,
           context: deliveryContext,
         })
     } else if (webhookUrl) {
@@ -880,6 +902,22 @@ async function ingestInstagramComments(
     const webhookUrl = page.webhookUrl
     const context = { requestId, ...accountFields(page), ...logSubject }
 
+    // Pausa de reenvío (ADR 0020). Un comentario no cuelga de una conversación,
+    // pero la pausa «de conversación» es «pausar a este contacto»: se busca la
+    // conversación de `from_ig_id` en esta conexión, que es el mismo id que
+    // `contact_id`. Sin conversación (comentó y nunca escribió por DM) no hay
+    // nada pausado y el comentario sale. La consulta solo se hace si la
+    // conexión no está ya pausada: con la llave maestra echada no hace falta.
+    const pause = resolveForwardingPause({
+      connectionPausedAt: page.pausedAt ?? null,
+      conversationPausedAt: page.pausedAt
+        ? null
+        : await getConversationPausedAt({
+            connectedPageId: page.id,
+            contactId: comment.fromIgId,
+          }),
+    })
+
     // Cuenta restringida (ADR 0003, extendida a Instagram por la 0011): el
     // comentario ya quedó persistido y contabilizado, pero deja de reenviarse
     // al webhook del cliente. Gana sobre el `webhookUrl` por lo mismo que en
@@ -891,9 +929,16 @@ async function ingestInstagramComments(
             logReason: "account_restricted",
             context,
           })
-      : webhookUrl
-        ? () => enqueueDelivery({ subject, webhookUrl, payload, context })
-        : () => recordSkippedDelivery(subject, { context })
+      : pause
+        ? () =>
+            recordSkippedDelivery(subject, {
+              reason: FORWARDING_PAUSE_SKIP_REASON[pause],
+              logReason: pause,
+              context,
+            })
+        : webhookUrl
+          ? () => enqueueDelivery({ subject, webhookUrl, payload, context })
+          : () => recordSkippedDelivery(subject, { context })
 
     ingested.push({ pushJob })
   }

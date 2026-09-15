@@ -24,6 +24,7 @@ function conversation(
     contactUsername: null,
     contactSyncedAt: null,
     lastMessageAt: new Date(2026, 6, 27, 14, 2),
+    pausedAt: null,
     page: {
       id: "page-1",
       channel: "messenger",
@@ -69,6 +70,19 @@ describe("message display helpers", () => {
     expect(formatContactLabel(null, "12345")).toBe("PSID 12345")
     expect(formatContactLabel("", "12345")).toBe("PSID 12345")
     expect(formatContactLabel("Ada", "12345")).toBe("Ada")
+  })
+})
+
+describe("toConversationRowView · pausa de reenvío", () => {
+  it("marca la fila cuando la conversación está pausada", () => {
+    expect(toConversationRowView(conversation(), NOW, es).paused).toBe(false)
+    expect(
+      toConversationRowView(
+        conversation({ pausedAt: new Date(2026, 6, 27, 10, 0) }),
+        NOW,
+        es
+      ).paused
+    ).toBe(true)
   })
 })
 

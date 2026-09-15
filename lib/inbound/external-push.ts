@@ -321,8 +321,9 @@ export type DeliveryLogContext = {
 }
 
 // El motivo es parametrizable porque hay más de una razón para no entregar: la
-// página sin `webhookUrl` y la cuenta restringida (ADR 0003), que persiste el
-// entrante pero deja de reenviarlo.
+// página sin `webhookUrl`, la cuenta restringida (ADR 0003) y la pausa de
+// reenvío por conexión o por conversación (ADR 0020). Las tres persisten el
+// entrante y dejan de reenviarlo.
 export async function recordSkippedDelivery(
   subject: DeliverySubject,
   options: {
@@ -333,7 +334,10 @@ export async function recordSkippedDelivery(
     // separados porque uno es prosa histórica y el otro es una faceta.
     logReason?: Extract<
       LogReason,
-      "webhook_url_not_configured" | "account_restricted"
+      | "webhook_url_not_configured"
+      | "account_restricted"
+      | "connection_paused"
+      | "conversation_paused"
     >
     context?: DeliveryLogContext
   } = {}

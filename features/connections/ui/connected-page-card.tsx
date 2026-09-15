@@ -15,6 +15,7 @@ import {
   disconnectPageAction,
   rotateWebhookSecretAction,
   saveWebhookUrlAction,
+  setConnectionForwardingPaused,
   type ConnectionActionState,
 } from "@/features/connections/actions"
 import { ChannelAvatar } from "@/features/connections/ui/channel-avatar"
@@ -36,6 +37,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { ForwardingPauseSwitch } from "@/components/forwarding-pause-switch"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -46,6 +48,7 @@ import {
   formatConnectionIdentity,
   resolveHistorySyncNotice,
   resolveReconnectHref,
+  offersForwardingPause,
   offersPinReveal,
   showsCoexistenceLimits,
   type HistorySyncNotice,
@@ -88,6 +91,10 @@ export type ConnectedPageView = {
   webhookUrl: string | null
   // Booleano, nunca el secreto: esto cruza al cliente.
   hasSigningSecret: boolean
+  // Pausa de reenvío (ADR 0020): ISO o null, y el «hace 2 horas» ya formateado
+  // en el servidor, como las demás fechas de la tarjeta.
+  pausedAt: string | null
+  pausedSinceLabel: string | null
   connectedAt: string
   connectedAtLabel: string
   tokenErrorAt: string | null
@@ -138,6 +145,8 @@ export function ConnectedPageCard({
   const historySync = resolveHistorySyncNotice(page, t)
   const coexistence = showsCoexistenceLimits(page)
   const pinReveal = offersPinReveal(page)
+  const forwardingPause = offersForwardingPause(page)
+  const paused = page.pausedAt !== null
 
   return (
     // Tarjeta del mock `1e`: cabecera 18/20 con avatar de canal, nombre, badges
@@ -197,6 +206,13 @@ export function ConnectedPageCard({
             {tokenInvalid && (
               <Badge variant="destructiveSoft" className="font-normal">
                 {t.connectionCard.tokenInvalidBadge}
+              </Badge>
+            )}
+            {/* Cuarto eje (ADR 0020), y también convive: la conexión sigue
+                activa y con tráfico, solo que no lo reenvía. */}
+            {active && paused && (
+              <Badge variant="warning" className="font-normal">
+                {t.connectionCard.pausedBadge}
               </Badge>
             )}
           </div>
@@ -371,6 +387,34 @@ export function ConnectedPageCard({
                 ))}
               </ul>
             </div>
+          )}
+        </div>
+      )}
+
+      {/* La pausa va pegada al webhook y encima de las dos columnas: es un
+          estado del reenvío, no de la URL ni del secreto, y con ancho entero
+          el texto «pausado desde hace…» no compite con el campo. */}
+      {forwardingPause && (
+        <div className="border-t border-border-faint px-5 py-3.5">
+          <ForwardingPauseSwitch
+            pausedAt={page.pausedAt}
+            label={t.connectionCard.forwardingLabel}
+            ariaLabel={t.connectionCard.forwardingAria}
+            activeLabel={t.connectionCard.forwardingActive}
+            pausedLabel={
+              page.pausedSinceLabel
+                ? fmt(t.connectionCard.forwardingPaused, {
+                    since: page.pausedSinceLabel,
+                  })
+                : null
+            }
+            pausedFallbackLabel={t.connectionCard.forwardingPausedNow}
+            action={(next) => setConnectionForwardingPaused(page.id, next)}
+          />
+          {paused && (
+            <p className="mt-1.5 text-[12.5px] text-muted-foreground">
+              {t.connectionCard.forwardingHint}
+            </p>
           )}
         </div>
       )}

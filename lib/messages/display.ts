@@ -53,6 +53,8 @@ export type ConversationRowView = {
   failed: boolean
   /** `entrega: no entregado`, solo cuando `failed` (mock `1h`). */
   failedLabel: string | null
+  /** El reenvío al webhook de esta conversación está pausado (ADR 0020). */
+  paused: boolean
 }
 
 export type ThreadReactionView = {
@@ -215,6 +217,7 @@ export function toConversationRowView(
     hasMessages: latestMessage !== null,
     failed,
     failedLabel: failed ? formatDeliveryLabel("failed", t) : null,
+    paused: conversation.pausedAt !== null,
   }
 }
 

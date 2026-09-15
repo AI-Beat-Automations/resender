@@ -143,6 +143,16 @@ export type AppDict = {
     reconnectAgain: string
     disconnect: string
     tokenInvalidBadge: string
+    /** Píldora junto al estado cuando el reenvío está pausado (ADR 0020). */
+    pausedBadge: string
+    /** Interruptor de pausa de reenvío: encabezado, aria y los dos estados. */
+    forwardingLabel: string
+    forwardingAria: string
+    forwardingActive: string
+    /** `{since}`: «hace 2 horas», ya en el idioma. */
+    forwardingPaused: string
+    forwardingPausedNow: string
+    forwardingHint: string
     /** `{channel}` */
     noAccessTitle: string
     noAccessBody: string
@@ -267,6 +277,15 @@ export type AppDict = {
      * deja a soporte sin poder distinguir un bug nuestro de un límite de Meta.
      */
     attachmentStatus: Record<AttachmentStatus, string>
+    /** Pausa de reenvío de la conversación (ADR 0020), en la cabecera del hilo. */
+    pauseLabel: string
+    pauseAria: string
+    pauseActive: string
+    /** `{since}` */
+    pausePaused: string
+    pausePausedNow: string
+    /** `title` del icono de pausa en la fila de la lista. */
+    pausedRowTitle: string
   }
 
   log: {
@@ -547,6 +566,7 @@ export type AppDict = {
     sessionNotFresh: string
     linkFailed: string
     oauthAccountNotLinked: string
+    conversationNotFound: string
   }
 
   /**

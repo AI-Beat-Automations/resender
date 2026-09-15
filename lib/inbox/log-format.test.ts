@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest"
 
 import { es } from "@/content/i18n/app/es"
 
+import { en } from "@/content/i18n/app/en"
+
 import {
   formatDayLabel,
   formatLogTimestamp,
   formatMessageMeta,
+  formatRelativeTime,
 } from "./log-format"
 
 const NOW = new Date(2026, 6, 27, 15, 30)
@@ -56,5 +59,31 @@ describe("formatMessageMeta", () => {
         es
       )
     ).toBe("entrante · 14:01")
+  })
+})
+
+describe("formatRelativeTime", () => {
+  const minutes = (n: number) => new Date(NOW.getTime() - n * 60_000)
+
+  it("elige la unidad más gruesa que cabe", () => {
+    expect(formatRelativeTime(minutes(0), NOW, es)).toBe("ahora")
+    expect(formatRelativeTime(minutes(5), NOW, es)).toBe("hace 5 minutos")
+    expect(formatRelativeTime(minutes(120), NOW, es)).toBe("hace 2 horas")
+    expect(formatRelativeTime(minutes(60 * 24), NOW, es)).toBe("ayer")
+    expect(formatRelativeTime(minutes(60 * 24 * 3), NOW, es)).toBe(
+      "hace 3 días"
+    )
+    expect(formatRelativeTime(minutes(60 * 24 * 60), NOW, es)).toBe(
+      "hace 2 meses"
+    )
+  })
+
+  it("sale en el idioma del diccionario", () => {
+    expect(formatRelativeTime(minutes(120), NOW, en)).toBe("2 hours ago")
+  })
+
+  // Un reloj desfasado no puede decir «dentro de 3 minutos» sobre una pausa.
+  it("un instante futuro se lee como ahora", () => {
+    expect(formatRelativeTime(minutes(-3), NOW, es)).toBe("ahora")
   })
 })

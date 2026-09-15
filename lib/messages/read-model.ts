@@ -13,6 +13,8 @@ export type ConversationListItem = {
   contactUsername: string | null
   contactSyncedAt: Date | null
   lastMessageAt: Date
+  // Pausa de reenvío de la conversación (ADR 0020): null = activa.
+  pausedAt: Date | null
   // `messages` no tiene columna `channel` a propósito: el canal vive en
   // `connected_pages` y se resuelve en este join, una vez por conversación.
   page: {
@@ -77,6 +79,7 @@ type ConversationListRow = {
   contact_username: string | null
   contact_synced_at: Date | null
   last_message_at: Date
+  paused_at: Date | null
   page_id: string
   page_channel: PageChannel
   meta_page_id: string
@@ -123,6 +126,7 @@ export async function listConversationReadModel(input: {
       c.contact_username,
       c.contact_synced_at,
       c.last_message_at,
+      c.paused_at,
       p.id as page_id,
       p.channel as page_channel,
       p.meta_page_id,
@@ -205,6 +209,7 @@ function mapConversationListItem(
     contactUsername: row.contact_username,
     contactSyncedAt: row.contact_synced_at,
     lastMessageAt: row.last_message_at,
+    pausedAt: row.paused_at,
     page: {
       id: row.page_id,
       channel: row.page_channel,

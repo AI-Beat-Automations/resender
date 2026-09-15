@@ -27,6 +27,7 @@ import { getAppDict } from "@/lib/i18n/app-dict"
 import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
 import { offersChannel } from "@/lib/pages/channel-display"
 import { formatMetaConnectionError } from "@/lib/pages/meta-connection-error"
+import { formatRelativeTime } from "@/lib/inbox/log-format"
 import type { listTenantPages } from "@/lib/pages/page-registry"
 import { Alert, AlertContent } from "@/components/ui/alert"
 
@@ -223,6 +224,7 @@ function toPageView(
   t: AppDict
 ): ConnectedPageView {
   const dateTimeFormat = dateTimeFormatFor(t.intl)
+  const now = new Date()
 
   return {
     id: page.id,
@@ -242,6 +244,10 @@ function toPageView(
     tokenError: page.tokenError,
     webhookUrl: page.webhookUrl,
     hasSigningSecret: page.hasSigningSecret,
+    pausedAt: page.pausedAt?.toISOString() ?? null,
+    pausedSinceLabel: page.pausedAt
+      ? formatRelativeTime(page.pausedAt, now, t)
+      : null,
     connectedAt: page.connectedAt.toISOString(),
     connectedAtLabel: dateTimeFormat.format(page.connectedAt),
     tokenErrorAt: page.tokenErrorAt?.toISOString() ?? null,
