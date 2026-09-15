@@ -12,9 +12,12 @@ import { cn } from "@/lib/utils"
 //
 // **Encendido = reenviando.** Es lo que un interruptor significa en cualquier
 // panel: apagado es «esto no está pasando». El texto de al lado lo dice con
-// todas las letras —«Activo» / «Pausado desde hace 2 h»— porque un switch solo
+// todas las letras —«Activa» / «Pausada desde hace 2 h»— porque un switch solo
 // no cuenta desde cuándo, y eso es lo primero que se pregunta quien ve un
 // webhook mudo.
+//
+// En pantalla se llama «Automatización», no «reenvío al webhook»: el cliente
+// piensa en que su bot recibe o no los mensajes, no en el mecanismo.
 //
 // `useOptimistic` y no estado local: el valor salta al instante, y cuando la
 // acción revalida la pantalla vuelve a mandar la prop, sin un efecto que
@@ -32,7 +35,7 @@ export function ForwardingPauseSwitch({
 }: {
   /** ISO o null. Null = reenviando. */
   pausedAt: string | null
-  /** Encabezado del control: «Reenvío al webhook». */
+  /** Encabezado del control: «Automatización». */
   label: string
   /** Estado en claro cuando reenvía. */
   activeLabel: string
