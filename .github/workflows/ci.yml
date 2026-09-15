@@ -44,7 +44,7 @@ jobs:
       - run: npm ci
 
       - name: Lint, typecheck, test, build
-        run: npx turbo lint typecheck test:run build
+        run: npm run lint && npm run typecheck && npm run test:run && npm run build
         env:
           # Valores dummy solo para que `next build` no falle en CI.
           # Los reales viven como secretos del Worker (wrangler secret).
@@ -70,7 +70,7 @@ jobs:
   # producción no debe llenarse de builds de PRs sin revisar.
   #
   # No imprime una preview URL: `preview_urls` está en false (ver
-  # apps/web/wrangler.jsonc) para no publicar un host indexable por deploy.
+  # wrangler.jsonc) para no publicar un host indexable por deploy.
   # Para ver el cambio corriendo están `wrangler dev` y la rama `dev`.
   #
   # Efecto secundario: deja a `web-staging` con una versión más nueva que la
@@ -97,7 +97,7 @@ jobs:
       - run: npm ci
 
       - name: Upload preview version
-        run: npm run upload -w web
+        run: npm run upload
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -115,4 +115,4 @@ jobs:
       # error de la plataforma, que es más informativo que el nuestro. Este check
       # existe para avisar **antes** de llegar a ese punto.
       - name: Bundle size
-        run: npm run check:bundle -w web
+        run: npm run check:bundle

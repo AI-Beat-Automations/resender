@@ -26,7 +26,7 @@ Meta dashboard setup, `CONTEXT.md` for the canonical product vocabulary.
 
 ## MVP environment
 
-`apps/web` expects these variables for the MVP stack:
+The app expects these variables for the MVP stack:
 
 ```bash
 APP_URL="https://your-public-origin.example"
@@ -69,10 +69,10 @@ Stripe CLI) or from the webhook endpoint's signing secret in production.
 Run database migrations manually after setting `DATABASE_URL`:
 
 ```bash
-npm --workspace web run db:migrate
+npm run db:migrate
 ```
 
-Migrations live in `apps/web/db/migrations` and run before every deploy. `0013_instagram_channel.sql`
+Migrations live in `db/migrations` and run before every deploy. `0013_instagram_channel.sql`
 replaces the global unique on `connected_pages.meta_page_id` with `(channel, meta_page_id)`
 and makes the delivery tables accept a message **or** a comment, so both workers must be
 deployed together with it — an `on conflict` or `join` pinned to the old constraints fails
@@ -98,16 +98,16 @@ npm run build
 To add components to your app, run the following command at the root of the repo:
 
 ```bash
-npm exec shadcn@latest add button -c apps/web
+npm exec shadcn@latest add button
 ```
 
-This will place the ui components in the `packages/ui/src/components` directory.
+This will place the ui components in the `components/ui` directory.
 
 ## Using components
 
-To use the components in your app, import them from the `ui` package.
+Import them through the `@/` alias.
 
 ```tsx
-import { Button } from "@workspace/ui/components/button";
+import { Button } from "@/components/ui/button";
 ```
 Cambio lori
