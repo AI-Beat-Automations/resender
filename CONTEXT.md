@@ -338,7 +338,7 @@ La pantalla separada se llama `Connections` y vive en la ruta `/connections`.
 Los dos canales conviven en la misma lista. El **badge de canal va primero** en cada tarjeta: con dos canales mezclados es el dato que ordena todo lo demas. Instagram muestra `@handle · ig_id` y Messenger sigue mostrando `page_id`. El boton "Conectar Instagram" es secundario (`outline`) junto al de Facebook: dos primarios lado a lado no dicen cual es el camino habitual.
 La `webhookUrl` se guarda con accion explicita mediante boton `Guardar`.
 Desconectar una pagina requiere confirmacion explicita y debe advertir que se conserva el historial.
-Cada conexion activa lleva el interruptor de [Pausa de reenvío] pegado al bloque del webhook, con el estado en claro al lado (`Reenvío al webhook: Activo` / `Pausado desde hace 2 h`) y una pildora `reenvío pausado` junto al estado. Encendido es «reenviando». Se ofrece tenga o no `webhookUrl`; no en una desconectada. Sin confirmacion: es reversible al instante.
+Cada conexion activa lleva el interruptor de [Pausa de reenvío] pegado al bloque del webhook, con el estado en claro al lado (`Automatización: Activa` / `Pausada desde hace 2 h`) y una pildora `automatización pausada` junto al estado. En pantalla se llama «Automatización», nunca «webhook» ni «reenvío»: es el vocabulario del cliente. Encendido es «reenviando». Se ofrece tenga o no `webhookUrl`; no en una desconectada. Sin confirmacion: es reversible al instante.
 
 ### Gestion de API keys en Settings
 
