@@ -2,6 +2,7 @@ import {
   formatDayLabel,
   formatLogTimestamp,
   formatMessageMeta,
+  formatTime,
 } from "@/lib/inbox/log-format"
 import {
   type AttachmentDisplay,
@@ -13,7 +14,11 @@ import { fmt, type AppDict } from "@/content/i18n/app"
 
 import { effectiveStatus } from "./media-retention"
 import type { AttachmentStatus, DeliveryStatus } from "./message-enums"
-import type { ConversationListItem, ThreadMessage } from "./read-model"
+import type {
+  ConversationListItem,
+  ConversationPauseEvent,
+  ThreadMessage,
+} from "./read-model"
 
 // Presentación del log de mensajes (ADR 0005). Módulo puro: sin DB ni red, y
 // todo lo que sale de aquí es serializable para cruzar a los componentes.
@@ -95,6 +100,30 @@ export type ThreadMessageView = {
   /** Separador de fecha cuando el mensaje abre un día nuevo. */
   dayLabel: string | null
 }
+
+/**
+ * Un cambio de pausa dibujado dentro del hilo (ADR 0021): «Automatización
+ * pausada desde el 14 sep 2026, 10:32». Va entre las burbujas, en el instante
+ * en que ocurrió, para que se lea dónde dejó de recibir el bot y dónde volvió.
+ */
+export type ThreadPauseEventView = {
+  kind: "pause"
+  id: string
+  /** true = se pausó, false = se reactivó. */
+  paused: boolean
+  /** La frase entera, ya con la fecha y la hora. */
+  text: string
+  /** Separador de fecha cuando el evento abre un día nuevo. */
+  dayLabel: string | null
+}
+
+/**
+ * Lo que el hilo pinta, en orden: burbujas y eventos de pausa. El `kind` va en
+ * el mensaje también para que el componente discrimine sin mirar campos.
+ */
+export type ThreadEntryView =
+  | ({ kind: "message" } & ThreadMessageView)
+  | ThreadPauseEventView
 
 /**
  * Etiqueta histórica del contacto. Se conserva para no romper llamadas
@@ -351,29 +380,24 @@ function resolveAttachmentSource(
   return { url: whatsappMediaUrl({ messageId: message.id, status }), status }
 }
 
-/**
- * Hilo completo. El separador de fecha se resuelve aquí porque depende del
- * mensaje anterior, no del mensaje suelto.
- *
- * `now` entra por parámetro y no se toma adentro para que el vencimiento de la
- * media sea testeable: la regla de los 180 días depende de la hora, y una
- * función que consulta el reloj por su cuenta no se puede fijar en un test.
- */
-export function toThreadMessageViews(
+// Un ítem del hilo antes de resolver el separador de fecha, que depende del
+// vecino anterior y no del ítem suelto; por eso se asigna en un segundo paso
+// sobre la secuencia ya ordenada (`withDayLabels`).
+type Dated<T> = { at: Date; view: T }
+
+// Las burbujas sin `dayLabel`: lo comparten `toThreadMessageViews` (solo
+// mensajes) y `toThreadTimeline` (mensajes y eventos de pausa mezclados).
+function buildMessageViews(
   messages: ThreadMessage[],
   t: AppDict,
-  now: Date = new Date()
-): ThreadMessageView[] {
-  let previousDay: string | null = null
+  now: Date
+): Dated<Omit<ThreadMessageView, "dayLabel">>[] {
   // Las reacciones se resuelven antes del recorrido: una reacción puede llegar
   // después del mensaje que reacciona, así que hay que ver el hilo entero para
   // saber qué lleva burbuja y qué no.
   const { timeline, reactionsByMessageId } = groupThreadReactions(messages)
 
   return timeline.map((message) => {
-    const dayLabel = formatDayLabel(message.createdAt, t)
-    const isNewDay = dayLabel !== previousDay
-    previousDay = dayLabel
     const failed = message.status === "failed"
     // El sufijo se compone acá y no en `formatMessageMeta`, que ahora lo
     // comparten los dos modos de Inbox: un comentario nunca es respuesta
@@ -381,7 +405,7 @@ export function toThreadMessageViews(
     const fromComment = message.instagramSourceCommentId !== null
     const source = resolveAttachmentSource(message, now)
 
-    return {
+    const view = {
       id: message.id,
       outbound: message.direction === "outbound",
       failed,
@@ -409,7 +433,85 @@ export function toThreadMessageViews(
       ),
       reactions: reactionsByMessageId[message.id] ?? [],
       error: failed ? message.error : null,
-      dayLabel: isNewDay ? dayLabel : null,
     }
+    return { at: message.createdAt, view }
   })
+}
+
+// Abre separador solo cuando cambia el día respecto del ítem anterior.
+function withDayLabels<T>(
+  items: Dated<T>[],
+  t: AppDict
+): (T & { dayLabel: string | null })[] {
+  let previousDay: string | null = null
+  return items.map(({ at, view }) => {
+    const dayLabel = formatDayLabel(at, t)
+    const isNewDay = dayLabel !== previousDay
+    previousDay = dayLabel
+    return { ...view, dayLabel: isNewDay ? dayLabel : null }
+  })
+}
+
+/**
+ * Hilo completo. El separador de fecha se resuelve aquí porque depende del
+ * mensaje anterior, no del mensaje suelto.
+ *
+ * `now` entra por parámetro y no se toma adentro para que el vencimiento de la
+ * media sea testeable: la regla de los 180 días depende de la hora, y una
+ * función que consulta el reloj por su cuenta no se puede fijar en un test.
+ */
+export function toThreadMessageViews(
+  messages: ThreadMessage[],
+  t: AppDict,
+  now: Date = new Date()
+): ThreadMessageView[] {
+  return withDayLabels(buildMessageViews(messages, t, now), t)
+}
+
+/**
+ * `Automatización pausada desde el 14 sep 2026, 10:32`. Fecha absoluta y no
+ * «hace 2 h»: el evento es historia, y el «hace» envejece con la página abierta.
+ */
+export function formatPauseEventText(
+  event: Pick<ConversationPauseEvent, "paused" | "createdAt">,
+  t: AppDict
+) {
+  const date = `${formatDayLabel(event.createdAt, t)}, ${formatTime(event.createdAt, t)}`
+  return fmt(
+    event.paused ? t.inbox.pauseEventPaused : t.inbox.pauseEventResumed,
+    { date }
+  )
+}
+
+/**
+ * El hilo con los eventos de pausa intercalados (ADR 0021). Mensajes y eventos
+ * se ordenan por instante; a igual instante el mensaje va primero, porque
+ * quien pausa lo hace **después** de leer lo que acaba de llegar.
+ */
+export function toThreadTimeline(
+  messages: ThreadMessage[],
+  events: ConversationPauseEvent[],
+  t: AppDict,
+  now: Date = new Date()
+): ThreadEntryView[] {
+  const dated: Dated<Omit<ThreadEntryView, "dayLabel">>[] = [
+    ...buildMessageViews(messages, t, now).map(({ at, view }) => ({
+      at,
+      view: { kind: "message" as const, ...view },
+    })),
+    ...events.map((event) => ({
+      at: event.createdAt,
+      view: {
+        kind: "pause" as const,
+        id: `pause-${event.id}`,
+        paused: event.paused,
+        text: formatPauseEventText(event, t),
+      },
+    })),
+  ]
+  // `sort` es estable: a igual `at`, los mensajes (que van antes en el array)
+  // se quedan delante de los eventos.
+  dated.sort((a, b) => a.at.getTime() - b.at.getTime())
+
+  return withDayLabels(dated, t) as ThreadEntryView[]
 }
