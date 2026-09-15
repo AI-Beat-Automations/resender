@@ -296,9 +296,8 @@ export const en: AppDict = {
     imageAlt: "Image attachment",
     pauseLabel: "Automation",
     pauseAria: "Pause or resume automation for this conversation",
-    pauseActive: "On",
-    pausePaused: "Paused since {since}",
-    pausePausedNow: "Paused",
+    pauseEventPaused: "Automation paused since {date}",
+    pauseEventResumed: "Automation resumed on {date}",
     pausedRowTitle: "Automation paused for this contact",
     attachmentStatus: {
       pending: "downloading…",

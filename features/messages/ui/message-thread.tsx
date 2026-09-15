@@ -1,5 +1,12 @@
 import Link from "next/link"
-import { ArrowRight, Inbox, MessageSquare, TriangleAlert } from "lucide-react"
+import {
+  ArrowRight,
+  Inbox,
+  MessageSquare,
+  Pause,
+  Play,
+  TriangleAlert,
+} from "lucide-react"
 
 import { setConversationForwardingPaused } from "@/features/inbox/actions"
 import { Bubble } from "@/features/inbox/ui/bubble"
@@ -7,10 +14,12 @@ import { ChannelBadge } from "@/features/inbox/ui/channel-badge"
 import { EmptyPane } from "@/features/inbox/ui/empty-pane"
 import { ThreadHeader } from "@/features/inbox/ui/thread-header"
 import { ForwardingPauseSwitch } from "@/components/forwarding-pause-switch"
-import { fmt, type AppDict } from "@/content/i18n/app"
+import type { AppDict } from "@/content/i18n/app"
 import type { AttachmentDisplay } from "@/lib/inbox/message-media"
 import type {
+  ThreadEntryView,
   ThreadMessageView,
+  ThreadPauseEventView,
   ThreadReactionView,
 } from "@/lib/messages/display"
 import type { PageChannel } from "@/lib/pages/page-registry"
@@ -20,7 +29,9 @@ import { cn } from "@/lib/utils"
 // burbujas sobre el fondo hundido y, al pie, la franja que explica que las
 // respuestas salen por la API externa. No hay «Abrir en Instagram» en
 // Mensajes: deuda declarada. El hueco de la derecha de la cabecera lo ocupa
-// desde la ADR 0020 el interruptor de pausa de reenvío.
+// desde la ADR 0020 el interruptor de pausa de reenvío, sin texto de estado:
+// el switch ya dice si está encendida, y el desde cuándo va dentro del hilo,
+// como un evento más entre las burbujas (ADR 0021).
 
 export type ThreadHeaderView = {
   conversationId: string
@@ -28,18 +39,18 @@ export type ThreadHeaderView = {
   /** `@cafe.rioja` · `Café Rioja` · `+52 55 1234 5678`. */
   accountLabel: string
   channel: PageChannel
-  /** Pausa de reenvío (ADR 0020): ISO o null, y el «hace…» ya formateado. */
+  /** Pausa de reenvío (ADR 0020): ISO o null. */
   pausedAt: string | null
-  pausedSinceLabel: string | null
 }
 
 export function MessageThread({
   header,
-  messages,
+  entries,
   t,
 }: {
   header: ThreadHeaderView
-  messages: ThreadMessageView[]
+  /** Burbujas y eventos de pausa, ya en orden (`toThreadTimeline`). */
+  entries: ThreadEntryView[]
   t: AppDict
 }) {
   return (
@@ -57,13 +68,7 @@ export function MessageThread({
             pausedAt={header.pausedAt}
             label={t.inbox.pauseLabel}
             ariaLabel={t.inbox.pauseAria}
-            activeLabel={t.inbox.pauseActive}
-            pausedLabel={
-              header.pausedSinceLabel
-                ? fmt(t.inbox.pausePaused, { since: header.pausedSinceLabel })
-                : null
-            }
-            pausedFallbackLabel={t.inbox.pausePausedNow}
+            state={null}
             action={setConversationForwardingPaused.bind(
               null,
               header.conversationId
@@ -73,14 +78,18 @@ export function MessageThread({
       />
 
       <div className="flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto px-7 py-6">
-        {messages.length === 0 ? (
+        {entries.length === 0 ? (
           <p className="m-auto max-w-[22rem] text-center text-[14px] leading-relaxed text-muted-foreground">
             {t.inbox.threadEmpty}
           </p>
         ) : (
-          messages.map((message) => (
-            <MessageBubble key={message.id} message={message} t={t} />
-          ))
+          entries.map((entry) =>
+            entry.kind === "pause" ? (
+              <PauseEventRow key={entry.id} event={entry} />
+            ) : (
+              <MessageBubble key={entry.id} message={entry} t={t} />
+            )
+          )
         )}
       </div>
 
@@ -122,6 +131,34 @@ export function EmptyThread({
           : t.inbox.noConversationsBody
       }
     />
+  )
+}
+
+// Evento de pausa dentro del hilo (ADR 0021): una píldora centrada, como el
+// separador de fecha pero con cuerpo, en aviso cuando se pausó y en éxito
+// cuando se reactivó. Va donde ocurrió, entre las burbujas: así se lee de un
+// vistazo qué mensajes llegaron con el bot apagado.
+function PauseEventRow({ event }: { event: ThreadPauseEventView }) {
+  const Icon = event.paused ? Pause : Play
+  return (
+    <>
+      {event.dayLabel ? (
+        <p className="self-center font-mono text-[10.5px] text-[var(--text-subtle)]">
+          {event.dayLabel}
+        </p>
+      ) : null}
+      <p
+        className={cn(
+          "inline-flex items-center gap-1.5 self-center rounded-full border px-2.5 py-1 text-[11.5px] font-medium",
+          event.paused
+            ? "border-warning-soft-border bg-warning-soft text-warning-soft-foreground"
+            : "border-success-soft-border bg-success-soft text-success-soft-foreground"
+        )}
+      >
+        <Icon className="size-3 shrink-0 fill-current" aria-hidden />
+        {event.text}
+      </p>
+    </>
   )
 }
 

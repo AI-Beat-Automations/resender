@@ -277,13 +277,19 @@ export type AppDict = {
      * deja a soporte sin poder distinguir un bug nuestro de un límite de Meta.
      */
     attachmentStatus: Record<AttachmentStatus, string>
-    /** Pausa de reenvío de la conversación (ADR 0020), en la cabecera del hilo. */
+    /**
+     * Pausa de reenvío de la conversación (ADR 0020), en la cabecera del hilo.
+     * Solo etiqueta y switch, sin texto de estado: el desde cuándo lo cuenta
+     * el hilo (ADR 0021).
+     */
     pauseLabel: string
     pauseAria: string
-    pauseActive: string
-    /** `{since}` */
-    pausePaused: string
-    pausePausedNow: string
+    /**
+     * Eventos de pausa dentro del hilo (ADR 0021), `{date}` ya con hora:
+     * «Automatización pausada desde el 14 sep 2026, 10:32».
+     */
+    pauseEventPaused: string
+    pauseEventResumed: string
     /** `title` del icono de pausa en la fila de la lista. */
     pausedRowTitle: string
   }

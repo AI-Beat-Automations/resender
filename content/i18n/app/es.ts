@@ -300,9 +300,8 @@ export const es: AppDict = {
     imageAlt: "Adjunto de imagen",
     pauseLabel: "Automatización",
     pauseAria: "Pausar o reanudar la automatización de esta conversación",
-    pauseActive: "Activa",
-    pausePaused: "Pausada desde {since}",
-    pausePausedNow: "Pausada",
+    pauseEventPaused: "Automatización pausada desde el {date}",
+    pauseEventResumed: "Automatización activada desde el {date}",
     pausedRowTitle: "Automatización pausada para este contacto",
     attachmentStatus: {
       pending: "descargando…",

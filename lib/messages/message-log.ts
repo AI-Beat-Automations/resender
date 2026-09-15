@@ -553,8 +553,16 @@ export async function getConversationById(
   return row ? mapConversation(row) : null
 }
 
-// Pausa o reanuda el reenvío de una conversación (ADR 0020). Idempotente como
-// la de conexión: pausar lo pausado conserva la fecha original.
+// Pausa o reanuda el reenvío de una conversación (ADR 0020) y deja el cambio
+// en el historial (`conversation_pause_events`, ADR 0021), que es lo que el
+// hilo intercala con los mensajes.
+//
+// Idempotente como la de conexión: pausar lo pausado conserva la fecha
+// original **y no escribe evento**. Por eso el `where` exige que el estado
+// cambie de verdad —`(paused_at is null) = paused`— y las dos escrituras van en
+// un solo statement: el evento sale de la fila actualizada, así que si no hubo
+// cambio no hay fila y no hay evento. Sin ese filtro, dos clics seguidos sobre
+// «pausar» dejarían dos filas «pausada» en el hilo.
 export async function setConversationForwardingPaused(
   tenantId: string,
   conversationId: string,
@@ -562,17 +570,26 @@ export async function setConversationForwardingPaused(
 ) {
   const sql = getSql()
   const [row] = await sql<ConversationRow[]>`
-    update conversations
-    set paused_at = case
-          when ${paused} then coalesce(paused_at, now())
-          else null
-        end,
-        updated_at = now()
-    where id = ${conversationId} and tenant_id = ${tenantId}
-    returning id, tenant_id, connected_page_id, contact_id, contact_name, last_message_at, last_inbound_at, paused_at
+    with changed as (
+      update conversations
+      set paused_at = case when ${paused} then now() else null end,
+          updated_at = now()
+      where id = ${conversationId}
+        and tenant_id = ${tenantId}
+        and (paused_at is null) = ${paused}
+      returning id, tenant_id, connected_page_id, contact_id, contact_name, last_message_at, last_inbound_at, paused_at
+    ),
+    logged as (
+      insert into conversation_pause_events (tenant_id, conversation_id, paused, created_at)
+      select tenant_id, id, ${paused}, coalesce(paused_at, now())
+      from changed
+    )
+    select * from changed
   `
 
-  return row ? mapConversation(row) : null
+  // Sin fila no hubo cambio: o la conversación no existe para este tenant, o
+  // ya estaba como se pide. Se relee para distinguir los dos casos.
+  return row ? mapConversation(row) : getConversationById(tenantId, conversationId)
 }
 
 // Para los comentarios de Instagram, que no cuelgan de una conversación: la
