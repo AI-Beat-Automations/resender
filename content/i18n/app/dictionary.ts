@@ -327,6 +327,11 @@ export type AppDict = {
     subtitle: string
     tabs: Record<SettingsTab, string>
     tabsAria: string
+    /**
+     * Nota de la pestaña Cuenta de un cliente (issue #154): quién administra
+     * su acceso. `{owner}` es el nombre del padre, o su correo si no tiene.
+     */
+    managedBy: string
     language: {
       title: string
       body: string
@@ -463,6 +468,51 @@ export type AppDict = {
       sent: string
       linkExpired: string
     }
+  }
+
+  /**
+   * `/invitacion/[token]` (issue #154, ticket #156): el cliente acepta, fija
+   * su contraseña y entra. Los cuatro estados sin acción —vencida, cancelada,
+   * ya usada, desconocida— explican y no ofrecen nada: el padre reenvía.
+   */
+  invitation: {
+    metaTitle: string
+    eyebrow: string
+    title: string
+    /** `{owner}`: el nombre del padre. */
+    body: string
+    nameLabel: string
+    emailLabel: string
+    passwordLabel: string
+    passwordPlaceholder: string
+    passwordHint: string
+    confirmPasswordLabel: string
+    confirmPasswordPlaceholder: string
+    submit: string
+    submitting: string
+    expiredTitle: string
+    expiredBody: string
+    cancelledTitle: string
+    cancelledBody: string
+    consumedTitle: string
+    consumedBody: string
+    unknownTitle: string
+    unknownBody: string
+  }
+
+  /**
+   * Cuenta restringida de un cliente (issue #154): el padre perdió su
+   * suscripción. Misma pantalla que ve el padre, sin CTA de pago: el cliente
+   * nunca ve planes ni precios. `{owner}` es el nombre del padre.
+   */
+  clientRestricted: {
+    metaTitle: string
+    eyebrow: string
+    title: string
+    body: string
+    /** Sin padre resuelto (cliente con acceso todavía no activo). */
+    bodyNoOwner: string
+    signOut: string
   }
 
   billing: {
@@ -655,6 +705,16 @@ export type AppDict = {
     clientInvitationCancelled: string
     clientMaxUpdated: string
     clientDeleted: string
+    // Aceptación de la invitación (ticket #156). `tooManyAttempts` es el
+    // mismo límite por IP que el acceso y el alta.
+    tooManyAttempts: string
+    invitationNameRequired: string
+    invitationExpired: string
+    invitationCancelled: string
+    invitationConsumed: string
+    invitationUnknown: string
+    invitationEmailTaken: string
+    invitationSignInFailed: string
   }
 
   /**

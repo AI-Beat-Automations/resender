@@ -1,7 +1,7 @@
 import Link from "next/link"
 
 import type { AppDict } from "@/content/i18n/app"
-import { SETTINGS_TABS, type SettingsTab } from "@/lib/settings/settings-tabs"
+import type { SettingsTab } from "@/lib/settings/settings-tabs"
 import { cn } from "@/lib/utils"
 
 // Pestañas de Ajustes como enlaces, no como `Tabs` de Radix (ADR 0005): el
@@ -10,15 +10,18 @@ import { cn } from "@/lib/utils"
 // variant="line"` (subrayado bajo la pestaña activa) sin su comportamiento
 // cliente, y así la pantalla entera sigue siendo server component.
 export function SettingsTabsNav({
+  tabs,
   active,
   t,
 }: {
+  /** Las pestañas de este actor (`settingsTabsFor`): un cliente solo tiene Cuenta. */
+  tabs: readonly SettingsTab[]
   active: SettingsTab
   t: AppDict
 }) {
   return (
     <nav aria-label={t.settings.tabsAria} className="mt-4.5 flex gap-1">
-      {SETTINGS_TABS.map((tab) => {
+      {tabs.map((tab) => {
         const isActive = tab === active
 
         return (

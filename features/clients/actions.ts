@@ -20,6 +20,7 @@ import {
   deleteClientRows,
   deleteClientWithConnections,
 } from "@/lib/clients/client-deletion"
+import { ownerDisplayName } from "@/lib/clients/client-owner"
 import { resolveClientPlan, type ClientPlan } from "@/lib/clients/client-plan"
 import { validateMaxConnections } from "@/lib/clients/client-rules"
 import {
@@ -42,10 +43,6 @@ export type ClientActionState = {
 }
 
 const CLIENTS_PATH = "/clientes"
-
-function ownerDisplayName(session: AppSession): string {
-  return session.user.name.trim() || session.user.email
-}
 
 // El enlace que viaja en el correo. Sale de `BETTER_AUTH_URL` y no de
 // `APP_URL`, por el mismo motivo que el de recuperación de contraseña
@@ -87,7 +84,7 @@ async function inviteClient(input: {
     to: input.email,
     locale: await resolveEmailLocale(),
     clientName: input.clientName,
-    ownerName: ownerDisplayName(input.session),
+    ownerName: ownerDisplayName(input.session.user),
     inviteUrl,
   })
   if (!result.ok) {

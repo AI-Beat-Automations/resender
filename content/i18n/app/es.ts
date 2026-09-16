@@ -351,6 +351,7 @@ export const es: AppDict = {
       suscripcion: "Suscripción",
     },
     tabsAria: "Secciones de ajustes",
+    managedBy: "Tu acceso lo administra {owner}.",
     language: {
       title: "Idioma",
       body: "El idioma de la consola. No cambia el idioma de la API ni el de los correos de Meta.",
@@ -471,6 +472,44 @@ export const es: AppDict = {
       sent: "Listo, te lo reenviamos.",
       linkExpired: "El enlace venció, pide uno nuevo.",
     },
+  },
+
+  invitation: {
+    metaTitle: "Invitación",
+    eyebrow: "invitación",
+    title: "Crea tu acceso.",
+    body: "{owner} te invitó a Resender para que conectes tus redes con tu propio login de Meta. Elige una contraseña y entras directo.",
+    nameLabel: "Tu nombre",
+    emailLabel: "Correo",
+    passwordLabel: "Contraseña",
+    passwordPlaceholder: "Al menos 8 caracteres",
+    passwordHint: "Mínimo 8 caracteres.",
+    confirmPasswordLabel: "Repetir contraseña",
+    confirmPasswordPlaceholder: "Repite la contraseña",
+    submit: "Crear mi acceso",
+    submitting: "Creando…",
+    expiredTitle: "Este enlace venció.",
+    expiredBody:
+      "Las invitaciones duran 7 días. Pídele a quien te invitó que te la reenvíe: te llegará un enlace nuevo.",
+    cancelledTitle: "Esta invitación se canceló.",
+    cancelledBody:
+      "Quien te invitó la retiró. Si crees que es un error, pídele que te mande una nueva.",
+    consumedTitle: "Este enlace ya se usó.",
+    consumedBody:
+      "Tu acceso ya está creado: entra con tu correo y tu contraseña. Si no fuiste tú, pídele a quien te invitó que te mande una invitación nueva.",
+    unknownTitle: "Este enlace no es válido.",
+    unknownBody:
+      "Revisa que hayas copiado la dirección completa del correo. Si sigue sin funcionar, pídele a quien te invitó que te la reenvíe.",
+  },
+
+  clientRestricted: {
+    metaTitle: "Cuenta restringida",
+    eyebrow: "acceso",
+    title: "Tu acceso está en pausa.",
+    body: "La cuenta de {owner}, que administra tu acceso, no tiene una suscripción activa. Tus conexiones y tu inbox vuelven en cuanto se reactive; no tienes que hacer nada.",
+    bodyNoOwner:
+      "Tu acceso todavía no está activo. Pídele a quien te invitó que revise tu invitación.",
+    signOut: "Cerrar sesión",
   },
 
   billing: {
@@ -687,6 +726,19 @@ export const es: AppDict = {
     clientInvitationCancelled: "Invitación cancelada.",
     clientMaxUpdated: "Tope actualizado.",
     clientDeleted: "Cliente eliminado.",
+    tooManyAttempts: "Demasiados intentos. Espera un minuto y vuelve a probar.",
+    invitationNameRequired: "Escribe tu nombre.",
+    invitationExpired:
+      "Este enlace venció. Pídele a quien te invitó que te lo reenvíe.",
+    invitationCancelled:
+      "Esta invitación se canceló. Pídele a quien te invitó una nueva.",
+    invitationConsumed:
+      "Este enlace ya se usó. Entra con tu correo y tu contraseña.",
+    invitationUnknown: "Este enlace no es válido.",
+    invitationEmailTaken:
+      "Ese correo ya tiene una cuenta en Resender. Entra con tu contraseña o recupérala desde el acceso.",
+    invitationSignInFailed:
+      "Tu acceso quedó creado, pero no pudimos iniciar tu sesión. Entra con tu correo y tu contraseña.",
   },
 
   whatsappEvents: {

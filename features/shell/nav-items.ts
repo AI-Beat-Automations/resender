@@ -1,8 +1,8 @@
 // Qué destinos dibuja el sidebar del producto, decidido en el servidor y sin
-// React: el layout resuelve el plan y el sidebar solo pinta. Es la primera
-// entrada condicional (issue #154): «Clientes» solo existe para los planes que
-// pueden invitar. Cuando llegue el actor del cliente (ticket 2), la reducción
-// a Conexiones/Inbox/Ajustes se decide acá también.
+// React: el layout resuelve el actor y el plan, y el sidebar solo pinta. Dos
+// entradas condicionales (issue #154): «Clientes» solo existe para los planes
+// que pueden invitar, y un cliente ve la consola reducida —Conexiones, Inbox y
+// Ajustes— sin Clientes ni la documentación de la API, que no consume.
 
 export type NavKey =
   "navConnections" | "navInbox" | "navClients" | "navSettings" | "navDocs"
@@ -17,9 +17,19 @@ export type NavItemSpec = {
 export type NavVisibility = {
   /** Plan Pro o Business: puede crear e invitar clientes. */
   showClients: boolean
+  /** El actor es un cliente (`clientAccountId` no nulo): consola reducida. */
+  isClient: boolean
 }
 
 export function productNavItems(visibility: NavVisibility): NavItemSpec[] {
+  if (visibility.isClient) {
+    return [
+      { href: "/connections", label: "navConnections" },
+      { href: "/inbox", label: "navInbox" },
+      { href: "/settings", label: "navSettings" },
+    ]
+  }
+
   return [
     { href: "/connections", label: "navConnections" },
     { href: "/inbox", label: "navInbox" },

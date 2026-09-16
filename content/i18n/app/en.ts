@@ -347,6 +347,7 @@ export const en: AppDict = {
       suscripcion: "Subscription",
     },
     tabsAria: "Settings sections",
+    managedBy: "Your access is managed by {owner}.",
     language: {
       title: "Language",
       body: "The language of the console. It doesn't change the API's language or the language of Meta's emails.",
@@ -466,6 +467,44 @@ export const en: AppDict = {
       sent: "Done, we sent it again.",
       linkExpired: "The link expired. Request a new one.",
     },
+  },
+
+  invitation: {
+    metaTitle: "Invitation",
+    eyebrow: "invitation",
+    title: "Create your access.",
+    body: "{owner} invited you to Resender so you can connect your social accounts with your own Meta login. Pick a password and you're in.",
+    nameLabel: "Your name",
+    emailLabel: "Email",
+    passwordLabel: "Password",
+    passwordPlaceholder: "At least 8 characters",
+    passwordHint: "Minimum 8 characters.",
+    confirmPasswordLabel: "Repeat password",
+    confirmPasswordPlaceholder: "Repeat the password",
+    submit: "Create my access",
+    submitting: "Creating…",
+    expiredTitle: "This link has expired.",
+    expiredBody:
+      "Invitations last 7 days. Ask the person who invited you to resend it: you'll get a fresh link.",
+    cancelledTitle: "This invitation was cancelled.",
+    cancelledBody:
+      "The person who invited you withdrew it. If you think that's a mistake, ask them for a new one.",
+    consumedTitle: "This link was already used.",
+    consumedBody:
+      "Your access already exists: sign in with your email and password. If that wasn't you, ask the person who invited you for a new invitation.",
+    unknownTitle: "This link is not valid.",
+    unknownBody:
+      "Check that you copied the full address from the email. If it still doesn't work, ask the person who invited you to resend it.",
+  },
+
+  clientRestricted: {
+    metaTitle: "Restricted account",
+    eyebrow: "access",
+    title: "Your access is paused.",
+    body: "The account of {owner}, which manages your access, has no active subscription. Your connections and inbox come back as soon as it's reactivated; there's nothing you need to do.",
+    bodyNoOwner:
+      "Your access is not active yet. Ask the person who invited you to check your invitation.",
+    signOut: "Sign out",
   },
 
   billing: {
@@ -681,6 +720,19 @@ export const en: AppDict = {
     clientInvitationCancelled: "Invitation cancelled.",
     clientMaxUpdated: "Limit updated.",
     clientDeleted: "Client deleted.",
+    tooManyAttempts: "Too many attempts. Wait a minute and try again.",
+    invitationNameRequired: "Enter your name.",
+    invitationExpired:
+      "This link has expired. Ask the person who invited you to resend it.",
+    invitationCancelled:
+      "This invitation was cancelled. Ask the person who invited you for a new one.",
+    invitationConsumed:
+      "This link was already used. Sign in with your email and password.",
+    invitationUnknown: "This link is not valid.",
+    invitationEmailTaken:
+      "That email already has a Resender account. Sign in with your password or recover it from the sign-in page.",
+    invitationSignInFailed:
+      "Your access was created, but we couldn't start your session. Sign in with your email and password.",
   },
 
   whatsappEvents: {

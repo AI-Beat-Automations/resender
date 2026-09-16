@@ -64,6 +64,7 @@ export type LogAction =
   | "client_invite_cancel"
   | "client_max_update"
   | "client_delete" // desconectó sus conexiones y borró al cliente entero
+  | "client_invite_accept" // el cliente aceptó: user nuevo, verificado y con sesión
   // Un envío del [Canal de correo] (`lib/email/send-email.ts`). Es su propio
   // verbo y no un `outcome` del anterior porque el envío puede fallar solo:
   // el token se emitió igual y la persona se queda esperando un correo que no
@@ -171,6 +172,10 @@ export type LogReason =
   | "email_taken" // el correo ya tiene cuenta o invitación viva
   | "max_out_of_range" // tope fuera de `1..maxPages` del plan
   | "invitation_not_found"
+  // Por qué un enlace `/invitacion/<token>` no se pudo aceptar (ticket #156).
+  | "invitation_expired"
+  | "invitation_cancelled"
+  | "invitation_consumed" // ya se usó, o dos aceptaciones simultáneas
   | "configuration_failed"
   // efectos de borde
   | "usage_counter_failed"

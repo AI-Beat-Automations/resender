@@ -6,6 +6,7 @@ import {
   QuotaNoticeBar,
   type QuotaNoticeView,
 } from "@/features/billing/ui/quota-notice-bar"
+import { ClientRestrictedScreen } from "@/features/clients/ui/client-restricted-screen"
 import { AppSidebar } from "@/features/shell/ui/app-sidebar"
 import { AppI18nProvider } from "@/content/i18n/app/provider"
 import { getAppI18n } from "@/lib/i18n/app-dict"
@@ -13,7 +14,11 @@ import { resolveProductAccess } from "@/lib/auth/waitlist"
 import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
 import type { TenantEntitlement } from "@/lib/billing/entitlements"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
-import { resolveClientPlanCached } from "@/features/clients/queries"
+import { getClientOwner, ownerDisplayName } from "@/lib/clients/client-owner"
+import {
+  resolveActorCached,
+  resolveClientPlanCached,
+} from "@/features/clients/queries"
 import { privatePageMetadata } from "@/lib/seo"
 
 // La app logueada no tiene nada que hacer en el índice. Lo heredan
@@ -34,37 +39,83 @@ export default async function ProductLayout({
   // componentes cliente del shell (el sidebar) y de cada pantalla lo leen de
   // ahí en vez de recibirlo enhebrado por props.
   const { lang, t } = await getAppI18n()
-  // Sesión firmada que apunta a un usuario inexistente: la credencial es
-  // basura y solo se arregla autenticándose de nuevo. `/login` no rebota de
-  // vuelta porque comprueba lo mismo antes de mandar al producto.
-  const access = await resolveProductAccess(session.user.id)
-  if (access === "unknown_user") redirect("/login")
-  if (access === "waitlisted") redirect("/pending")
-  if (!(await hasActiveSubscription(session.user.id))) redirect("/billing")
-
-  // El aviso no debe poder tirar el dashboard: si el entitlement no se puede
-  // resolver, la barra simplemente no aparece (los gates del hot path siguen
-  // siendo fail-closed por su cuenta).
-  let notice: QuotaNoticeView | null = null
-  try {
-    notice = toQuotaNoticeView(await getTenantEntitlement(session.user.id))
-  } catch (error) {
-    console.error("quota notice unavailable", error)
-  }
-
-  // «Clientes» en el sidebar solo para Pro y Business (issue #154). Como el
-  // aviso de cuota: si el plan no se puede resolver, el item no aparece y la
-  // ruta `/clientes` sigue cerrada por su cuenta.
-  let showClients = false
-  try {
-    showClients = (await resolveClientPlanCached(session.user.id)).canManage
-  } catch (error) {
-    console.error("client plan unavailable", error)
-  }
 
   async function signOutAction() {
     "use server"
     await signOut({ redirectTo: "/" })
+  }
+
+  // Sesión → actor → gates → render (issue #154). El actor se lee vivo de la
+  // base, nunca de la sesión: es lo que decide de quién es lo que se ve.
+  // Sesión firmada que apunta a un usuario inexistente: la credencial es
+  // basura y solo se arregla autenticándose de nuevo. `/login` no rebota de
+  // vuelta porque comprueba lo mismo antes de mandar al producto.
+  const resolution = await resolveActorCached(session.user.id)
+  if (resolution.kind === "unknown_user") redirect("/login")
+
+  // Un user con fila de cliente que todavía no está activa: no tiene a dónde
+  // ir. No es `/pending` (esa es la lista de espera, y lo rebotaría) ni
+  // `/billing` (no paga): se le explica y se le deja cerrar sesión.
+  if (resolution.kind === "client_pending") {
+    return (
+      <ClientRestrictedScreen
+        lang={lang}
+        t={t}
+        user={session.user}
+        ownerName={null}
+        signOutAction={signOutAction}
+      />
+    )
+  }
+
+  const { actor } = resolution
+  const isClient = actor.clientAccountId !== null
+
+  if (isClient) {
+    // El cliente salta la lista de espera —su acceso lo decidió el padre al
+    // invitarlo— y su gate de suscripción es el del padre. Sin suscripción
+    // activa ve la cuenta restringida **sin CTA de pago** y nunca `/billing`.
+    if (!(await hasActiveSubscription(actor.tenantId))) {
+      const owner = await getClientOwner(actor.tenantId)
+      return (
+        <ClientRestrictedScreen
+          lang={lang}
+          t={t}
+          user={session.user}
+          ownerName={owner ? ownerDisplayName(owner) : null}
+          signOutAction={signOutAction}
+        />
+      )
+    }
+  } else {
+    const access = await resolveProductAccess(actor.userId)
+    if (access === "waitlisted") redirect("/pending")
+    if (!(await hasActiveSubscription(actor.tenantId))) redirect("/billing")
+  }
+
+  // El aviso no debe poder tirar el dashboard: si el entitlement no se puede
+  // resolver, la barra simplemente no aparece (los gates del hot path siguen
+  // siendo fail-closed por su cuenta). Para un cliente no se monta: la cuota
+  // es del padre y él nunca ve nada de facturación.
+  let notice: QuotaNoticeView | null = null
+  if (!isClient) {
+    try {
+      notice = toQuotaNoticeView(await getTenantEntitlement(actor.tenantId))
+    } catch (error) {
+      console.error("quota notice unavailable", error)
+    }
+  }
+
+  // «Clientes» en el sidebar solo para Pro y Business (issue #154), y nunca
+  // para un cliente. Como el aviso de cuota: si el plan no se puede resolver,
+  // el item no aparece y la ruta `/clientes` sigue cerrada por su cuenta.
+  let showClients = false
+  if (!isClient) {
+    try {
+      showClients = (await resolveClientPlanCached(actor.tenantId)).canManage
+    } catch (error) {
+      console.error("client plan unavailable", error)
+    }
   }
 
   return (
@@ -80,6 +131,7 @@ export default async function ProductLayout({
           name={session.user.name}
           email={session.user.email}
           showClients={showClients}
+          isClient={isClient}
           signOutAction={signOutAction}
         />
         <main className="flex min-w-0 flex-1 flex-col">

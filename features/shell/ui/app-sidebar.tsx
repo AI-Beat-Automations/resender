@@ -40,6 +40,7 @@ export function AppSidebar({
   name,
   email,
   showClients,
+  isClient,
   signOutAction,
 }: {
   /** Puede venir vacío: las cuentas anteriores al alta con nombre. */
@@ -47,11 +48,13 @@ export function AppSidebar({
   email: string
   /** Plan Pro o Business (issue #154): dibuja «Clientes». */
   showClients: boolean
+  /** El actor es un cliente (issue #154): consola reducida. */
+  isClient: boolean
   signOutAction: () => Promise<void>
 }) {
   const pathname = usePathname()
   const t = useAppDict().shell
-  const navItems = productNavItems({ showClients })
+  const navItems = productNavItems({ showClients, isClient })
 
   return (
     <aside className="flex h-svh w-[var(--sidebar-w)] shrink-0 flex-col border-r border-sidebar-border bg-sidebar px-3 pt-5 pb-3.5">
