@@ -31,7 +31,7 @@ import {
 } from "@/lib/account/media-purge"
 import {
   validatePasswordChangeInput,
-  type AuthInputError,
+  AUTH_INPUT_KEY,
 } from "@/lib/auth/validation"
 import { getStripe } from "@/lib/billing/stripe"
 import { deleteAllClientsOfTenant } from "@/lib/clients/client-deletion"
@@ -43,16 +43,6 @@ export type DeleteAccountState = {
 }
 
 // El validador devuelve códigos (`lib/auth/validation`); esta tabla los lleva a
-// la clave del diccionario. Es un `Record` sobre la unión: un código nuevo no
-// compila hasta que alguien decida cómo se dice.
-const AUTH_INPUT_KEY: Record<
-  AuthInputError,
-  "invalidEmail" | "passwordTooShort" | "passwordsDoNotMatch"
-> = {
-  invalid_email: "invalidEmail",
-  password_too_short: "passwordTooShort",
-  passwords_do_not_match: "passwordsDoNotMatch",
-}
 
 export type ChangePasswordState = {
   error?: string

@@ -26,6 +26,7 @@ import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
 import type { TenantEntitlement } from "@/lib/billing/entitlements"
 import { getPlanByLookupKey } from "@/lib/billing/plans"
 import { getSubscriptionByTenantId } from "@/lib/billing/subscription"
+import { isClientActor } from "@/lib/clients/actor"
 import { getClientOwner, ownerDisplayName } from "@/lib/clients/client-owner"
 import {
   resolveSettingsTab,
@@ -86,7 +87,7 @@ export default async function SettingsPage({
           <AccountTab
             email={session.user.email ?? ""}
             userId={actor.userId}
-            clientTenantId={actor.clientAccountId ? actor.tenantId : null}
+            clientTenantId={isClientActor(actor) ? actor.tenantId : null}
             lang={lang}
             t={t}
             oauthError={params.error}

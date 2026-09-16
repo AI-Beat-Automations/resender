@@ -475,7 +475,6 @@ export const es: AppDict = {
   },
 
   invitation: {
-    metaTitle: "Invitación",
     eyebrow: "invitación",
     title: "Crea tu acceso.",
     body: "{owner} te invitó a Resender para que conectes tus redes con tu propio login de Meta. Elige una contraseña y entras directo.",
@@ -503,7 +502,6 @@ export const es: AppDict = {
   },
 
   clientRestricted: {
-    metaTitle: "Cuenta restringida",
     eyebrow: "acceso",
     title: "Tu acceso está en pausa.",
     body: "La cuenta de {owner}, que administra tu acceso, no tiene una suscripción activa. Tus conexiones y tu inbox vuelven en cuanto se reactive; no tienes que hacer nada.",

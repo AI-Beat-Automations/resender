@@ -6,9 +6,13 @@ import {
   ClientsPanel,
   type ClientView,
 } from "@/features/clients/ui/clients-panel"
-import { resolveClientPlanCached } from "@/features/clients/queries"
+import {
+  resolveActorCached,
+  resolveClientPlanCached,
+} from "@/features/clients/queries"
 import { ConsolePage } from "@/features/shell/ui/console-page"
 import { getSession } from "@/lib/auth/session"
+import { isClientActor } from "@/lib/clients/actor"
 import type { AppDict } from "@/content/i18n/app"
 import {
   listClientAccounts,
@@ -24,6 +28,13 @@ export default async function ClientsPage() {
   const [session, t] = await Promise.all([getSession(), getAppDict()])
   if (!session?.user?.id) redirect("/login")
   const tenantId = session.user.id
+
+  // Un cliente no ve el módulo Clientes ni el aviso de planes: el sidebar ya
+  // no se lo dibuja, y por URL vuelve a Conexiones.
+  const resolution = await resolveActorCached(tenantId)
+  if (resolution.kind === "actor" && isClientActor(resolution.actor)) {
+    redirect("/connections")
+  }
 
   const plan = await resolveClientPlanCached(tenantId)
   const clients = await listClientAccounts(tenantId)

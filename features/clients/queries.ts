@@ -1,6 +1,6 @@
 import { cache } from "react"
 
-import { resolveActorByUserId } from "@/lib/clients/actor"
+import { resolveActor } from "@/lib/clients/actor"
 import { resolveClientPlan } from "@/lib/clients/client-plan"
 
 // El layout de `(product)` (para el item del sidebar) y la página de Clientes
@@ -11,5 +11,8 @@ export const resolveClientPlanCached = cache(resolveClientPlan)
 // El actor de la request (issue #154): el layout lo resuelve para el gate y el
 // sidebar, y cada pantalla lo vuelve a pedir para filtrar lo suyo. Una sola
 // lectura por render. La clave es el id de la sesión, que es lo único que el
-// resolutor necesita.
-export const resolveActorCached = cache(resolveActorByUserId)
+// resolutor necesita: `cache` deduplica por argumentos, y un objeto de sesión
+// nuevo por llamada nunca coincidiría.
+export const resolveActorCached = cache((userId: string) =>
+  resolveActor({ user: { id: userId } })
+)

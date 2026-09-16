@@ -34,7 +34,7 @@ type InvitationPageProps = {
 
 export default async function InvitationPage({ params }: InvitationPageProps) {
   const [{ token }, { lang, t }] = await Promise.all([params, getAppI18n()])
-  const peek = await peekInvitation(decodeURIComponent(token))
+  const peek = await peekInvitation(token)
 
   return (
     <AccessShell lang={lang}>
@@ -53,7 +53,7 @@ export default async function InvitationPage({ params }: InvitationPageProps) {
                 como los del producto: el provider baja solo el idioma en uso. */}
             <AppI18nProvider lang={lang} dict={t}>
               <AcceptInvitationForm
-                token={decodeURIComponent(token)}
+                token={token}
                 clientName={peek.clientName}
                 email={peek.email}
               />
@@ -76,19 +76,32 @@ function DeadInvitation({
   state: Exclude<InvitationPeek["state"], "live">
   t: AppDict
 }) {
-  const copy = {
-    expired: [t.invitation.expiredTitle, t.invitation.expiredBody],
-    cancelled: [t.invitation.cancelledTitle, t.invitation.cancelledBody],
-    consumed: [t.invitation.consumedTitle, t.invitation.consumedBody],
-    unknown: [t.invitation.unknownTitle, t.invitation.unknownBody],
-  }[state]
+  const copy: Record<typeof state, { title: string; body: string }> = {
+    expired: {
+      title: t.invitation.expiredTitle,
+      body: t.invitation.expiredBody,
+    },
+    cancelled: {
+      title: t.invitation.cancelledTitle,
+      body: t.invitation.cancelledBody,
+    },
+    consumed: {
+      title: t.invitation.consumedTitle,
+      body: t.invitation.consumedBody,
+    },
+    unknown: {
+      title: t.invitation.unknownTitle,
+      body: t.invitation.unknownBody,
+    },
+  }
+  const { title, body } = copy[state]
 
   return (
     <>
       <h1 className="mt-1.5 font-heading text-2xl font-bold tracking-tight">
-        {copy[0]}
+        {title}
       </h1>
-      <p className="mt-2 text-sm text-muted-foreground">{copy[1]}</p>
+      <p className="mt-2 text-sm text-muted-foreground">{body}</p>
     </>
   )
 }

@@ -6,6 +6,7 @@ import { SignOutForm } from "@/components/sign-out-form"
 import { AccessEyebrow, AccessShell } from "@/features/auth/ui/access-shell"
 import { startCheckout } from "@/features/billing/actions"
 import { resolveProductAccess } from "@/lib/auth/waitlist"
+import { isClientActor, resolveActor } from "@/lib/clients/actor"
 import { PLANS } from "@/lib/billing/plans"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
 import { privatePageMetadata } from "@/lib/seo"
@@ -38,6 +39,12 @@ export default async function BillingPage() {
   const numberFormat = new Intl.NumberFormat(t.intl)
   const session = await getSession()
   if (!session?.user?.id) redirect("/login")
+  // Un cliente (issue #154) nunca ve planes ni precios: su suscripción es la
+  // del padre, y la cuenta restringida se la dibuja el layout de `(product)`.
+  const resolution = await resolveActor(session)
+  if (resolution.kind === "actor" && isClientActor(resolution.actor)) {
+    redirect("/connections")
+  }
   const access = await resolveProductAccess(session.user.id)
   if (access === "unknown_user") redirect("/login")
   if (access === "waitlisted") redirect("/pending")

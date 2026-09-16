@@ -9,7 +9,7 @@ import { allowAuthAttempt } from "@/lib/auth/rate-limit"
 import {
   validateNameInput,
   validatePasswordChangeInput,
-  type AuthInputError,
+  AUTH_INPUT_KEY,
 } from "@/lib/auth/validation"
 import {
   acceptInvitation,
@@ -28,17 +28,6 @@ import { posthog } from "@/lib/posthog"
 
 export type AcceptInvitationState = {
   error?: string
-}
-
-// Código del validador → clave del diccionario del producto. `Record` sobre
-// la unión: un código nuevo no compila hasta que alguien decida cómo se dice.
-const AUTH_INPUT_KEY: Record<
-  AuthInputError,
-  "invalidEmail" | "passwordTooShort" | "passwordsDoNotMatch"
-> = {
-  invalid_email: "invalidEmail",
-  password_too_short: "passwordTooShort",
-  passwords_do_not_match: "passwordsDoNotMatch",
 }
 
 type AcceptFailure = Extract<AcceptInvitationResult, { ok: false }>["reason"]

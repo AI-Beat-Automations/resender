@@ -470,7 +470,6 @@ export const en: AppDict = {
   },
 
   invitation: {
-    metaTitle: "Invitation",
     eyebrow: "invitation",
     title: "Create your access.",
     body: "{owner} invited you to Resender so you can connect your social accounts with your own Meta login. Pick a password and you're in.",
@@ -498,7 +497,6 @@ export const en: AppDict = {
   },
 
   clientRestricted: {
-    metaTitle: "Restricted account",
     eyebrow: "access",
     title: "Your access is paused.",
     body: "The account of {owner}, which manages your access, has no active subscription. Your connections and inbox come back as soon as it's reactivated; there's nothing you need to do.",

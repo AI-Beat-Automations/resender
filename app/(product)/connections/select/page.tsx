@@ -5,6 +5,8 @@ import { TriangleAlert } from "lucide-react"
 import { ConnectFacebookButton } from "@/features/connect-meta/ui/connect-facebook-button"
 import { PageSelectionForm } from "@/features/connect-meta/ui/page-selection-form"
 import { getSession } from "@/lib/auth/session"
+import { isClientActor } from "@/lib/clients/actor"
+import { resolveActorCached } from "@/features/clients/queries"
 import { resolvePlanLimits } from "@/lib/billing/entitlements"
 import { getSubscriptionByTenantId } from "@/lib/billing/subscription"
 import { listAuthorizedPages, type ConnectedPage } from "@/lib/meta"
@@ -33,6 +35,14 @@ export default async function SelectPagesPage() {
   if (!session?.user?.id) redirect("/login")
   const tenantId = session.user.id
   const t = await getAppDict()
+
+  // Conectar como cliente —con su `client_account_id` y su tope— es el
+  // ticket 3 del issue #154. Hasta entonces la selección escribiría la fila
+  // con el user del cliente como tenant, así que se cierra por actor.
+  const resolution = await resolveActorCached(tenantId)
+  if (resolution.kind === "actor" && isClientActor(resolution.actor)) {
+    redirect("/connections")
+  }
 
   // Sin user access token guardado no hay nada que listar: el usuario todavía
   // no pasó por el diálogo de Meta (o su credencial dejó de ser legible).

@@ -15,7 +15,7 @@ import {
   validateAuthInput,
   validateNameInput,
   validatePasswordChangeInput,
-  type AuthInputError,
+  AUTH_INPUT_KEY,
   type NameInputError,
 } from "@/lib/auth/validation"
 import { posthog } from "@/lib/posthog"
@@ -89,17 +89,6 @@ export async function loginAction(
   // El redirect va acá y **fuera del try**, porque `redirect()` funciona
   // lanzando y un catch lo tragaría.
   redirect("/connections")
-}
-
-// Código del validador → clave del diccionario. `Record` sobre la unión: un
-// código nuevo no compila hasta que alguien decida cómo se dice.
-const AUTH_INPUT_KEY: Record<
-  AuthInputError,
-  "invalidEmail" | "passwordTooShort" | "passwordsDoNotMatch"
-> = {
-  invalid_email: "invalidEmail",
-  password_too_short: "passwordTooShort",
-  passwords_do_not_match: "passwordsDoNotMatch",
 }
 
 const NAME_INPUT_KEY: Record<NameInputError, "nameRequired"> = {

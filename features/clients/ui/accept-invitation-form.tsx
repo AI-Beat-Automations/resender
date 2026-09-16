@@ -38,14 +38,9 @@ export function AcceptInvitationForm({
       <input type="hidden" name="token" value={token} />
       <div className="grid gap-2">
         <Label htmlFor="email">{t.emailLabel}</Label>
-        <Input
-          id="email"
-          type="email"
-          value={email}
-          readOnly
-          disabled
-          autoComplete="username"
-        />
+        {/* Solo lectura y sin `name`: el correo es el de la invitación y lo
+            resuelve el servidor por el token, no el formulario. */}
+        <Input id="email" type="email" value={email} readOnly />
       </div>
       <div className="grid gap-2">
         <Label htmlFor="name">{t.nameLabel}</Label>

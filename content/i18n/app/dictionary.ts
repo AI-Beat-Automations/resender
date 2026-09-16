@@ -476,7 +476,6 @@ export type AppDict = {
    * ya usada, desconocida— explican y no ofrecen nada: el padre reenvía.
    */
   invitation: {
-    metaTitle: string
     eyebrow: string
     title: string
     /** `{owner}`: el nombre del padre. */
@@ -506,7 +505,6 @@ export type AppDict = {
    * nunca ve planes ni precios. `{owner}` es el nombre del padre.
    */
   clientRestricted: {
-    metaTitle: string
     eyebrow: string
     title: string
     body: string

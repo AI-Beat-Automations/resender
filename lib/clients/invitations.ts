@@ -169,6 +169,25 @@ async function findInvitationByToken(
   return row
 }
 
+// Lo que comparten el peek y el aceptar: la fila si sirve, o por qué no.
+async function findLiveInvitation(
+  token: string,
+  now: Date
+): Promise<
+  | { state: "live"; row: InvitationLookupRow }
+  | { state: Exclude<InvitationState, "live"> }
+> {
+  const row = await findInvitationByToken(token)
+  const state = classifyInvitation(row, now)
+  return state === "live" && row ? { state, row } : { state: dead(state) }
+}
+
+// Solo para que el tipo del `state` de arriba no arrastre `"live"`: sin fila,
+// `classifyInvitation` ya devolvió `"unknown"`.
+function dead(state: InvitationState): Exclude<InvitationState, "live"> {
+  return state === "live" ? "unknown" : state
+}
+
 export type InvitationPeek =
   | { state: "live"; clientName: string; email: string; ownerName: string }
   | { state: Exclude<InvitationState, "live"> }
@@ -182,10 +201,9 @@ export async function peekInvitation(
 ): Promise<InvitationPeek> {
   if (!token) return { state: "unknown" }
 
-  const row = await findInvitationByToken(token)
-  const state = classifyInvitation(row, now)
-  if (state !== "live") return { state }
-  if (!row) return { state: "unknown" }
+  const found = await findLiveInvitation(token, now)
+  if (found.state !== "live") return { state: found.state }
+  const { row } = found
 
   return {
     state: "live",
@@ -231,10 +249,9 @@ export async function acceptInvitation(input: {
   const sql = getSql()
   const now = input.now ?? new Date()
 
-  const row = await findInvitationByToken(input.token)
-  const state = classifyInvitation(row, now)
-  if (state !== "live") return { ok: false, reason: state }
-  if (!row) return { ok: false, reason: "unknown" }
+  const found = await findLiveInvitation(input.token, now)
+  if (found.state !== "live") return { ok: false, reason: found.state }
+  const { row } = found
 
   // Puede haber cambiado desde que el padre invitó (la persona se registró
   // por su cuenta): si se consumiera el token primero, quedaría gastado sin

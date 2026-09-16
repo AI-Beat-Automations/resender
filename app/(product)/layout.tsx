@@ -14,6 +14,7 @@ import { resolveProductAccess } from "@/lib/auth/waitlist"
 import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
 import type { TenantEntitlement } from "@/lib/billing/entitlements"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
+import { isClientActor } from "@/lib/clients/actor"
 import { getClientOwner, ownerDisplayName } from "@/lib/clients/client-owner"
 import {
   resolveActorCached,
@@ -69,7 +70,7 @@ export default async function ProductLayout({
   }
 
   const { actor } = resolution
-  const isClient = actor.clientAccountId !== null
+  const isClient = isClientActor(actor)
 
   if (isClient) {
     // El cliente salta la lista de espera —su acceso lo decidió el padre al
