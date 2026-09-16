@@ -21,6 +21,7 @@ export const en: AppDict = {
     home: "Resender.dev — home",
     navConnections: "Connections",
     navInbox: "Inbox",
+    navClients: "Clients",
     navSettings: "Settings",
     navDocs: "Documentation",
     breadcrumbConsole: "Console",
@@ -490,6 +491,72 @@ export const en: AppDict = {
     successSlowAfter: ".",
   },
 
+  clients: {
+    title: "Clients",
+    subtitle:
+      "Create a space for each business you manage. The client connects their accounts with their own Meta login and you see them in Connections and Inbox.",
+    gateTitle: "Clients is a Pro and Business feature",
+    gateBody:
+      "Your current plan can't invite clients. You can check your plan in Settings → Subscription.",
+    createTitle: "New client",
+    createBody:
+      "On save, the client gets an email with a link to create their access. The link expires in 7 days.",
+    nameLabel: "Name",
+    namePlaceholder: "Sol Bakery",
+    emailLabel: "Email",
+    emailPlaceholder: "client@business.com",
+    maxLabel: "Connection limit",
+    maxHint: "Between 1 and {maxPages}, your plan's maximum.",
+    create: "Create and invite",
+    creating: "Creating…",
+    listTitle: "Your clients",
+    listBody:
+      "Each invitation's status and how many connections each client has against their limit.",
+    empty: "No clients yet. Create the first one above.",
+    headName: "NAME",
+    headEmail: "EMAIL",
+    headStatus: "STATUS",
+    headUsage: "CONNECTED / LIMIT",
+    headActions: "Actions",
+    statusPending: "Pending",
+    statusActive: "Active",
+    invitationCancelledNote: "Invitation cancelled",
+    invitationExpiredNote: "Invitation expired",
+    usage: "{connected} / {max}",
+    resend: "Resend",
+    resending: "Resending…",
+    cancelInvitation: "Cancel invitation",
+    cancelling: "Cancelling…",
+    editMax: "Edit limit",
+    editMaxTitle: "Connection limit for {name}",
+    editMaxBody:
+      "You can set it below what they already have connected: nothing gets disconnected, but the cell turns red until the client frees up connections.",
+    editMaxSave: "Save limit",
+    editMaxSaving: "Saving…",
+    delete: "Delete",
+    deleteTitle: "Delete {name}?",
+    deleteBody:
+      "Their access, their connections and all their history will be removed. This cannot be undone.",
+    deleteConnectionsIntro: "These connections will be disconnected:",
+    deleteNoConnections: "This client has no active connections.",
+    deleteConfirm: "Yes, delete client",
+    deleting: "Deleting…",
+    invitationEmail: {
+      subject: "{owner} invited you to Resender",
+      preheader:
+        "Create your access to connect your accounts. The link expires in 7 days.",
+      greeting: "Hi {name},",
+      intro:
+        "{owner} invited you to Resender so you can connect your Messenger, Instagram or WhatsApp accounts with your own Meta login. Create your access with the button below.",
+      ctaLabel: "Create my access",
+      expiryNote: "The link expires in 7 days.",
+      fallbackLabel: "Button not working? Copy this address:",
+      ignoreNote:
+        "If you weren't expecting this invitation, ignore this message: nobody can create an access with your email without this link.",
+      footerNote: "Resender · resender.dev",
+    },
+  },
+
   metaErrors: {
     prefix: "Couldn't connect",
     unknown: "Couldn't connect: {reason}.",
@@ -596,6 +663,24 @@ export const en: AppDict = {
     oauthAccountNotLinked:
       "It wasn't linked: confirm your email first and try again.",
     conversationNotFound: "We couldn't find that conversation.",
+    clientsPlanNotAllowed:
+      "Clients is available on the Pro and Business plans.",
+    clientNameRequired: "Type the client's name.",
+    clientEmailAlreadyRegistered:
+      "That email already has a Resender account or a pending invitation. Use a different one.",
+    clientMaxOutOfRange:
+      "The connection limit must be between 1 and {maxPages}.",
+    clientNotFound: "We couldn't find that client.",
+    clientInvitationNotFound: "That client has no pending invitation.",
+    clientCreated: "Client created. We sent the invitation to {email}.",
+    clientCreatedEmailFailed:
+      "Client created, but we couldn't send the invitation. Resend it from the list.",
+    clientInvitationResent: "Invitation resent to {email}.",
+    clientInvitationResentEmailFailed:
+      "We couldn't send the invitation. Try again in a minute.",
+    clientInvitationCancelled: "Invitation cancelled.",
+    clientMaxUpdated: "Limit updated.",
+    clientDeleted: "Client deleted.",
   },
 
   whatsappEvents: {

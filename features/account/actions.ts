@@ -34,6 +34,7 @@ import {
   type AuthInputError,
 } from "@/lib/auth/validation"
 import { getStripe } from "@/lib/billing/stripe"
+import { deleteAllClientsOfTenant } from "@/lib/clients/client-deletion"
 import { describeError, log } from "@/lib/observability/logger"
 import { unsubscribeChannelWebhook } from "@/lib/pages/channel-webhook"
 
@@ -154,6 +155,20 @@ export async function deleteAccountAction(
     )
   ) {
     return { error: t.actions.confirmEmailMismatch }
+  }
+
+  // Primero los clientes (issue #154), cada uno con el mismo procedimiento que
+  // «Eliminar» en `/clientes`: baja en Meta de sus conexiones, su user y su
+  // espacio. Va **antes** del paso 1 de media: si esto falla, la cuenta sigue
+  // entera y sin ninguna fila de purga escrita, así que se puede reintentar.
+  // Sus conexiones cuelgan del tenant del padre, pero `loadTenantDeletionContext`
+  // ya no las incluye (filtra `client_account_id is null`): se desuscriben acá
+  // y solo acá.
+  try {
+    await deleteAllClientsOfTenant(session.user.id)
+  } catch (error) {
+    console.error("client accounts deletion failed", session.user.id, error)
+    return { error: t.actions.deletePrepareFailed }
   }
 
   // Paso 1 de 3 del borrado de media: dejar escrito el prefijo R2 del tenant

@@ -97,7 +97,22 @@ Revocar es apagar la key, no borrarla: la fila queda con su estado y deja de aut
 
 ### Tenant
 
-En el MVP, `tenantId = userId` de nuestra autenticación.
+En el MVP, `tenantId = userId` de nuestra autenticación, con una sola ampliación desde el módulo Clientes: **un [Cliente] hereda el `tenantId` del [Padre]**. Sus conexiones, conversaciones, mensajes, contadores y cuota se guardan y se filtran con el `tenant_id` del padre; lo que distingue lo del cliente es `connected_pages.client_account_id`, no otro tenant. La regla sigue siendo «toda consulta filtra por un solo tenant id»: el resolutor de actor que la aplica en cada request llega con el ticket 2 del issue #154.
+
+### Padre
+
+El tenant dueño del plan: quien paga, quien ve todas las conexiones y todo el inbox, y quien puede crear [Cliente]s si su plan es `pro_monthly` o `business_monthly`. Starter y Free ven `/clientes` con un aviso, sin CTA de compra nuevo. No es una entidad propia: es el [Usuario MVP] de siempre visto desde el módulo Clientes.
+
+### Cliente
+
+Un espacio que el [Padre] crea desde `/clientes` para un negocio cuyas redes administra: nombre, correo y un **tope de conexiones**. Vive en `client_accounts` (migración 0027) con `user_id` nulo hasta que la persona acepta la invitación; entonces pasa de `pending` a `active`. Un user es cliente de a lo sumo un padre.
+El tope es un **máximo, no una reserva**: se valida `1 ≤ tope ≤ maxPages del plan del padre` (ADR 0011: `maxPages` sigue significando «máximo de conexiones») y se acepta uno menor a lo que el cliente ya tiene conectado; la lista pinta `conectadas / tope` en rojo en vez de desconectar nada en nombre del cliente. La regla de cupo al conectar —`client-limits`— llega con el ticket 3 del issue #154.
+Crear al cliente manda la [Invitacion de cliente]. Reenviar emite un token nuevo y cancela el anterior; cancelar deja al cliente pendiente sin enlace vivo; **eliminar** muestra las conexiones que se van a desconectar y, al confirmar, da de baja cada una del webhook de Meta como la [Desconexión de páginas], borra el user del cliente si ya aceptó y borra el espacio con sus conexiones, conversaciones y mensajes por cascade. Nada vuelve al padre. Borrar la cuenta del padre elimina primero a sus clientes con ese mismo procedimiento (`lib/clients/client-deletion.ts`).
+Un cliente **nunca** ve el módulo Clientes ni nada de facturación; su consola reducida y el filtrado por actor son los tickets 2 y 4 del issue #154. **No confundir con [Cuenta conectada]**, que es una página, cuenta o número de Meta: un cliente es la persona a la que se le deja conectar las suyas.
+
+### Invitacion de cliente
+
+El correo que le llega al [Cliente] cuando el [Padre] lo crea o reenvía. Sale por el [Canal de correo] (plantilla `RESEND_TEMPLATE_CLIENT_INVITATION`, copia en `docs/email/client-invitation.html`) en el idioma resuelto como los demás correos, con el nombre del padre en el asunto, y trae un enlace `/invitacion/<token>` que **vive siete días**. En la base (`client_invitations`) queda solo el hash SHA-256 del token, con el mismo criterio que el [API Token]; el token en claro existe únicamente en el correo. Reenviar crea una fila nueva y cancela la anterior: nunca hay dos enlaces válidos a la vez. Se rechaza crear un cliente con un correo que ya tiene cuenta o una invitación viva, con mensaje explícito. La página de aceptación llega con el ticket 2.
 
 ### Usuario MVP
 

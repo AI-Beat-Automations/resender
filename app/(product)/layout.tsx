@@ -13,6 +13,7 @@ import { resolveProductAccess } from "@/lib/auth/waitlist"
 import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
 import type { TenantEntitlement } from "@/lib/billing/entitlements"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
+import { resolveClientPlanCached } from "@/features/clients/queries"
 import { privatePageMetadata } from "@/lib/seo"
 
 // La app logueada no tiene nada que hacer en el índice. Lo heredan
@@ -51,6 +52,16 @@ export default async function ProductLayout({
     console.error("quota notice unavailable", error)
   }
 
+  // «Clientes» en el sidebar solo para Pro y Business (issue #154). Como el
+  // aviso de cuota: si el plan no se puede resolver, el item no aparece y la
+  // ruta `/clientes` sigue cerrada por su cuenta.
+  let showClients = false
+  try {
+    showClients = (await resolveClientPlanCached(session.user.id)).canManage
+  } catch (error) {
+    console.error("client plan unavailable", error)
+  }
+
   async function signOutAction() {
     "use server"
     await signOut({ redirectTo: "/" })
@@ -68,6 +79,7 @@ export default async function ProductLayout({
         <AppSidebar
           name={session.user.name}
           email={session.user.email}
+          showClients={showClients}
           signOutAction={signOutAction}
         />
         <main className="flex min-w-0 flex-1 flex-col">

@@ -70,6 +70,11 @@
     "RESEND_TEMPLATE_VERIFY_EMAIL": "a2be1ed8-a821-4916-871d-2a375dc3593b",
     // Plantilla en Resend: `docs/email/account-linked.html`.
     "RESEND_TEMPLATE_ACCOUNT_LINKED": "f76d75f9-4b9f-4064-b195-c90a5cb8d0ae",
+    // Invitación de un cliente (issue #154). Plantilla en Resend:
+    // `docs/email/client-invitation.html`. Mientras esté vacía,
+    // `sendClientInvitationEmail` devuelve `not_configured` y lo deja en el
+    // log: el cliente se crea igual y la lista ofrece reenviar.
+    "RESEND_TEMPLATE_CLIENT_INVITATION": "",
   },
   // Entrega durable al webhook del tenant. Las colas ya existen en la cuenta
   // (`docs/api-cloudflare-manual-runbook.md`), creadas cuando esto vivía en el
@@ -265,6 +270,7 @@
         "RESEND_TEMPLATE_PASSWORD_RESET": "ee224341-7e08-4c4d-84e0-cdb14228a424",
         "RESEND_TEMPLATE_VERIFY_EMAIL": "a2be1ed8-a821-4916-871d-2a375dc3593b",
         "RESEND_TEMPLATE_ACCOUNT_LINKED": "f76d75f9-4b9f-4064-b195-c90a5cb8d0ae",
+        "RESEND_TEMPLATE_CLIENT_INVITATION": "",
       },
       // Colas propias. Compartirlas con producción haría que un job de prueba
       // saliera hacia el webhook real de un cliente que paga.

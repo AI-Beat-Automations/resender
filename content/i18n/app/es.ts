@@ -23,6 +23,7 @@ export const es: AppDict = {
     home: "Resender.dev — inicio",
     navConnections: "Conexiones",
     navInbox: "Inbox",
+    navClients: "Clientes",
     navSettings: "Ajustes",
     navDocs: "Documentación",
     breadcrumbConsole: "Consola",
@@ -495,6 +496,72 @@ export const es: AppDict = {
     successSlowAfter: ".",
   },
 
+  clients: {
+    title: "Clientes",
+    subtitle:
+      "Crea un espacio para cada negocio que administras. El cliente conecta sus redes con su propio login de Meta y tú las ves en Conexiones e Inbox.",
+    gateTitle: "Clientes es una función de los planes Pro y Business",
+    gateBody:
+      "Con tu plan actual no puedes invitar clientes. Puedes ver tu plan en Ajustes → Suscripción.",
+    createTitle: "Nuevo cliente",
+    createBody:
+      "Al guardar, el cliente recibe un correo con un enlace para crear su acceso. El enlace vence en 7 días.",
+    nameLabel: "Nombre",
+    namePlaceholder: "Panadería Sol",
+    emailLabel: "Correo",
+    emailPlaceholder: "cliente@negocio.com",
+    maxLabel: "Tope de conexiones",
+    maxHint: "Entre 1 y {maxPages}, el máximo de tu plan.",
+    create: "Crear e invitar",
+    creating: "Creando…",
+    listTitle: "Tus clientes",
+    listBody:
+      "Estado de cada invitación y cuántas conexiones tiene cada cliente frente a su tope.",
+    empty: "Todavía no tienes clientes. Crea el primero arriba.",
+    headName: "NOMBRE",
+    headEmail: "CORREO",
+    headStatus: "ESTADO",
+    headUsage: "CONECTADAS / TOPE",
+    headActions: "Acciones",
+    statusPending: "Pendiente",
+    statusActive: "Activo",
+    invitationCancelledNote: "Invitación cancelada",
+    invitationExpiredNote: "Invitación vencida",
+    usage: "{connected} / {max}",
+    resend: "Reenviar",
+    resending: "Reenviando…",
+    cancelInvitation: "Cancelar invitación",
+    cancelling: "Cancelando…",
+    editMax: "Editar tope",
+    editMaxTitle: "Tope de conexiones de {name}",
+    editMaxBody:
+      "Puedes bajarlo por debajo de lo que ya tiene conectado: no se desconecta nada, pero la celda se marca en rojo hasta que el cliente libere conexiones.",
+    editMaxSave: "Guardar tope",
+    editMaxSaving: "Guardando…",
+    delete: "Eliminar",
+    deleteTitle: "¿Eliminar a {name}?",
+    deleteBody:
+      "Se elimina su acceso, sus conexiones y todo su historial. Esta acción no se puede deshacer.",
+    deleteConnectionsIntro: "Se van a desconectar estas conexiones:",
+    deleteNoConnections: "Este cliente no tiene conexiones activas.",
+    deleteConfirm: "Sí, eliminar cliente",
+    deleting: "Eliminando…",
+    invitationEmail: {
+      subject: "{owner} te invita a Resender",
+      preheader:
+        "Crea tu acceso para conectar tus redes. El enlace vence en 7 días.",
+      greeting: "Hola {name},",
+      intro:
+        "{owner} te invitó a Resender para que conectes tus cuentas de Messenger, Instagram o WhatsApp con tu propio login de Meta. Crea tu acceso con el botón de abajo.",
+      ctaLabel: "Crear mi acceso",
+      expiryNote: "El enlace vence en 7 días.",
+      fallbackLabel: "¿No funciona el botón? Copia esta dirección:",
+      ignoreNote:
+        "Si no esperabas esta invitación, ignora este mensaje: nadie puede crear un acceso con tu correo sin este enlace.",
+      footerNote: "Resender · resender.dev",
+    },
+  },
+
   metaErrors: {
     prefix: "No se pudo conectar",
     unknown: "No se pudo conectar: {reason}.",
@@ -602,6 +669,24 @@ export const es: AppDict = {
     oauthAccountNotLinked:
       "No se vinculó: confirma tu correo primero y vuelve a intentarlo.",
     conversationNotFound: "No encontramos esa conversación.",
+    clientsPlanNotAllowed:
+      "Clientes está disponible en los planes Pro y Business.",
+    clientNameRequired: "Escribe el nombre del cliente.",
+    clientEmailAlreadyRegistered:
+      "Ese correo ya tiene una cuenta en Resender o una invitación pendiente. Usa otro correo.",
+    clientMaxOutOfRange:
+      "El tope de conexiones tiene que estar entre 1 y {maxPages}.",
+    clientNotFound: "No encontramos ese cliente.",
+    clientInvitationNotFound: "Ese cliente no tiene una invitación pendiente.",
+    clientCreated: "Cliente creado. Le enviamos la invitación a {email}.",
+    clientCreatedEmailFailed:
+      "Cliente creado, pero no pudimos enviar la invitación. Reenvíala desde la lista.",
+    clientInvitationResent: "Invitación reenviada a {email}.",
+    clientInvitationResentEmailFailed:
+      "No pudimos enviar la invitación. Vuelve a intentarlo en un minuto.",
+    clientInvitationCancelled: "Invitación cancelada.",
+    clientMaxUpdated: "Tope actualizado.",
+    clientDeleted: "Cliente eliminado.",
   },
 
   whatsappEvents: {

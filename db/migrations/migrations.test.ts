@@ -962,7 +962,11 @@ describe("migración 0025: pausa de reenvío", () => {
        order by table_name`
     )
     expect(columns.rows).toEqual([
-      { table_name: "connected_pages", is_nullable: "YES", column_default: null },
+      {
+        table_name: "connected_pages",
+        is_nullable: "YES",
+        column_default: null,
+      },
       { table_name: "conversations", is_nullable: "YES", column_default: null },
     ])
   })
@@ -985,10 +989,9 @@ describe("migración 0025: pausa de reenvío", () => {
   // valores para que `status = 'active'` siga siendo «recibe y envía».
   it("no amplía el check de connected_pages.status", async () => {
     await expect(
-      db.query(
-        `update connected_pages set status = 'paused' where id = $1`,
-        [pageId]
-      )
+      db.query(`update connected_pages set status = 'paused' where id = $1`, [
+        pageId,
+      ])
     ).rejects.toThrow()
   })
 })
@@ -1051,5 +1054,137 @@ describe("migración 0026: eventos de pausa", () => {
       [pausedId]
     )
     expect(events.rows).toHaveLength(0)
+  })
+})
+
+// Módulo Clientes (issue #154, ticket #155): las dos tablas nuevas, la columna
+// nullable en `connected_pages` y las cascadas que el borrado de un cliente
+// —y el del padre— dan por hechas.
+describe("migración 0027: clientes", () => {
+  async function insertClient(name: string, maxConnections = 2) {
+    const result = await db.query<{ id: string; status: string }>(
+      `insert into client_accounts (tenant_id, name, max_connections)
+       values ($1, $2, $3) returning id, status`,
+      [tenantId, name, maxConnections]
+    )
+    return result.rows[0]!
+  }
+
+  it("crea el cliente como pendiente y sin user", async () => {
+    const client = await insertClient("Panadería Sol")
+    expect(client.status).toBe("pending")
+    const row = await db.query<{ user_id: string | null }>(
+      `select user_id from client_accounts where id = $1`,
+      [client.id]
+    )
+    expect(row.rows[0]!.user_id).toBeNull()
+  })
+
+  it("rechaza un tope menor a 1 y un estado fuera del catálogo", async () => {
+    await expect(insertClient("Sin tope", 0)).rejects.toThrow(
+      /max_connections_check/
+    )
+    await expect(
+      db.query(
+        `insert into client_accounts (tenant_id, name, max_connections, status)
+         values ($1, 'Raro', 1, 'disabled')`,
+        [tenantId]
+      )
+    ).rejects.toThrow(/client_accounts_status_check/)
+  })
+
+  it("no acepta dos hashes de token iguales", async () => {
+    const client = await insertClient("Dos tokens")
+    const insert = () =>
+      db.query(
+        `insert into client_invitations (client_account_id, email, token_hash, expires_at)
+         values ($1, 'cliente@example.com', 'hash_repetido', now() + interval '7 days')`,
+        [client.id]
+      )
+    await insert()
+    await expect(insert()).rejects.toThrow(/token_hash/)
+  })
+
+  it("deja `client_account_id` nulo en las conexiones del padre", async () => {
+    const row = await db.query<{ client_account_id: string | null }>(
+      `select client_account_id from connected_pages where id = $1`,
+      [pageId]
+    )
+    expect(row.rows[0]!.client_account_id).toBeNull()
+  })
+
+  // Borrar el cliente se lleva sus invitaciones y sus conexiones (y con ellas,
+  // por la 0002, sus conversaciones). Nada vuelve al padre.
+  it("borrar el cliente cae en cascada sobre invitaciones y conexiones", async () => {
+    const client = await insertClient("Se va")
+    await db.query(
+      `insert into client_invitations (client_account_id, email, token_hash, expires_at)
+       values ($1, 'seva@example.com', 'hash_seva', now() + interval '7 days')`,
+      [client.id]
+    )
+    const page = await db.query<{ id: string }>(
+      `insert into connected_pages (
+         tenant_id, client_account_id, meta_page_id, name, page_access_token_encrypted
+       )
+       values ($1, $2, 'page_cliente', 'Página del cliente', 'encrypted') returning id`,
+      [tenantId, client.id]
+    )
+    await db.query(
+      `insert into conversations (tenant_id, connected_page_id, contact_id)
+       values ($1, $2, 'psid_cliente')`,
+      [tenantId, page.rows[0]!.id]
+    )
+
+    await db.query(`delete from client_accounts where id = $1`, [client.id])
+
+    const invitations = await db.query(
+      `select id from client_invitations where client_account_id = $1`,
+      [client.id]
+    )
+    const pages = await db.query(
+      `select id from connected_pages where id = $1`,
+      [page.rows[0]!.id]
+    )
+    const conversations = await db.query(
+      `select id from conversations where contact_id = 'psid_cliente'`
+    )
+    expect(invitations.rows).toHaveLength(0)
+    expect(pages.rows).toHaveLength(0)
+    expect(conversations.rows).toHaveLength(0)
+  })
+
+  // Un user es cliente de a lo sumo un padre.
+  it("no deja que un mismo user sea cliente dos veces", async () => {
+    const user = await db.query<{ id: string }>(
+      `insert into users (email) values ('cliente-unico@example.com') returning id`
+    )
+    const userId = user.rows[0]!.id
+    const link = (name: string) =>
+      db.query(
+        `insert into client_accounts (tenant_id, user_id, name, max_connections, status)
+         values ($1, $2, $3, 1, 'active')`,
+        [tenantId, userId, name]
+      )
+    await link("Primero")
+    await expect(link("Segundo")).rejects.toThrow(/user_id/)
+  })
+
+  // Borrar al padre se lleva a sus clientes: es la base del borrado de cuenta.
+  it("borrar al padre cae en cascada sobre sus clientes", async () => {
+    const parent = await db.query<{ id: string }>(
+      `insert into users (email) values ('padre-temporal@example.com') returning id`
+    )
+    const parentId = parent.rows[0]!.id
+    const client = await db.query<{ id: string }>(
+      `insert into client_accounts (tenant_id, name, max_connections)
+       values ($1, 'Cliente del padre temporal', 1) returning id`,
+      [parentId]
+    )
+    await db.query(`delete from users where id = $1`, [parentId])
+    const rows = await db.query(
+      `select id from client_accounts where id = $1`,
+      [client.rows[0]!.id]
+    )
+    expect(rows.rows).toHaveLength(0)
   })
 })

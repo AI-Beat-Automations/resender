@@ -58,6 +58,12 @@ export type LogAction =
   | "password_change" // la persona cambió su contraseña desde Ajustes
   | "session_revoke" // cierre de las demás sesiones tras cambiar la contraseña
   | "password_reset" // la persona recuperó su contraseña por correo
+  // Módulo Clientes (issue #154): lo que el padre hace desde `/clientes`.
+  | "client_create" // creó el cliente y emitió la primera invitación
+  | "client_invite" // reenvió la invitación (token nuevo, el anterior cancelado)
+  | "client_invite_cancel"
+  | "client_max_update"
+  | "client_delete" // desconectó sus conexiones y borró al cliente entero
   // Un envío del [Canal de correo] (`lib/email/send-email.ts`). Es su propio
   // verbo y no un `outcome` del anterior porque el envío puede fallar solo:
   // el token se emitió igual y la persona se queda esperando un correo que no
@@ -160,6 +166,11 @@ export type LogReason =
   | "history_sync_failed"
   | "account_owned_by_other_tenant"
   | "page_limit_reached"
+  // Módulo Clientes: por qué el padre no pudo crear o administrar un cliente.
+  | "plan_not_allowed" // Starter o Free: el módulo no está operable
+  | "email_taken" // el correo ya tiene cuenta o invitación viva
+  | "max_out_of_range" // tope fuera de `1..maxPages` del plan
+  | "invitation_not_found"
   | "configuration_failed"
   // efectos de borde
   | "usage_counter_failed"
@@ -184,6 +195,9 @@ type AccountFields = {
   // desconectó y su WABA sigue mandando eventos?». Es un conteo, no contenido:
   // no dice de quién son ni qué mandaron.
   remainingConnections?: number
+  // El cliente (issue #154) sobre el que actuó el padre. Es un uuid interno,
+  // nunca su nombre ni su correo.
+  clientAccountId?: string
 }
 
 type SubjectFields = {

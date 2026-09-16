@@ -59,6 +59,8 @@ export type AppDict = {
     home: string
     navConnections: string
     navInbox: string
+    /** Solo se dibuja para los planes que pueden invitar (Pro y Business). */
+    navClients: string
     navSettings: string
     navDocs: string
     /** Primer nivel del breadcrumb del header de la consola. */
@@ -485,6 +487,72 @@ export type AppDict = {
     successSlowAfter: string
   }
 
+  // `/clientes` (issue #154): el padre crea, invita y administra clientes.
+  clients: {
+    title: string
+    subtitle: string
+    /** Aviso para Starter y Free: sin CTA de compra. */
+    gateTitle: string
+    gateBody: string
+    createTitle: string
+    createBody: string
+    nameLabel: string
+    namePlaceholder: string
+    emailLabel: string
+    emailPlaceholder: string
+    maxLabel: string
+    /** `{maxPages}`: el máximo del plan del padre. */
+    maxHint: string
+    create: string
+    creating: string
+    listTitle: string
+    listBody: string
+    empty: string
+    headName: string
+    headEmail: string
+    headStatus: string
+    headUsage: string
+    headActions: string
+    statusPending: string
+    statusActive: string
+    /** Nota bajo «Pendiente» cuando no queda invitación viva. */
+    invitationCancelledNote: string
+    invitationExpiredNote: string
+    /** `{connected}` y `{max}`. */
+    usage: string
+    resend: string
+    resending: string
+    cancelInvitation: string
+    cancelling: string
+    editMax: string
+    editMaxTitle: string
+    editMaxBody: string
+    editMaxSave: string
+    editMaxSaving: string
+    delete: string
+    /** `{name}`. */
+    deleteTitle: string
+    deleteBody: string
+    deleteConnectionsIntro: string
+    deleteNoConnections: string
+    deleteConfirm: string
+    deleting: string
+    invitationEmail: {
+      /** `{owner}`: el nombre del padre. */
+      subject: string
+      preheader: string
+      /** `{name}`: el nombre del cliente que escribió el padre. */
+      greeting: string
+      /** `{owner}`. */
+      intro: string
+      ctaLabel: string
+      expiryNote: string
+      fallbackLabel: string
+      ignoreNote: string
+      footerNote: string
+    }
+  }
+
   /**
    * Motivos de fallo del callback de Meta. Las claves son los `reason` del
    * querystring; los tres `*_owned` llevan el id interpolado en `{id}`.
@@ -573,6 +641,20 @@ export type AppDict = {
     linkFailed: string
     oauthAccountNotLinked: string
     conversationNotFound: string
+    // Módulo Clientes (issue #154).
+    clientsPlanNotAllowed: string
+    clientNameRequired: string
+    clientEmailAlreadyRegistered: string
+    clientMaxOutOfRange: string
+    clientNotFound: string
+    clientInvitationNotFound: string
+    clientCreated: string
+    clientCreatedEmailFailed: string
+    clientInvitationResent: string
+    clientInvitationResentEmailFailed: string
+    clientInvitationCancelled: string
+    clientMaxUpdated: string
+    clientDeleted: string
   }
 
   /**
