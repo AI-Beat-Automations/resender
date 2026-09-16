@@ -9,6 +9,7 @@ import {
   Link2,
   LogOut,
   Settings,
+  Users,
   type LucideIcon,
 } from "lucide-react"
 
@@ -16,42 +17,44 @@ import { BrandLogo } from "@/components/brand-logo"
 import { SignOutForm } from "@/components/sign-out-form"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { useAppDict } from "@/content/i18n/app/provider"
+import { productNavItems, type NavKey } from "@/features/shell/nav-items"
 import { accountInitials } from "@/lib/account/initials"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 // Shell del producto (ADR 0005): sidebar fijo de 240 px que reemplaza al header
-// sticky. Cuatro destinos planos, sin grupos, y al pie tema + identidad.
-// Es cliente por `usePathname()`, así que la server action de cerrar sesión
-// llega por props desde el layout.
+// sticky. Destinos planos, sin grupos, y al pie tema + identidad. Qué destinos
+// hay lo decide `productNavItems` en el servidor (el layout resuelve el plan);
+// acá solo se les pone icono. Es cliente por `usePathname()`, así que la
+// server action de cerrar sesión llega por props desde el layout.
 
-type NavItem = {
-  href: string
-  /** Clave del bloque `shell` del diccionario, no el texto ya resuelto. */
-  label: "navConnections" | "navInbox" | "navSettings" | "navDocs"
-  icon: LucideIcon
-  external?: boolean
+const NAV_ICONS: Record<NavKey, LucideIcon> = {
+  navConnections: Link2,
+  navInbox: Inbox,
+  navClients: Users,
+  navSettings: Settings,
+  navDocs: BookOpen,
 }
-
-const NAV_ITEMS: NavItem[] = [
-  { href: "/connections", label: "navConnections", icon: Link2 },
-  { href: "/inbox", label: "navInbox", icon: Inbox },
-  { href: "/settings", label: "navSettings", icon: Settings },
-  { href: "/docs", label: "navDocs", icon: BookOpen, external: true },
-]
 
 export function AppSidebar({
   name,
   email,
+  showClients,
+  isClient,
   signOutAction,
 }: {
   /** Puede venir vacío: las cuentas anteriores al alta con nombre. */
   name: string
   email: string
+  /** Plan Pro o Business (issue #154): dibuja «Clientes». */
+  showClients: boolean
+  /** El actor es un cliente (issue #154): consola reducida. */
+  isClient: boolean
   signOutAction: () => Promise<void>
 }) {
   const pathname = usePathname()
   const t = useAppDict().shell
+  const navItems = productNavItems({ showClients, isClient })
 
   return (
     <aside className="flex h-svh w-[var(--sidebar-w)] shrink-0 flex-col border-r border-sidebar-border bg-sidebar px-3 pt-5 pb-3.5">
@@ -66,10 +69,10 @@ export function AppSidebar({
       </Link>
 
       <nav className="mt-6 flex flex-col gap-0.5">
-        {NAV_ITEMS.map((item) => {
+        {navItems.map((item) => {
           // La documentación nunca se marca activa: sale de la consola.
           const active = !item.external && isActiveRoute(pathname, item.href)
-          const Icon = item.icon
+          const Icon = NAV_ICONS[item.label]
 
           return (
             <Link

@@ -19,9 +19,7 @@ export type PasswordChangeInput = {
  * son tres y no uno genérico.
  */
 export type AuthInputError =
-  | "invalid_email"
-  | "password_too_short"
-  | "passwords_do_not_match"
+  "invalid_email" | "password_too_short" | "passwords_do_not_match"
 
 /**
  * El nombre tiene unión propia y **no** entra en `AuthInputError`. La razón es
@@ -34,17 +32,30 @@ export type AuthInputError =
  */
 export type NameInputError = "name_required"
 
+/**
+ * Código del validador → clave del diccionario. `Record` sobre la unión: un
+ * código nuevo no compila hasta que alguien decida cómo se dice. Las claves
+ * existen con el mismo nombre en `auth.errors` del sitio y en `actions` del
+ * producto, y por eso la tabla es una sola para los tres server actions que
+ * validan contraseñas (alta, cambio desde Ajustes, aceptación de invitación).
+ */
+export const AUTH_INPUT_KEY: Record<
+  AuthInputError,
+  "invalidEmail" | "passwordTooShort" | "passwordsDoNotMatch"
+> = {
+  invalid_email: "invalidEmail",
+  password_too_short: "passwordTooShort",
+  passwords_do_not_match: "passwordsDoNotMatch",
+}
+
 export type NameInputResult =
-  | { ok: true; value: string }
-  | { ok: false; error: NameInputError }
+  { ok: true; value: string } | { ok: false; error: NameInputError }
 
 export type AuthInputResult =
-  | { ok: true; value: AuthInput }
-  | { ok: false; error: AuthInputError }
+  { ok: true; value: AuthInput } | { ok: false; error: AuthInputError }
 
 export type PasswordInputResult =
-  | { ok: true; value: string }
-  | { ok: false; error: AuthInputError }
+  { ok: true; value: string } | { ok: false; error: AuthInputError }
 
 export type PasswordChangeInputResult =
   | { ok: true; value: PasswordChangeInput }
