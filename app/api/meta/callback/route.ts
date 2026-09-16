@@ -1,8 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server"
 
 import { getSession } from "@/lib/auth/session"
-import { resolveProductAccess } from "@/lib/auth/waitlist"
-import { hasActiveSubscription } from "@/lib/billing/subscription"
+import {
+  CONNECT_GATE_LOG_REASON,
+  CONNECT_GATE_REDIRECT,
+  resolveConnectGate,
+} from "@/lib/clients/connect-gate"
 import {
   assertSecretEncryptionConfigured,
   SecretEncryptionConfigError,
@@ -43,18 +46,15 @@ export async function GET(request: NextRequest) {
     return gate("not_authenticated", "/login")
   }
 
-  // Ver el comentario en `/api/meta/start`.
-  const access = await resolveProductAccess(session.user.id)
-  if (access === "unknown_user") {
-    return gate("not_authenticated", "/login")
+  // Ver el comentario en `/api/meta/start`: los gates van por actor.
+  const connectGate = await resolveConnectGate(session.user.id)
+  if (connectGate.kind !== "ok") {
+    return gate(
+      CONNECT_GATE_LOG_REASON[connectGate.kind],
+      CONNECT_GATE_REDIRECT[connectGate.kind]
+    )
   }
-  if (access === "waitlisted") {
-    return gate("waitlisted", "/pending")
-  }
-
-  if (!(await hasActiveSubscription(session.user.id))) {
-    return gate("no_active_subscription", "/billing")
-  }
+  const { actor } = connectGate
 
   const params = request.nextUrl.searchParams
   const code = params.get("code")
@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
       reason: logReason,
       channel: "messenger",
       route: "/api/meta/callback",
-      tenantId: session.user.id,
+      tenantId: actor.tenantId,
       ...extra,
     })
     connections.searchParams.set("meta", "error")
@@ -97,7 +97,10 @@ export async function GET(request: NextRequest) {
   try {
     assertSecretEncryptionConfigured()
     const userToken = await exchangeCodeForUserToken(code)
-    await saveMetaUserAccessToken(session.user.id, userToken)
+    // El token es de **quien se logueó en Meta**: se guarda en el user de la
+    // sesión, que para un cliente no es el tenant. Es lo que le permite
+    // conectar con su propio login sin pisar el token del padre.
+    await saveMetaUserAccessToken(actor.userId, userToken)
 
     log({
       entrypoint: "route",
@@ -105,7 +108,7 @@ export async function GET(request: NextRequest) {
       outcome: "ok",
       channel: "messenger",
       route: "/api/meta/callback",
-      tenantId: session.user.id,
+      tenantId: actor.tenantId,
     })
 
     const res = NextResponse.redirect(new URL("/connections/select", APP_URL))

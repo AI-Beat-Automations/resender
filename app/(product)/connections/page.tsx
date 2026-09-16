@@ -13,6 +13,14 @@ import {
 } from "@/features/connections/queries"
 import { getSession } from "@/lib/auth/session"
 import type { ChannelAccess } from "@/lib/auth/channel-access"
+import { resolveActorCached } from "@/features/clients/queries"
+import {
+  formatClientConnectRejection,
+  formatClientLimitNotice,
+  isClientLimitReason,
+  type ClientLimitNotice,
+} from "@/lib/clients/client-limits"
+import { getClientLimits } from "@/lib/clients/client-limits-status"
 
 // Sin sesión no hay permisos que leer y la pantalla no ofrece ningún canal
 // cerrado. Messenger queda en `true` porque no tiene bandera: lo que decide si
@@ -34,8 +42,23 @@ import { Alert, AlertContent } from "@/components/ui/alert"
 type ConnectedPage = { id: string; name: string }
 
 // Cupo de páginas del plan. `null` = no se pudo resolver: fail-closed, se
-// muestra el bloqueo y no un «N de ?» inventado (ADR 0005).
-type PageQuotaView = { activePageCount: number; maxPages: number } | null
+// muestra el bloqueo y no un «N de ?» inventado (ADR 0005). Para un cliente
+// (issue #154) el contador es `conectadas / tope` y `suffix` lo dice.
+type PageQuotaView = {
+  activePageCount: number
+  maxPages: number
+  suffix?: string
+} | null
+
+// Lo que la pantalla necesita del cliente: su lista filtrada, su contador y su
+// aviso (proximidad, tope propio o límite del padre), que nombra al padre y
+// nunca habla de planes. El padre no tiene nada de esto: su aviso es el de
+// cuota, que monta el layout.
+type ClientView = {
+  quota: PageQuotaView
+  notice: ClientLimitNotice | null
+  ownerName: string | null
+}
 
 // El formato de fecha depende del idioma, así que ya no puede ser un módulo
 // suelto: se construye por petición con el `intl` del diccionario.
@@ -64,9 +87,26 @@ export default async function ConnectionsPage({
   const t = await getAppDict()
   const connected = parseConnectedPages(pages)
   const session = await getSession()
-  const tenantId = session?.user?.id ?? null
-  const tenantPages = tenantId ? await listTenantPagesCached(tenantId) : []
-  const quota = tenantId ? await resolvePageQuota(tenantId) : null
+  // Sesión → actor (issue #154): el cliente ve solo sus filas del tenant del
+  // padre. Sin actor no hay nada que listar; el layout ya rebotó.
+  const resolution = session?.user?.id
+    ? await resolveActorCached(session.user.id)
+    : null
+  const actor = resolution?.kind === "actor" ? resolution.actor : null
+  const tenantId = actor?.tenantId ?? null
+  const clientAccountId = actor?.clientAccountId ?? null
+  const tenantPages = tenantId
+    ? await listTenantPagesCached(tenantId, clientAccountId)
+    : []
+  const clientView =
+    tenantId && clientAccountId
+      ? await resolveClientView(tenantId, clientAccountId, t)
+      : null
+  const quota = clientView
+    ? clientView.quota
+    : tenantId
+      ? await resolvePageQuota(tenantId)
+      : null
   // Permiso por canal del tenant (ADR 0010). Sin sesión no hay a quién
   // preguntarle, así que se cierran los dos. Se resuelven de una sola consulta
   // porque la pantalla los necesita juntos.
@@ -125,7 +165,30 @@ export default async function ConnectionsPage({
       {(meta === "error" || instagram === "error") && (
         <Alert variant="destructive">
           <TriangleAlert />
-          <AlertContent>{formatMetaConnectionError(reason, t)}</AlertContent>
+          <AlertContent>
+            {/* El rebote por cupo de un cliente trae el veredicto como
+                motivo: se redacta acá, con el nombre del padre, que el
+                catálogo de `metaErrors` no tiene. */}
+            {clientView && isClientLimitReason(reason)
+              ? formatClientConnectRejection(reason, clientView.ownerName, t)
+              : formatMetaConnectionError(reason, t)}
+          </AlertContent>
+        </Alert>
+      )}
+
+      {/* El aviso del cliente (issue #154): proximidad al tope en ámbar; tope
+          propio o límite global del padre en rojo. Siempre nombra al padre. */}
+      {clientView?.notice && (
+        <Alert
+          variant={
+            clientView.notice.level === "blocked" ? "destructive" : "warning"
+          }
+        >
+          <TriangleAlert />
+          <AlertContent>
+            <span className="font-medium">{clientView.notice.title}</span>{" "}
+            {clientView.notice.body}
+          </AlertContent>
         </Alert>
       )}
 
@@ -141,6 +204,8 @@ export default async function ConnectionsPage({
             key={page.id}
             page={toPageView(page, access, t)}
             showWebhookHint={page.id === firstActiveId}
+            // El webhook es del padre: la tarjeta del cliente no lo dibuja.
+            showWebhook={!clientView}
           />
         ))
       )}
@@ -190,9 +255,36 @@ function PageQuota({ quota, t }: { quota: PageQuotaView; t: AppDict }) {
       <span className="font-mono text-foreground">
         {quota.activePageCount} / {quota.maxPages}
       </span>
-      {t.connections.quotaActiveSuffix}
+      {quota.suffix ?? t.connections.quotaActiveSuffix}
     </p>
   )
+}
+
+// El contador y el aviso del cliente salen de `client-limits`, no del
+// entitlement del padre. Si no se puede leer, el contador queda sin resolver
+// —como el del padre— y no hay aviso.
+async function resolveClientView(
+  tenantId: string,
+  clientAccountId: string,
+  t: AppDict
+): Promise<ClientView> {
+  try {
+    const status = await getClientLimits({ tenantId, clientAccountId })
+    if (!status.ok) return { quota: null, notice: null, ownerName: null }
+    const { limits, ownerName } = status
+    return {
+      quota: {
+        activePageCount: limits.clientActiveCount,
+        maxPages: limits.clientMaxConnections ?? limits.planMaxPages,
+        suffix: t.clientLimits.counterSuffix,
+      },
+      notice: formatClientLimitNotice(limits, ownerName, t),
+      ownerName,
+    }
+  } catch (error) {
+    console.error("client limits unavailable", error)
+    return { quota: null, notice: null, ownerName: null }
+  }
 }
 
 // Orden de la lista (spec B2): activa → con el token rechazado → desconectada.

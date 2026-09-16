@@ -2,13 +2,14 @@ import { describeError, log } from "@/lib/observability/logger"
 import { decryptSecret, encryptSecret } from "@/lib/crypto/encryption"
 import { getSql } from "@/lib/db"
 
-// User access token de larga duración de Meta, uno por tenant (ADR 0004). Da
-// acceso a **todas** las páginas que el usuario administra, no solo a las
-// conectadas, así que se guarda cifrado con el mismo módulo que protege los
-// page tokens y nunca sale del servidor.
+// User access token de larga duración de Meta, uno por **user** (ADR 0004):
+// es de quien se logueó en Meta, y un [Cliente] (issue #154) conecta con su
+// propio login sin pisar el del padre. Da acceso a **todas** las páginas que
+// el usuario administra, no solo a las conectadas, así que se guarda cifrado
+// con el mismo módulo que protege los page tokens y nunca sale del servidor.
 
 export async function saveMetaUserAccessToken(
-  tenantId: string,
+  userId: string,
   token: string
 ): Promise<void> {
   const sql = getSql()
@@ -17,12 +18,12 @@ export async function saveMetaUserAccessToken(
     set meta_user_access_token_encrypted = ${encryptSecret(token)},
         meta_user_access_token_updated_at = now(),
         updated_at = now()
-    where id = ${tenantId}
+    where id = ${userId}
   `
 }
 
 export async function getMetaUserAccessToken(
-  tenantId: string
+  userId: string
 ): Promise<string | null> {
   const sql = getSql()
   const [row] = await sql<
@@ -30,7 +31,7 @@ export async function getMetaUserAccessToken(
   >`
     select meta_user_access_token_encrypted
     from users
-    where id = ${tenantId}
+    where id = ${userId}
     limit 1
   `
 
@@ -46,7 +47,7 @@ export async function getMetaUserAccessToken(
       action: "token_decrypt",
       outcome: "failed",
       reason: "configuration_failed",
-      tenantId,
+      tenantId: userId,
       errorMessage: describeError(error),
     })
     return null

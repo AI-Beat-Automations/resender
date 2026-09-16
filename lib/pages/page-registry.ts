@@ -31,6 +31,10 @@ export type PageChannel = "messenger" | "instagram" | "whatsapp"
 export type ConnectedPageRecord = {
   id: string
   tenantId: string
+  // De qué [Cliente] es la conexión (migración 0027, issue #154). Null = del
+  // padre. El tenant sigue siendo el del padre: lo que distingue lo del cliente
+  // es esta columna, no otro `tenant_id`.
+  clientAccountId: string | null
   channel: PageChannel
   metaPageId: string
   name: string
@@ -80,6 +84,10 @@ export type ConnectedPageRecord = {
 type ConnectedPageRow = {
   id: string
   tenant_id: string
+  // Opcional por lo mismo que las de WhatsApp: solo la seleccionan las
+  // lecturas que necesitan saber de quién es la fila. Ausente = null = del
+  // padre, que es lo que vale para toda fila anterior a la 0027.
+  client_account_id?: string | null
   channel: PageChannel
   meta_page_id: string
   name: string
@@ -132,9 +140,29 @@ export class InvalidWebhookUrlError extends Error {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Alcance por cliente (issue #154, ticket 3)
+// ---------------------------------------------------------------------------
+//
+// `clientAccountId` en las **escrituras de conexión**: la fila nueva queda
+// marcada con el cliente que la conecta (null = el padre). En una reconexión
+// la marca solo cambia si la fila estaba desconectada: una conexión activa
+// conserva a su dueño aunque otro user del mismo tenant renueve su token, y
+// una desconectada —que ya no ocupa cupo de nadie— la toma quien la vuelve a
+// conectar. Las tres escrituras (Messenger, Instagram, WhatsApp) llevan el
+// mismo `case`.
+//
+// `clientAccountId` en las **acciones sobre una fila** (`pausar`,
+// `desconectar`, leer el token o el PIN): con alcance, un cliente no encuentra
+// las filas del padre ni las de otro cliente y recibe `null`, que la acción ya
+// traduce a «no encontramos esa página». Sin alcance (el padre) se ve todo el
+// tenant, como siempre. El predicado es
+// `(${scope}::uuid is null or client_account_id = ${scope}::uuid)`.
+
 export async function connectAuthorizedPages(
   tenantId: string,
-  pages: MetaConnectedPage[]
+  pages: MetaConnectedPage[],
+  clientAccountId: string | null = null
 ) {
   if (pages.length === 0) return []
 
@@ -172,11 +200,16 @@ export async function connectAuthorizedPages(
                 token_error = null,
                 token_error_at = null,
                 page_access_token_encrypted = ${encryptedToken},
+                client_account_id = case
+                  when status = 'active' then client_account_id
+                  else ${clientAccountId}::uuid
+                end,
                 connected_at = now(),
                 disconnected_at = null,
                 updated_at = now()
             where id = ${existing.id} and tenant_id = ${tenantId}
-            returning id, tenant_id, channel, meta_page_id, name, username,
+            returning id, tenant_id, client_account_id, channel, meta_page_id,
+              name, username,
               status, token_status, token_error, token_error_at,
               token_expires_at, webhook_url,
               (webhook_signing_secret_encrypted is not null) as has_signing_secret,
@@ -186,16 +219,18 @@ export async function connectAuthorizedPages(
         : sql`
             insert into connected_pages (
               tenant_id,
+              client_account_id,
               channel,
               meta_page_id,
               name,
               page_access_token_encrypted
             )
             values (
-              ${tenantId}, 'messenger', ${page.pageId}, ${page.name},
-              ${encryptedToken}
+              ${tenantId}, ${clientAccountId}::uuid, 'messenger', ${page.pageId},
+              ${page.name}, ${encryptedToken}
             )
-            returning id, tenant_id, channel, meta_page_id, name, username,
+            returning id, tenant_id, client_account_id, channel, meta_page_id,
+              name, username,
               status, token_status, token_error, token_error_at,
               token_expires_at, webhook_url,
               (webhook_signing_secret_encrypted is not null) as has_signing_secret,
@@ -230,6 +265,26 @@ export async function countActivePages(tenantId: string): Promise<number> {
     select count(*)::int as count
     from connected_pages
     where tenant_id = ${tenantId}
+      and status = 'active'
+  `
+
+  return row?.count ?? 0
+}
+
+// Las conexiones `active` de **un cliente** (issue #154, ticket 3): lo que se
+// compara contra su tope en `client-limits`. Es un contador aparte y no un
+// parámetro de `countActivePages` a propósito: el conteo global del tenant
+// sigue siendo el mismo y alimenta el entitlement igual que antes.
+export async function countActiveClientPages(
+  tenantId: string,
+  clientAccountId: string
+): Promise<number> {
+  const sql = getSql()
+  const [row] = await sql<{ count: number }[]>`
+    select count(*)::int as count
+    from connected_pages
+    where tenant_id = ${tenantId}
+      and client_account_id = ${clientAccountId}
       and status = 'active'
   `
 
@@ -300,10 +355,16 @@ export async function getPageOwnership(
   }))
 }
 
-export async function listTenantPages(tenantId: string) {
+// La lista de Conexiones. El padre ve todo el tenant; un cliente, solo las
+// filas con su `client_account_id` (issue #154, ticket 3).
+export async function listTenantPages(
+  tenantId: string,
+  clientAccountId: string | null = null
+) {
   const sql = getSql()
   const rows = await sql<ConnectedPageRow[]>`
-    select id, tenant_id, channel, meta_page_id, name, username, status,
+    select id, tenant_id, client_account_id, channel, meta_page_id, name,
+      username, status,
       token_status, token_error, token_error_at, token_expires_at, webhook_url,
       paused_at,
       waba_id, whatsapp_phone_e164, onboarding_mode, coexistence_status,
@@ -313,6 +374,7 @@ export async function listTenantPages(tenantId: string) {
       connected_at, disconnected_at, created_at, updated_at
     from connected_pages
     where tenant_id = ${tenantId}
+      and (${clientAccountId}::uuid is null or client_account_id = ${clientAccountId}::uuid)
     order by case when status = 'active' then 0 else 1 end, updated_at desc
   `
 
@@ -369,7 +431,8 @@ export async function rotateWebhookSigningSecret(
 export async function setPageForwardingPaused(
   tenantId: string,
   connectionId: string,
-  paused: boolean
+  paused: boolean,
+  clientAccountId: string | null = null
 ) {
   const sql = getSql()
   const [row] = await sql<ConnectedPageRow[]>`
@@ -380,7 +443,9 @@ export async function setPageForwardingPaused(
         end,
         updated_at = now()
     where id = ${connectionId} and tenant_id = ${tenantId} and status = 'active'
-    returning id, tenant_id, channel, meta_page_id, name, username, status,
+      and (${clientAccountId}::uuid is null or client_account_id = ${clientAccountId}::uuid)
+    returning id, tenant_id, client_account_id, channel, meta_page_id, name,
+      username, status,
       token_status, token_error, token_error_at, token_expires_at, webhook_url,
       paused_at,
       (webhook_signing_secret_encrypted is not null) as has_signing_secret,
@@ -412,7 +477,11 @@ export async function ensureWebhookSigningSecret(
   return rows[0] ? secret : null
 }
 
-export async function disconnectPage(tenantId: string, connectionId: string) {
+export async function disconnectPage(
+  tenantId: string,
+  connectionId: string,
+  clientAccountId: string | null = null
+) {
   const sql = getSql()
   const [row] = await sql<ConnectedPageRow[]>`
     update connected_pages
@@ -420,7 +489,9 @@ export async function disconnectPage(tenantId: string, connectionId: string) {
         disconnected_at = coalesce(disconnected_at, now()),
         updated_at = now()
     where id = ${connectionId} and tenant_id = ${tenantId}
-    returning id, tenant_id, channel, meta_page_id, name, username, status,
+      and (${clientAccountId}::uuid is null or client_account_id = ${clientAccountId}::uuid)
+    returning id, tenant_id, client_account_id, channel, meta_page_id, name,
+      username, status,
       token_status, token_error, token_error_at, token_expires_at, webhook_url,
       (webhook_signing_secret_encrypted is not null) as has_signing_secret,
       connected_at, disconnected_at, created_at, updated_at
@@ -482,11 +553,13 @@ export async function getActivePageWithTokenForTenant(
 
 export async function getActivePageWithTokenByConnectionId(
   tenantId: string,
-  connectionId: string
+  connectionId: string,
+  clientAccountId: string | null = null
 ) {
   const sql = getSql()
   const [row] = await sql<ConnectedPageWithTokenRow[]>`
-    select id, tenant_id, channel, meta_page_id, name, username, status,
+    select id, tenant_id, client_account_id, channel, meta_page_id, name,
+      username, status,
       token_status, token_error, token_error_at, token_expires_at, webhook_url,
       (webhook_signing_secret_encrypted is not null) as has_signing_secret,
       connected_at, disconnected_at, created_at, updated_at,
@@ -495,6 +568,7 @@ export async function getActivePageWithTokenByConnectionId(
     where id = ${connectionId}
       and tenant_id = ${tenantId}
       and status = 'active'
+      and (${clientAccountId}::uuid is null or client_account_id = ${clientAccountId}::uuid)
     limit 1
   `
 
@@ -549,7 +623,8 @@ export type InstagramAccountInput = {
 // mensaje) de «es una reconexión», y un upsert ciego pisaría la fila ajena.
 export async function connectInstagramAccount(
   tenantId: string,
-  account: InstagramAccountInput
+  account: InstagramAccountInput,
+  clientAccountId: string | null = null
 ): Promise<ConnectedPageRecord> {
   const sql = getSql()
   const encryptedToken = encryptSecret(account.accessToken)
@@ -580,17 +655,23 @@ export async function connectInstagramAccount(
             token_error_at = null,
             page_access_token_encrypted = ${encryptedToken},
             token_expires_at = ${account.tokenExpiresAt},
+            client_account_id = case
+              when status = 'active' then client_account_id
+              else ${clientAccountId}::uuid
+            end,
             connected_at = now(),
             disconnected_at = null,
             updated_at = now()
         where id = ${existing.id} and tenant_id = ${tenantId}
-        returning id, tenant_id, channel, meta_page_id, name, username, status,
+        returning id, tenant_id, client_account_id, channel, meta_page_id,
+          name, username, status,
           token_status, token_error, token_error_at, token_expires_at,
           webhook_url, connected_at, disconnected_at, created_at, updated_at
       `
     : await sql<ConnectedPageRow[]>`
         insert into connected_pages (
           tenant_id,
+          client_account_id,
           channel,
           meta_page_id,
           name,
@@ -599,10 +680,12 @@ export async function connectInstagramAccount(
           token_expires_at
         )
         values (
-          ${tenantId}, 'instagram', ${account.igUserId}, ${displayName},
+          ${tenantId}, ${clientAccountId}::uuid, 'instagram',
+          ${account.igUserId}, ${displayName},
           ${account.username}, ${encryptedToken}, ${account.tokenExpiresAt}
         )
-        returning id, tenant_id, channel, meta_page_id, name, username, status,
+        returning id, tenant_id, client_account_id, channel, meta_page_id,
+          name, username, status,
           token_status, token_error, token_error_at, token_expires_at,
           webhook_url, connected_at, disconnected_at, created_at, updated_at
       `
@@ -760,7 +843,8 @@ export type WhatsappNumberInput = {
  */
 export async function connectWhatsappNumber(
   tenantId: string,
-  input: WhatsappNumberInput
+  input: WhatsappNumberInput,
+  clientAccountId: string | null = null
 ): Promise<ConnectedPageRecord> {
   const sql = getSql()
   const encryptedToken = encryptSecret(input.accessToken)
@@ -814,11 +898,16 @@ export async function connectWhatsappNumber(
             history_sync_status = ${input.historySyncStatus},
             whatsapp_pin_encrypted = coalesce(${encryptedPin}, whatsapp_pin_encrypted),
             whatsapp_pin_generated = coalesce(${pinGenerated}, whatsapp_pin_generated),
+            client_account_id = case
+              when status = 'active' then client_account_id
+              else ${clientAccountId}::uuid
+            end,
             connected_at = now(),
             disconnected_at = null,
             updated_at = now()
         where id = ${existing.id} and tenant_id = ${tenantId}
-        returning id, tenant_id, channel, meta_page_id, name, username, status,
+        returning id, tenant_id, client_account_id, channel, meta_page_id,
+          name, username, status,
           token_status, token_error, token_error_at, token_expires_at,
           webhook_url, waba_id, whatsapp_phone_e164, onboarding_mode,
           coexistence_status, history_sync_status,
@@ -829,6 +918,7 @@ export async function connectWhatsappNumber(
     : await sql<ConnectedPageRow[]>`
         insert into connected_pages (
           tenant_id,
+          client_account_id,
           channel,
           meta_page_id,
           name,
@@ -842,13 +932,15 @@ export async function connectWhatsappNumber(
           whatsapp_pin_generated
         )
         values (
-          ${tenantId}, 'whatsapp', ${input.phoneNumberId}, ${displayName},
+          ${tenantId}, ${clientAccountId}::uuid, 'whatsapp',
+          ${input.phoneNumberId}, ${displayName},
           ${encryptedToken}, ${input.tokenExpiresAt}, ${input.wabaId},
           ${input.phoneE164}, ${input.onboardingMode},
           ${input.historySyncStatus}, ${encryptedPin},
           ${pinGenerated ?? false}
         )
-        returning id, tenant_id, channel, meta_page_id, name, username, status,
+        returning id, tenant_id, client_account_id, channel, meta_page_id,
+          name, username, status,
           token_status, token_error, token_error_at, token_expires_at,
           webhook_url, waba_id, whatsapp_phone_e164, onboarding_mode,
           coexistence_status, history_sync_status,
@@ -879,7 +971,8 @@ export async function connectWhatsappNumber(
  */
 export async function getWhatsappGeneratedPin(
   tenantId: string,
-  connectionId: string
+  connectionId: string,
+  clientAccountId: string | null = null
 ): Promise<string | null> {
   const sql = getSql()
   const [row] = await sql<{ whatsapp_pin_encrypted: string | null }[]>`
@@ -889,6 +982,7 @@ export async function getWhatsappGeneratedPin(
       and tenant_id = ${tenantId}
       and channel = 'whatsapp'
       and coalesce(whatsapp_pin_generated, false) = true
+      and (${clientAccountId}::uuid is null or client_account_id = ${clientAccountId}::uuid)
     limit 1
   `
 
@@ -953,6 +1047,7 @@ function mapConnectedPage(row: ConnectedPageRow): ConnectedPageRecord {
   return {
     id: row.id,
     tenantId: row.tenant_id,
+    clientAccountId: row.client_account_id ?? null,
     channel: row.channel,
     metaPageId: row.meta_page_id,
     name: row.name,

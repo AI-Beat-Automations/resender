@@ -7,6 +7,7 @@ import {
   listTenantPagesCached,
   resolveChannelAccessCached,
 } from "@/features/connections/queries"
+import { resolveActorCached } from "@/features/clients/queries"
 import { ConsoleHeader } from "@/features/shell/ui/console-header"
 import { getSession } from "@/lib/auth/session"
 import { getAppDict } from "@/lib/i18n/app-dict"
@@ -19,13 +20,20 @@ import { offersChannel } from "@/lib/pages/channel-display"
 export default async function ConnectionsHeader() {
   const t = await getAppDict()
   const session = await getSession()
-  const tenantId = session?.user?.id ?? null
   const crumbs = [{ label: t.connections.title }]
 
-  if (!tenantId) return <ConsoleHeader crumbs={crumbs} t={t} />
+  if (!session?.user?.id) return <ConsoleHeader crumbs={crumbs} t={t} />
+
+  // Mismo actor y mismos argumentos que la página, para que el caché de
+  // petición deduplique la lectura y el cliente vea su lista, no la del tenant.
+  const resolution = await resolveActorCached(session.user.id)
+  if (resolution.kind !== "actor") {
+    return <ConsoleHeader crumbs={crumbs} t={t} />
+  }
+  const { tenantId, clientAccountId } = resolution.actor
 
   const [pages, access] = await Promise.all([
-    listTenantPagesCached(tenantId),
+    listTenantPagesCached(tenantId, clientAccountId),
     resolveChannelAccessCached(tenantId),
   ])
   if (pages.length === 0) return <ConsoleHeader crumbs={crumbs} t={t} />

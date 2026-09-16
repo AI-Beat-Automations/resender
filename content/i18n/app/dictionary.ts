@@ -513,6 +513,44 @@ export type AppDict = {
     signOut: string
   }
 
+  /**
+   * Cupo del cliente al conectar (issue #154, ticket 3). Todos los textos
+   * nombran al padre (`{owner}`) y ninguno menciona planes ni precios.
+   */
+  clientLimits: {
+    /** Cómo se nombra al padre si no se pudo resolver su nombre. */
+    ownerFallback: string
+    /** Cabecera del contador `n / m` del cliente en Conexiones y en la selección. */
+    heading: string
+    /** Sufijo del contador `n / m` de la cabecera de Conexiones. */
+    counterSuffix: string
+    nearTitle: string
+    /** `{owner}`, `{activePageCount}`, `{maxConnections}` */
+    nearBody: string
+    reachedTitle: string
+    /** `{owner}`, `{activePageCount}`, `{maxConnections}` */
+    reachedBody: string
+    tenantReachedTitle: string
+    /** `{owner}` */
+    tenantReachedBody: string
+    /** `{owner}` */
+    rejectedOwn: string
+    /** `{owner}` */
+    rejectedTenant: string
+    /** `{remainingSlots}` */
+    selectAtLimitHint: string
+    /** `{remainingSlots}` */
+    selectionOverflow: string
+    /** Fallo al leer el tope o el cupo: fail-closed, sin nombrar el plan. */
+    checkFailed: string
+    /**
+     * El cliente no puede conectar porque su acceso está en pausa (el padre
+     * sin suscripción activa o la invitación aún pendiente). Sin nombrar la
+     * suscripción: es del padre.
+     */
+    accessRestricted: string
+  }
+
   billing: {
     metaTitle: string
     eyebrow: string

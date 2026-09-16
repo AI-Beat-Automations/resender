@@ -4,18 +4,12 @@ import { TriangleAlert } from "lucide-react"
 
 import { ConnectFacebookButton } from "@/features/connect-meta/ui/connect-facebook-button"
 import { PageSelectionForm } from "@/features/connect-meta/ui/page-selection-form"
+import { resolveSelectionContext } from "@/features/connect-meta/selection-view"
 import { getSession } from "@/lib/auth/session"
-import { isClientActor } from "@/lib/clients/actor"
 import { resolveActorCached } from "@/features/clients/queries"
-import { resolvePlanLimits } from "@/lib/billing/entitlements"
-import { getSubscriptionByTenantId } from "@/lib/billing/subscription"
 import { listAuthorizedPages, type ConnectedPage } from "@/lib/meta"
 import { getMetaUserAccessToken } from "@/lib/pages/meta-user-token"
-import { countActivePages, getPageOwnership } from "@/lib/pages/page-registry"
-import {
-  classifyPagesForSelection,
-  formatPageAllowance,
-} from "@/lib/pages/page-selection"
+import { formatPageAllowance } from "@/lib/pages/page-selection"
 import { fmt, type AppDict } from "@/content/i18n/app"
 import { ConsolePage } from "@/features/shell/ui/console-page"
 import { getAppDict } from "@/lib/i18n/app-dict"
@@ -33,20 +27,21 @@ import {
 export default async function SelectPagesPage() {
   const session = await getSession()
   if (!session?.user?.id) redirect("/login")
-  const tenantId = session.user.id
   const t = await getAppDict()
 
-  // Conectar como cliente —con su `client_account_id` y su tope— es el
-  // ticket 3 del issue #154. Hasta entonces la selección escribiría la fila
-  // con el user del cliente como tenant, así que se cierra por actor.
-  const resolution = await resolveActorCached(tenantId)
-  if (resolution.kind === "actor" && isClientActor(resolution.actor)) {
-    redirect("/connections")
-  }
+  // El actor decide de quién es el cupo y a quién se le marca la fila (issue
+  // #154): el padre conecta contra su plan; el cliente, contra su tope, y la
+  // fila queda en el tenant del padre con su `client_account_id`. El layout
+  // ya rebotó a quien no tiene actor.
+  const resolution = await resolveActorCached(session.user.id)
+  if (resolution.kind !== "actor") redirect("/connections")
+  const { actor } = resolution
 
   // Sin user access token guardado no hay nada que listar: el usuario todavía
-  // no pasó por el diálogo de Meta (o su credencial dejó de ser legible).
-  const userToken = await getMetaUserAccessToken(tenantId)
+  // no pasó por el diálogo de Meta (o su credencial dejó de ser legible). El
+  // token es de quien se logueó en Meta —el user, no el tenant—: un cliente
+  // conecta con su propio login.
+  const userToken = await getMetaUserAccessToken(actor.userId)
   if (!userToken) {
     return (
       <Shell t={t}>
@@ -77,23 +72,28 @@ export default async function SelectPagesPage() {
     redirect("/connections?meta=error&reason=meta_session_expired")
   }
 
-  const [subscription, activePageCount, ownership] = await Promise.all([
-    getSubscriptionByTenantId(tenantId),
-    countActivePages(tenantId),
-    getPageOwnership(metaPages.map((page) => page.pageId)),
-  ])
-
   // Plan desconocido = fail-closed, igual que el resto de los gates: no
-  // dejamos conectar páginas sin límite resuelto.
-  const limits = resolvePlanLimits(subscription?.priceLookupKey ?? null)
-  if (!limits) {
+  // dejamos conectar páginas sin límite resuelto. Al cliente no se le nombra
+  // el plan —no es suyo—: ve que no se pudo comprobar su cupo.
+  const context = await resolveSelectionContext(
+    actor,
+    metaPages.map((page) => ({ pageId: page.pageId, name: page.name }))
+  )
+  if (!context.ok) {
+    const isClient = actor.clientAccountId !== null
     return (
       <Shell t={t}>
         <Alert variant="destructive">
           <TriangleAlert />
           <AlertContent>
-            <AlertTitle>{t.select.planUnresolvedTitle}</AlertTitle>
-            <AlertDescription>{t.select.planUnresolvedBody}</AlertDescription>
+            <AlertTitle>
+              {isClient
+                ? t.clientLimits.checkFailed
+                : t.select.planUnresolvedTitle}
+            </AlertTitle>
+            {!isClient && (
+              <AlertDescription>{t.select.planUnresolvedBody}</AlertDescription>
+            )}
           </AlertContent>
         </Alert>
         <BackLink t={t} />
@@ -101,26 +101,18 @@ export default async function SelectPagesPage() {
     )
   }
 
-  const view = classifyPagesForSelection({
-    metaPages: metaPages.map((page) => ({
-      pageId: page.pageId,
-      name: page.name,
-    })),
-    ownership,
-    tenantId,
-    activePageCount,
-    maxPages: limits.maxPages,
-  })
+  const { view, client } = context
 
   return (
     <Shell t={t}>
       {/* Cuántas puede añadir, antes de elegir: el mismo texto que devuelve la
           validación del servidor, desde el módulo de dominio. El rango va en
-          mono, como en el mock. */}
+          mono, como en el mock. Para el cliente la cabecera dice «tu tope» y
+          los huecos ya vienen acotados por el cupo global del padre. */}
       <div className="flex flex-col gap-1 rounded-xl border border-border bg-surface-sunken px-4 py-3 text-[13.5px] sm:flex-row sm:items-center sm:justify-between">
         <p>
           <span className="text-muted-foreground">
-            {t.select.planHeading} ·{" "}
+            {client ? t.clientLimits.heading : t.select.planHeading} ·{" "}
           </span>
           {t.select.planUsageBefore}
           <span className="font-mono">
@@ -133,7 +125,16 @@ export default async function SelectPagesPage() {
         </p>
         <p className="font-medium">{formatPageAllowance(view, t)}</p>
       </div>
-      <PageSelectionForm view={view} />
+      <PageSelectionForm
+        view={view}
+        atLimitHint={
+          client
+            ? fmt(t.clientLimits.selectAtLimitHint, {
+                remainingSlots: view.remainingSlots,
+              })
+            : undefined
+        }
+      />
     </Shell>
   )
 }

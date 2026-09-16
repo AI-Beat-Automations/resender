@@ -510,6 +510,33 @@ export const es: AppDict = {
     signOut: "Cerrar sesión",
   },
 
+  clientLimits: {
+    ownerFallback: "quien administra tu acceso",
+    heading: "Tu tope",
+    counterSuffix: "conexiones de tu tope",
+    nearTitle: "Te estás acercando a tu tope de conexiones.",
+    nearBody:
+      "Tienes {activePageCount} de {maxConnections}. Si vas a necesitar más, contacta a {owner}.",
+    reachedTitle: "Llegaste a tu tope de conexiones.",
+    reachedBody:
+      "Tienes {activePageCount} de {maxConnections}. Para conectar más, contacta a {owner}.",
+    tenantReachedTitle: "No hay cupo disponible ahora mismo.",
+    tenantReachedBody:
+      "La cuenta de {owner} no tiene cupo libre para nuevas conexiones. Contacta a {owner} para conectar más.",
+    rejectedOwn:
+      "No se pudo conectar: llegaste a tu tope de conexiones. Contacta a {owner} para conectar más.",
+    rejectedTenant:
+      "No se pudo conectar: la cuenta de {owner} no tiene cupo libre ahora mismo. Contacta a {owner} para conectar más.",
+    selectAtLimitHint:
+      "Ya marcaste las {remainingSlots} que te quedan de tu tope. Desmarca una para elegir otra, o desconecta una para liberar cupo.",
+    selectionOverflow:
+      "Puedes añadir {remainingSlots} como máximo dentro de tu tope. Desmarca las que sobren o desconecta una para liberar cupo.",
+    checkFailed:
+      "No pudimos comprobar tu cupo ahora mismo. Vuelve a intentarlo en un momento.",
+    accessRestricted:
+      "Tu acceso está en pausa. Contacta a quien administra tu acceso.",
+  },
+
   billing: {
     metaTitle: "Suscripción",
     eyebrow: "pricing",

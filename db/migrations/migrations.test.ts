@@ -281,6 +281,7 @@ describe("migración 0016: adjuntos en messages", () => {
       const page: ConnectedPageRecord = {
         id: pageId,
         tenantId,
+        clientAccountId: null,
         channel: "messenger",
         metaPageId: "page_1",
         name: "Main Page",

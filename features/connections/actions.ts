@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 
 import { getSession } from "@/lib/auth/session"
 import { getAppDict } from "@/lib/i18n/app-dict"
+import { resolveActorByUserId, type Actor } from "@/lib/clients/actor"
 import {
   disconnectPage,
   getActivePageWithTokenByConnectionId,
@@ -16,6 +17,7 @@ import {
 import { unsubscribeChannelWebhook } from "@/lib/pages/channel-webhook"
 import { accountFields, describeError, log } from "@/lib/observability/logger"
 import { posthog } from "@/lib/posthog"
+import type { AppDict } from "@/content/i18n/app"
 
 // Resultado de pausar o reanudar el reenvío. `pausedAt` en ISO y no `Date`:
 // cruza al cliente, y el `Switch` solo necesita saber si hay fecha.
@@ -32,13 +34,32 @@ export type ConnectionActionState = {
   revealedSecret?: string
 }
 
+// Quién actúa y sobre qué tenant (issue #154, ticket 3). Se lee vivo de la
+// base, nunca de la sesión: un cliente actúa sobre el tenant del padre y solo
+// sobre **sus** filas (`clientAccountId`), y el padre sobre todas.
+type ActionActor = { ok: true; actor: Actor } | { ok: false; error: string }
+
+async function resolveActionActor(t: AppDict): Promise<ActionActor> {
+  const session = await getSession()
+  if (!session?.user?.id) return { ok: false, error: t.actions.notSignedIn }
+  const resolution = await resolveActorByUserId(session.user.id)
+  if (resolution.kind !== "actor") {
+    return { ok: false, error: t.actions.notSignedIn }
+  }
+  return { ok: true, actor: resolution.actor }
+}
+
 export async function saveWebhookUrlAction(
   _state: ConnectionActionState,
   formData: FormData
 ): Promise<ConnectionActionState> {
   const t = await getAppDict()
-  const session = await getSession()
-  if (!session?.user?.id) return { error: t.actions.notSignedIn }
+  const who = await resolveActionActor(t)
+  if (!who.ok) return { error: who.error }
+  const { actor } = who
+  // El webhook es del padre: la tarjeta del cliente no lo dibuja, y por POST
+  // directo tampoco se acepta.
+  if (actor.clientAccountId !== null) return { error: t.actions.pageNotFound }
 
   const connectionId = formData.get("connectionId")
   if (typeof connectionId !== "string" || !connectionId) {
@@ -47,7 +68,7 @@ export async function saveWebhookUrlAction(
 
   try {
     const updated = await updatePageWebhookUrl(
-      session.user.id,
+      actor.tenantId,
       connectionId,
       formData.get("webhookUrl")
     )
@@ -65,7 +86,7 @@ export async function saveWebhookUrlAction(
 
     if (posthog) {
       posthog.capture({
-        distinctId: session.user.id,
+        distinctId: actor.userId,
         event: "webhook url saved",
         properties: {
           connection_id: connectionId,
@@ -80,7 +101,7 @@ export async function saveWebhookUrlAction(
     // firma existe. Si ya tenía uno, no se toca — rotarlo al guardar la URL
     // invalidaría el que el receptor tiene configurado.
     const secret = updated.webhookUrl
-      ? await ensureWebhookSigningSecret(session.user.id, connectionId)
+      ? await ensureWebhookSigningSecret(actor.tenantId, connectionId)
       : null
 
     revalidatePath("/connections")
@@ -111,8 +132,9 @@ export async function disconnectPageAction(
   formData: FormData
 ): Promise<ConnectionActionState> {
   const t = await getAppDict()
-  const session = await getSession()
-  if (!session?.user?.id) return { error: t.actions.notSignedIn }
+  const who = await resolveActionActor(t)
+  if (!who.ok) return { error: who.error }
+  const { actor } = who
 
   const connectionId = formData.get("connectionId")
   if (typeof connectionId !== "string" || !connectionId) {
@@ -124,8 +146,9 @@ export async function disconnectPageAction(
   > = null
   try {
     pageToUnsubscribe = await getActivePageWithTokenByConnectionId(
-      session.user.id,
-      connectionId
+      actor.tenantId,
+      connectionId,
+      actor.clientAccountId
     )
   } catch (error) {
     // Si esto falla, la baja de la suscripción no se puede intentar y la cuenta
@@ -135,13 +158,19 @@ export async function disconnectPageAction(
       action: "webhook_unsubscribe",
       outcome: "failed",
       reason: "internal_error",
-      tenantId: session.user.id,
+      tenantId: actor.tenantId,
       connectionId,
       errorMessage: describeError(error),
     })
   }
 
-  const disconnected = await disconnectPage(session.user.id, connectionId)
+  // Con el alcance del cliente: una conexión del padre o de otro cliente no
+  // se encuentra, y el mensaje es el mismo que para un id inexistente.
+  const disconnected = await disconnectPage(
+    actor.tenantId,
+    connectionId,
+    actor.clientAccountId
+  )
   if (!disconnected) return { error: t.actions.pageNotFound }
 
   log({
@@ -153,7 +182,7 @@ export async function disconnectPageAction(
 
   if (posthog) {
     posthog.capture({
-      distinctId: session.user.id,
+      distinctId: actor.userId,
       event: "page disconnected",
       properties: {
         connection_id: connectionId,
@@ -198,22 +227,25 @@ export async function rotateWebhookSecretAction(
   formData: FormData
 ): Promise<ConnectionActionState> {
   const t = await getAppDict()
-  const session = await getSession()
-  if (!session?.user?.id) return { error: t.actions.notSignedIn }
+  const who = await resolveActionActor(t)
+  if (!who.ok) return { error: who.error }
+  const { actor } = who
+  // Como el webhook: el secreto de firma es del padre.
+  if (actor.clientAccountId !== null) return { error: t.actions.pageNotFound }
 
   const connectionId = formData.get("connectionId")
   if (typeof connectionId !== "string" || !connectionId) {
     return { error: t.actions.invalidPage }
   }
 
-  const secret = await rotateWebhookSigningSecret(session.user.id, connectionId)
+  const secret = await rotateWebhookSigningSecret(actor.tenantId, connectionId)
   if (!secret) return { error: t.actions.pageNotFound }
 
   log({
     entrypoint: "action",
     action: "webhook_secret_rotate",
     outcome: "ok",
-    tenantId: session.user.id,
+    tenantId: actor.tenantId,
     connectionId,
     // El secreto no se loguea, obviamente. Que la línea exista es lo que
     // permite responder «¿cuándo dejó de validar mi firma?» sin adivinar.
@@ -237,16 +269,19 @@ export async function setConnectionForwardingPaused(
   paused: boolean
 ): Promise<ForwardingPauseState> {
   const t = await getAppDict()
-  const session = await getSession()
-  if (!session?.user?.id) return { error: t.actions.notSignedIn }
+  const who = await resolveActionActor(t)
+  if (!who.ok) return { error: who.error }
+  const { actor } = who
   if (typeof connectionId !== "string" || !connectionId) {
     return { error: t.actions.invalidPage }
   }
 
+  // Con el alcance del cliente: solo sus propias conexiones.
   const updated = await setPageForwardingPaused(
-    session.user.id,
+    actor.tenantId,
     connectionId,
-    paused === true
+    paused === true,
+    actor.clientAccountId
   )
   if (!updated) return { error: t.actions.pageNotFound }
 
@@ -259,7 +294,7 @@ export async function setConnectionForwardingPaused(
 
   if (posthog) {
     posthog.capture({
-      distinctId: session.user.id,
+      distinctId: actor.userId,
       event: updated.pausedAt
         ? "connection forwarding paused"
         : "connection forwarding resumed",

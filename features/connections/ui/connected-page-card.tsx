@@ -106,10 +106,14 @@ export type ConnectedPageView = {
 export function ConnectedPageCard({
   page,
   showWebhookHint = false,
+  showWebhook = true,
 }: {
   page: ConnectedPageView
   // El hint del webhook se dice una vez por lista, no una vez por tarjeta.
   showWebhookHint?: boolean
+  // La sección de webhook y secreto de firma es del padre: la tarjeta de un
+  // cliente (issue #154) no la dibuja. El switch de pausa y desconectar sí.
+  showWebhook?: boolean
 }) {
   const [saveState, saveAction, savePending] = useActionState<
     ConnectionActionState,
@@ -419,7 +423,7 @@ export function ConnectedPageCard({
         </div>
       )}
 
-      {active && (
+      {active && showWebhook && (
         // Cuerpo del mock: dos columnas (webhook | secreto) sobre un divisor
         // tenue, con 16/20 de padding.
         <div className="grid gap-5 border-t border-border-faint px-5 py-4 sm:grid-cols-2">

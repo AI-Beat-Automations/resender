@@ -26,7 +26,15 @@ import { Checkbox } from "@/components/ui/checkbox"
 // derecha. El `Checkbox` lleva `name="pageIds"` y `value`: Radix emite el
 // `<input>` oculto dentro del form, así que la server action recibe lo mismo
 // que con el checkbox nativo.
-export function PageSelectionForm({ view }: { view: PageSelectionView }) {
+export function PageSelectionForm({
+  view,
+  atLimitHint,
+}: {
+  view: PageSelectionView
+  // Qué se dice al marcar la última que cabe. Sin él, el texto del plan; un
+  // cliente (issue #154) no tiene plan que nombrar y trae el de su tope.
+  atLimitHint?: string
+}) {
   const [state, action, pending] = useActionState<
     ConnectMetaActionState,
     FormData
@@ -158,10 +166,11 @@ export function PageSelectionForm({ view }: { view: PageSelectionView }) {
         <p className="rounded-[10px] bg-surface-sunken px-3.5 py-3 text-[13px] text-muted-foreground">
           {view.remainingSlots === 0
             ? formatPageAllowance(view, t)
-            : fmt(t.select.atLimitHint, {
+            : (atLimitHint ??
+              fmt(t.select.atLimitHint, {
                 remainingSlots: view.remainingSlots,
                 maxPages: view.maxPages,
-              })}
+              }))}
         </p>
       )}
 

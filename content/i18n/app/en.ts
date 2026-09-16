@@ -505,6 +505,33 @@ export const en: AppDict = {
     signOut: "Sign out",
   },
 
+  clientLimits: {
+    ownerFallback: "the person who manages your access",
+    heading: "Your limit",
+    counterSuffix: "connections of your limit",
+    nearTitle: "You're getting close to your connection limit.",
+    nearBody:
+      "You have {activePageCount} of {maxConnections}. If you're going to need more, contact {owner}.",
+    reachedTitle: "You've reached your connection limit.",
+    reachedBody:
+      "You have {activePageCount} of {maxConnections}. To connect more, contact {owner}.",
+    tenantReachedTitle: "There's no room available right now.",
+    tenantReachedBody:
+      "The account of {owner} has no free room for new connections. Contact {owner} to connect more.",
+    rejectedOwn:
+      "Couldn't connect: you've reached your connection limit. Contact {owner} to connect more.",
+    rejectedTenant:
+      "Couldn't connect: the account of {owner} has no free room right now. Contact {owner} to connect more.",
+    selectAtLimitHint:
+      "You've already checked the {remainingSlots} left in your limit. Uncheck one to pick another, or disconnect one to free up a slot.",
+    selectionOverflow:
+      "You can add at most {remainingSlots} within your limit. Uncheck the extra ones, or disconnect one to free up a slot.",
+    checkFailed:
+      "We couldn't check your limit right now. Please try again in a moment.",
+    accessRestricted:
+      "Your access is paused. Contact the person who manages your access.",
+  },
+
   billing: {
     metaTitle: "Subscription",
     eyebrow: "pricing",

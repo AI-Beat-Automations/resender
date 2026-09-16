@@ -4,12 +4,11 @@ import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 
 import { getSession } from "@/lib/auth/session"
-import { isUserWaitlisted } from "@/lib/auth/waitlist"
-import { resolvePlanLimits } from "@/lib/billing/entitlements"
+import type { Actor } from "@/lib/clients/actor"
 import {
-  getSubscriptionByTenantId,
-  hasActiveSubscription,
-} from "@/lib/billing/subscription"
+  connectGateError,
+  resolveConnectGate,
+} from "@/lib/clients/connect-gate"
 import {
   assertSecretEncryptionConfigured,
   SecretEncryptionConfigError,
@@ -27,18 +26,15 @@ import {
 import { getMetaUserAccessToken } from "@/lib/pages/meta-user-token"
 import {
   connectAuthorizedPages,
-  countActivePages,
-  getPageOwnership,
   PageOwnershipError,
 } from "@/lib/pages/page-registry"
-import {
-  classifyPagesForSelection,
-  validatePageSelection,
-} from "@/lib/pages/page-selection"
+import { validatePageSelection } from "@/lib/pages/page-selection"
 import { accountFields, describeError, log } from "@/lib/observability/logger"
 import { posthog } from "@/lib/posthog"
 import { getAppDict } from "@/lib/i18n/app-dict"
 import type { AppDict } from "@/content/i18n/app"
+
+import { clientLimitMessage, resolveSelectionContext } from "./selection-view"
 
 export type ConnectMetaActionState = {
   error?: string
@@ -72,16 +68,13 @@ export async function connectSelectedPagesAction(
   const session = await getSession()
   if (!session?.user?.id) return { error: t.actions.notSignedIn }
 
-  // Los mismos gates que protegen `/api/meta/start` y `/api/meta/callback`. El
+  // Los mismos gates que protegen `/api/meta/start` y `/api/meta/callback`,
+  // resueltos por actor: un cliente conecta con la suscripción del padre. El
   // layout de `(product)` no alcanza: una server action se puede invocar por
   // POST directo sin renderizar la pantalla, y la fila de `subscriptions` de un
   // tenant dado de baja conserva su `price_lookup_key`.
-  if (await isUserWaitlisted(session.user.id)) {
-    return { error: t.actions.waitlisted }
-  }
-  if (!(await hasActiveSubscription(session.user.id))) {
-    return { error: t.actions.noSubscription }
-  }
+  const gate = await resolveConnectGate(session.user.id)
+  if (gate.kind !== "ok") return { error: connectGateError(gate, t) }
 
   const selectedPageIds = formData
     .getAll("pageIds")
@@ -90,7 +83,7 @@ export async function connectSelectedPagesAction(
     return { error: t.actions.selectOnePage }
   }
 
-  const result = await connectSelectedPages(session.user.id, selectedPageIds, t)
+  const result = await connectSelectedPages(gate.actor, selectedPageIds, t)
   if (!result.ok) return result.state
 
   revalidatePath("/connections")
@@ -108,11 +101,15 @@ export async function connectSelectedPagesAction(
 // subconjunto seleccionado** (ADR 0004): los page access tokens de las páginas
 // que no eligió nunca se persisten.
 async function connectSelectedPages(
-  tenantId: string,
+  actor: Actor,
   selectedPageIds: string[],
   t: AppDict
 ): Promise<ConnectOutcome> {
-  const userToken = await getMetaUserAccessToken(tenantId)
+  const { tenantId } = actor
+  // El user access token de Meta es de **quien se logueó en Meta**: el user
+  // del cliente, no el padre. Todo lo demás —cupo, ownership, la fila— es del
+  // tenant.
+  const userToken = await getMetaUserAccessToken(actor.userId)
   if (!userToken) return failed(expiredAuthorization(t))
 
   let metaPages: ConnectedPage[]
@@ -131,29 +128,30 @@ async function connectSelectedPages(
     return failed(expiredAuthorization(t))
   }
 
-  const [subscription, activePageCount, ownership] = await Promise.all([
-    getSubscriptionByTenantId(tenantId),
-    countActivePages(tenantId),
-    getPageOwnership(metaPages.map((page) => page.pageId)),
-  ])
-
-  const limits = resolvePlanLimits(subscription?.priceLookupKey ?? null)
-  if (!limits) {
-    return failed(t.actions.planUnresolved)
+  // El cupo por actor (`client-limits`, issue #154): el padre sigue con el
+  // de su plan; el cliente, con su tope acotado por el cupo global del padre.
+  const context = await resolveSelectionContext(
+    actor,
+    metaPages.map((page) => ({ pageId: page.pageId, name: page.name }))
+  )
+  if (!context.ok) {
+    return failed(
+      actor.clientAccountId !== null
+        ? t.clientLimits.checkFailed
+        : t.actions.planUnresolved
+    )
   }
 
-  const view = classifyPagesForSelection({
-    metaPages: metaPages.map((page) => ({
-      pageId: page.pageId,
-      name: page.name,
-    })),
-    ownership,
-    tenantId,
-    activePageCount,
-    maxPages: limits.maxPages,
-  })
-
-  const validated = validatePageSelection({ view, selectedPageIds }, t)
+  const validated = validatePageSelection(
+    {
+      view: context.view,
+      selectedPageIds,
+      ...(context.client
+        ? { limitMessage: clientLimitMessage(context.client, t) }
+        : {}),
+    },
+    t
+  )
   if (!validated.ok) return failed(validated.message)
   if (validated.value.length === 0) {
     return failed(t.actions.selectOneNewPage)
@@ -168,7 +166,11 @@ async function connectSelectedPages(
   try {
     assertSecretEncryptionConfigured()
     await subscribePagesToWebhook(selected)
-    const connectedPages = await connectAuthorizedPages(tenantId, selected)
+    const connectedPages = await connectAuthorizedPages(
+      tenantId,
+      selected,
+      actor.clientAccountId
+    )
 
     for (const page of connectedPages) {
       log({
