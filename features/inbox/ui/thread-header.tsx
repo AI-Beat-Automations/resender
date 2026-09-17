@@ -10,11 +10,14 @@ export function ThreadHeader({
   title,
   pill,
   account,
+  tag,
   action,
 }: {
   title: string
   pill: ReactNode
   account: string
+  /** Etiqueta del cliente dueño de la cuenta (issue #154), solo en el padre. */
+  tag?: ReactNode
   action?: ReactNode
 }) {
   return (
@@ -27,6 +30,7 @@ export function ThreadHeader({
         <span className="truncate font-mono text-[11.5px] text-[var(--text-subtle)]">
           · {account}
         </span>
+        {tag}
       </div>
       {action}
     </header>

@@ -2,12 +2,14 @@ import { NextResponse, type NextRequest } from "next/server"
 
 import { getSession } from "@/lib/auth/session"
 import { resolveInstagramAccess } from "@/lib/auth/channel-access"
-import { resolveProductAccess } from "@/lib/auth/waitlist"
 import { resolvePlanLimits } from "@/lib/billing/entitlements"
+import { getSubscriptionByTenantId } from "@/lib/billing/subscription"
+import { getClientLimits } from "@/lib/clients/client-limits-status"
 import {
-  getSubscriptionByTenantId,
-  hasActiveSubscription,
-} from "@/lib/billing/subscription"
+  CONNECT_GATE_LOG_REASON,
+  CONNECT_GATE_REDIRECT,
+  resolveConnectGate,
+} from "@/lib/clients/connect-gate"
 import {
   assertSecretEncryptionConfigured,
   SecretEncryptionConfigError,
@@ -69,18 +71,16 @@ export async function GET(request: NextRequest) {
     return gate("not_authenticated", "/login")
   }
 
-  // Ver el comentario en `/api/meta/instagram/start`.
-  const access = await resolveProductAccess(session.user.id)
-  if (access === "unknown_user") {
-    return gate("not_authenticated", "/login")
+  // Ver el comentario en `/api/meta/instagram/start`: los gates van por actor.
+  const connectGate = await resolveConnectGate(session.user.id)
+  if (connectGate.kind !== "ok") {
+    return gate(
+      CONNECT_GATE_LOG_REASON[connectGate.kind],
+      CONNECT_GATE_REDIRECT[connectGate.kind]
+    )
   }
-  if (access === "waitlisted") {
-    return gate("waitlisted", "/pending")
-  }
-
-  if (!(await hasActiveSubscription(session.user.id))) {
-    return gate("no_active_subscription", "/billing")
-  }
+  const { actor } = connectGate
+  const { tenantId } = actor
 
   const params = request.nextUrl.searchParams
   const code = params.get("code")
@@ -116,7 +116,7 @@ export async function GET(request: NextRequest) {
       reason: logReason,
       channel: "instagram",
       route: "/api/meta/instagram/callback",
-      tenantId: session.user.id,
+      tenantId,
       ...extra,
     })
     return finish({ instagram: "error", reason })
@@ -132,7 +132,7 @@ export async function GET(request: NextRequest) {
   // cuenta que el canal no puede atender. Va por `fail` y no por `gate` para
   // que se limpie la cookie de `state` del intento que queda trunco, y después
   // de mirar `error` para que una cancelación no se registre como revocación.
-  if (!(await resolveInstagramAccess(session.user.id))) {
+  if (!(await resolveInstagramAccess(tenantId))) {
     return fail("instagram_not_enabled", "channel_not_enabled")
   }
 
@@ -164,15 +164,17 @@ export async function GET(request: NextRequest) {
   // abajo, sabiendo el IG id. El costo de esa demora es un `code` quemado en el
   // único caso que igual iba a rebotar: el que está al tope y conecta una
   // cuenta nueva.
-  const subscription = await getSubscriptionByTenantId(session.user.id)
-  const limits = resolvePlanLimits(subscription?.priceLookupKey ?? null)
-  if (!limits) {
+  //
+  // Como cliente (issue #154) el número sale de `client-limits`: su tope
+  // acotado por el cupo global del padre. Y el rebote de abajo lleva el
+  // veredicto como `reason`, que Conexiones redacta con el nombre del padre.
+  const cap = await resolveInstagramCap(actor)
+  if (!cap.ok) {
     return fail("configuration_failed", "configuration_failed", {
       errorMessage: "plan limits could not be resolved",
     })
   }
-  const atPageLimit =
-    (await countActivePages(session.user.id)) >= limits.maxPages
+  const { atPageLimit, limitReason } = cap
 
   let step: "exchange" | "profile" | "subscribe" | "persist" = "exchange"
   try {
@@ -195,7 +197,7 @@ export async function GET(request: NextRequest) {
         profile.igUserId,
         "instagram"
       )
-      if (existing && existing.tenantId !== session.user.id) {
+      if (existing && existing.tenantId !== tenantId) {
         return fail(
           instagramAccountOwnedReason(profile.igUserId),
           "account_owned_by_other_tenant",
@@ -203,7 +205,7 @@ export async function GET(request: NextRequest) {
         )
       }
       if (!existing) {
-        return fail("instagram_page_limit_reached", "page_limit_reached")
+        return fail(limitReason, "page_limit_reached")
       }
     }
 
@@ -211,13 +213,17 @@ export async function GET(request: NextRequest) {
     await subscribeInstagramWebhook(token.accessToken)
 
     step = "persist"
-    const account = await connectInstagramAccount(session.user.id, {
-      igUserId: profile.igUserId,
-      username: profile.username,
-      name: profile.name,
-      accessToken: token.accessToken,
-      tokenExpiresAt: token.expiresAt,
-    })
+    const account = await connectInstagramAccount(
+      tenantId,
+      {
+        igUserId: profile.igUserId,
+        username: profile.username,
+        name: profile.name,
+        accessToken: token.accessToken,
+        tokenExpiresAt: token.expiresAt,
+      },
+      actor.clientAccountId
+    )
 
     if (posthog) {
       posthog.capture({
@@ -278,5 +284,40 @@ export async function GET(request: NextRequest) {
     return fail("instagram_exchange_failed", "internal_error", {
       errorMessage: `${step}: ${errorMessage}`,
     })
+  }
+}
+
+// El cupo de Instagram por actor. El padre: el de su plan, como siempre. El
+// cliente: `client-limits`, con el veredicto como `reason` del rebote para
+// que la pantalla lo redacte nombrando al padre y sin hablar del plan.
+async function resolveInstagramCap(actor: {
+  tenantId: string
+  clientAccountId: string | null
+}): Promise<
+  | { ok: true; atPageLimit: boolean; limitReason: string }
+  | { ok: false }
+> {
+  if (actor.clientAccountId !== null) {
+    const status = await getClientLimits({
+      tenantId: actor.tenantId,
+      clientAccountId: actor.clientAccountId,
+    })
+    if (!status.ok) return { ok: false }
+    const { verdict } = status.limits
+    return {
+      ok: true,
+      atPageLimit: verdict !== "allowed",
+      limitReason:
+        verdict === "allowed" ? "instagram_page_limit_reached" : verdict,
+    }
+  }
+
+  const subscription = await getSubscriptionByTenantId(actor.tenantId)
+  const limits = resolvePlanLimits(subscription?.priceLookupKey ?? null)
+  if (!limits) return { ok: false }
+  return {
+    ok: true,
+    atPageLimit: (await countActivePages(actor.tenantId)) >= limits.maxPages,
+    limitReason: "instagram_page_limit_reached",
   }
 }

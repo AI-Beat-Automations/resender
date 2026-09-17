@@ -45,6 +45,8 @@ export type PublicationRowView = {
   content: string
   /** El último comentario es una respuesta pública que Meta rechazó. */
   failed: boolean
+  /** Nombre del [Cliente] dueño de la cuenta (issue #154); null si es propia. */
+  clientName: string | null
 }
 
 export type CommentBubbleView = {
@@ -173,7 +175,8 @@ export function toPublicationRowView(
   publication: PublicationListItem,
   now: Date,
   t: AppDict,
-  media?: { permalink: string | null; caption: string | null }
+  media?: { permalink: string | null; caption: string | null },
+  clientName: string | null = null
 ): PublicationRowView {
   const mediaKind = resolveMediaKind(publication.mediaProductType)
   const mediaNoun = t.log.mediaNouns[mediaKind]
@@ -197,6 +200,7 @@ export function toPublicationRowView(
     timestampIso: publication.lastCommentAt.toISOString(),
     content: formatPublicationContent(publication.latestComment, t),
     failed: publication.latestComment.status === "failed",
+    clientName,
   }
 }
 

@@ -5,12 +5,14 @@ import { NextResponse, type NextRequest } from "next/server"
 
 import { getSession } from "@/lib/auth/session"
 import { resolveWhatsappAccess } from "@/lib/auth/channel-access"
-import { resolveProductAccess } from "@/lib/auth/waitlist"
 import { resolvePlanLimits } from "@/lib/billing/entitlements"
+import { getSubscriptionByTenantId } from "@/lib/billing/subscription"
+import { getClientLimits } from "@/lib/clients/client-limits-status"
 import {
-  getSubscriptionByTenantId,
-  hasActiveSubscription,
-} from "@/lib/billing/subscription"
+  CONNECT_GATE_LOG_REASON,
+  connectGateError,
+  resolveConnectGate,
+} from "@/lib/clients/connect-gate"
 import {
   assertSecretEncryptionConfigured,
   SecretEncryptionConfigError,
@@ -94,21 +96,23 @@ export async function POST(request: NextRequest) {
   if (!session?.user?.id) {
     return gate("not_authenticated", t.actions.notSignedIn, 401)
   }
-  const tenantId = session.user.id
 
-  // Los mismos gates de las rutas de los otros dos canales y en el mismo orden.
-  // Se repiten aunque el layout de `(product)` ya los aplique: esto se puede
-  // invocar por POST directo sin renderizar la pantalla.
-  const access = await resolveProductAccess(tenantId)
-  if (access === "unknown_user") {
-    return gate("not_authenticated", t.actions.notSignedIn, 401)
+  // Los mismos gates de las rutas de los otros dos canales y en el mismo
+  // orden, resueltos por actor (issue #154): un cliente conecta con la
+  // suscripción del padre y la fila queda en el tenant del padre. Se repiten
+  // aunque el layout de `(product)` ya los aplique: esto se puede invocar por
+  // POST directo sin renderizar la pantalla.
+  const connectGate = await resolveConnectGate(session.user.id)
+  if (connectGate.kind !== "ok") {
+    return gate(
+      CONNECT_GATE_LOG_REASON[connectGate.kind],
+      connectGateError(connectGate, t),
+      connectGate.kind === "not_authenticated" ? 401 : 403
+    )
   }
-  if (access === "waitlisted") {
-    return gate("waitlisted", t.actions.waitlisted)
-  }
-  if (!(await hasActiveSubscription(tenantId))) {
-    return gate("no_active_subscription", t.actions.noSubscription)
-  }
+  const { actor } = connectGate
+  const { tenantId } = actor
+
   if (!(await resolveWhatsappAccess(tenantId))) {
     return gate(
       "channel_not_enabled",
@@ -149,9 +153,11 @@ export async function POST(request: NextRequest) {
   // los otros dos canales y no tiene sentido inspeccionar el resto de un cuerpo
   // que todavía no probó venir de nuestra pestaña. Se consume incluso si el
   // cuerpo es ilegible —un cierre que no se puede leer gastó el nonce igual—.
+  // El nonce se ató al **user** de la sesión al emitirlo (el launcher lo pide
+  // desde el navegador del cliente), no al tenant heredado.
   const validNonce = consumeSignupNonce(
     store,
-    tenantId,
+    actor.userId,
     readField(body, "nonce")
   )
   if (!validNonce) {
@@ -228,8 +234,9 @@ export async function POST(request: NextRequest) {
         )
       },
       resolveOwnership: resolveWhatsappNumberOwnership,
+      resolveClientLimits: getClientLimits,
     },
-    { tenantId, phoneNumberId },
+    { tenantId, phoneNumberId, clientAccountId: actor.clientAccountId },
     t
   )
   if (!slot.ok) {
@@ -266,7 +273,9 @@ export async function POST(request: NextRequest) {
       finishStandard: finishWhatsappSignup,
       subscribe: subscribeWhatsappWebhook,
       resolveOwnership: resolveWhatsappNumberOwnership,
-      connect: connectWhatsappNumber,
+      // La fila nueva se marca con el cliente que la conecta (null = el padre).
+      connect: (id, input) =>
+        connectWhatsappNumber(id, input, actor.clientAccountId),
       enqueueHistorySync: async (connectionId) => {
         // La cola propia de WhatsApp, no la de entregas: un import de historial
         // son miles de jobs y en `webhook-deliveries` competirían en batches de

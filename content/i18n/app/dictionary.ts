@@ -37,6 +37,7 @@ import type { SubscriptionDict } from "./sections/subscription"
 import type { AccessPendingDict } from "./sections/access-pending"
 import type { InvitationDict } from "./sections/invitation"
 import type { ClientRestrictedDict } from "./sections/client-restricted"
+import type { ClientLimitsDict } from "./sections/client-limits"
 import type { BillingDict } from "./sections/billing"
 import type { ClientsDict } from "./sections/clients"
 import type { MetaErrorsDict } from "./sections/meta-errors"
@@ -70,6 +71,7 @@ export type AppDict = {
   accessPending: AccessPendingDict
   invitation: InvitationDict
   clientRestricted: ClientRestrictedDict
+  clientLimits: ClientLimitsDict
   billing: BillingDict
   clients: ClientsDict
   metaErrors: MetaErrorsDict

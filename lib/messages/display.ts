@@ -60,6 +60,9 @@ export type ConversationRowView = {
   failedLabel: string | null
   /** El reenvío al webhook de esta conversación está pausado (ADR 0020). */
   paused: boolean
+  /** Nombre del [Cliente] dueño de la cuenta, para la etiqueta de la fila del
+   * padre (issue #154); null en las cuentas propias y para un actor cliente. */
+  clientName: string | null
 }
 
 export type ThreadReactionView = {
@@ -216,7 +219,8 @@ export function formatConversationContent(
 export function toConversationRowView(
   conversation: ConversationListItem,
   now: Date,
-  t: AppDict
+  t: AppDict,
+  clientName: string | null = null
 ): ConversationRowView {
   const { latestMessage } = conversation
   const name = conversation.contactName?.trim()
@@ -247,6 +251,7 @@ export function toConversationRowView(
     failed,
     failedLabel: failed ? formatDeliveryLabel("failed", t) : null,
     paused: conversation.pausedAt !== null,
+    clientName,
   }
 }
 

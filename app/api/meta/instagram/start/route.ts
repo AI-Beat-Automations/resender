@@ -1,9 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server"
 
 import { getSession } from "@/lib/auth/session"
+import {
+  CONNECT_GATE_LOG_REASON,
+  CONNECT_GATE_REDIRECT,
+  resolveConnectGate,
+} from "@/lib/clients/connect-gate"
 import { resolveInstagramAccess } from "@/lib/auth/channel-access"
-import { resolveProductAccess } from "@/lib/auth/waitlist"
-import { hasActiveSubscription } from "@/lib/billing/subscription"
 import { log, type LogReason } from "@/lib/observability/logger"
 import {
   buildInstagramDialogUrl,
@@ -41,25 +44,23 @@ export async function GET(request: NextRequest) {
     return gate("not_authenticated", "/login")
   }
 
-  // Una sesión huérfana vuelve a `/login` y no a `/pending`: la pantalla del
-  // gate da por buena la sesión y de una credencial rota solo se sale
-  // volviendo a autenticarse.
-  const access = await resolveProductAccess(session.user.id)
-  if (access === "unknown_user") {
-    return gate("not_authenticated", "/login")
+  // Los gates por actor (issue #154): un cliente conecta con la suscripción
+  // del padre y nunca rebota a `/billing`. Una sesión huérfana vuelve a
+  // `/login` y no a `/pending`: la pantalla del gate da por buena la sesión y
+  // de una credencial rota solo se sale volviendo a autenticarse.
+  const connectGate = await resolveConnectGate(session.user.id)
+  if (connectGate.kind !== "ok") {
+    return gate(
+      CONNECT_GATE_LOG_REASON[connectGate.kind],
+      CONNECT_GATE_REDIRECT[connectGate.kind]
+    )
   }
-  if (access === "waitlisted") {
-    return gate("waitlisted", "/pending")
-  }
-
-  if (!(await hasActiveSubscription(session.user.id))) {
-    return gate("no_active_subscription", "/billing")
-  }
+  const { actor } = connectGate
 
   // Último gate y no el primero: quien no tiene sesión o no paga tiene que ver
   // ese motivo, no «Instagram no está habilitado». Cortar acá también evita
   // sembrar la cookie de `state` de un OAuth que no va a poder terminar.
-  if (!(await resolveInstagramAccess(session.user.id))) {
+  if (!(await resolveInstagramAccess(actor.tenantId))) {
     return gate(
       "channel_not_enabled",
       "/connections?instagram=error&reason=instagram_not_enabled"
@@ -72,7 +73,7 @@ export async function GET(request: NextRequest) {
     outcome: "ok",
     channel: "instagram",
     route: "/api/meta/instagram/start",
-    tenantId: session.user.id,
+    tenantId: actor.tenantId,
   })
 
   const state = crypto.randomUUID()

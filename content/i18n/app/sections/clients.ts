@@ -48,6 +48,17 @@ export type ClientsDict = {
   deleteNoConnections: string
   deleteConfirm: string
   deleting: string
+  /**
+   * Filtro por cliente de Conexiones e Inbox (ticket 4): opciones fijas,
+   * aria del botón, placeholder y vacío del combobox.
+   */
+  filterAll: string
+  filterOwn: string
+  filterLabel: string
+  filterSearch: string
+  filterEmpty: string
+  /** `{name}`: título de la etiqueta con el nombre del cliente. */
+  ownedBy: string
   invitationEmail: {
     /** `{owner}`: el nombre del padre. */
     subject: string
@@ -114,6 +125,12 @@ export const es: ClientsDict = {
   deleteNoConnections: "Este cliente no tiene conexiones activas.",
   deleteConfirm: "Sí, eliminar cliente",
   deleting: "Eliminando…",
+  filterAll: "Todos los clientes",
+  filterOwn: "Mis conexiones",
+  filterLabel: "Filtrar por cliente",
+  filterSearch: "Buscar cliente…",
+  filterEmpty: "Ningún cliente coincide.",
+  ownedBy: "Cliente: {name}",
   invitationEmail: {
     subject: "{owner} te invita a Resender",
     preheader:
@@ -180,6 +197,12 @@ export const en: ClientsDict = {
   deleteNoConnections: "This client has no active connections.",
   deleteConfirm: "Yes, delete client",
   deleting: "Deleting…",
+  filterAll: "All clients",
+  filterOwn: "My connections",
+  filterLabel: "Filter by client",
+  filterSearch: "Search client…",
+  filterEmpty: "No client matches.",
+  ownedBy: "Client: {name}",
   invitationEmail: {
     subject: "{owner} invited you to Resender",
     preheader:

@@ -1,5 +1,7 @@
 import type { LogReason } from "@/lib/observability/logger"
 import type { AppDict } from "@/content/i18n/app"
+import { formatClientConnectRejection } from "@/lib/clients/client-limits"
+import type { ClientLimitsStatus } from "@/lib/clients/client-limits-status"
 import {
   WhatsappApiError,
   WHATSAPP_COEXISTENCE_WEBHOOK_FIELDS,
@@ -353,6 +355,11 @@ export type WhatsappPlanSlotDeps = {
     tenantId: string,
     phoneNumberId: string
   ): Promise<WhatsappNumberOwnership>
+  /** `client-limits` cuando el actor es un cliente (issue #154, ticket 3). */
+  resolveClientLimits(scope: {
+    tenantId: string
+    clientAccountId: string
+  }): Promise<ClientLimitsStatus>
 }
 
 export type WhatsappPlanSlotResult =
@@ -378,9 +385,22 @@ export type WhatsappPlanSlotResult =
  */
 export async function checkWhatsappPlanSlot(
   deps: WhatsappPlanSlotDeps,
-  input: { tenantId: string; phoneNumberId: string | null },
+  input: {
+    tenantId: string
+    phoneNumberId: string | null
+    /** Nulo para el padre. Con cliente, el cupo es el de `client-limits`. */
+    clientAccountId: string | null
+  },
   t: AppDict
 ): Promise<WhatsappPlanSlotResult> {
+  if (input.clientAccountId !== null) {
+    return checkWhatsappClientSlot(
+      deps,
+      { ...input, clientAccountId: input.clientAccountId },
+      t
+    )
+  }
+
   let maxPages: number | null
   let activePageCount: number
   let reconnectingActiveAccount = false
@@ -424,4 +444,53 @@ export async function checkWhatsappPlanSlot(
   if (slot.ok) return { ok: true }
 
   return { ok: false, reason: "page_limit_reached", message: slot.message }
+}
+
+// El mismo cupo, visto desde un cliente (issue #154): su tope acotado por el
+// cupo global del padre, con la misma exención de reconexión. El mensaje
+// nombra al padre y no al plan, y ningún fallo de lectura menciona el plan.
+async function checkWhatsappClientSlot(
+  deps: WhatsappPlanSlotDeps,
+  input: { tenantId: string; phoneNumberId: string | null; clientAccountId: string },
+  t: AppDict
+): Promise<WhatsappPlanSlotResult> {
+  let status: ClientLimitsStatus
+  let reconnectingActiveAccount = false
+
+  try {
+    status = await deps.resolveClientLimits({
+      tenantId: input.tenantId,
+      clientAccountId: input.clientAccountId,
+    })
+    if (input.phoneNumberId) {
+      const ownership = await deps.resolveOwnership(
+        input.tenantId,
+        input.phoneNumberId
+      )
+      reconnectingActiveAccount = ownership.activeForTenant
+    }
+  } catch {
+    return {
+      ok: false,
+      reason: "internal_error",
+      message: t.clientLimits.checkFailed,
+    }
+  }
+
+  if (!status.ok) {
+    return {
+      ok: false,
+      reason: "plan_restricted",
+      message: t.clientLimits.checkFailed,
+    }
+  }
+
+  const { verdict } = status.limits
+  if (verdict === "allowed" || reconnectingActiveAccount) return { ok: true }
+
+  return {
+    ok: false,
+    reason: "page_limit_reached",
+    message: formatClientConnectRejection(verdict, status.ownerName, t),
+  }
 }

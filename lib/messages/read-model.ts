@@ -1,3 +1,7 @@
+import {
+  clientFilterPredicate,
+  type ClientFilter,
+} from "@/lib/clients/client-filter"
 import { getSql } from "@/lib/db"
 import type { PageChannel } from "@/lib/pages/page-registry"
 
@@ -23,6 +27,9 @@ export type ConversationListItem = {
     metaPageId: string
     name: string
     username: string | null
+    // De qué [Cliente] es la cuenta (issue #154); null = del padre. La lista
+    // del padre lo convierte en la etiqueta con el nombre del cliente.
+    clientAccountId: string | null
     // El número en formato humano (migración 0017). En WhatsApp `metaPageId` es
     // el `phone_number_id`, que no dice qué número es: sin esta columna el log
     // identificaría la cuenta por un entero opaco.
@@ -86,6 +93,7 @@ type ConversationListRow = {
   page_name: string
   page_username: string | null
   page_whatsapp_phone_e164: string | null
+  page_client_account_id: string | null
   latest_text: string | null
   latest_direction: MessageDirection | null
   latest_status: MessageStatus | null
@@ -113,11 +121,22 @@ type ThreadMessageRow = {
   created_at: Date
 }
 
+// Alcance por actor (issue #154, ticket 4): `clientAccountId` es el del
+// [Actor] —null para el padre, que ve todo el tenant— y va en el `where`
+// sobre la cuenta conectada, que es donde vive la pertenencia al cliente
+// (`conversations` no la repite). `clientFilter` es el filtro de vista del
+// padre, encima del alcance. Las tres lecturas del hilo llevan el mismo
+// alcance: una conversación de otra conexión no existe para el cliente ni
+// por URL.
 export async function listConversationReadModel(input: {
   tenantId: string
   connectedPageId?: string
+  clientAccountId?: string | null
+  clientFilter?: ClientFilter
 }) {
   const sql = getSql()
+  const scope = input.clientAccountId ?? null
+  const filter = clientFilterPredicate(input.clientFilter)
   const rows = await sql<ConversationListRow[]>`
     select
       c.id,
@@ -133,6 +152,7 @@ export async function listConversationReadModel(input: {
       p.name as page_name,
       p.username as page_username,
       p.whatsapp_phone_e164 as page_whatsapp_phone_e164,
+      p.client_account_id as page_client_account_id,
       latest.text as latest_text,
       latest.direction as latest_direction,
       latest.status as latest_status,
@@ -149,6 +169,9 @@ export async function listConversationReadModel(input: {
       limit 1
     ) latest on true
     where c.tenant_id = ${input.tenantId}
+      and (${scope}::uuid is null or p.client_account_id = ${scope}::uuid)
+      and (not ${filter.own} or p.client_account_id is null)
+      and (${filter.clientAccountId}::uuid is null or p.client_account_id = ${filter.clientAccountId}::uuid)
       and (${input.connectedPageId ?? null}::uuid is null or c.connected_page_id = ${input.connectedPageId ?? null}::uuid)
     order by c.last_message_at desc
   `
@@ -159,8 +182,10 @@ export async function listConversationReadModel(input: {
 export async function listThreadMessages(input: {
   tenantId: string
   conversationId: string
+  clientAccountId?: string | null
 }) {
   const sql = getSql()
+  const scope = input.clientAccountId ?? null
   // El join con `connected_pages` trae el canal, que es lo que decide de dónde
   // sale la URL del adjunto: el CDN de Meta en Messenger e Instagram, la ruta
   // propia en WhatsApp. Es una fila por hilo, no por mensaje.
@@ -175,6 +200,7 @@ export async function listThreadMessages(input: {
     join connected_pages p on p.id = m.connected_page_id
     where m.tenant_id = ${input.tenantId}
       and m.conversation_id = ${input.conversationId}
+      and (${scope}::uuid is null or p.client_account_id = ${scope}::uuid)
     order by m.created_at asc
   `
 
@@ -211,14 +237,25 @@ export type ConversationPauseEvent = {
 export async function listConversationPauseEvents(input: {
   tenantId: string
   conversationId: string
+  clientAccountId?: string | null
 }): Promise<ConversationPauseEvent[]> {
   const sql = getSql()
+  const scope = input.clientAccountId ?? null
+  // Los eventos no llevan cuenta: el alcance del cliente se resuelve por la
+  // conversación, que sí la tiene.
   const rows = await sql<{ id: string; paused: boolean; created_at: Date }[]>`
-    select id, paused, created_at
-    from conversation_pause_events
-    where tenant_id = ${input.tenantId}
-      and conversation_id = ${input.conversationId}
-    order by created_at asc
+    select e.id, e.paused, e.created_at
+    from conversation_pause_events e
+    where e.tenant_id = ${input.tenantId}
+      and e.conversation_id = ${input.conversationId}
+      and (${scope}::uuid is null or exists (
+        select 1
+        from conversations c
+        join connected_pages p on p.id = c.connected_page_id
+        where c.id = e.conversation_id
+          and p.client_account_id = ${scope}::uuid
+      ))
+    order by e.created_at asc
   `
 
   return rows.map((row) => ({
@@ -246,6 +283,7 @@ function mapConversationListItem(
       name: row.page_name,
       username: row.page_username,
       whatsappPhoneE164: row.page_whatsapp_phone_e164,
+      clientAccountId: row.page_client_account_id ?? null,
     },
     // Ojo: el guard ya no incluye `latest_text` — un mensaje solo-adjunto
     // viene con texto vacío o null y sigue siendo el último mensaje real.

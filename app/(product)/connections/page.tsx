@@ -13,6 +13,25 @@ import {
 } from "@/features/connections/queries"
 import { getSession } from "@/lib/auth/session"
 import type { ChannelAccess } from "@/lib/auth/channel-access"
+import { clientFilterOptions } from "@/features/clients/client-filter-options"
+import {
+  listClientNamesCached,
+  resolveActorCached,
+} from "@/features/clients/queries"
+import { ClientFilterCombobox } from "@/features/clients/ui/client-filter-combobox"
+import { connectionsHref } from "@/features/connections/connections-href"
+import {
+  CLIENT_FILTER_PARAM,
+  clientFilterParam,
+  resolveClientFilter,
+} from "@/lib/clients/client-filter"
+import {
+  formatClientConnectRejection,
+  formatClientLimitNotice,
+  isClientLimitReason,
+  type ClientLimitNotice,
+} from "@/lib/clients/client-limits"
+import { getClientLimits } from "@/lib/clients/client-limits-status"
 
 // Sin sesión no hay permisos que leer y la pantalla no ofrece ningún canal
 // cerrado. Messenger queda en `true` porque no tiene bandera: lo que decide si
@@ -28,14 +47,29 @@ import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
 import { offersChannel } from "@/lib/pages/channel-display"
 import { formatMetaConnectionError } from "@/lib/pages/meta-connection-error"
 import { formatRelativeTime } from "@/lib/inbox/log-format"
-import type { listTenantPages } from "@/lib/pages/page-registry"
+import { listTenantPages } from "@/lib/pages/page-registry"
 import { Alert, AlertContent } from "@/components/ui/alert"
 
 type ConnectedPage = { id: string; name: string }
 
 // Cupo de páginas del plan. `null` = no se pudo resolver: fail-closed, se
-// muestra el bloqueo y no un «N de ?» inventado (ADR 0005).
-type PageQuotaView = { activePageCount: number; maxPages: number } | null
+// muestra el bloqueo y no un «N de ?» inventado (ADR 0005). Para un cliente
+// (issue #154) el contador es `conectadas / tope` y `suffix` lo dice.
+type PageQuotaView = {
+  activePageCount: number
+  maxPages: number
+  suffix?: string
+} | null
+
+// Lo que la pantalla necesita del cliente: su lista filtrada, su contador y su
+// aviso (proximidad, tope propio o límite del padre), que nombra al padre y
+// nunca habla de planes. El padre no tiene nada de esto: su aviso es el de
+// cuota, que monta el layout.
+type ClientView = {
+  quota: PageQuotaView
+  notice: ClientLimitNotice | null
+  ownerName: string | null
+}
 
 // El formato de fecha depende del idioma, así que ya no puede ser un módulo
 // suelto: se construye por petición con el `intl` del diccionario.
@@ -58,15 +92,55 @@ export default async function ConnectionsPage({
     reason?: string
     instagram?: string
     username?: string
+    [CLIENT_FILTER_PARAM]?: string | string[]
   }>
 }) {
-  const { meta, pages, reason, instagram, username } = await searchParams
+  const {
+    meta,
+    pages,
+    reason,
+    instagram,
+    username,
+    [CLIENT_FILTER_PARAM]: clientParam,
+  } = await searchParams
   const t = await getAppDict()
   const connected = parseConnectedPages(pages)
   const session = await getSession()
-  const tenantId = session?.user?.id ?? null
-  const tenantPages = tenantId ? await listTenantPagesCached(tenantId) : []
-  const quota = tenantId ? await resolvePageQuota(tenantId) : null
+  // Sesión → actor (issue #154): el cliente ve solo sus filas del tenant del
+  // padre. Sin actor no hay nada que listar; el layout ya rebotó.
+  const resolution = session?.user?.id
+    ? await resolveActorCached(session.user.id)
+    : null
+  const actor = resolution?.kind === "actor" ? resolution.actor : null
+  const tenantId = actor?.tenantId ?? null
+  const clientAccountId = actor?.clientAccountId ?? null
+  // Filtro por cliente del padre (ticket 4), validado contra sus clientes;
+  // para un cliente no hay lista y el parámetro no hace nada. Va a la
+  // consulta, encima del alcance del actor.
+  const clients =
+    actor && !clientAccountId ? await listClientNamesCached(actor.tenantId) : []
+  const clientFilter = resolveClientFilter(clientParam, clients, {
+    clientAccountId,
+  })
+  const clientFilterValue = clientFilterParam(clientFilter)
+  const clientNames = new Map(clients.map((client) => [client.id, client.name]))
+  // Sin filtro es la misma llamada que el header, para que el caché de
+  // petición la deduplique; con filtro el header sigue leyendo la lista entera
+  // —sus «Conectar…» dependen de si hay conexiones, no de la vista filtrada—.
+  const tenantPages = !tenantId
+    ? []
+    : clientFilter.kind === "all"
+      ? await listTenantPagesCached(tenantId, clientAccountId)
+      : await listTenantPages(tenantId, clientAccountId, clientFilter)
+  const clientView =
+    tenantId && clientAccountId
+      ? await resolveClientView(tenantId, clientAccountId, t)
+      : null
+  const quota = clientView
+    ? clientView.quota
+    : tenantId
+      ? await resolvePageQuota(tenantId)
+      : null
   // Permiso por canal del tenant (ADR 0010). Sin sesión no hay a quién
   // preguntarle, así que se cierran los dos. Se resuelven de una sola consulta
   // porque la pantalla los necesita juntos.
@@ -80,6 +154,16 @@ export default async function ConnectionsPage({
     (left, right) => cardRank(left) - cardRank(right)
   )
   const firstActiveId = sortedPages.find((page) => page.status === "active")?.id
+  // El filtro solo se monta para un padre con clientes: sin clientes «Todos»
+  // y «Mis conexiones» dicen lo mismo.
+  const filterOptions =
+    clients.length > 0
+      ? clientFilterOptions(
+          clients,
+          (value) => connectionsHref({ clientFilter: value }),
+          t
+        )
+      : null
 
   return (
     // Mock `1e`/`1f` con 20px de ritmo vertical, pero sin la columna de 880px
@@ -96,7 +180,17 @@ export default async function ConnectionsPage({
             {t.connections.subtitle}
           </p>
         </div>
-        {tenantPages.length > 0 && <PageQuota quota={quota} t={t} />}
+        <div className="flex items-center gap-3">
+          {filterOptions && (
+            <ClientFilterCombobox
+              options={filterOptions}
+              selectedId={clientFilterValue}
+            />
+          )}
+          {(tenantPages.length > 0 || clientFilter.kind !== "all") && (
+            <PageQuota quota={quota} t={t} />
+          )}
+        </div>
       </header>
 
       {meta === "connected" && (
@@ -125,22 +219,63 @@ export default async function ConnectionsPage({
       {(meta === "error" || instagram === "error") && (
         <Alert variant="destructive">
           <TriangleAlert />
-          <AlertContent>{formatMetaConnectionError(reason, t)}</AlertContent>
+          <AlertContent>
+            {/* El rebote por cupo de un cliente trae el veredicto como
+                motivo: se redacta acá, con el nombre del padre, que el
+                catálogo de `metaErrors` no tiene. */}
+            {clientView && isClientLimitReason(reason)
+              ? formatClientConnectRejection(reason, clientView.ownerName, t)
+              : formatMetaConnectionError(reason, t)}
+          </AlertContent>
         </Alert>
       )}
 
+      {/* El aviso del cliente (issue #154): proximidad al tope en ámbar; tope
+          propio o límite global del padre en rojo. Siempre nombra al padre. */}
+      {clientView?.notice && (
+        <Alert
+          variant={
+            clientView.notice.level === "blocked" ? "destructive" : "warning"
+          }
+        >
+          <TriangleAlert />
+          <AlertContent>
+            <span className="font-medium">{clientView.notice.title}</span>{" "}
+            {clientView.notice.body}
+          </AlertContent>
+        </Alert>
+      )}
+
+      {/* Dos vacíos distintos: sin conexiones (con los CTA por canal) vs. el
+          filtro por cliente no devolvió ninguna. */}
       {tenantPages.length === 0 ? (
-        <ConnectionsEmptyState
-          offersInstagram={offersInstagram}
-          offersWhatsapp={offersWhatsapp}
-          t={t}
-        />
+        clientFilter.kind === "all" ? (
+          <ConnectionsEmptyState
+            offersInstagram={offersInstagram}
+            offersWhatsapp={offersWhatsapp}
+            t={t}
+          />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {t.connections.emptyFiltered}
+          </p>
+        )
       ) : (
         sortedPages.map((page) => (
           <ConnectedPageCard
             key={page.id}
-            page={toPageView(page, access, t)}
+            page={toPageView(
+              page,
+              access,
+              t,
+              // Solo el padre etiqueta: para el cliente todo es suyo.
+              page.clientAccountId
+                ? (clientNames.get(page.clientAccountId) ?? null)
+                : null
+            )}
             showWebhookHint={page.id === firstActiveId}
+            // El webhook es del padre: la tarjeta del cliente no lo dibuja.
+            showWebhook={!clientView}
           />
         ))
       )}
@@ -190,9 +325,36 @@ function PageQuota({ quota, t }: { quota: PageQuotaView; t: AppDict }) {
       <span className="font-mono text-foreground">
         {quota.activePageCount} / {quota.maxPages}
       </span>
-      {t.connections.quotaActiveSuffix}
+      {quota.suffix ?? t.connections.quotaActiveSuffix}
     </p>
   )
+}
+
+// El contador y el aviso del cliente salen de `client-limits`, no del
+// entitlement del padre. Si no se puede leer, el contador queda sin resolver
+// —como el del padre— y no hay aviso.
+async function resolveClientView(
+  tenantId: string,
+  clientAccountId: string,
+  t: AppDict
+): Promise<ClientView> {
+  try {
+    const status = await getClientLimits({ tenantId, clientAccountId })
+    if (!status.ok) return { quota: null, notice: null, ownerName: null }
+    const { limits, ownerName } = status
+    return {
+      quota: {
+        activePageCount: limits.clientActiveCount,
+        maxPages: limits.clientMaxConnections ?? limits.planMaxPages,
+        suffix: t.clientLimits.counterSuffix,
+      },
+      notice: formatClientLimitNotice(limits, ownerName, t),
+      ownerName,
+    }
+  } catch (error) {
+    console.error("client limits unavailable", error)
+    return { quota: null, notice: null, ownerName: null }
+  }
 }
 
 // Orden de la lista (spec B2): activa → con el token rechazado → desconectada.
@@ -221,7 +383,8 @@ async function resolvePageQuota(tenantId: string): Promise<PageQuotaView> {
 function toPageView(
   page: Awaited<ReturnType<typeof listTenantPages>>[number],
   access: ChannelAccess,
-  t: AppDict
+  t: AppDict,
+  clientName: string | null
 ): ConnectedPageView {
   const dateTimeFormat = dateTimeFormatFor(t.intl)
   const now = new Date()
@@ -258,6 +421,7 @@ function toPageView(
     disconnectedAtLabel: page.disconnectedAt
       ? dateTimeFormat.format(page.disconnectedAt)
       : null,
+    clientName,
   }
 }
 

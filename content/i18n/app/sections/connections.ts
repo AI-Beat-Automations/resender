@@ -16,6 +16,8 @@ export type ConnectionsDict = {
   /** Sufijo del contador `n / m` de la cabecera. */
   quotaActiveSuffix: string
   quotaUnresolved: string
+  /** Lista vacía porque el filtro por cliente no devolvió filas. */
+  emptyFiltered: string
   noticeConnectedGeneric: string
   /** `{username}` */
   noticeInstagramNamed: string
@@ -62,6 +64,7 @@ export const es: ConnectionsDict = {
   quota: "{activePageCount} de {maxPages} conexiones",
   quotaActiveSuffix: "conexiones activas",
   quotaUnresolved: "cupo sin resolver · escríbenos a info@resender.dev",
+  emptyFiltered: "No hay conexiones para este filtro.",
   noticeConnectedGeneric: "Conectado: la autorización se completó.",
   noticeInstagramNamed:
     "Conectado: la cuenta de Instagram @{username} quedó autorizada.",
@@ -107,6 +110,7 @@ export const en: ConnectionsDict = {
   quota: "{activePageCount} of {maxPages} connections",
   quotaActiveSuffix: "active connections",
   quotaUnresolved: "quota unresolved · write to info@resender.dev",
+  emptyFiltered: "No connections for this filter.",
   noticeConnectedGeneric: "Connected: the authorization completed.",
   noticeInstagramNamed:
     "Connected: the Instagram account @{username} is now authorized.",

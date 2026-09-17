@@ -8,8 +8,8 @@ const mocks = vi.hoisted(() => ({
   getMetaUserAccessToken: vi.fn(),
   getPageOwnership: vi.fn(),
   getSubscriptionByTenantId: vi.fn(),
-  hasActiveSubscription: vi.fn(),
-  isUserWaitlisted: vi.fn(),
+  resolveConnectGate: vi.fn(),
+  getClientLimits: vi.fn(),
   listAuthorizedPages: vi.fn(),
   redirect: vi.fn(),
   revalidatePath: vi.fn(),
@@ -34,13 +34,19 @@ vi.mock("@/lib/auth/session", () => ({
   getSession: mocks.getSession,
 }))
 
-vi.mock("@/lib/auth/waitlist", () => ({
-  isUserWaitlisted: mocks.isUserWaitlisted,
+// Los gates van por actor (issue #154): el padre y el cliente entran por el
+// mismo resolutor, y lo que cambia es con qué tenant y qué tope se conecta.
+vi.mock("@/lib/clients/connect-gate", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/clients/connect-gate")>()),
+  resolveConnectGate: mocks.resolveConnectGate,
+}))
+
+vi.mock("@/lib/clients/client-limits-status", () => ({
+  getClientLimits: mocks.getClientLimits,
 }))
 
 vi.mock("@/lib/billing/subscription", () => ({
   getSubscriptionByTenantId: mocks.getSubscriptionByTenantId,
-  hasActiveSubscription: mocks.hasActiveSubscription,
 }))
 
 vi.mock("@/lib/crypto/encryption", () => {
@@ -100,6 +106,13 @@ const authorizedPage = (pageId: string) => ({
   pageAccessToken: `token-${pageId}`,
 })
 
+const PARENT = { tenantId: "tenant-1", userId: "tenant-1", clientAccountId: null }
+const CLIENT = {
+  tenantId: "tenant-1",
+  userId: "user-2",
+  clientAccountId: "client-1",
+}
+
 const selection = (...pageIds: string[]) => {
   const formData = new FormData()
   for (const pageId of pageIds) formData.append("pageIds", pageId)
@@ -111,8 +124,7 @@ describe("connectSelectedPagesAction", () => {
     for (const mock of Object.values(mocks)) mock.mockReset()
     mocks.cookieGet.mockReturnValue(undefined)
     mocks.getSession.mockResolvedValue({ user: { id: "tenant-1" } })
-    mocks.isUserWaitlisted.mockResolvedValue(false)
-    mocks.hasActiveSubscription.mockResolvedValue(true)
+    mocks.resolveConnectGate.mockResolvedValue({ kind: "ok", actor: PARENT })
     mocks.getMetaUserAccessToken.mockResolvedValue("user-token")
     mocks.listAuthorizedPages.mockResolvedValue([
       authorizedPage("page-1"),
@@ -137,9 +149,12 @@ describe("connectSelectedPagesAction", () => {
     expect(mocks.subscribePagesToWebhook).toHaveBeenCalledWith([
       authorizedPage("page-2"),
     ])
-    expect(mocks.connectAuthorizedPages).toHaveBeenCalledWith("tenant-1", [
-      authorizedPage("page-2"),
-    ])
+    // El padre conecta sin `client_account_id`: la fila es suya.
+    expect(mocks.connectAuthorizedPages).toHaveBeenCalledWith(
+      "tenant-1",
+      [authorizedPage("page-2")],
+      null
+    )
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/connections")
     expect(mocks.redirect).toHaveBeenCalledWith(
       `/connections?meta=connected&pages=${encodeURIComponent(
@@ -221,7 +236,9 @@ describe("connectSelectedPagesAction", () => {
   // La action se puede invocar por POST directo, sin pasar por el layout de
   // `(product)`: los gates tienen que estar acá también.
   it("blocks a tenant without an active subscription", async () => {
-    mocks.hasActiveSubscription.mockResolvedValue(false)
+    mocks.resolveConnectGate.mockResolvedValue({
+      kind: "no_active_subscription",
+    })
 
     const result = await connectSelectedPagesAction({}, selection("page-1"))
 
@@ -230,12 +247,138 @@ describe("connectSelectedPagesAction", () => {
     expect(mocks.connectAuthorizedPages).not.toHaveBeenCalled()
   })
 
+  // El cliente cuyo padre dejó de pagar no ve vocabulario de facturación.
+  it("tells a restricted client that its access is paused, never the subscription", async () => {
+    mocks.resolveConnectGate.mockResolvedValue({ kind: "client_restricted" })
+
+    const result = await connectSelectedPagesAction({}, selection("page-1"))
+
+    expect(result).toEqual({
+      error: "Tu acceso está en pausa. Contacta a quien administra tu acceso.",
+    })
+    expect(result.error).not.toMatch(/suscripci/i)
+  })
+
   it("blocks a waitlisted tenant", async () => {
-    mocks.isUserWaitlisted.mockResolvedValue(true)
+    mocks.resolveConnectGate.mockResolvedValue({ kind: "waitlisted" })
 
     const result = await connectSelectedPagesAction({}, selection("page-1"))
 
     expect(result).toEqual({ error: "Tu cuenta está en la lista de espera." })
     expect(mocks.getMetaUserAccessToken).not.toHaveBeenCalled()
+  })
+})
+
+// Conectar como cliente (issue #154, ticket 3): la fila va al tenant del padre
+// con el `client_account_id` del cliente, el token de Meta es el del user del
+// cliente, y el cupo es el de `client-limits`.
+describe("connectSelectedPagesAction as a client", () => {
+  const clientLimits = (overrides = {}) => ({
+    ok: true,
+    ownerName: "Agencia Norte",
+    limits: {
+      verdict: "allowed",
+      remainingSlots: 1,
+      nearLimit: true,
+      clientMaxConnections: 2,
+      clientActiveCount: 1,
+      planMaxPages: 5,
+      tenantActiveCount: 3,
+      ...overrides,
+    },
+  })
+
+  beforeEach(() => {
+    for (const mock of Object.values(mocks)) mock.mockReset()
+    mocks.cookieGet.mockReturnValue(undefined)
+    mocks.getSession.mockResolvedValue({ user: { id: "user-2" } })
+    mocks.resolveConnectGate.mockResolvedValue({ kind: "ok", actor: CLIENT })
+    mocks.getMetaUserAccessToken.mockResolvedValue("client-user-token")
+    mocks.listAuthorizedPages.mockResolvedValue([
+      authorizedPage("page-1"),
+      authorizedPage("page-2"),
+    ])
+    mocks.getPageOwnership.mockResolvedValue([])
+    mocks.getClientLimits.mockResolvedValue(clientLimits())
+    mocks.subscribePagesToWebhook.mockResolvedValue(undefined)
+    mocks.connectAuthorizedPages.mockImplementation(
+      async (_tenantId: string, pages: { pageId: string; name: string }[]) =>
+        pages.map((page) => ({
+          id: `connection-${page.pageId}`,
+          tenantId: "tenant-1",
+          metaPageId: page.pageId,
+          name: page.name,
+        }))
+    )
+  })
+
+  it("writes the row in the parent's tenant tagged with the client account", async () => {
+    await connectSelectedPagesAction({}, selection("page-1"))
+
+    // El token de Meta es el del user del cliente: fue él quien se logueó.
+    expect(mocks.getMetaUserAccessToken).toHaveBeenCalledWith("user-2")
+    expect(mocks.getClientLimits).toHaveBeenCalledWith({
+      tenantId: "tenant-1",
+      clientAccountId: "client-1",
+    })
+    expect(mocks.connectAuthorizedPages).toHaveBeenCalledWith(
+      "tenant-1",
+      [authorizedPage("page-1")],
+      "client-1"
+    )
+    // El cupo del plan no se lee aparte: ya viene dentro de `client-limits`.
+    expect(mocks.getSubscriptionByTenantId).not.toHaveBeenCalled()
+    expect(mocks.countActivePages).not.toHaveBeenCalled()
+  })
+
+  it("rejects the client at its own cap naming the parent, never the plan", async () => {
+    mocks.getClientLimits.mockResolvedValue(
+      clientLimits({
+        verdict: "client_limit_reached",
+        remainingSlots: 0,
+        clientActiveCount: 2,
+      })
+    )
+
+    const result = await connectSelectedPagesAction({}, selection("page-1"))
+
+    expect(result.error).toContain("Agencia Norte")
+    expect(result.error).not.toMatch(/plan/i)
+    expect(mocks.connectAuthorizedPages).not.toHaveBeenCalled()
+  })
+
+  it("rejects the client when the parent's global limit is full", async () => {
+    mocks.getClientLimits.mockResolvedValue(
+      clientLimits({ verdict: "tenant_limit_reached", remainingSlots: 0 })
+    )
+
+    const result = await connectSelectedPagesAction({}, selection("page-1"))
+
+    expect(result.error).toContain("Agencia Norte")
+    expect(result.error).not.toMatch(/plan/i)
+    expect(mocks.connectAuthorizedPages).not.toHaveBeenCalled()
+  })
+
+  it("caps the selection to the slots the client really has", async () => {
+    const result = await connectSelectedPagesAction(
+      {},
+      selection("page-1", "page-2")
+    )
+
+    expect(result.error).toContain("1")
+    expect(result.error).not.toMatch(/plan/i)
+    expect(mocks.connectAuthorizedPages).not.toHaveBeenCalled()
+  })
+
+  it("fails closed without naming the plan when the limits cannot be read", async () => {
+    mocks.getClientLimits.mockResolvedValue({
+      ok: false,
+      reason: "plan_unresolved",
+    })
+
+    const result = await connectSelectedPagesAction({}, selection("page-1"))
+
+    expect(result.error).not.toMatch(/plan/i)
+    expect(mocks.connectAuthorizedPages).not.toHaveBeenCalled()
   })
 })

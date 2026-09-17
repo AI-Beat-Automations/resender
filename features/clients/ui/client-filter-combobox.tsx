@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation"
 import { Check, ChevronDown } from "lucide-react"
 
 import { useAppDict } from "@/content/i18n/app/provider"
-import { inboxHref, type InboxTab } from "@/lib/inbox/inbox-tabs"
 import {
   Command,
   CommandEmpty,
@@ -21,45 +20,36 @@ import {
 } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
 
-// Filtro por cuenta conectada como Combobox de shadcn (Popover + Command),
-// mock `1i`, ADR 0018. Es la única isla cliente de la pantalla: el estado
-// sigue en `?page=` —al elegir se navega con `inboxHref`, igual que hacían las
-// píldoras—, así que recarga, compartir y botón atrás siguen funcionando.
-//
-// Dice «cuentas» y no «páginas» desde la ADR 0008: `connected_pages` dejó de
-// ser páginas de Facebook y hoy mezcla Messenger, Instagram y WhatsApp.
+// Filtro por cliente del padre (issue #154, ticket 4), gemelo del combobox de
+// cuenta de Inbox: Popover + Command de shadcn, y el estado en `?cliente=`.
+// Lo comparten Conexiones e Inbox, así que no sabe construir enlaces: cada
+// pantalla le da las opciones **con su href ya resuelto** —el constructor de
+// enlaces vive en el servidor (`inboxHref`, `connectionsHref`)— y acá solo se
+// navega. Recarga, compartir y botón atrás siguen funcionando.
 
-export type InboxFilterAccount = {
-  id: string
+export type ClientFilterOption = {
+  /** `null` = «todos»; si no, el valor de `?cliente=`. */
+  id: string | null
   label: string
+  href: string
 }
 
-const ALL = "__all__"
-
-export function InboxAccountCombobox({
-  tab,
-  accounts,
-  selectedAccountId,
-  clientFilter = null,
+export function ClientFilterCombobox({
+  options,
+  selectedId,
 }: {
-  tab: InboxTab
-  accounts: InboxFilterAccount[]
-  selectedAccountId: string | null
-  /** `?cliente=` del padre: se conserva al cambiar de cuenta. */
-  clientFilter?: string | null
+  options: ClientFilterOption[]
+  selectedId: string | null
 }) {
-  const t = useAppDict().inbox
+  const t = useAppDict().clients
   const router = useRouter()
   const [open, setOpen] = useState(false)
 
-  const selected = accounts.find((account) => account.id === selectedAccountId)
-  const options = [{ id: ALL, label: t.filterAll }, ...accounts]
+  const selected = options.find((option) => option.id === selectedId)
 
-  function select(id: string) {
+  function select(option: ClientFilterOption) {
     setOpen(false)
-    router.push(
-      inboxHref({ tab, clientFilter, pageId: id === ALL ? null : id })
-    )
+    router.push(option.href)
   }
 
   return (
@@ -67,7 +57,7 @@ export function InboxAccountCombobox({
       <PopoverTrigger
         role="combobox"
         aria-expanded={open}
-        aria-label={t.accountPickerLabel}
+        aria-label={t.filterLabel}
         className="inline-flex h-[26px] max-w-[180px] items-center gap-1 rounded-[7px] border border-border bg-card px-2 text-[12px] text-text-secondary transition-colors outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/40"
       >
         <span className="truncate">{selected?.label ?? t.filterAll}</span>
@@ -75,20 +65,17 @@ export function InboxAccountCombobox({
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[220px] p-0">
         <Command>
-          <CommandInput placeholder={t.accountPickerSearch} />
+          <CommandInput placeholder={t.filterSearch} />
           <CommandList>
-            <CommandEmpty>{t.accountPickerEmpty}</CommandEmpty>
+            <CommandEmpty>{t.filterEmpty}</CommandEmpty>
             <CommandGroup>
               {options.map((option) => {
-                const active =
-                  option.id === ALL
-                    ? selectedAccountId === null
-                    : option.id === selectedAccountId
+                const active = option.id === selectedId
                 return (
                   <CommandItem
-                    key={option.id}
+                    key={option.id ?? "__all__"}
                     value={option.label}
-                    onSelect={() => select(option.id)}
+                    onSelect={() => select(option)}
                     className="text-[13px]"
                   >
                     <Check

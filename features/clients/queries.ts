@@ -1,6 +1,7 @@
 import { cache } from "react"
 
 import { resolveActor } from "@/lib/clients/actor"
+import { listClientAccountNames } from "@/lib/clients/client-accounts"
 import { resolveClientPlan } from "@/lib/clients/client-plan"
 
 // El layout de `(product)` (para el item del sidebar) y la página de Clientes
@@ -16,3 +17,8 @@ export const resolveClientPlanCached = cache(resolveClientPlan)
 export const resolveActorCached = cache((userId: string) =>
   resolveActor({ user: { id: userId } })
 )
+
+// Nombres de los clientes del padre (ticket 4): etiquetan las filas de
+// Conexiones e Inbox y llenan el filtro por cliente. Página y header los piden
+// en la misma petición.
+export const listClientNamesCached = cache(listClientAccountNames)

@@ -2,9 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
-  resolveProductAccess: vi.fn(),
+  resolveConnectGate: vi.fn(),
+  getClientLimits: vi.fn(),
   resolveInstagramAccess: vi.fn(),
-  hasActiveSubscription: vi.fn(),
   getSubscriptionByTenantId: vi.fn(),
   countActivePages: vi.fn(),
   getActivePageByMetaPageId: vi.fn(),
@@ -17,8 +17,15 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/auth/session", () => ({ getSession: mocks.getSession }))
 
-vi.mock("@/lib/auth/waitlist", () => ({
-  resolveProductAccess: mocks.resolveProductAccess,
+// Los gates van por actor (issue #154): el resolutor decide si es el padre o
+// un cliente, y con qué tenant se conecta.
+vi.mock("@/lib/clients/connect-gate", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/clients/connect-gate")>()),
+  resolveConnectGate: mocks.resolveConnectGate,
+}))
+
+vi.mock("@/lib/clients/client-limits-status", () => ({
+  getClientLimits: mocks.getClientLimits,
 }))
 
 vi.mock("@/lib/auth/channel-access", () => ({
@@ -26,7 +33,6 @@ vi.mock("@/lib/auth/channel-access", () => ({
 }))
 
 vi.mock("@/lib/billing/subscription", () => ({
-  hasActiveSubscription: mocks.hasActiveSubscription,
   getSubscriptionByTenantId: mocks.getSubscriptionByTenantId,
 }))
 
@@ -89,6 +95,12 @@ import { GET } from "./route"
 
 const STATE = "state-1"
 const IG_USER_ID = "17841400000000000"
+const PARENT = { tenantId: "tenant-1", userId: "tenant-1", clientAccountId: null }
+const CLIENT = {
+  tenantId: "tenant-1",
+  userId: "user-2",
+  clientAccountId: "client-1",
+}
 
 const callbackRequest = () =>
   new NextRequest(
@@ -106,8 +118,7 @@ describe("GET /api/meta/instagram/callback", () => {
   beforeEach(() => {
     for (const mock of Object.values(mocks)) mock.mockReset()
     mocks.getSession.mockResolvedValue({ user: { id: "tenant-1" } })
-    mocks.resolveProductAccess.mockResolvedValue("allowed")
-    mocks.hasActiveSubscription.mockResolvedValue(true)
+    mocks.resolveConnectGate.mockResolvedValue({ kind: "ok", actor: PARENT })
     mocks.resolveInstagramAccess.mockResolvedValue(true)
     mocks.getSubscriptionByTenantId.mockResolvedValue({
       priceLookupKey: "starter_monthly",
@@ -192,7 +203,9 @@ describe("GET /api/meta/instagram/callback", () => {
   // /billing aunque además le falte el permiso y esté en el tope; que el cupo no
   // se consulte es lo que fija que el orden no se dé vuelta.
   it("checks the subscription before the channel permission and the plan cap", async () => {
-    mocks.hasActiveSubscription.mockResolvedValue(false)
+    mocks.resolveConnectGate.mockResolvedValue({
+      kind: "no_active_subscription",
+    })
     mocks.resolveInstagramAccess.mockResolvedValue(false)
     mocks.countActivePages.mockResolvedValue(2)
 
@@ -219,6 +232,117 @@ describe("GET /api/meta/instagram/callback", () => {
   it("bounces before the exchange when the plan cannot be resolved", async () => {
     mocks.getSubscriptionByTenantId.mockResolvedValue({
       priceLookupKey: "algo_raro",
+    })
+
+    const response = await GET(callbackRequest())
+
+    expect(reasonOf(response)).toBe("configuration_failed")
+    expect(mocks.exchangeCodeForInstagramToken).not.toHaveBeenCalled()
+  })
+})
+
+// Conectar Instagram como cliente (issue #154, ticket 3): la fila queda en el
+// tenant del padre con el `client_account_id`, el cupo sale de
+// `client-limits` y el rebote nombra el veredicto para que Conexiones lo
+// redacte con el nombre del padre.
+describe("GET /api/meta/instagram/callback as a client", () => {
+  const clientLimits = (verdict: string) => ({
+    ok: true,
+    ownerName: "Agencia Norte",
+    limits: {
+      verdict,
+      remainingSlots: verdict === "allowed" ? 1 : 0,
+      nearLimit: false,
+      clientMaxConnections: 2,
+      clientActiveCount: 1,
+      planMaxPages: 5,
+      tenantActiveCount: 3,
+    },
+  })
+
+  beforeEach(() => {
+    for (const mock of Object.values(mocks)) mock.mockReset()
+    mocks.getSession.mockResolvedValue({ user: { id: "user-2" } })
+    mocks.resolveConnectGate.mockResolvedValue({ kind: "ok", actor: CLIENT })
+    mocks.resolveInstagramAccess.mockResolvedValue(true)
+    mocks.getClientLimits.mockResolvedValue(clientLimits("allowed"))
+    mocks.getActivePageByMetaPageId.mockResolvedValue(null)
+    mocks.exchangeCodeForInstagramToken.mockResolvedValue({
+      accessToken: "token-1",
+      expiresAt: null,
+    })
+    mocks.fetchInstagramProfile.mockResolvedValue({
+      igUserId: IG_USER_ID,
+      username: "cuenta_cliente",
+      name: "Cuenta",
+    })
+    mocks.subscribeInstagramWebhook.mockResolvedValue(undefined)
+    mocks.connectInstagramAccount.mockResolvedValue({
+      id: "connection-1",
+      tenantId: "tenant-1",
+      channel: "instagram",
+      metaPageId: IG_USER_ID,
+      username: "cuenta_cliente",
+    })
+  })
+
+  it("connects into the parent's tenant tagged with the client account", async () => {
+    const response = await GET(callbackRequest())
+
+    expect(mocks.getClientLimits).toHaveBeenCalledWith({
+      tenantId: "tenant-1",
+      clientAccountId: "client-1",
+    })
+    // El permiso de canal es del tenant, no del user del cliente.
+    expect(mocks.resolveInstagramAccess).toHaveBeenCalledWith("tenant-1")
+    expect(mocks.connectInstagramAccount).toHaveBeenCalledWith(
+      "tenant-1",
+      expect.objectContaining({ igUserId: IG_USER_ID }),
+      "client-1"
+    )
+    // El cupo del plan no se lee aparte: viene dentro de `client-limits`.
+    expect(mocks.countActivePages).not.toHaveBeenCalled()
+    expect(response.headers.get("location")).toContain("instagram=connected")
+  })
+
+  it("bounces with the client's own verdict as the reason", async () => {
+    mocks.getClientLimits.mockResolvedValue(clientLimits("client_limit_reached"))
+
+    const response = await GET(callbackRequest())
+
+    expect(reasonOf(response)).toBe("client_limit_reached")
+    expect(mocks.connectInstagramAccount).not.toHaveBeenCalled()
+    expect(mocks.subscribeInstagramWebhook).not.toHaveBeenCalled()
+  })
+
+  it("bounces with the parent's global limit as the reason", async () => {
+    mocks.getClientLimits.mockResolvedValue(clientLimits("tenant_limit_reached"))
+
+    const response = await GET(callbackRequest())
+
+    expect(reasonOf(response)).toBe("tenant_limit_reached")
+    expect(mocks.connectInstagramAccount).not.toHaveBeenCalled()
+  })
+
+  // La reconexión de una cuenta ya activa del tenant sigue sin pedir hueco.
+  it("still lets a reconnection through at the cap", async () => {
+    mocks.getClientLimits.mockResolvedValue(clientLimits("client_limit_reached"))
+    mocks.getActivePageByMetaPageId.mockResolvedValue({
+      id: "connection-1",
+      tenantId: "tenant-1",
+      metaPageId: IG_USER_ID,
+    })
+
+    const response = await GET(callbackRequest())
+
+    expect(mocks.connectInstagramAccount).toHaveBeenCalledTimes(1)
+    expect(response.headers.get("location")).toContain("instagram=connected")
+  })
+
+  it("fails closed before the exchange when the limits cannot be read", async () => {
+    mocks.getClientLimits.mockResolvedValue({
+      ok: false,
+      reason: "plan_unresolved",
     })
 
     const response = await GET(callbackRequest())

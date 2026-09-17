@@ -16,6 +16,7 @@ import * as subscription from "./sections/subscription"
 import * as accessPending from "./sections/access-pending"
 import * as invitation from "./sections/invitation"
 import * as clientRestricted from "./sections/client-restricted"
+import * as clientLimits from "./sections/client-limits"
 import * as billing from "./sections/billing"
 import * as clients from "./sections/clients"
 import * as metaErrors from "./sections/meta-errors"
@@ -47,6 +48,7 @@ export const es: AppDict = {
   accessPending: accessPending.es,
   invitation: invitation.es,
   clientRestricted: clientRestricted.es,
+  clientLimits: clientLimits.es,
   billing: billing.es,
   clients: clients.es,
   metaErrors: metaErrors.es,

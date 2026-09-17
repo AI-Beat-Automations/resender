@@ -156,6 +156,12 @@ export function validatePageSelection(
   input: {
     view: PageSelectionView
     selectedPageIds: string[]
+    /**
+     * Con qué se rechaza pasarse de `remainingSlots` cuando el texto del plan
+     * no sirve: un cliente (issue #154) no tiene plan que nombrar, y su mensaje
+     * lo redacta `client-limits` con el nombre del padre.
+     */
+    limitMessage?: string
   },
   t: AppDict
 ): PageSelectionResult {
@@ -179,6 +185,14 @@ export function validatePageSelection(
   }
 
   if (newPages.length > input.view.remainingSlots) {
+    if (input.limitMessage) {
+      return {
+        ok: false,
+        code: "page_limit_exceeded",
+        message: input.limitMessage,
+      }
+    }
+
     const { maxPages, activePageCount, remainingSlots } = input.view
     // El cupo se dice en **conexiones** (ADR 0011): cuenta todas, y las
     // `activePageCount` de este tenant pueden incluir cuentas de Instagram que

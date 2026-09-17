@@ -29,6 +29,11 @@ export type InboxDict = {
   noCommentsFilteredTitle: string
   noCommentsBody: string
   noCommentsFilteredBody: string
+  /** Vacíos con el filtro por cliente del padre puesto (issue #154). */
+  noConversationsClientFilteredTitle: string
+  noConversationsClientFilteredBody: string
+  noCommentsClientFilteredTitle: string
+  noCommentsClientFilteredBody: string
   noInstagramTitle: string
   noInstagramBody: string
   noInstagramCta: string
@@ -92,6 +97,14 @@ export const es: InboxDict = {
     "Cuando alguien comente una publicación, el comentario se guarda acá y se reenvía a tu webhook.",
   noCommentsFilteredBody:
     "El filtro no devolvió ninguna publicación. Prueba con «Todas las cuentas» para ver el resto del log.",
+  noConversationsClientFilteredTitle:
+    "Este cliente todavía no tiene conversaciones.",
+  noConversationsClientFilteredBody:
+    "El filtro no devolvió ninguna conversación. Prueba con «Todos los clientes» para ver el resto del log.",
+  noCommentsClientFilteredTitle:
+    "Este cliente todavía no tiene comentarios.",
+  noCommentsClientFilteredBody:
+    "El filtro no devolvió ninguna publicación. Prueba con «Todos los clientes» para ver el resto del log.",
   noInstagramTitle: "Todavía no hay ninguna cuenta de Instagram conectada.",
   noInstagramBody:
     "Los comentarios llegan solo por Instagram. Conecta una cuenta profesional para verlos acá.",
@@ -147,6 +160,13 @@ export const en: InboxDict = {
     "When someone comments on a post, the comment is saved here and forwarded to your webhook.",
   noCommentsFilteredBody:
     "The filter didn't return any post. Try «All accounts» to see the rest of the log.",
+  noConversationsClientFilteredTitle:
+    "This client has no conversations yet.",
+  noConversationsClientFilteredBody:
+    "The filter didn't return any conversation. Try «All clients» to see the rest of the log.",
+  noCommentsClientFilteredTitle: "This client has no comments yet.",
+  noCommentsClientFilteredBody:
+    "The filter didn't return any post. Try «All clients» to see the rest of the log.",
   noInstagramTitle: "No Instagram account connected yet.",
   noInstagramBody:
     "Comments only arrive through Instagram. Connect a professional account to see them here.",

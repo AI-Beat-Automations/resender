@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 
 import { es } from "@/content/i18n/app/es"
+import type { ClientLimitVerdict } from "@/lib/clients/client-limits"
 
 import {
   WhatsappApiError,
@@ -444,7 +445,24 @@ describe("checkWhatsappPlanSlot", () => {
     countActivePages: vi.fn(async () => 1),
     resolveMaxPages: vi.fn(async () => 2),
     resolveOwnership: vi.fn(async () => ownership()),
+    resolveClientLimits: vi.fn(async () => clientLimits("allowed")),
     ...overrides,
+  })
+
+  // `client-limits` ya resuelto (issue #154): lo que el cierre recibe cuando
+  // el actor es un cliente.
+  const clientLimits = (verdict: ClientLimitVerdict) => ({
+    ok: true as const,
+    ownerName: "Agencia Norte",
+    limits: {
+      verdict,
+      remainingSlots: verdict === "allowed" ? 1 : 0,
+      nearLimit: false,
+      clientMaxConnections: 2,
+      clientActiveCount: 1,
+      planMaxPages: 5,
+      tenantActiveCount: 3,
+    },
   })
 
   it("deja pasar cuando queda hueco", async () => {
@@ -454,6 +472,7 @@ describe("checkWhatsappPlanSlot", () => {
         {
           tenantId: "tenant-1",
           phoneNumberId: "phone-1",
+          clientAccountId: null,
         },
         es
       )
@@ -472,6 +491,7 @@ describe("checkWhatsappPlanSlot", () => {
         {
           tenantId: "tenant-1",
           phoneNumberId: "phone-1",
+          clientAccountId: null,
         },
         es
       )
@@ -488,6 +508,7 @@ describe("checkWhatsappPlanSlot", () => {
       {
         tenantId: "tenant-1",
         phoneNumberId: null,
+        clientAccountId: null,
       },
       es
     )
@@ -499,7 +520,7 @@ describe("checkWhatsappPlanSlot", () => {
   it("falla cerrado si el plan no se puede resolver", async () => {
     const result = await checkWhatsappPlanSlot(
       slotDeps({ resolveMaxPages: vi.fn(async () => null) }),
-      { tenantId: "tenant-1", phoneNumberId: "phone-1" },
+      { tenantId: "tenant-1", phoneNumberId: "phone-1", clientAccountId: null },
       es
     )
 
@@ -513,11 +534,77 @@ describe("checkWhatsappPlanSlot", () => {
           throw new Error("neon is down")
         }),
       }),
-      { tenantId: "tenant-1", phoneNumberId: "phone-1" },
+      { tenantId: "tenant-1", phoneNumberId: "phone-1", clientAccountId: null },
       es
     )
 
     expect(result).toMatchObject({ ok: false, reason: "internal_error" })
+  })
+
+  // Como cliente (issue #154): el cupo es el de `client-limits`, la exención
+  // de reconexión sigue valiendo, y ningún mensaje habla del plan.
+  describe("como cliente", () => {
+    const asClient = {
+      tenantId: "tenant-1",
+      phoneNumberId: "phone-1",
+      clientAccountId: "client-1",
+    }
+
+    it("deja pasar con huecos y no lee el cupo del plan aparte", async () => {
+      const d = slotDeps()
+
+      expect(await checkWhatsappPlanSlot(d, asClient, es)).toEqual({ ok: true })
+      expect(d.resolveClientLimits).toHaveBeenCalledWith({
+        tenantId: "tenant-1",
+        clientAccountId: "client-1",
+      })
+      expect(d.resolveMaxPages).not.toHaveBeenCalled()
+      expect(d.countActivePages).not.toHaveBeenCalled()
+    })
+
+    it.each(["client_limit_reached", "tenant_limit_reached"] as const)(
+      "rechaza %s nombrando al padre y sin hablar del plan",
+      async (verdict) => {
+        const d = slotDeps({
+          resolveClientLimits: vi.fn(async () => clientLimits(verdict)),
+        })
+
+        const result = await checkWhatsappPlanSlot(d, asClient, es)
+
+        expect(result).toMatchObject({ ok: false, reason: "page_limit_reached" })
+        if (!result.ok) {
+          expect(result.message).toContain("Agencia Norte")
+          expect(result.message).not.toMatch(/plan/i)
+        }
+      }
+    )
+
+    it("deja reconectar un número ya activo aunque esté en el tope", async () => {
+      const d = slotDeps({
+        resolveClientLimits: vi.fn(async () =>
+          clientLimits("client_limit_reached")
+        ),
+        resolveOwnership: vi.fn(async () =>
+          ownership({ activeForTenant: true })
+        ),
+      })
+
+      expect(await checkWhatsappPlanSlot(d, asClient, es)).toEqual({ ok: true })
+    })
+
+    it("falla cerrado sin nombrar el plan si el tope no se puede leer", async () => {
+      const d = slotDeps({
+        resolveClientLimits: vi.fn(async () => ({
+          ok: false as const,
+          reason: "plan_unresolved" as const,
+        })),
+      })
+
+      const result = await checkWhatsappPlanSlot(d, asClient, es)
+
+      expect(result).toMatchObject({ ok: false, reason: "plan_restricted" })
+      if (!result.ok) expect(result.message).not.toMatch(/plan/i)
+    })
   })
 })
 

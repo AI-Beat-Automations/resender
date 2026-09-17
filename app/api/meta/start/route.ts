@@ -1,8 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server"
 
 import { getSession } from "@/lib/auth/session"
-import { resolveProductAccess } from "@/lib/auth/waitlist"
-import { hasActiveSubscription } from "@/lib/billing/subscription"
+import {
+  CONNECT_GATE_LOG_REASON,
+  CONNECT_GATE_REDIRECT,
+  resolveConnectGate,
+} from "@/lib/clients/connect-gate"
 import { log, type LogReason } from "@/lib/observability/logger"
 import { STATE_COOKIE, buildDialogUrl } from "@/lib/meta"
 
@@ -30,20 +33,18 @@ export async function GET(request: NextRequest) {
     return gate("not_authenticated", "/login")
   }
 
-  // Una sesión huérfana vuelve a `/login` y no a `/pending`: la pantalla del
-  // gate da por buena la sesión y de una credencial rota solo se sale
-  // volviendo a autenticarse.
-  const access = await resolveProductAccess(session.user.id)
-  if (access === "unknown_user") {
-    return gate("not_authenticated", "/login")
+  // Los gates por actor (issue #154): un cliente conecta con la suscripción
+  // del padre y nunca rebota a `/billing`. Una sesión huérfana vuelve a
+  // `/login` y no a `/pending`: la pantalla del gate da por buena la sesión y
+  // de una credencial rota solo se sale volviendo a autenticarse.
+  const connectGate = await resolveConnectGate(session.user.id)
+  if (connectGate.kind !== "ok") {
+    return gate(
+      CONNECT_GATE_LOG_REASON[connectGate.kind],
+      CONNECT_GATE_REDIRECT[connectGate.kind]
+    )
   }
-  if (access === "waitlisted") {
-    return gate("waitlisted", "/pending")
-  }
-
-  if (!(await hasActiveSubscription(session.user.id))) {
-    return gate("no_active_subscription", "/billing")
-  }
+  const { actor } = connectGate
 
   log({
     entrypoint: "route",
@@ -51,7 +52,7 @@ export async function GET(request: NextRequest) {
     outcome: "ok",
     channel: "messenger",
     route: "/api/meta/start",
-    tenantId: session.user.id,
+    tenantId: actor.tenantId,
   })
 
   const state = crypto.randomUUID()
