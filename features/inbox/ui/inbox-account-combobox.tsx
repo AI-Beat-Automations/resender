@@ -40,10 +40,13 @@ export function InboxAccountCombobox({
   tab,
   accounts,
   selectedAccountId,
+  clientFilter = null,
 }: {
   tab: InboxTab
   accounts: InboxFilterAccount[]
   selectedAccountId: string | null
+  /** `?cliente=` del padre: se conserva al cambiar de cuenta. */
+  clientFilter?: string | null
 }) {
   const t = useAppDict().inbox
   const router = useRouter()
@@ -54,7 +57,9 @@ export function InboxAccountCombobox({
 
   function select(id: string) {
     setOpen(false)
-    router.push(inboxHref({ tab, pageId: id === ALL ? null : id }))
+    router.push(
+      inboxHref({ tab, clientFilter, pageId: id === ALL ? null : id })
+    )
   }
 
   return (

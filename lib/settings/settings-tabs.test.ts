@@ -7,6 +7,7 @@ import {
   DEFAULT_SETTINGS_TAB,
   resolveSettingsTab,
   SETTINGS_TABS,
+  settingsTabsFor,
 } from "./settings-tabs"
 
 describe("settings tab resolution", () => {
@@ -58,5 +59,19 @@ describe("settings tab resolution", () => {
     expect(resolveSettingsTab(tab.searchParams.get("tab") ?? undefined)).toBe(
       "suscripcion"
     )
+  })
+
+  it("el cliente solo tiene Cuenta, y por URL no llega a las otras dos", () => {
+    // Visibilidad por actor (issue #154): `api-keys` y `suscripcion` ni se
+    // dibujan ni se aceptan aunque se escriban a mano en la URL.
+    const client = settingsTabsFor({ clientAccountId: "client-1" })
+    expect(client).toEqual(["cuenta"])
+    expect(resolveSettingsTab("api-keys", client)).toBe("cuenta")
+    expect(resolveSettingsTab("suscripcion", client)).toBe("cuenta")
+    expect(resolveSettingsTab("cuenta", client)).toBe("cuenta")
+
+    const owner = settingsTabsFor({ clientAccountId: null })
+    expect(owner).toEqual(SETTINGS_TABS)
+    expect(resolveSettingsTab("suscripcion", owner)).toBe("suscripcion")
   })
 })

@@ -18,10 +18,13 @@ import { cn } from "@/lib/utils"
 export function InboxTabsNav({
   active,
   accountId,
+  clientFilter = null,
   t,
 }: {
   active: InboxTab
   accountId: string | null
+  /** `?cliente=` del padre: también se conserva al cambiar de modo. */
+  clientFilter?: string | null
   t: AppDict
 }) {
   return (
@@ -32,7 +35,7 @@ export function InboxTabsNav({
         return (
           <Link
             key={tab}
-            href={inboxHref({ tab, pageId: accountId })}
+            href={inboxHref({ tab, clientFilter, pageId: accountId })}
             aria-current={isActive ? "page" : undefined}
             className={cn(
               "rounded-full px-2.5 py-1 text-[12.5px] transition-colors",

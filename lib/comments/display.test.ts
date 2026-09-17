@@ -29,6 +29,7 @@ function publication(
       metaPageId: "17841499999999999",
       name: "Café Rioja",
       username: "cafe.rioja",
+      clientAccountId: null,
     },
     latestComment: {
       text: "¿cuánto sale?",
@@ -204,6 +205,15 @@ describe("formatPublicationKey", () => {
 })
 
 describe("toPublicationRowView", () => {
+  it("lleva el nombre del cliente dueño de la cuenta cuando se lo dan", () => {
+    // Issue #154, ticket 4: solo la lista del padre lo recibe.
+    expect(
+      toPublicationRowView(publication(), NOW, es, undefined, "Dental Sur")
+        .clientName
+    ).toBe("Dental Sur")
+    expect(toPublicationRowView(publication(), NOW, es).clientName).toBeNull()
+  })
+
   it("pone el último comentario en el renglón principal", () => {
     const row = toPublicationRowView(publication(), NOW, es)
 

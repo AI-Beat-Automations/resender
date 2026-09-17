@@ -13,6 +13,7 @@ import { Bubble } from "@/features/inbox/ui/bubble"
 import { ChannelBadge } from "@/features/inbox/ui/channel-badge"
 import { EmptyPane } from "@/features/inbox/ui/empty-pane"
 import { ThreadHeader } from "@/features/inbox/ui/thread-header"
+import { ClientLabel } from "@/features/clients/ui/client-label"
 import { ForwardingPauseSwitch } from "@/components/forwarding-pause-switch"
 import type { AppDict } from "@/content/i18n/app"
 import type { AttachmentDisplay } from "@/lib/inbox/message-media"
@@ -41,6 +42,8 @@ export type ThreadHeaderView = {
   channel: PageChannel
   /** Pausa de reenvío (ADR 0020): ISO o null. */
   pausedAt: string | null
+  /** Nombre del cliente dueño de la cuenta (issue #154); null si es propia. */
+  clientName: string | null
 }
 
 export function MessageThread({
@@ -59,6 +62,15 @@ export function MessageThread({
         title={header.contactLabel}
         pill={<ChannelBadge channel={header.channel} size="header" t={t} />}
         account={header.accountLabel}
+        tag={
+          header.clientName ? (
+            <ClientLabel
+              name={header.clientName}
+              t={t}
+              size="header"
+            />
+          ) : null
+        }
         action={
           // Acción ya ligada al id desde el servidor: el `Switch` solo manda
           // el estado nuevo, y un id ajeno no existe para esta sesión.
@@ -110,25 +122,32 @@ export function MessageThread({
   )
 }
 
+// Tres vacíos: sin datos, el filtro de cuenta no devolvió nada, o el filtro
+// por cliente del padre (issue #154) no devolvió nada. Cada uno sugiere
+// soltar el filtro que corresponde.
 export function EmptyThread({
   filtered,
   t,
 }: {
-  filtered: boolean
+  filtered: "none" | "account" | "client"
   t: AppDict
 }) {
   return (
     <EmptyPane
       icon={Inbox}
       title={
-        filtered
+        filtered === "account"
           ? t.inbox.noConversationsFilteredTitle
-          : t.inbox.noConversationsTitle
+          : filtered === "client"
+            ? t.inbox.noConversationsClientFilteredTitle
+            : t.inbox.noConversationsTitle
       }
       body={
-        filtered
+        filtered === "account"
           ? t.inbox.noConversationsFilteredBody
-          : t.inbox.noConversationsBody
+          : filtered === "client"
+            ? t.inbox.noConversationsClientFilteredBody
+            : t.inbox.noConversationsBody
       }
     />
   )

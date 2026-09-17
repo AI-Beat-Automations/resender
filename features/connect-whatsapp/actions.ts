@@ -5,8 +5,11 @@ import { cookies } from "next/headers"
 import { getSession } from "@/lib/auth/session"
 import { getAppDict } from "@/lib/i18n/app-dict"
 import { resolveWhatsappAccess } from "@/lib/auth/channel-access"
-import { isUserWaitlisted } from "@/lib/auth/waitlist"
-import { hasActiveSubscription } from "@/lib/billing/subscription"
+import { resolveActorByUserId } from "@/lib/clients/actor"
+import {
+  connectGateError,
+  resolveConnectGate,
+} from "@/lib/clients/connect-gate"
 import { describeError, log } from "@/lib/observability/logger"
 import { getWhatsappGeneratedPin } from "@/lib/pages/page-registry"
 
@@ -44,19 +47,18 @@ export async function issueWhatsappSignupNonce(): Promise<WhatsappSignupNonceSta
 
   // Los mismos gates que el cierre, y por el mismo motivo: emitir un nonce a
   // quien no puede conectar sería dejarle abrir el diálogo de Meta para que su
-  // autorización muera al volver.
-  if (await isUserWaitlisted(session.user.id)) {
-    return { error: t.actions.waitlisted }
-  }
-  if (!(await hasActiveSubscription(session.user.id))) {
-    return { error: t.actions.noSubscription }
-  }
-  if (!(await resolveWhatsappAccess(session.user.id))) {
+  // autorización muera al volver. Por actor (issue #154): el cliente conecta
+  // con la suscripción y el permiso de canal del padre.
+  const gate = await resolveConnectGate(session.user.id)
+  if (gate.kind !== "ok") return { error: connectGateError(gate, t) }
+  if (!(await resolveWhatsappAccess(gate.actor.tenantId))) {
     return { error: t.actions.whatsappNotEnabled }
   }
 
+  // Atado al user de la sesión y no al tenant: el cierre lo consume con el
+  // mismo id, y para un cliente el tenant es el del padre.
   const store = await cookies()
-  return { nonce: issueSignupNonce(store, session.user.id) }
+  return { nonce: issueSignupNonce(store, gate.actor.userId) }
 }
 
 export type WhatsappPinState = {
@@ -85,14 +87,24 @@ export async function revealWhatsappPin(
   const session = await getSession()
   if (!session?.user?.id) return { error: t.actions.notSignedIn }
 
+  // El actor decide de qué tenant es la conexión y, si es un cliente, que solo
+  // pueda leer el PIN de **sus** números (issue #154).
+  const resolution = await resolveActorByUserId(session.user.id)
+  if (resolution.kind !== "actor") return { error: t.actions.notSignedIn }
+  const { actor } = resolution
+
   // El gate de canal también acá: quitarle el permiso a una cuenta tiene que
   // cerrar todas las puertas del canal, no solo la de conectar.
-  if (!(await resolveWhatsappAccess(session.user.id))) {
+  if (!(await resolveWhatsappAccess(actor.tenantId))) {
     return { error: t.actions.whatsappNotEnabled }
   }
 
   try {
-    const pin = await getWhatsappGeneratedPin(session.user.id, connectionId)
+    const pin = await getWhatsappGeneratedPin(
+      actor.tenantId,
+      connectionId,
+      actor.clientAccountId
+    )
     if (!pin) {
       // El mismo mensaje para «no es tuya», «no existe» y «el PIN lo pusiste
       // tú»: distinguirlos le contaría a quien prueba ids ajenos cuáles
@@ -107,7 +119,7 @@ export async function revealWhatsappPin(
       action: "account_connect",
       outcome: "ok",
       channel: "whatsapp",
-      tenantId: session.user.id,
+      tenantId: actor.tenantId,
       connectionId,
     })
 
@@ -119,7 +131,7 @@ export async function revealWhatsappPin(
       outcome: "failed",
       reason: "internal_error",
       channel: "whatsapp",
-      tenantId: session.user.id,
+      tenantId: actor.tenantId,
       connectionId,
       // Nunca el PIN, ni siquiera al fallar de descifrarlo.
       errorMessage: describeError(error),

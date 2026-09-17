@@ -224,6 +224,33 @@ describe("page selection copy", () => {
       )
     }
   })
+
+  // Un cliente (issue #154) no tiene plan que nombrar: el rechazo por cupo
+  // sale con el texto que le pasa `client-limits`, y el código sigue siendo el
+  // mismo para que nadie lo distinga aguas arriba.
+  it("uses the caller's message for the limit when one is given", () => {
+    const view = classifyPagesForSelection({
+      metaPages: [metaPage("a"), metaPage("b")],
+      ownership: [],
+      tenantId: "cliente",
+      activePageCount: 1,
+      maxPages: 2,
+    })
+
+    const result = validatePageSelection(
+      {
+        view,
+        selectedPageIds: ["a", "b"],
+        limitMessage: "Contacta a Agencia Norte.",
+      },
+      es
+    )
+    expect(result).toEqual({
+      ok: false,
+      code: "page_limit_exceeded",
+      message: "Contacta a Agencia Norte.",
+    })
+  })
 })
 
 describe("checkAccountSlotAvailable", () => {

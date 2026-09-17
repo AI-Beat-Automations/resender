@@ -33,6 +33,10 @@ export async function loadTenantDeletionContext(
   `
   if (!user) return null
 
+  // Solo las conexiones propias del padre: las de sus clientes
+  // (`client_account_id` no nulo) las desuscribe y borra
+  // `deleteAllClientsOfTenant` antes de llegar acá (issue #154).
+  //
   // `id` y `waba_id` son de WhatsApp: el WABA es el nodo que se desuscribe, y
   // el id de la fila es lo que se excluye de la cuenta de números activos para
   // que las conexiones que este borrado elimina no se cuenten a sí mismas.
@@ -41,6 +45,7 @@ export async function loadTenantDeletionContext(
            page_access_token_encrypted
     from connected_pages
     where tenant_id = ${tenantId}
+      and client_account_id is null
   `
 
   const [subscription] = await sql<{ stripe_subscription_id: string }[]>`

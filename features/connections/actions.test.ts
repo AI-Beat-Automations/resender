@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
+  resolveActorByUserId: vi.fn(),
   cookieGet: vi.fn(),
   disconnectPage: vi.fn(),
+  setPageForwardingPaused: vi.fn(),
   getActivePageWithTokenByConnectionId: vi.fn(),
   revalidatePath: vi.fn(),
   unsubscribeChannelWebhook: vi.fn(),
@@ -25,6 +27,12 @@ vi.mock("@/lib/auth/session", () => ({
   getSession: mocks.getSession,
 }))
 
+// El actor se lee vivo de la base (issue #154): el padre actúa sobre todo el
+// tenant y el cliente solo sobre sus filas.
+vi.mock("@/lib/clients/actor", () => ({
+  resolveActorByUserId: mocks.resolveActorByUserId,
+}))
+
 // Se mockea el despachador por canal y no `@/lib/meta`: la acción ya no elige
 // el endpoint, lo elige `channel-webhook` a partir del canal de la fila.
 vi.mock("@/lib/pages/channel-webhook", () => ({
@@ -44,6 +52,7 @@ vi.mock("@/lib/pages/page-registry", () => {
     getActivePageWithTokenByConnectionId:
       mocks.getActivePageWithTokenByConnectionId,
     InvalidWebhookUrlError,
+    setPageForwardingPaused: mocks.setPageForwardingPaused,
     updatePageWebhookUrl: mocks.updatePageWebhookUrl,
   }
 })
@@ -55,13 +64,25 @@ vi.mock("@/lib/posthog", () => ({
 import { InvalidWebhookUrlError } from "@/lib/pages/page-registry"
 import { es } from "@/content/i18n/app/es"
 
-import { disconnectPageAction, saveWebhookUrlAction } from "./actions"
+import {
+  disconnectPageAction,
+  saveWebhookUrlAction,
+  setConnectionForwardingPaused,
+} from "./actions"
+
+const PARENT = { tenantId: "tenant-1", userId: "tenant-1", clientAccountId: null }
+const CLIENT = {
+  tenantId: "tenant-1",
+  userId: "user-2",
+  clientAccountId: "client-1",
+}
 
 describe("disconnectPageAction", () => {
   beforeEach(() => {
     for (const mock of Object.values(mocks)) mock.mockReset()
     mocks.cookieGet.mockReturnValue(undefined)
     mocks.getSession.mockResolvedValue({ user: { id: "tenant-1" } })
+    mocks.resolveActorByUserId.mockResolvedValue({ kind: "actor", actor: PARENT })
     mocks.disconnectPage.mockResolvedValue({
       id: "connection-1",
       metaPageId: "meta-page-1",
@@ -82,13 +103,16 @@ describe("disconnectPageAction", () => {
       message: "Página desconectada. El historial se conserva.",
     })
 
+    // El padre actúa sin alcance de cliente: `null` ve todo el tenant.
     expect(mocks.getActivePageWithTokenByConnectionId).toHaveBeenCalledWith(
       "tenant-1",
-      "connection-1"
+      "connection-1",
+      null
     )
     expect(mocks.disconnectPage).toHaveBeenCalledWith(
       "tenant-1",
-      "connection-1"
+      "connection-1",
+      null
     )
     expect(mocks.unsubscribeChannelWebhook).toHaveBeenCalledWith({
       channel: "messenger",
@@ -136,7 +160,8 @@ describe("disconnectPageAction", () => {
 
     expect(mocks.disconnectPage).toHaveBeenCalledWith(
       "tenant-1",
-      "connection-1"
+      "connection-1",
+      null
     )
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/connections")
 
@@ -158,7 +183,8 @@ describe("disconnectPageAction", () => {
 
     expect(mocks.disconnectPage).toHaveBeenCalledWith(
       "tenant-1",
-      "connection-1"
+      "connection-1",
+      null
     )
     expect(mocks.unsubscribeChannelWebhook).not.toHaveBeenCalled()
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/connections")
@@ -188,6 +214,7 @@ describe("disconnectPageAction", () => {
     })
 
     mocks.getSession.mockResolvedValue({ user: { id: "tenant-1" } })
+    mocks.resolveActorByUserId.mockResolvedValue({ kind: "actor", actor: PARENT })
     await expect(disconnectPageAction({}, new FormData())).resolves.toEqual({
       error: "Página inválida.",
     })
@@ -207,6 +234,7 @@ describe("saveWebhookUrlAction", () => {
     for (const mock of Object.values(mocks)) mock.mockReset()
     mocks.cookieGet.mockReturnValue(undefined)
     mocks.getSession.mockResolvedValue({ user: { id: "tenant-1" } })
+    mocks.resolveActorByUserId.mockResolvedValue({ kind: "actor", actor: PARENT })
     mocks.updatePageWebhookUrl.mockResolvedValue({
       id: "connection-1",
       metaPageId: "meta-page-1",
@@ -274,6 +302,7 @@ describe("saveWebhookUrlAction", () => {
     })
 
     mocks.getSession.mockResolvedValue({ user: { id: "tenant-1" } })
+    mocks.resolveActorByUserId.mockResolvedValue({ kind: "actor", actor: PARENT })
     await expect(saveWebhookUrlAction({}, new FormData())).resolves.toEqual({
       error: "Página inválida.",
     })
@@ -282,5 +311,100 @@ describe("saveWebhookUrlAction", () => {
     await expect(
       saveWebhookUrlAction({}, webhookForm("https://hooks.vetta.app/resender"))
     ).resolves.toEqual({ error: "No encontramos esa página." })
+  })
+})
+
+// Las acciones con actor cliente (issue #154, ticket 3): pausar y desconectar
+// van con el alcance de su `client_account_id`, así que una conexión del
+// padre o de otro cliente no se encuentra —el registro devuelve `null`— y la
+// acción responde lo mismo que para un id inexistente. El webhook y su secreto
+// son del padre: al cliente se le rechazan sin tocar la base.
+describe("connection actions as a client", () => {
+  beforeEach(() => {
+    for (const mock of Object.values(mocks)) mock.mockReset()
+    mocks.cookieGet.mockReturnValue(undefined)
+    mocks.getSession.mockResolvedValue({ user: { id: "user-2" } })
+    mocks.resolveActorByUserId.mockResolvedValue({ kind: "actor", actor: CLIENT })
+    mocks.unsubscribeChannelWebhook.mockResolvedValue(true)
+  })
+
+  it("pauses forwarding only within its own connections", async () => {
+    mocks.setPageForwardingPaused.mockResolvedValue({
+      id: "connection-1",
+      metaPageId: "meta-page-1",
+      channel: "messenger",
+      pausedAt: new Date("2026-07-15T00:00:00Z"),
+    })
+
+    await expect(
+      setConnectionForwardingPaused("connection-1", true)
+    ).resolves.toEqual({ pausedAt: "2026-07-15T00:00:00.000Z" })
+
+    expect(mocks.setPageForwardingPaused).toHaveBeenCalledWith(
+      "tenant-1",
+      "connection-1",
+      true,
+      "client-1"
+    )
+  })
+
+  it("refuses to pause a connection of the parent or of another client", async () => {
+    // El registro no encuentra la fila fuera del alcance del cliente.
+    mocks.setPageForwardingPaused.mockResolvedValue(null)
+
+    await expect(
+      setConnectionForwardingPaused("connection-of-parent", true)
+    ).resolves.toEqual({ error: es.actions.pageNotFound })
+  })
+
+  it("disconnects only within its own connections", async () => {
+    mocks.getActivePageWithTokenByConnectionId.mockResolvedValue({
+      page: { channel: "instagram", metaPageId: "ig-1" },
+      pageAccessToken: "ig-token",
+    })
+    mocks.disconnectPage.mockResolvedValue({
+      id: "connection-1",
+      metaPageId: "ig-1",
+    })
+
+    const formData = new FormData()
+    formData.set("connectionId", "connection-1")
+    await expect(disconnectPageAction({}, formData)).resolves.toEqual({
+      message: es.actions.disconnected,
+    })
+
+    expect(mocks.getActivePageWithTokenByConnectionId).toHaveBeenCalledWith(
+      "tenant-1",
+      "connection-1",
+      "client-1"
+    )
+    expect(mocks.disconnectPage).toHaveBeenCalledWith(
+      "tenant-1",
+      "connection-1",
+      "client-1"
+    )
+  })
+
+  it("refuses to disconnect a connection of the parent or of another client", async () => {
+    mocks.getActivePageWithTokenByConnectionId.mockResolvedValue(null)
+    mocks.disconnectPage.mockResolvedValue(null)
+
+    const formData = new FormData()
+    formData.set("connectionId", "connection-of-other-client")
+    await expect(disconnectPageAction({}, formData)).resolves.toEqual({
+      error: es.actions.pageNotFound,
+    })
+    expect(mocks.unsubscribeChannelWebhook).not.toHaveBeenCalled()
+  })
+
+  it("never touches the webhook: the URL belongs to the parent", async () => {
+    const formData = new FormData()
+    formData.set("connectionId", "connection-1")
+    formData.set("webhookUrl", "https://hooks.vetta.app/resender")
+
+    await expect(saveWebhookUrlAction({}, formData)).resolves.toEqual({
+      error: es.actions.pageNotFound,
+    })
+    expect(mocks.updatePageWebhookUrl).not.toHaveBeenCalled()
   })
 })

@@ -46,6 +46,7 @@ describe("inbound push payload", () => {
       page: {
         id: "page-row",
         tenantId: "tenant-1",
+        clientAccountId: null,
         channel: "messenger",
         metaPageId: "meta-page",
         name: "Main Page",
@@ -114,6 +115,7 @@ describe("inbound push payload", () => {
       page: {
         id: "page-row",
         tenantId: "tenant-1",
+        clientAccountId: null,
         channel: "messenger",
         metaPageId: "meta-page",
         name: "Main Page",
@@ -251,6 +253,7 @@ describe("inbound push payload", () => {
 const whatsappPage = {
   id: "page-row",
   tenantId: "tenant-1",
+  clientAccountId: null,
   channel: "whatsapp" as const,
   metaPageId: "106540352242922",
   name: "Atención",

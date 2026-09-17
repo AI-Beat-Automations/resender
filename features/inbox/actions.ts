@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache"
 
 import type { ForwardingPauseState } from "@/features/connections/actions"
-import { getSession } from "@/lib/auth/session"
+import { resolveActionActor } from "@/lib/clients/action-actor"
 import { getAppDict } from "@/lib/i18n/app-dict"
 import { setConversationForwardingPaused as persistConversationPause } from "@/lib/messages/message-log"
 import { log } from "@/lib/observability/logger"
@@ -21,18 +21,21 @@ export async function setConversationForwardingPaused(
   paused: boolean
 ): Promise<ForwardingPauseState> {
   const t = await getAppDict()
-  const session = await getSession()
-  if (!session?.user?.id) return { error: t.actions.notSignedIn }
+  const who = await resolveActionActor(t)
+  if (!who.ok) return { error: who.error }
+  const { actor } = who
   if (typeof conversationId !== "string" || !conversationId) {
     return { error: t.actions.conversationNotFound }
   }
 
-  // El `tenant_id` va en el `where`: un id ajeno no existe para esta sesión y
-  // devuelve el mismo «no encontramos» que uno inventado.
+  // El `tenant_id` y el alcance del actor van en el `where` (issue #154): para
+  // un cliente, una conversación de una conexión del padre o de otro cliente
+  // no existe y devuelve el mismo «no encontramos» que un id inventado.
   const updated = await persistConversationPause(
-    session.user.id,
+    actor.tenantId,
     conversationId,
-    paused === true
+    paused === true,
+    actor.clientAccountId
   )
   if (!updated) return { error: t.actions.conversationNotFound }
 
@@ -40,7 +43,7 @@ export async function setConversationForwardingPaused(
     entrypoint: "action",
     action: updated.pausedAt ? "forwarding_pause" : "forwarding_resume",
     outcome: "ok",
-    tenantId: session.user.id,
+    tenantId: actor.tenantId,
     connectionId: updated.connectedPageId,
     subject: "message",
     contactId: updated.contactId,
@@ -48,7 +51,7 @@ export async function setConversationForwardingPaused(
 
   if (posthog) {
     posthog.capture({
-      distinctId: session.user.id,
+      distinctId: actor.userId,
       event: updated.pausedAt
         ? "conversation forwarding paused"
         : "conversation forwarding resumed",

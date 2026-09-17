@@ -1,3 +1,7 @@
+import {
+  clientFilterPredicate,
+  type ClientFilter,
+} from "@/lib/clients/client-filter"
 import { getSql } from "@/lib/db"
 import type { PageChannel } from "@/lib/pages/page-registry"
 
@@ -25,6 +29,8 @@ export type PublicationListItem = {
     metaPageId: string
     name: string
     username: string | null
+    /** De qué [Cliente] es la cuenta (issue #154); null = del padre. */
+    clientAccountId: string | null
   }
   // No es nullable, a diferencia de `latestMessage`: una publicación aparece en
   // esta lista solo porque tiene al menos un comentario.
@@ -61,6 +67,7 @@ type PublicationListRow = {
   meta_page_id: string
   account_name: string
   account_username: string | null
+  account_client_account_id: string | null
   latest_text: string
   latest_direction: CommentDirection
   latest_status: CommentStatus
@@ -82,11 +89,19 @@ type PublicationCommentRow = {
   created_at: Date
 }
 
+// Mismo alcance y filtro por cliente que `listConversationReadModel`
+// (issue #154, ticket 4): los dos van sobre `connected_pages.client_account_id`;
+// acá en la condición del join, porque el `where` ya se consumió en la
+// agregación.
 export async function listPublicationReadModel(input: {
   tenantId: string
   connectedPageId?: string
+  clientAccountId?: string | null
+  clientFilter?: ClientFilter
 }) {
   const sql = getSql()
+  const scope = input.clientAccountId ?? null
+  const filter = clientFilterPredicate(input.clientFilter)
   // `count(*)::int` con el cast puesto: el driver HTTP de Neon entrega `bigint`
   // como string. Es el mismo cast que `countActivePages`.
   //
@@ -105,6 +120,7 @@ export async function listPublicationReadModel(input: {
       p.meta_page_id,
       p.name as account_name,
       p.username as account_username,
+      p.client_account_id as account_client_account_id,
       latest.text as latest_text,
       latest.direction as latest_direction,
       latest.status as latest_status,
@@ -127,6 +143,9 @@ export async function listPublicationReadModel(input: {
       group by connected_page_id, media_id
     ) agg
     join connected_pages p on p.id = agg.connected_page_id
+      and (${scope}::uuid is null or p.client_account_id = ${scope}::uuid)
+      and (not ${filter.own} or p.client_account_id is null)
+      and (${filter.clientAccountId}::uuid is null or p.client_account_id = ${filter.clientAccountId}::uuid)
     join lateral (
       select text, direction, status, from_ig_id, from_username, created_at
       from instagram_comments c
@@ -146,8 +165,10 @@ export async function listPublicationComments(input: {
   tenantId: string
   connectedPageId: string
   mediaId: string
+  clientAccountId?: string | null
 }) {
   const sql = getSql()
+  const scope = input.clientAccountId ?? null
   // Orden cronológico ascendente, no inverso: un hilo se entiende de arriba
   // hacia abajo. Es el orden del índice `instagram_comments_media_idx`, que
   // calza exacto con este `where`.
@@ -161,6 +182,11 @@ export async function listPublicationComments(input: {
     where tenant_id = ${input.tenantId}
       and connected_page_id = ${input.connectedPageId}
       and media_id = ${input.mediaId}
+      and (${scope}::uuid is null or exists (
+        select 1 from connected_pages p
+        where p.id = ${input.connectedPageId}
+          and p.client_account_id = ${scope}::uuid
+      ))
     order by created_at asc
   `
 
@@ -190,6 +216,7 @@ function mapPublicationListItem(row: PublicationListRow): PublicationListItem {
       metaPageId: row.meta_page_id,
       name: row.account_name,
       username: row.account_username,
+      clientAccountId: row.account_client_account_id ?? null,
     },
     latestComment: {
       text: row.latest_text,

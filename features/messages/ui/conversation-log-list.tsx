@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { Pause, TriangleAlert } from "lucide-react"
 
+import { ClientLabel } from "@/features/clients/ui/client-label"
 import { ChannelBadge } from "@/features/inbox/ui/channel-badge"
 import type { AppDict } from "@/content/i18n/app"
 import { inboxHref } from "@/lib/inbox/inbox-tabs"
@@ -16,18 +17,21 @@ export function ConversationLogList({
   rows,
   selectedConversationId,
   selectedAccountId,
+  clientFilter = null,
   t,
 }: {
   rows: ConversationRowView[]
   selectedConversationId: string | null
   selectedAccountId: string | null
+  /** `?cliente=` del padre, para conservarlo al abrir una conversación. */
+  clientFilter?: string | null
   t: AppDict
 }) {
   if (rows.length === 0) {
     // Dos vacíos distintos: sin datos vs. el filtro no devolvió nada.
     return (
       <p className="px-4 py-5 text-[13px] text-muted-foreground">
-        {selectedAccountId
+        {selectedAccountId || clientFilter
           ? t.inbox.emptyConversationsFiltered
           : t.inbox.emptyConversations}
       </p>
@@ -42,6 +46,7 @@ export function ConversationLogList({
             row={row}
             active={row.id === selectedConversationId}
             selectedAccountId={selectedAccountId}
+            clientFilter={clientFilter}
             t={t}
           />
         </li>
@@ -54,17 +59,20 @@ function ConversationRow({
   row,
   active,
   selectedAccountId,
+  clientFilter,
   t,
 }: {
   row: ConversationRowView
   active: boolean
   selectedAccountId: string | null
+  clientFilter: string | null
   t: AppDict
 }) {
   return (
     <Link
       href={inboxHref({
         tab: "mensajes",
+        clientFilter,
         pageId: selectedAccountId,
         conversationId: row.id,
       })}
@@ -132,6 +140,14 @@ function ConversationRow({
         <span className="truncate font-mono text-[10.5px]">
           {row.accountLabel}
         </span>
+        {/* La cuenta es de un cliente (issue #154): el padre lo ve acá; el
+            cliente nunca recibe el nombre porque todo lo suyo es suyo. */}
+        {row.clientName ? (
+          <ClientLabel
+            name={row.clientName}
+            t={t}
+          />
+        ) : null}
       </p>
     </Link>
   )

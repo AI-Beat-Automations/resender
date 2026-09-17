@@ -1,5 +1,9 @@
 import type { ReactNode } from "react"
 
+import {
+  ClientFilterCombobox,
+  type ClientFilterOption,
+} from "@/features/clients/ui/client-filter-combobox"
 import type { AppDict } from "@/content/i18n/app"
 import type { InboxTab } from "@/lib/inbox/inbox-tabs"
 
@@ -21,6 +25,7 @@ export function InboxListPanel({
   count,
   accounts,
   selectedAccountId,
+  clientFilter,
   t,
   children,
 }: {
@@ -29,6 +34,15 @@ export function InboxListPanel({
   count: number
   accounts: InboxFilterAccount[]
   selectedAccountId: string | null
+  /**
+   * Filtro por cliente del padre (issue #154, ticket 4): las opciones con su
+   * href y el valor de `?cliente=` seleccionado. Null = no se monta (el actor
+   * es un cliente, o el padre no tiene clientes todavía).
+   */
+  clientFilter: {
+    options: ClientFilterOption[]
+    selectedId: string | null
+  } | null
   t: AppDict
   children: ReactNode
 }) {
@@ -50,17 +64,31 @@ export function InboxListPanel({
         </span>
       </div>
 
-      <div className="flex items-center justify-between px-4 pt-3">
-        <InboxTabsNav active={tab} accountId={selectedAccountId} t={t} />
-        {/* Sin cuentas no hay nada que filtrar: un desplegable con una sola
-            opción «Todas las cuentas» es un control que no hace nada. */}
-        {accounts.length > 0 ? (
-          <InboxAccountCombobox
-            tab={tab}
-            accounts={accounts}
-            selectedAccountId={selectedAccountId}
-          />
-        ) : null}
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-2 px-4 pt-3">
+        <InboxTabsNav
+          active={tab}
+          accountId={selectedAccountId}
+          clientFilter={clientFilter?.selectedId ?? null}
+          t={t}
+        />
+        <div className="flex items-center gap-1.5">
+          {clientFilter ? (
+            <ClientFilterCombobox
+              options={clientFilter.options}
+              selectedId={clientFilter.selectedId}
+            />
+          ) : null}
+          {/* Sin cuentas no hay nada que filtrar: un desplegable con una sola
+              opción «Todas las cuentas» es un control que no hace nada. */}
+          {accounts.length > 0 ? (
+            <InboxAccountCombobox
+              tab={tab}
+              accounts={accounts}
+              selectedAccountId={selectedAccountId}
+              clientFilter={clientFilter?.selectedId ?? null}
+            />
+          ) : null}
+        </div>
       </div>
 
       <div className="mt-2.5 min-h-0 flex-1 overflow-y-auto border-t border-border-faint">

@@ -89,6 +89,23 @@ describe("inboxHref", () => {
     ).toBe("/inbox?tab=comentarios&media=page-1%3A17841400000000000")
   })
 
+  it("conserva el filtro por cliente del padre en los dos modos y en la selección", () => {
+    // Issue #154, ticket 4: cambiar de modo o abrir una conversación no
+    // pierde por qué cliente estabas mirando.
+    expect(inboxHref({ clientFilter: "client-1" })).toBe(
+      "/inbox?cliente=client-1"
+    )
+    expect(
+      inboxHref({ tab: "comentarios", clientFilter: "client-1", pageId: "page-1" })
+    ).toBe("/inbox?tab=comentarios&cliente=client-1&page=page-1")
+    expect(
+      inboxHref({ clientFilter: "propias", conversationId: "conv-1" })
+    ).toBe("/inbox?cliente=propias&conversation=conv-1")
+    expect(inboxHref({ clientFilter: null, pageId: "page-1" })).toBe(
+      "/inbox?page=page-1"
+    )
+  })
+
   it("ida y vuelta: el enlace que emite la UI resuelve al mismo modo", () => {
     const href = inboxHref({ tab: "comentarios", pageId: "page-1" })
     const params = new URL(href, "https://resender.dev").searchParams

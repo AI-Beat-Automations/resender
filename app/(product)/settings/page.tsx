@@ -18,6 +18,7 @@ import {
   SubscriptionPanel,
   type SubscriptionView,
 } from "@/features/billing/ui/subscription-panel"
+import { resolveActorCached } from "@/features/clients/queries"
 import { LanguagePanel } from "@/features/settings/ui/language-panel"
 import { ConsolePage } from "@/features/shell/ui/console-page"
 import { SettingsTabsNav } from "@/features/settings/ui/settings-tabs-nav"
@@ -25,9 +26,14 @@ import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
 import type { TenantEntitlement } from "@/lib/billing/entitlements"
 import { getPlanByLookupKey } from "@/lib/billing/plans"
 import { getSubscriptionByTenantId } from "@/lib/billing/subscription"
-import { resolveSettingsTab } from "@/lib/settings/settings-tabs"
+import { isClientActor } from "@/lib/clients/actor"
+import { getClientOwner, ownerDisplayName } from "@/lib/clients/client-owner"
+import {
+  resolveSettingsTab,
+  settingsTabsFor,
+} from "@/lib/settings/settings-tabs"
 import type { Locale } from "@/content/i18n"
-import type { AppDict } from "@/content/i18n/app"
+import { fmt, type AppDict } from "@/content/i18n/app"
 import { getAppI18n } from "@/lib/i18n/app-dict"
 import { Separator } from "@/components/ui/separator"
 
@@ -38,7 +44,9 @@ type SettingsPageProps = {
 }
 
 // Ajustes en tres pestañas con el estado en la URL (ADR 0005). Cada pestaña
-// consulta solo lo suyo: entrar a Cuenta no lee las API keys ni Stripe.
+// consulta solo lo suyo: entrar a Cuenta no lee las API keys ni Stripe. Un
+// cliente (issue #154) solo tiene Cuenta —sin API keys, sin Suscripción, sin
+// «Eliminar cuenta»— y las otras dos no se aceptan ni por URL.
 export default async function SettingsPage({
   searchParams,
 }: SettingsPageProps) {
@@ -49,7 +57,13 @@ export default async function SettingsPage({
   ])
   if (!session?.user?.id) redirect("/login")
 
-  const tab = resolveSettingsTab(params.tab)
+  // El layout ya rebotó a quien no tiene actor; acá solo se lee (cacheado por
+  // request) para decidir qué pestañas existen.
+  const resolution = await resolveActorCached(session.user.id)
+  if (resolution.kind !== "actor") redirect("/login")
+  const { actor } = resolution
+  const tabs = settingsTabsFor(actor)
+  const tab = resolveSettingsTab(params.tab, tabs)
 
   return (
     <ConsolePage className="flex flex-col">
@@ -65,14 +79,15 @@ export default async function SettingsPage({
             {t.settings.subtitle}
           </p>
         ) : null}
-        <SettingsTabsNav active={tab} t={t} />
+        <SettingsTabsNav tabs={tabs} active={tab} t={t} />
       </header>
 
       <div className="mt-6">
         {tab === "cuenta" ? (
           <AccountTab
             email={session.user.email ?? ""}
-            tenantId={session.user.id}
+            userId={actor.userId}
+            clientTenantId={isClientActor(actor) ? actor.tenantId : null}
             lang={lang}
             t={t}
             oauthError={params.error}
@@ -92,25 +107,41 @@ export default async function SettingsPage({
 // `listUserAccounts`. Las dos consultas son el costo aceptado en el issue #98.
 async function AccountTab({
   email,
-  tenantId,
+  userId,
+  clientTenantId,
   lang,
   t,
   oauthError,
 }: {
   email: string
-  tenantId: string
+  userId: string
+  /** El tenant del padre cuando quien mira es un cliente; nulo para el padre. */
+  clientTenantId: string | null
   lang: Locale
   t: AppDict
   oauthError?: string
 }) {
-  const [verified, methods] = await Promise.all([
-    isEmailVerified(tenantId),
+  const [verified, methods, owner] = await Promise.all([
+    isEmailVerified(userId),
     listSignInMethods(),
+    clientTenantId ? getClientOwner(clientTenantId) : null,
   ])
+  const isClient = clientTenantId !== null
 
   return (
     <div className="flex max-w-205 flex-col gap-4">
-      <AccountIdentityPanel email={email} tenantId={tenantId} t={t} />
+      {/* La nota que nombra al padre va primero: es lo que explica por qué
+          esta pestaña es la única y no hay «Eliminar cuenta». */}
+      {isClient && owner ? (
+        <p className="text-[13.5px] text-muted-foreground">
+          {fmt(t.settings.managedBy, { owner: ownerDisplayName(owner) })}
+        </p>
+      ) : null}
+      <AccountIdentityPanel
+        email={email}
+        tenantId={isClient ? null : userId}
+        t={t}
+      />
       {/* El idioma va en Cuenta y no en una pestaña propia: es una preferencia
           de lectura de quien entra, como el email con el que entra. */}
       <LanguagePanel lang={lang} t={t} />
@@ -129,8 +160,9 @@ async function AccountTab({
         oauthError={oauthError}
       />
       {/* La zona de peligro va separada del resto: borrar la cuenta no puede
-          leerse a la misma altura que cambiar la contraseña. */}
-      {email ? (
+          leerse a la misma altura que cambiar la contraseña. Un cliente no la
+          tiene: su acceso lo elimina el padre desde `/clientes`. */}
+      {email && !isClient ? (
         <>
           <Separator className="my-2" />
           <DeleteAccountPanel email={email} />

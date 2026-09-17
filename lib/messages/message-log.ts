@@ -538,15 +538,25 @@ export async function updateDeliveryStatus(input: {
   return rows.length > 0
 }
 
+// `clientAccountId` es el alcance del [Actor] (issue #154, ticket 4): con él,
+// una conversación de una conexión del padre o de otro cliente no se
+// encuentra; null (el padre) ve todo el tenant. Mismo predicado que en
+// `page-registry`, resuelto por la cuenta conectada de la conversación.
 export async function getConversationById(
   tenantId: string,
-  conversationId: string
+  conversationId: string,
+  clientAccountId: string | null = null
 ) {
   const sql = getSql()
   const [row] = await sql<ConversationRow[]>`
     select id, tenant_id, connected_page_id, contact_id, contact_name, last_message_at, last_inbound_at, paused_at
-    from conversations
-    where id = ${conversationId} and tenant_id = ${tenantId}
+    from conversations c
+    where c.id = ${conversationId} and c.tenant_id = ${tenantId}
+      and (${clientAccountId}::uuid is null or exists (
+        select 1 from connected_pages p
+        where p.id = c.connected_page_id
+          and p.client_account_id = ${clientAccountId}::uuid
+      ))
     limit 1
   `
 
@@ -566,17 +576,23 @@ export async function getConversationById(
 export async function setConversationForwardingPaused(
   tenantId: string,
   conversationId: string,
-  paused: boolean
+  paused: boolean,
+  clientAccountId: string | null = null
 ) {
   const sql = getSql()
   const [row] = await sql<ConversationRow[]>`
     with changed as (
-      update conversations
+      update conversations c
       set paused_at = case when ${paused} then now() else null end,
           updated_at = now()
-      where id = ${conversationId}
-        and tenant_id = ${tenantId}
-        and (paused_at is null) = ${paused}
+      where c.id = ${conversationId}
+        and c.tenant_id = ${tenantId}
+        and (c.paused_at is null) = ${paused}
+        and (${clientAccountId}::uuid is null or exists (
+          select 1 from connected_pages p
+          where p.id = c.connected_page_id
+            and p.client_account_id = ${clientAccountId}::uuid
+        ))
       returning id, tenant_id, connected_page_id, contact_id, contact_name, last_message_at, last_inbound_at, paused_at
     ),
     logged as (
@@ -589,7 +605,9 @@ export async function setConversationForwardingPaused(
 
   // Sin fila no hubo cambio: o la conversación no existe para este tenant, o
   // ya estaba como se pide. Se relee para distinguir los dos casos.
-  return row ? mapConversation(row) : getConversationById(tenantId, conversationId)
+  return row
+    ? mapConversation(row)
+    : getConversationById(tenantId, conversationId, clientAccountId)
 }
 
 // Para los comentarios de Instagram, que no cuelgan de una conversación: la
