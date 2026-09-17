@@ -133,6 +133,7 @@ export const en: AppDict = {
     quota: "{activePageCount} of {maxPages} connections",
     quotaActiveSuffix: "active connections",
     quotaUnresolved: "quota unresolved · write to info@resender.dev",
+    emptyFiltered: "No connections for this filter.",
     noticeConnectedGeneric: "Connected: the authorization completed.",
     noticeInstagramNamed:
       "Connected: the Instagram account @{username} is now authorized.",
@@ -284,6 +285,13 @@ export const en: AppDict = {
       "When someone comments on a post, the comment is saved here and forwarded to your webhook.",
     noCommentsFilteredBody:
       "The filter didn't return any post. Try «All accounts» to see the rest of the log.",
+    noConversationsClientFilteredTitle:
+      "This client has no conversations yet.",
+    noConversationsClientFilteredBody:
+      "The filter didn't return any conversation. Try «All clients» to see the rest of the log.",
+    noCommentsClientFilteredTitle: "This client has no comments yet.",
+    noCommentsClientFilteredBody:
+      "The filter didn't return any post. Try «All clients» to see the rest of the log.",
     noInstagramTitle: "No Instagram account connected yet.",
     noInstagramBody:
       "Comments only arrive through Instagram. Connect a professional account to see them here.",
@@ -605,6 +613,12 @@ export const en: AppDict = {
     deleteNoConnections: "This client has no active connections.",
     deleteConfirm: "Yes, delete client",
     deleting: "Deleting…",
+    filterAll: "All clients",
+    filterOwn: "My connections",
+    filterLabel: "Filter by client",
+    filterSearch: "Search client…",
+    filterEmpty: "No client matches.",
+    ownedBy: "Client: {name}",
     invitationEmail: {
       subject: "{owner} invited you to Resender",
       preheader:

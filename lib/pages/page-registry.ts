@@ -1,3 +1,7 @@
+import {
+  clientFilterPredicate,
+  type ClientFilter,
+} from "@/lib/clients/client-filter"
 import type { ConnectedPage as MetaConnectedPage } from "@/lib/meta"
 import { decryptSecret, encryptSecret } from "@/lib/crypto/encryption"
 import { getSql } from "@/lib/db"
@@ -356,12 +360,16 @@ export async function getPageOwnership(
 }
 
 // La lista de Conexiones. El padre ve todo el tenant; un cliente, solo las
-// filas con su `client_account_id` (issue #154, ticket 3).
+// filas con su `client_account_id` (issue #154, ticket 3). `clientFilter` es
+// el filtro de vista del padre (ticket 4): se aplica en la consulta, encima
+// del alcance, y nunca lo amplía.
 export async function listTenantPages(
   tenantId: string,
-  clientAccountId: string | null = null
+  clientAccountId: string | null = null,
+  clientFilter?: ClientFilter
 ) {
   const sql = getSql()
+  const filter = clientFilterPredicate(clientFilter)
   const rows = await sql<ConnectedPageRow[]>`
     select id, tenant_id, client_account_id, channel, meta_page_id, name,
       username, status,
@@ -375,6 +383,8 @@ export async function listTenantPages(
     from connected_pages
     where tenant_id = ${tenantId}
       and (${clientAccountId}::uuid is null or client_account_id = ${clientAccountId}::uuid)
+      and (not ${filter.own} or client_account_id is null)
+      and (${filter.clientAccountId}::uuid is null or client_account_id = ${filter.clientAccountId}::uuid)
     order by case when status = 'active' then 0 else 1 end, updated_at desc
   `
 

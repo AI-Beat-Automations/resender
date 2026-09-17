@@ -2,9 +2,8 @@
 
 import { revalidatePath } from "next/cache"
 
-import { getSession } from "@/lib/auth/session"
 import { getAppDict } from "@/lib/i18n/app-dict"
-import { resolveActorByUserId, type Actor } from "@/lib/clients/actor"
+import { resolveActionActor } from "@/lib/clients/action-actor"
 import {
   disconnectPage,
   getActivePageWithTokenByConnectionId,
@@ -17,7 +16,6 @@ import {
 import { unsubscribeChannelWebhook } from "@/lib/pages/channel-webhook"
 import { accountFields, describeError, log } from "@/lib/observability/logger"
 import { posthog } from "@/lib/posthog"
-import type { AppDict } from "@/content/i18n/app"
 
 // Resultado de pausar o reanudar el reenvío. `pausedAt` en ISO y no `Date`:
 // cruza al cliente, y el `Switch` solo necesita saber si hay fecha.
@@ -32,21 +30,6 @@ export type ConnectionActionState = {
   // generó. No se guarda en estado de servidor ni vuelve a leerse: en la base
   // está cifrado y no hay forma de recuperarlo, solo de rotarlo otra vez.
   revealedSecret?: string
-}
-
-// Quién actúa y sobre qué tenant (issue #154, ticket 3). Se lee vivo de la
-// base, nunca de la sesión: un cliente actúa sobre el tenant del padre y solo
-// sobre **sus** filas (`clientAccountId`), y el padre sobre todas.
-type ActionActor = { ok: true; actor: Actor } | { ok: false; error: string }
-
-async function resolveActionActor(t: AppDict): Promise<ActionActor> {
-  const session = await getSession()
-  if (!session?.user?.id) return { ok: false, error: t.actions.notSignedIn }
-  const resolution = await resolveActorByUserId(session.user.id)
-  if (resolution.kind !== "actor") {
-    return { ok: false, error: t.actions.notSignedIn }
-  }
-  return { ok: true, actor: resolution.actor }
 }
 
 export async function saveWebhookUrlAction(

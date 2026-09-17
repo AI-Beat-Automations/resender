@@ -101,6 +101,10 @@ export type ConnectedPageView = {
   tokenErrorAtLabel: string | null
   disconnectedAt: string | null
   disconnectedAtLabel: string | null
+  // Nombre del [Cliente] dueño de la conexión (issue #154, ticket 4). Solo lo
+  // recibe la lista del padre; la del cliente lo deja en null porque todo lo
+  // que ve es suyo.
+  clientName: string | null
 }
 
 export function ConnectedPageCard({
@@ -186,6 +190,18 @@ export function ConnectedPageCard({
             >
               {t.channels.label[page.channel]}
             </Badge>
+            {/* De qué cliente es (issue #154): el padre ve las conexiones de
+                sus clientes junto a las suyas y esto es lo que las
+                distingue. */}
+            {page.clientName && (
+              <Badge
+                variant="info"
+                className="font-normal"
+                title={fmt(t.clients.ownedBy, { name: page.clientName })}
+              >
+                {page.clientName}
+              </Badge>
+            )}
             {/* Los dos badges conviven en lugar de pisarse: este describe el
                 tráfico —«sin acceso» es tráfico cortado por el permiso del
                 canal—, y el de al lado describe el token. */}

@@ -34,6 +34,7 @@ function conversation(
       name: "Café Rioja",
       username: null,
       whatsappPhoneE164: null,
+      clientAccountId: null,
     },
     latestMessage: {
       text: "¿Hacen envíos a Palermo?",
@@ -88,6 +89,19 @@ describe("toConversationRowView · pausa de reenvío", () => {
   })
 })
 
+describe("toConversationRowView · etiqueta del cliente", () => {
+  // Issue #154, ticket 4: la lista del padre nombra al cliente dueño de la
+  // cuenta; sin nombre (cuenta propia, o actor cliente) no hay etiqueta.
+  it("lleva el nombre del cliente cuando la página se lo da", () => {
+    const row = toConversationRowView(conversation(), NOW, es, "Dental Sur")
+    expect(row.clientName).toBe("Dental Sur")
+  })
+
+  it("queda sin etiqueta por defecto", () => {
+    expect(toConversationRowView(conversation(), NOW, es).clientName).toBeNull()
+  })
+})
+
 describe("toConversationRowView", () => {
   it("identifica al contacto por @handle cuando Graph lo resolvió", () => {
     const row = toConversationRowView(
@@ -132,6 +146,7 @@ describe("toConversationRowView", () => {
           name: "Clínica Dental",
           username: "clinica.dental.mx",
           whatsappPhoneE164: null,
+          clientAccountId: null,
         },
         latestMessage: {
           text: "¡Sí! Te espero hoy a las 15:00",
@@ -207,6 +222,7 @@ describe("toConversationRowView", () => {
           name: "Café Rioja",
           username: "cafe.rioja",
           whatsappPhoneE164: null,
+          clientAccountId: null,
         },
       }),
       NOW,
@@ -227,6 +243,7 @@ describe("toConversationRowView", () => {
           name: "Café Rioja",
           username: null,
           whatsappPhoneE164: null,
+          clientAccountId: null,
         },
       }),
       NOW,
@@ -475,6 +492,7 @@ describe("formatPageLabel en WhatsApp", () => {
           name: "Café Rioja",
           username: null,
           whatsappPhoneE164: "+5491122334455",
+          clientAccountId: null,
         },
       }),
       NOW,
@@ -497,6 +515,7 @@ describe("formatPageLabel en WhatsApp", () => {
           name: "Café Rioja",
           username: null,
           whatsappPhoneE164: null,
+          clientAccountId: null,
         },
       }),
       NOW,

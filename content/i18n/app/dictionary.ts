@@ -112,6 +112,8 @@ export type AppDict = {
     /** Sufijo del contador `n / m` de la cabecera. */
     quotaActiveSuffix: string
     quotaUnresolved: string
+    /** Lista vacía porque el filtro por cliente no devolvió filas. */
+    emptyFiltered: string
     noticeConnectedGeneric: string
     /** `{username}` */
     noticeInstagramNamed: string
@@ -263,6 +265,11 @@ export type AppDict = {
     noCommentsFilteredTitle: string
     noCommentsBody: string
     noCommentsFilteredBody: string
+    /** Vacíos con el filtro por cliente del padre puesto (issue #154). */
+    noConversationsClientFilteredTitle: string
+    noConversationsClientFilteredBody: string
+    noCommentsClientFilteredTitle: string
+    noCommentsClientFilteredBody: string
     noInstagramTitle: string
     noInstagramBody: string
     noInstagramCta: string
@@ -623,6 +630,17 @@ export type AppDict = {
     deleteNoConnections: string
     deleteConfirm: string
     deleting: string
+    /**
+     * Filtro por cliente de Conexiones e Inbox (ticket 4): opciones fijas,
+     * aria del botón, placeholder y vacío del combobox.
+     */
+    filterAll: string
+    filterOwn: string
+    filterLabel: string
+    filterSearch: string
+    filterEmpty: string
+    /** `{name}`: título de la etiqueta con el nombre del cliente. */
+    ownedBy: string
     invitationEmail: {
       /** `{owner}`: el nombre del padre. */
       subject: string

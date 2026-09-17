@@ -1,6 +1,7 @@
 import { getSql } from "@/lib/db"
 import type { PageChannel } from "@/lib/pages/page-registry"
 
+import type { ClientName } from "./client-filter"
 import { isInvitationLive } from "./invitations"
 
 // Repositorio del módulo Clientes (issue #154): `client_accounts` y lo que la
@@ -168,6 +169,22 @@ export async function listClientAccounts(
     invitation: invitationState(row),
     connections: byClient.get(row.id) ?? [],
   }))
+}
+
+// Solo `id` y `name`, para etiquetar filas y poblar el filtro por cliente de
+// Conexiones e Inbox (ticket 4). Va aparte de `listClientAccounts`, que trae
+// invitación y conexiones y es la lectura de `/clientes`, no de un desplegable.
+// Incluye los pendientes: un cliente sin conexiones sigue siendo una opción.
+export async function listClientAccountNames(
+  tenantId: string
+): Promise<ClientName[]> {
+  const sql = getSql()
+  return sql<ClientName[]>`
+    select id, name
+    from client_accounts
+    where tenant_id = ${tenantId}
+    order by name asc, created_at asc
+  `
 }
 
 export async function getClientAccount(

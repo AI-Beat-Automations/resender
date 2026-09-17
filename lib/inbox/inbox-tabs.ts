@@ -4,6 +4,8 @@
 // en inglés, valores en español—, más el constructor de enlaces.
 // Módulo puro: sin React, sin Next, sin DB.
 
+import { CLIENT_FILTER_PARAM } from "@/lib/clients/client-filter"
+
 export type InboxTab = "mensajes" | "comentarios"
 
 export const DEFAULT_INBOX_TAB: InboxTab = "mensajes"
@@ -47,6 +49,9 @@ export function firstParam(
  */
 export function inboxHref(input: {
   tab?: InboxTab
+  /** Filtro por cliente del padre (`?cliente=`), ya validado; null = sin
+   * filtro. Se conserva en los dos modos y en cada selección, como `page`. */
+  clientFilter?: string | null
   pageId?: string | null
   conversationId?: string | null
   publicationKey?: string | null
@@ -55,6 +60,7 @@ export function inboxHref(input: {
   const params = new URLSearchParams()
 
   if (tab !== DEFAULT_INBOX_TAB) params.set("tab", tab)
+  if (input.clientFilter) params.set(CLIENT_FILTER_PARAM, input.clientFilter)
   if (input.pageId) params.set("page", input.pageId)
   if (tab === "mensajes" && input.conversationId) {
     params.set("conversation", input.conversationId)

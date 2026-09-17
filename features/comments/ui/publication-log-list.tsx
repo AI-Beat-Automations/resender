@@ -8,6 +8,7 @@ import {
   type LucideIcon,
 } from "lucide-react"
 
+import { ClientLabel } from "@/features/clients/ui/client-label"
 import type { AppDict } from "@/content/i18n/app"
 import type { MediaKind, PublicationRowView } from "@/lib/comments/display"
 import { inboxHref } from "@/lib/inbox/inbox-tabs"
@@ -33,18 +34,21 @@ export function PublicationLogList({
   rows,
   selectedKey,
   selectedAccountId,
+  clientFilter = null,
   t,
 }: {
   rows: PublicationRowView[]
   selectedKey: string | null
   selectedAccountId: string | null
+  /** `?cliente=` del padre, para conservarlo al abrir una publicación. */
+  clientFilter?: string | null
   t: AppDict
 }) {
   if (rows.length === 0) {
     // Dos vacíos distintos: sin datos vs. el filtro no devolvió nada.
     return (
       <p className="px-4 py-5 text-[13px] text-muted-foreground">
-        {selectedAccountId
+        {selectedAccountId || clientFilter
           ? t.inbox.emptyCommentsFiltered
           : t.inbox.emptyComments}
       </p>
@@ -59,6 +63,8 @@ export function PublicationLogList({
             row={row}
             active={row.key === selectedKey}
             selectedAccountId={selectedAccountId}
+            clientFilter={clientFilter}
+            t={t}
           />
         </li>
       ))}
@@ -70,10 +76,14 @@ function PublicationRow({
   row,
   active,
   selectedAccountId,
+  clientFilter,
+  t,
 }: {
   row: PublicationRowView
   active: boolean
   selectedAccountId: string | null
+  clientFilter: string | null
+  t: AppDict
 }) {
   const Icon = MEDIA_ICONS[row.mediaKind]
 
@@ -81,6 +91,7 @@ function PublicationRow({
     <Link
       href={inboxHref({
         tab: "comentarios",
+        clientFilter,
         pageId: selectedAccountId,
         publicationKey: row.key,
       })}
@@ -126,8 +137,15 @@ function PublicationRow({
         >
           {row.content}
         </p>
-        <p className="mt-1.5 font-mono text-[10.5px] text-muted-foreground">
+        <p className="mt-1.5 flex items-center gap-1.5 font-mono text-[10.5px] text-muted-foreground">
           {row.countLabel}
+          {row.clientName ? (
+            <ClientLabel
+              name={row.clientName}
+              t={t}
+              className="font-sans"
+            />
+          ) : null}
         </p>
       </div>
     </Link>

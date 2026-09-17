@@ -2,6 +2,7 @@ import { ExternalLink, TriangleAlert } from "lucide-react"
 
 import { Bubble } from "@/features/inbox/ui/bubble"
 import { ThreadHeader } from "@/features/inbox/ui/thread-header"
+import { ClientLabel } from "@/features/clients/ui/client-label"
 import type { AppDict } from "@/content/i18n/app"
 import type { CommentBubbleView } from "@/lib/comments/display"
 
@@ -23,6 +24,8 @@ export type CommentThreadHeaderView = {
   mediaPermalink: string | null
   /** `@cafe.rioja`. */
   accountHandle: string
+  /** Nombre del cliente dueño de la cuenta (issue #154); null si es propia. */
+  clientName: string | null
 }
 
 export function CommentThread({
@@ -44,6 +47,15 @@ export function CommentThread({
           </span>
         }
         account={header.accountHandle}
+        tag={
+          header.clientName ? (
+            <ClientLabel
+              name={header.clientName}
+              t={t}
+              size="header"
+            />
+          ) : null
+        }
         action={
           header.mediaPermalink ? (
             <a

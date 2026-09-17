@@ -135,6 +135,7 @@ export const es: AppDict = {
     quota: "{activePageCount} de {maxPages} conexiones",
     quotaActiveSuffix: "conexiones activas",
     quotaUnresolved: "cupo sin resolver · escríbenos a info@resender.dev",
+    emptyFiltered: "No hay conexiones para este filtro.",
     noticeConnectedGeneric: "Conectado: la autorización se completó.",
     noticeInstagramNamed:
       "Conectado: la cuenta de Instagram @{username} quedó autorizada.",
@@ -287,6 +288,14 @@ export const es: AppDict = {
       "Cuando alguien comente una publicación, el comentario se guarda acá y se reenvía a tu webhook.",
     noCommentsFilteredBody:
       "El filtro no devolvió ninguna publicación. Prueba con «Todas las cuentas» para ver el resto del log.",
+    noConversationsClientFilteredTitle:
+      "Este cliente todavía no tiene conversaciones.",
+    noConversationsClientFilteredBody:
+      "El filtro no devolvió ninguna conversación. Prueba con «Todos los clientes» para ver el resto del log.",
+    noCommentsClientFilteredTitle:
+      "Este cliente todavía no tiene comentarios.",
+    noCommentsClientFilteredBody:
+      "El filtro no devolvió ninguna publicación. Prueba con «Todos los clientes» para ver el resto del log.",
     noInstagramTitle: "Todavía no hay ninguna cuenta de Instagram conectada.",
     noInstagramBody:
       "Los comentarios llegan solo por Instagram. Conecta una cuenta profesional para verlos acá.",
@@ -610,6 +619,12 @@ export const es: AppDict = {
     deleteNoConnections: "Este cliente no tiene conexiones activas.",
     deleteConfirm: "Sí, eliminar cliente",
     deleting: "Eliminando…",
+    filterAll: "Todos los clientes",
+    filterOwn: "Mis conexiones",
+    filterLabel: "Filtrar por cliente",
+    filterSearch: "Buscar cliente…",
+    filterEmpty: "Ningún cliente coincide.",
+    ownedBy: "Cliente: {name}",
     invitationEmail: {
       subject: "{owner} te invita a Resender",
       preheader:
