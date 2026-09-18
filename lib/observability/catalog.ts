@@ -80,6 +80,12 @@ export type LogAction =
   | "media_download" // baja un medio entrante de WhatsApp de Meta a R2, y lo sirve
   | "usage_increment"
   | "subscription_check"
+  // @section logs
+  // La bitácora de la sección Logs (`request_logs`, migración 0028). Se escribe
+  // best-effort: `request_log_write` **solo aparece cuando la escritura falló**,
+  // que es la única señal de que al tenant le falta una fila en pantalla.
+  | "request_log_write"
+  | "request_log_purge" // cron: borra las filas que cumplieron la retención
 // @section end
 
 export type LogOutcome =

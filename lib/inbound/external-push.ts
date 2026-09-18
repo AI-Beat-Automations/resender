@@ -18,6 +18,7 @@ import type {
   ConnectedPageRecord,
   PageChannel,
 } from "@/lib/pages/page-registry"
+import { logDeliveryOutcome } from "@/lib/logs/request-log"
 import { log, type LogReason } from "@/lib/observability/logger"
 import type {
   AttachmentDetails,
@@ -340,6 +341,9 @@ export async function recordSkippedDelivery(
       | "conversation_paused"
     >
     context?: DeliveryLogContext
+    // El sobre que se habría enviado, solo para la sección Logs: el tenant ve
+    // qué evento fue el que no se reenvió.
+    payload?: unknown
   } = {}
 ) {
   const reason = options.reason ?? "webhookUrl not configured"
@@ -350,6 +354,15 @@ export async function recordSkippedDelivery(
     statusCode: null,
     error: reason,
     attempt: 1,
+  })
+  await logDeliveryOutcome({
+    subject,
+    status: "skipped",
+    webhookUrl: null,
+    eventId: `evt_${subject.id.replace(/-/g, "")}`,
+    skipReason: options.logReason ?? "webhook_url_not_configured",
+    requestId: options.context?.requestId ?? null,
+    requestBody: options.payload,
   })
   log({
     entrypoint: "after",

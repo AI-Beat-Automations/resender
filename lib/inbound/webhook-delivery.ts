@@ -4,6 +4,12 @@ import { getSql } from "@/lib/db"
 import type { PageChannel } from "@/lib/pages/page-registry"
 import { normalizeWebhookUrl } from "@/lib/pages/webhook-url"
 import { signedWebhookHeaders } from "@/lib/pages/webhook-signing"
+import {
+  REQUEST_LOG_BODY_LIMIT,
+  logDeliveryAttempt,
+  logDeliveryDead,
+  logDeliveryOutcome,
+} from "@/lib/logs/request-log"
 import { accountFields, describeError, log } from "@/lib/observability/logger"
 import { posthog } from "@/lib/posthog"
 
@@ -34,6 +40,10 @@ import type {
 const QUEUE_RETRY_DELAYS_SECONDS = [5, 30, 120, 300, 900] as const
 
 const WEBHOOK_DELIVERY_TIMEOUT_MS = 5_000
+// El primer intento más un reintento por cada espera de la tabla de arriba, que
+// es lo que `max_retries` de la cola permite. Es lo que la sección Logs muestra
+// como «intentos: 2 de 6».
+export const WEBHOOK_DELIVERY_MAX_ATTEMPTS = QUEUE_RETRY_DELAYS_SECONDS.length + 1
 
 // Cuánto se le da a un job reclamado antes de considerarlo colgado. Si el Worker
 // muere entre el `claim` y el `recordJobAttempt`, el job queda en `processing`
@@ -117,6 +127,15 @@ export async function enqueueDelivery(input: {
       ...context,
       attempt: 1,
       errorMessage: deliveryError,
+    })
+    await logDeliveryOutcome({
+      subject: input.subject,
+      status: "failed",
+      webhookUrl: input.webhookUrl,
+      eventId: eventIdFor(input.subject),
+      error: deliveryError,
+      requestId: context.requestId ?? null,
+      requestBody: input.payload,
     })
     await captureDeliveryFailed(input.payload.tenant.id, input.subject, {
       reason: deliveryError,
@@ -454,9 +473,12 @@ export async function deliverJob(input: {
   }
 
   let outcome: DeliveryOutcome
+  // Solo para la sección Logs: nada de esto decide la entrega.
+  const body = JSON.stringify(claimed.payload)
+  const startedAt = Date.now()
+  let responseBody: string | null = null
   try {
     if (!claimed.webhookUrl) throw new Error("webhookUrl not configured")
-    const body = JSON.stringify(claimed.payload)
     const response = await (input.fetcher ?? fetch)(claimed.webhookUrl, {
       method: "POST",
       headers: {
@@ -478,6 +500,9 @@ export async function deliverJob(input: {
       signal: AbortSignal.timeout(WEBHOOK_DELIVERY_TIMEOUT_MS),
     })
     outcome = classifyDeliveryResponse(response.status)
+    // Después de clasificar, y sin poder cambiar el resultado: la respuesta del
+    // bot es para mostrarla, no para decidir.
+    responseBody = await readResponseBodyCapped(response)
   } catch (error) {
     const message = describeError(error)
     outcome =
@@ -486,6 +511,7 @@ export async function deliverJob(input: {
         : { kind: "retry", statusCode: null, error: message }
   }
 
+  const durationMs = Date.now() - startedAt
   const delaySeconds =
     outcome.kind === "retry" ? retryDelaySeconds(claimed.attemptCount) : null
   await recordJobAttempt({
@@ -530,6 +556,26 @@ export async function deliverJob(input: {
     ...subjectFields(claimed),
     attempt: claimed.attemptCount,
     status: outcome.statusCode ?? undefined,
+  })
+
+  await logDeliveryAttempt({
+    jobId: claimed.id,
+    tenantId: claimed.tenantId,
+    status:
+      outcome.kind === "success"
+        ? "success"
+        : outcome.kind === "permanent"
+          ? "failed"
+          : "retrying",
+    httpStatus: outcome.statusCode,
+    durationMs,
+    attempt: claimed.attemptCount,
+    maxAttempts: WEBHOOK_DELIVERY_MAX_ATTEMPTS,
+    retryDelaySeconds: delaySeconds,
+    signed: claimed.signingSecretEncrypted !== null,
+    error: outcome.kind === "success" ? null : outcome.error,
+    requestBody: body,
+    responseBody,
   })
 
   if (outcome.kind === "permanent") {
@@ -579,6 +625,7 @@ export async function consumeWebhookQueue(
       if (isDlq) {
         try {
           await markJobDead(jobId, "Cloudflare Queue retries exhausted")
+          await logDeliveryDead(jobId, "Cloudflare Queue retries exhausted")
           log({
             entrypoint: "queue",
             action: "webhook_delivery",
@@ -642,6 +689,30 @@ export async function recoverWebhookJobs(env: CloudflareEnv): Promise<number> {
 }
 
 // ---------------------------------------------------------------------------
+
+// Lee la respuesta del bot con tope, para la sección Logs. No lanza: un cuerpo
+// que no se puede leer (el bot cortó, venció el timeout a mitad de lectura) es
+// una respuesta sin cuerpo, no un intento distinto. El tope se aplica leyendo
+// por chunks para no materializar en memoria una respuesta arbitraria.
+async function readResponseBodyCapped(
+  response: Response
+): Promise<string | null> {
+  try {
+    const reader = response.body?.getReader()
+    if (!reader) return null
+    const decoder = new TextDecoder()
+    let text = ""
+    while (text.length <= REQUEST_LOG_BODY_LIMIT) {
+      const { done, value } = await reader.read()
+      if (done) break
+      text += decoder.decode(value, { stream: true })
+    }
+    await reader.cancel().catch(() => {})
+    return text.length > 0 ? text : null
+  } catch {
+    return null
+  }
+}
 
 function parseJobId(value: unknown): string | null {
   if (!value || typeof value !== "object") return null
