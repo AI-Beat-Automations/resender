@@ -1,0 +1,28 @@
+# Excluye del grep/ripgrep (y de las herramientas de búsqueda de agentes)
+# rutas que solo meten ruido al explorar el repo. No afecta a git.
+
+# Salidas de build (Next, OpenNext, Cloudflare)
+.next/
+.open-next/
+.wrangler/
+out/
+dist/
+coverage/
+
+# Logs de peticiones a Claude (11 MB de sesiones)
+request-logger/
+
+# Lockfiles: miles de líneas sin valor para explorar
+bun.lock
+package-lock.json
+
+# Docs internas no versionadas (HTML de 300 KB del rediseño, openapi.yml)
+.internal_docs/
+
+# Cache de skills de agentes y config de otros asistentes
+.agents/
+.grok/
+
+# Assets binarios
+public/
+*.png
