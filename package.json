@@ -20,7 +20,8 @@
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
-    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
+    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
+    "request-logger": "bun request-logger/proxy.ts"
   },
   "dependencies": {
     "@better-auth/api-key": "1.7.2",
@@ -60,6 +61,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@clack/prompts": "^1.8.1",
     "@electric-sql/pglite": "^0.5.5",
     "@eslint/js": "^9",
     "@next/eslint-plugin-next": "^16.2.6",

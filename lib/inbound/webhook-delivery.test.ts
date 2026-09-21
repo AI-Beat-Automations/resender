@@ -11,6 +11,17 @@ vi.mock("@/lib/db", () => ({
 }))
 
 // El cliente real haría flush a través del `fetch` mockeado y el test fallaría.
+// La bitácora de la sección Logs es best-effort y tiene sus propios tests; acá
+// se apaga para que sus escrituras no se mezclen con las que este test cuenta.
+vi.mock("@/lib/logs/request-log", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/logs/request-log")>()),
+  logInboundEvent: vi.fn(async () => {}),
+  logDeliveryAttempt: vi.fn(async () => {}),
+  logDeliveryDead: vi.fn(async () => {}),
+  logDeliveryOutcome: vi.fn(async () => {}),
+  logApiRequest: vi.fn(async () => {}),
+}))
+
 vi.mock("@/lib/posthog", () => ({ posthog: null }))
 
 vi.mock("@opennextjs/cloudflare", () => ({

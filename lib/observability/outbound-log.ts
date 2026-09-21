@@ -1,5 +1,7 @@
 import crypto from "crypto"
 
+import type { ApiLogCapture } from "@/lib/logs/api-request-log"
+import type { LogAccount } from "@/lib/logs/request-log"
 import type { PageChannel } from "@/lib/pages/page-registry"
 
 import { accountFields, log, type LogAction, type LogReason } from "./logger"
@@ -45,7 +47,17 @@ export function outboundLogger(base: {
   channel: PageChannel
   requestId: string
   subject: "message" | "comment"
+  // La sección Logs (`withApiRequestLog`) se entera de quién es la request por
+  // los mismos `setTenant`/`setAccount` que ya se llamaban para Workers Logs:
+  // así la ruta no tiene que contarlo dos veces.
+  capture?: ApiLogCapture
 }) {
+  base.capture?.setRequestId(base.requestId)
+  const forward = (extra: Extra) =>
+    base.capture?.setSubject({
+      contactId: extra.contactId,
+      providerId: extra.providerId,
+    })
   let fields: Record<string, unknown> = {
     entrypoint: "route" as const,
     action: base.action,
@@ -59,9 +71,11 @@ export function outboundLogger(base: {
     // el tenant de la API key, después la cuenta conectada.
     setTenant(tenantId: string) {
       fields.tenantId = tenantId
+      base.capture?.setTenant(tenantId)
     },
-    setAccount(page: Parameters<typeof accountFields>[0]) {
+    setAccount(page: Parameters<typeof accountFields>[0] & LogAccount) {
       fields = { ...fields, ...accountFields(page) }
+      base.capture?.setAccount(page)
     },
     // Devuelve la respuesta que le pasan, para que el gate quede en una línea y
     // no se pueda loguear un descarte y contestar otra cosa.
@@ -86,9 +100,11 @@ export function outboundLogger(base: {
       return response
     },
     ok(extra: Extra = {}) {
+      forward(extra)
       log({ ...fields, outcome: "ok", ...extra } as Parameters<typeof log>[0])
     },
     failed(reason: LogReason, extra: Extra = {}) {
+      forward(extra)
       log({ ...fields, outcome: "failed", reason, ...extra } as Parameters<
         typeof log
       >[0])

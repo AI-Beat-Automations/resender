@@ -30,6 +30,7 @@ import type { ConnectionCardDict } from "./sections/connection-card"
 import type { SelectDict } from "./sections/select"
 import type { InboxDict } from "./sections/inbox"
 import type { LogDict } from "./sections/log"
+import type { RequestLogsDict } from "./sections/request-logs"
 import type { SettingsDict } from "./sections/settings"
 import type { AccountDict } from "./sections/account"
 import type { ApiKeysDict } from "./sections/api-keys"
@@ -64,6 +65,7 @@ export type AppDict = {
   select: SelectDict
   inbox: InboxDict
   log: LogDict
+  requestLogs: RequestLogsDict
   settings: SettingsDict
   account: AccountDict
   apiKeys: ApiKeysDict

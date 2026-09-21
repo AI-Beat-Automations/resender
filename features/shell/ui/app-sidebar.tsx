@@ -7,6 +7,7 @@ import {
   BookOpen,
   Inbox,
   Link2,
+  List,
   LogOut,
   Settings,
   Users,
@@ -31,6 +32,7 @@ import { cn } from "@/lib/utils"
 const NAV_ICONS: Record<NavKey, LucideIcon> = {
   navConnections: Link2,
   navInbox: Inbox,
+  navLogs: List,
   navClients: Users,
   navSettings: Settings,
   navDocs: BookOpen,
