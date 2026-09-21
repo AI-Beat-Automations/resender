@@ -48,11 +48,20 @@ import { extractInstagramDirectMessages } from "./instagram-webhook"
 import { extractInboundEvents } from "./meta-webhook"
 import { routeWhatsappWebhook } from "./whatsapp-webhook"
 import type { WhatsappStatusEvent } from "./whatsapp-parsers"
+import { indexRawFragments, type RawFragmentIndex } from "@/lib/logs/raw-fragments"
+import { logInboundEvent } from "@/lib/logs/request-log"
 import { accountFields, describeError, log } from "@/lib/observability/logger"
 import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { captureDeferred } from "@/lib/posthog"
 
 export type InboundPushJob = () => Promise<void>
+
+// La ruta que recibió el evento, para la columna `endpoint` de la sección Logs.
+const WEBHOOK_ROUTE: Record<PageChannel, string> = {
+  messenger: "/api/meta/webhook",
+  instagram: "/api/meta/instagram/webhook",
+  whatsapp: "/api/meta/whatsapp/webhook",
+}
 
 // Lo único que el route handler necesita de un evento ingerido: la tarea de
 // reenvío que corre fuera de la respuesta a Meta. Mensajes y comentarios la
@@ -146,7 +155,12 @@ export async function ingestMetaWebhookPayload(
   body: unknown,
   requestId: string
 ) {
-  return ingestInboundEvents(extractInboundEvents(body), "messenger", requestId)
+  return ingestInboundEvents(
+    extractInboundEvents(body),
+    "messenger",
+    requestId,
+    indexRawFragments(body, "messenger")
+  )
 }
 
 // Entrada del webhook de Instagram: mensajes directos **y** comentarios.
@@ -163,13 +177,15 @@ export async function ingestInstagramWebhookPayload(
   body: unknown,
   requestId: string
 ): Promise<IngestedInbound[]> {
+  const raw = indexRawFragments(body, "instagram")
   const [messages, comments] = await Promise.all([
     ingestInboundEvents(
       extractInstagramDirectMessages(body),
       "instagram",
-      requestId
+      requestId,
+      raw
     ),
-    ingestInstagramComments(body, requestId),
+    ingestInstagramComments(body, requestId, raw),
   ])
 
   return [...messages, ...comments]
@@ -191,13 +207,15 @@ export async function ingestWhatsappWebhookPayload(
   requestId: string
 ): Promise<IngestedInbound[]> {
   const routed = routeWhatsappWebhook(body)
+  const raw = indexRawFragments(body, "whatsapp")
 
   const ingested = await ingestInboundEvents(
     routed.events,
     "whatsapp",
-    requestId
+    requestId,
+    raw
   )
-  await applyWhatsappStatuses(routed.statuses, requestId)
+  await applyWhatsappStatuses(routed.statuses, requestId, raw)
 
   if (routed.unhandledFields.length > 0) {
     // Un `field` que Meta manda y los parsers no modelan (`account_update`,
@@ -230,11 +248,13 @@ export async function ingestWhatsappWebhookPayload(
 // recibir en el acto, y eso incluye dejar de escribirle la fila.
 async function applyWhatsappStatuses(
   statuses: WhatsappStatusEvent[],
-  requestId: string
+  requestId: string,
+  raw: RawFragmentIndex
 ) {
   const channelAccess = new Map<string, boolean>()
 
   for (const status of statuses) {
+    const startedAt = Date.now()
     const logSubject = {
       subject: "message",
       providerId: status.metaMessageId,
@@ -297,6 +317,32 @@ async function applyWhatsappStatuses(
       deliveryStatus: status.deliveryStatus,
     })
 
+    // Sección Logs: el acuse se guarda también cuando perdió la guarda. Un
+    // `failed` de WhatsApp con su motivo es justo lo que el tenant busca cuando
+    // un mensaje no llegó. Ya estamos fuera de la respuesta a Meta (`after()`)
+    // y la escritura no lanza.
+    const firstError = status.errors[0]
+    await logInboundEvent({
+      account: page,
+      route: WEBHOOK_ROUTE.whatsapp,
+      requestId,
+      eventType: "status",
+      result: applied
+        ? { kind: "status_applied", deliveryStatus: status.deliveryStatus }
+        : { kind: "duplicate" },
+      startedAt,
+      payload:
+        raw.status(status.metaMessageId, status.deliveryStatus) ?? status,
+      providerMessageId: status.metaMessageId,
+      contactId: status.recipientId,
+      errorCode: firstError?.code != null ? String(firstError.code) : null,
+      errorMessage: firstError
+        ? [firstError.title, firstError.details ?? firstError.message]
+            .filter(Boolean)
+            .join(": ") || null
+        : null,
+    })
+
     if (!applied) {
       // El callback perdió la guarda del UPDATE: o llegó atrasado (un `sent`
       // después del `read` del mismo wamid, que Meta entrega desordenado), o es
@@ -333,7 +379,8 @@ async function applyWhatsappStatuses(
 async function ingestInboundEvents(
   incoming: InboundEvent[],
   channel: PageChannel,
-  requestId: string
+  requestId: string,
+  raw: RawFragmentIndex
 ) {
   const ingested: IngestedInboundMessage[] = []
   // Un payload de Meta puede traer varios eventos del mismo tenant; el
@@ -346,6 +393,7 @@ async function ingestInboundEvents(
   const channelAccess = new Map<string, boolean>()
 
   for (const event of incoming) {
+    const startedAt = Date.now()
     // El canal viene del webhook que recibió el evento, no del payload: sin él,
     // un IG ID que coincida con un page id resolvería al tenant equivocado.
     const page = await getActivePageByMetaPageId(event.metaPageId, channel)
@@ -472,6 +520,22 @@ async function ingestInboundEvents(
       contactId: event.senderId,
     } as const
 
+    // Lo que la sección Logs guarda de este evento, igual para el duplicado y
+    // para el ingerido. El historial no se loguea: un import son miles de
+    // mensajes viejos que no son tráfico del webhook en vivo.
+    const inboundLog = {
+      account: page,
+      route: WEBHOOK_ROUTE[channel],
+      requestId,
+      eventType: direction === "outbound" ? "echo" : event.eventType,
+      startedAt,
+      payload: raw.message(event.metaMessageId) ?? event,
+      messageId: message.id,
+      conversationId: conversation.id,
+      providerMessageId: event.metaMessageId,
+      contactId: event.senderId,
+    }
+
     if (!inserted) {
       // Reintento de Meta o carrera entre dos requests. No es un error, pero sí
       // la diferencia entre «no llegó» y «llegó y ya estaba».
@@ -484,6 +548,9 @@ async function ingestInboundEvents(
         ...accountFields(page),
         ...logSubject,
       })
+      if (!event.historical) {
+        await logInboundEvent({ ...inboundLog, result: { kind: "duplicate" } })
+      }
       continue
     }
 
@@ -606,24 +673,30 @@ async function ingestInboundEvents(
       conversationPausedAt: conversation.pausedAt ?? null,
     })
     let pushJob: InboundPushJob
+    let forwarding: string
     if (!shouldPushInbound(entitlement)) {
       // Cuenta restringida (ADR 0003): el mensaje ya quedó persistido y
       // contabilizado, pero deja de reenviarse al webhook del cliente.
+      forwarding = "skipped:account_restricted"
       pushJob = () =>
         recordSkippedDelivery(subject, {
           reason: RESTRICTED_SKIP_REASON,
           logReason: "account_restricted",
           context: deliveryContext,
+          payload,
         })
     } else if (pause) {
       // Igual que la restricción: persistido y contabilizado, sin POST.
+      forwarding = `skipped:${pause}`
       pushJob = () =>
         recordSkippedDelivery(subject, {
           reason: FORWARDING_PAUSE_SKIP_REASON[pause],
           logReason: pause,
           context: deliveryContext,
+          payload,
         })
     } else if (webhookUrl) {
+      forwarding = "queued"
       pushJob = () =>
         enqueueDelivery({
           subject,
@@ -632,14 +705,40 @@ async function ingestInboundEvents(
           context: deliveryContext,
         })
     } else {
+      forwarding = "skipped:webhook_url_not_configured"
       pushJob = () =>
-        recordSkippedDelivery(subject, { context: deliveryContext })
+        recordSkippedDelivery(subject, { context: deliveryContext, payload })
     }
 
-    ingested.push({ page, message, pushJob })
+    ingested.push({
+      page,
+      message,
+      pushJob: withInboundLog(pushJob, {
+        ...inboundLog,
+        result: { kind: "ingested", forwarding },
+      }),
+    })
   }
 
   return ingested
+}
+
+// La fila `Meta → Resender` de la sección Logs viaja pegada al `pushJob`: corre
+// en el mismo `after()`, en paralelo con el reenvío y sin demorarlo. La
+// escritura no lanza, así que lo que el `pushJob` resuelve o rechaza sigue
+// siendo exactamente lo que resolvía o rechazaba el reenvío.
+function withInboundLog(
+  pushJob: InboundPushJob,
+  entry: Parameters<typeof logInboundEvent>[0]
+): InboundPushJob {
+  return async () => {
+    const written = logInboundEvent(entry)
+    try {
+      await pushJob()
+    } finally {
+      await written
+    }
+  }
 }
 
 // El alta del job de descarga de media en la cola propia de WhatsApp.
@@ -691,7 +790,8 @@ async function enqueueMediaDownload(input: {
 // ADR: un post con muchos comentarios puede quemar la cuota de un mes.
 async function ingestInstagramComments(
   body: unknown,
-  requestId: string
+  requestId: string,
+  raw: RawFragmentIndex
 ): Promise<IngestedInbound[]> {
   const incoming = extractInstagramComments(body)
   const ingested: IngestedInbound[] = []
@@ -701,6 +801,7 @@ async function ingestInstagramComments(
   const entitlements = new Map<string, TenantEntitlement>()
 
   for (const event of incoming) {
+    const startedAt = Date.now()
     const page = await getActivePageByMetaPageId(event.metaPageId, "instagram")
     if (!page) {
       log({
@@ -838,6 +939,19 @@ async function ingestInstagramComments(
       contactId: comment.fromIgId,
     } as const
 
+    // Sección Logs: misma fila para el duplicado y para el ingerido.
+    const inboundLog = {
+      account: page,
+      route: WEBHOOK_ROUTE.instagram,
+      requestId,
+      eventType: "comment",
+      startedAt,
+      payload: raw.comment(event.igCommentId) ?? event,
+      instagramCommentId: comment.id,
+      providerMessageId: comment.igCommentId ?? event.igCommentId,
+      contactId: comment.fromIgId,
+    }
+
     // Reintento de Meta o carrera entre dos requests: ya estaba, no se reenvía.
     if (!inserted) {
       log({
@@ -849,6 +963,7 @@ async function ingestInstagramComments(
         ...accountFields(page),
         ...logSubject,
       })
+      await logInboundEvent({ ...inboundLog, result: { kind: "duplicate" } })
       continue
     }
 
@@ -922,12 +1037,14 @@ async function ingestInstagramComments(
     // comentario ya quedó persistido y contabilizado, pero deja de reenviarse
     // al webhook del cliente. Gana sobre el `webhookUrl` por lo mismo que en
     // los DMs: la restricción es del tenant, no de la conexión.
-    const pushJob: InboundPushJob = !shouldPushInbound(entitlement)
+    const restricted = !shouldPushInbound(entitlement)
+    const pushJob: InboundPushJob = restricted
       ? () =>
           recordSkippedDelivery(subject, {
             reason: RESTRICTED_SKIP_REASON,
             logReason: "account_restricted",
             context,
+            payload,
           })
       : pause
         ? () =>
@@ -935,12 +1052,25 @@ async function ingestInstagramComments(
               reason: FORWARDING_PAUSE_SKIP_REASON[pause],
               logReason: pause,
               context,
+              payload,
             })
         : webhookUrl
           ? () => enqueueDelivery({ subject, webhookUrl, payload, context })
-          : () => recordSkippedDelivery(subject, { context })
+          : () => recordSkippedDelivery(subject, { context, payload })
+    const forwarding = restricted
+      ? "skipped:account_restricted"
+      : pause
+        ? `skipped:${pause}`
+        : webhookUrl
+          ? "queued"
+          : "skipped:webhook_url_not_configured"
 
-    ingested.push({ pushJob })
+    ingested.push({
+      pushJob: withInboundLog(pushJob, {
+        ...inboundLog,
+        result: { kind: "ingested", forwarding },
+      }),
+    })
   }
 
   return ingested

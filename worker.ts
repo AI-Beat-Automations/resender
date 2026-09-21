@@ -27,6 +27,7 @@ import {
   recoverWebhookJobs,
 } from "./lib/inbound/webhook-delivery"
 import { consumeWhatsappQueue } from "./lib/jobs/whatsapp-queue"
+import { purgeExpiredRequestLogs } from "./lib/logs/request-log"
 
 type WebWorker = {
   fetch(
@@ -79,6 +80,9 @@ const worker: WebWorker = {
   async scheduled(_controller, env) {
     await recoverWebhookJobs(env)
     await recoverPendingMediaPurges(env)
+    // Retención de la sección Logs (30 días). No lanza: un barrido fallido se
+    // reintenta solo en la próxima corrida.
+    await purgeExpiredRequestLogs()
   },
 }
 

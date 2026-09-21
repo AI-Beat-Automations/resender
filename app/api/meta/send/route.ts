@@ -25,6 +25,10 @@ import {
   getBearerToken,
   parseOutboundSendInput,
 } from "@/lib/outbound/send-request"
+import {
+  withApiRequestLog,
+  type ApiLogCapture,
+} from "@/lib/logs/api-request-log"
 import { describeError, log } from "@/lib/observability/logger"
 import {
   outboundLogger,
@@ -40,13 +44,21 @@ import { captureDeferred } from "@/lib/posthog"
 // El page access token se resuelve en el servidor (no viaja en el curl).
 export const runtime = "nodejs"
 
-export async function POST(request: NextRequest) {
+// La sección Logs guarda esta request (`bot → Resender`) desde el envoltorio:
+// ve la respuesta que sale por cualquiera de los returns de abajo.
+export const POST = withApiRequestLog(
+  { channel: "messenger", eventType: "send", endpoint: "/api/meta/send" },
+  handle
+)
+
+async function handle(request: NextRequest, capture: ApiLogCapture) {
   const requestId = resolveRequestId(request.headers.get("x-request-id"))
   const trace = outboundLogger({
     action: "outbound_send",
     channel: "messenger",
     subject: "message",
     requestId,
+    capture,
   })
 
   const bearer = getBearerToken(request.headers.get("authorization"))

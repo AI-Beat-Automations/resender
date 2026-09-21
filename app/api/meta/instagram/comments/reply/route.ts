@@ -22,6 +22,10 @@ import {
 import { isMetaExpiredTokenError } from "@/lib/outbound/instagram-send"
 import { parseCommentReplyInput } from "@/lib/outbound/send-request"
 import { markPageTokenInvalid } from "@/lib/pages/page-registry"
+import {
+  withApiRequestLog,
+  type ApiLogCapture,
+} from "@/lib/logs/api-request-log"
 import { describeError, log } from "@/lib/observability/logger"
 import {
   outboundLogger,
@@ -44,13 +48,21 @@ import { posthog } from "@/lib/posthog"
 // en la request, igual que en el resto de los endpoints salientes.
 export const runtime = "nodejs"
 
-export async function POST(request: NextRequest) {
+// La sección Logs guarda esta request (`bot → Resender`) desde el envoltorio:
+// ve la respuesta que sale por cualquiera de los returns de abajo.
+export const POST = withApiRequestLog(
+  { channel: "instagram", eventType: "comment_reply", endpoint: "/api/meta/instagram/comments/reply" },
+  handle
+)
+
+async function handle(request: NextRequest, capture: ApiLogCapture) {
   const requestId = resolveRequestId(request.headers.get("x-request-id"))
   const trace = outboundLogger({
     action: "comment_reply",
     channel: "instagram",
     subject: "comment",
     requestId,
+    capture,
   })
 
   const auth = await authenticateCommentReplyRequest(request)

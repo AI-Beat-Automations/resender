@@ -9,6 +9,7 @@ import * as connectionCard from "./sections/connection-card"
 import * as select from "./sections/select"
 import * as inbox from "./sections/inbox"
 import * as log from "./sections/log"
+import * as requestLogs from "./sections/request-logs"
 import * as settings from "./sections/settings"
 import * as account from "./sections/account"
 import * as apiKeys from "./sections/api-keys"
@@ -39,6 +40,7 @@ export const en: AppDict = {
   select: select.en,
   inbox: inbox.en,
   log: log.en,
+  requestLogs: requestLogs.en,
   settings: settings.en,
   account: account.en,
   apiKeys: apiKeys.en,
