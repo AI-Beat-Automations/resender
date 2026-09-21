@@ -50,3 +50,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .env
+
+# bun solo se usa en local para request-logger/. Si el lock está en el repo,
+# OpenNext lo detecta antes que package-lock.json y corre `bun run build`,
+# y los runners de CI no tienen bun.
+bun.lock
+bun.lockb
