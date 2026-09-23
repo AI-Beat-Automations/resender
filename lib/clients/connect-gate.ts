@@ -1,5 +1,6 @@
 import type { AppDict } from "@/content/i18n/app"
 import { isUserWaitlisted } from "@/lib/auth/waitlist"
+import { needsEmailVerification } from "@/lib/billing/free-plan-gate"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
 import type { LogReason } from "@/lib/observability/logger"
 
@@ -21,8 +22,11 @@ export type ConnectGate =
   | { kind: "not_authenticated" }
   /** El padre está en la lista de espera. */
   | { kind: "waitlisted" }
-  /** El padre no tiene suscripción activa: `/billing`. */
-  | { kind: "no_active_subscription" }
+  /**
+   * El padre no confirmó su correo: `/pending`, que le pide confirmarlo. Sin
+   * suscripción ya no se rebota a nadie: está en el plan Free (ADR 0022).
+   */
+  | { kind: "email_unverified" }
   /**
    * El cliente no puede conectar: su fila sigue `pending` o el padre no tiene
    * suscripción activa. Nunca `/billing` —no ve precios—: vuelve a
@@ -46,8 +50,8 @@ export async function resolveConnectGate(userId: string): Promise<ConnectGate> {
   }
 
   if (await isUserWaitlisted(actor.userId)) return { kind: "waitlisted" }
-  if (!(await hasActiveSubscription(actor.tenantId))) {
-    return { kind: "no_active_subscription" }
+  if (await needsEmailVerification(actor.userId)) {
+    return { kind: "email_unverified" }
   }
   return { kind: "ok", actor }
 }
@@ -61,7 +65,7 @@ export const CONNECT_GATE_REDIRECT: Record<
 > = {
   not_authenticated: "/login",
   waitlisted: "/pending",
-  no_active_subscription: "/billing",
+  email_unverified: "/pending",
   client_restricted: "/connections",
 }
 
@@ -74,7 +78,7 @@ export const CONNECT_GATE_LOG_REASON: Record<
 > = {
   not_authenticated: "not_authenticated",
   waitlisted: "waitlisted",
-  no_active_subscription: "no_active_subscription",
+  email_unverified: "email_unverified",
   client_restricted: "no_active_subscription",
 }
 
@@ -90,8 +94,8 @@ export function connectGateError(
       return t.actions.notSignedIn
     case "waitlisted":
       return t.actions.waitlisted
-    case "no_active_subscription":
-      return t.actions.noSubscription
+    case "email_unverified":
+      return t.actions.emailUnverified
     case "client_restricted":
       return t.clientLimits.accessRestricted
   }

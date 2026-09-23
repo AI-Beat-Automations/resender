@@ -8,7 +8,6 @@ const mocks = vi.hoisted(() => ({
   getConversationById: vi.fn(),
   getOutboundMessageByIdempotencyKey: vi.fn(),
   getTenantEntitlement: vi.fn(),
-  hasActiveSubscription: vi.fn(),
   incrementUsage: vi.fn(),
   insertOutboundMessage: vi.fn(),
   isUserWaitlisted: vi.fn(),
@@ -38,10 +37,6 @@ vi.mock("@/lib/auth/channel-access", () => ({
 
 vi.mock("@/lib/auth/waitlist", () => ({
   isUserWaitlisted: mocks.isUserWaitlisted,
-}))
-
-vi.mock("@/lib/billing/subscription", () => ({
-  hasActiveSubscription: mocks.hasActiveSubscription,
 }))
 
 vi.mock("@/lib/billing/usage-counter", () => ({
@@ -99,7 +94,10 @@ const sendByConversation = (body: Record<string, unknown>) =>
   new Request("https://resender.test/api/meta/instagram/send", {
     method: "POST",
     headers: { authorization: "Bearer rk_test" },
-    body: JSON.stringify({ conversationId: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a", ...body }),
+    body: JSON.stringify({
+      conversationId: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a",
+      ...body,
+    }),
   }) as unknown as NextRequest
 
 const instagramPage = {
@@ -122,7 +120,6 @@ describe("POST /api/meta/instagram/send", () => {
       tenantId: "tenant-1",
     })
     mocks.isUserWaitlisted.mockResolvedValue(false)
-    mocks.hasActiveSubscription.mockResolvedValue(true)
     mocks.resolveInstagramAccess.mockResolvedValue(true)
     mocks.getTenantEntitlement.mockResolvedValue({
       block: null,
@@ -251,16 +248,17 @@ describe("POST /api/meta/instagram/send", () => {
   })
 
   // Fail closed y en el orden canónico: el permiso de canal ni se consulta si
-  // antes falta la suscripción, para que el cliente vea la causa de más arriba.
-  it("reports the subscription before the channel permission", async () => {
-    mocks.hasActiveSubscription.mockResolvedValue(false)
+  // antes la cuenta está en lista de espera, para que el cliente vea la causa
+  // de más arriba. La suscripción ya no es un gate (ADR 0022).
+  it("reports the waitlist before the channel permission", async () => {
+    mocks.isUserWaitlisted.mockResolvedValue(true)
     mocks.resolveInstagramAccess.mockResolvedValue(false)
 
     const response = await POST(sendRequest())
 
     expect(response.status).toBe(403)
     await expect(response.json()).resolves.toEqual({
-      error: "no active subscription",
+      error: "account is on the waitlist",
     })
     expect(mocks.resolveInstagramAccess).not.toHaveBeenCalled()
   })

@@ -23,8 +23,12 @@ import { LanguagePanel } from "@/features/settings/ui/language-panel"
 import { ConsolePage } from "@/features/shell/ui/console-page"
 import { SettingsTabsNav } from "@/features/settings/ui/settings-tabs-nav"
 import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
-import type { TenantEntitlement } from "@/lib/billing/entitlements"
-import { getPlanByLookupKey } from "@/lib/billing/plans"
+import {
+  isPaidStatus,
+  nextCalendarMonthStartUtc,
+  type TenantEntitlement,
+} from "@/lib/billing/entitlements"
+import { FREE_PLAN, getPlanByLookupKey } from "@/lib/billing/plans"
 import { getSubscriptionByTenantId } from "@/lib/billing/subscription"
 import { isClientActor } from "@/lib/clients/actor"
 import { getClientOwner, ownerDisplayName } from "@/lib/clients/client-owner"
@@ -206,9 +210,7 @@ async function SubscriptionTab({
   return (
     <div className="max-w-160">
       <SubscriptionPanel
-        subscription={
-          subscription ? toSubscriptionView(subscription, entitlement) : null
-        }
+        subscription={toSubscriptionView(subscription, entitlement)}
         t={t}
       />
     </div>
@@ -216,23 +218,43 @@ async function SubscriptionTab({
 }
 
 function toSubscriptionView(
-  subscription: NonNullable<
-    Awaited<ReturnType<typeof getSubscriptionByTenantId>>
-  >,
+  subscription: Awaited<ReturnType<typeof getSubscriptionByTenantId>>,
   entitlement: TenantEntitlement | null
 ): SubscriptionView {
-  const plan = getPlanByLookupKey(subscription.priceLookupKey)
-
-  return {
-    planName: plan?.name ?? subscription.priceLookupKey,
-    planPriceMonthlyUsd: plan?.priceMonthlyUsd ?? null,
-    status: subscription.status,
-    currentPeriodEnd: subscription.currentPeriodEnd?.toISOString() ?? null,
-    cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+  const usage = {
     usage: entitlement?.usage ?? 0,
     messageLimit: entitlement?.limits?.messagesPerPeriod ?? null,
     pagesInUse: entitlement?.activePageCount ?? 0,
     pageLimit: entitlement?.limits?.maxPages ?? null,
+  }
+
+  // Sin suscripción de pago `active` la cuenta está en el Free derivado
+  // (ADR 0022). El status se conserva si hubo una: explica por qué volvió al
+  // Free y habilita el portal para pagar lo pendiente.
+  if (!isPaidStatus(subscription?.status)) {
+    return {
+      isFree: true,
+      planName: FREE_PLAN.name,
+      planPriceMonthlyUsd: FREE_PLAN.priceMonthlyUsd,
+      status: subscription?.status ?? null,
+      currentPeriodEnd: nextCalendarMonthStartUtc(new Date()).toISOString(),
+      cancelAtPeriodEnd: false,
+      ...usage,
+    }
+  }
+
+  const plan = subscription
+    ? getPlanByLookupKey(subscription.priceLookupKey)
+    : null
+
+  return {
+    isFree: false,
+    planName: plan?.name ?? subscription?.priceLookupKey ?? "",
+    planPriceMonthlyUsd: plan?.priceMonthlyUsd ?? null,
+    status: subscription?.status ?? null,
+    currentPeriodEnd: subscription?.currentPeriodEnd?.toISOString() ?? null,
+    cancelAtPeriodEnd: subscription?.cancelAtPeriodEnd ?? false,
+    ...usage,
   }
 }
 

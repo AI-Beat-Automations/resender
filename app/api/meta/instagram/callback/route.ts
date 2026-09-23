@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server"
 
 import { getSession } from "@/lib/auth/session"
 import { resolveInstagramAccess } from "@/lib/auth/channel-access"
-import { resolvePlanLimits } from "@/lib/billing/entitlements"
+import { resolveTenantPlanLimits } from "@/lib/billing/entitlements"
 import { getSubscriptionByTenantId } from "@/lib/billing/subscription"
 import { getClientLimits } from "@/lib/clients/client-limits-status"
 import {
@@ -294,8 +294,7 @@ async function resolveInstagramCap(actor: {
   tenantId: string
   clientAccountId: string | null
 }): Promise<
-  | { ok: true; atPageLimit: boolean; limitReason: string }
-  | { ok: false }
+  { ok: true; atPageLimit: boolean; limitReason: string } | { ok: false }
 > {
   if (actor.clientAccountId !== null) {
     const status = await getClientLimits({
@@ -313,7 +312,7 @@ async function resolveInstagramCap(actor: {
   }
 
   const subscription = await getSubscriptionByTenantId(actor.tenantId)
-  const limits = resolvePlanLimits(subscription?.priceLookupKey ?? null)
+  const limits = resolveTenantPlanLimits(subscription)
   if (!limits) return { ok: false }
   return {
     ok: true,

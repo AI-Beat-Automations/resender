@@ -1,10 +1,14 @@
 export type SubscriptionDict = {
   title: string
-  none: string
-  noneBody: string
-  choosePlan: string
+  /** Badge del plan Free derivado (ADR 0022). */
+  freeBadge: string
+  freeBody: string
+  /** `{status}`: la suscripción de pago que dejó de estar activa. */
+  lapsedBody: string
+  upgrade: string
   planLabel: string
   renewsLabel: string
+  resetsLabel: string
   cancelsLabel: string
   connectionsLabel: string
   /** `{price}` */
@@ -18,11 +22,15 @@ export type SubscriptionDict = {
 
 export const es: SubscriptionDict = {
   title: "Suscripción",
-  none: "sin suscripción",
-  noneBody: "No hay ninguna suscripción registrada para esta cuenta.",
-  choosePlan: "Elegir un plan",
+  freeBadge: "free",
+  freeBody:
+    "Estás en el plan Free: 2,000 mensajes al mes y 1 conexión, sin tarjeta. El consumo se reinicia el día 1 de cada mes.",
+  lapsedBody:
+    "Tu suscripción de pago ya no está activa ({status}), así que la cuenta volvió al plan Free.",
+  upgrade: "Mejorar plan",
   planLabel: "plan",
   renewsLabel: "renueva",
+  resetsLabel: "reinicia",
   cancelsLabel: "cancela",
   connectionsLabel: "conexiones",
   perMonth: " · ${price} / mes",
@@ -37,11 +45,15 @@ export const es: SubscriptionDict = {
 
 export const en: SubscriptionDict = {
   title: "Subscription",
-  none: "no subscription",
-  noneBody: "There's no subscription on record for this account.",
-  choosePlan: "Choose a plan",
+  freeBadge: "free",
+  freeBody:
+    "You're on the Free plan: 2,000 messages a month and 1 connection, no card. Usage resets on the 1st of every month.",
+  lapsedBody:
+    "Your paid subscription is no longer active ({status}), so the account went back to the Free plan.",
+  upgrade: "Upgrade plan",
   planLabel: "plan",
   renewsLabel: "renews",
+  resetsLabel: "resets",
   cancelsLabel: "cancels",
   connectionsLabel: "connections",
   perMonth: " · ${price} / month",

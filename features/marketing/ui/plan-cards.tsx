@@ -27,7 +27,7 @@ export function PlanCards({
   const dict = getDictionary(lang)
 
   return (
-    <div className="mx-auto grid max-w-5xl gap-6 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="mx-auto grid max-w-6xl gap-6 sm:grid-cols-2 lg:grid-cols-4">
       {dict.pricing.plans.map((plan) => (
         <Card
           key={plan.name}
@@ -71,7 +71,8 @@ export function PlanCards({
               className="w-full"
               variant={plan.featured ? "default" : "outline"}
             >
-              {/* TODO: Stripe — por ahora el CTA va al registro existente. */}
+              {/* Todos los CTA van al registro: la cuenta nace en el plan Free
+                  (ADR 0022) y sube de plan desde adentro. */}
               <Link href={localePath("/register", lang)}>{plan.cta}</Link>
             </Button>
           </CardFooter>

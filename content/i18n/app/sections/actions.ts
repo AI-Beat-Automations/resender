@@ -2,7 +2,7 @@
 export type ActionsDict = {
   notSignedIn: string
   waitlisted: string
-  noSubscription: string
+  emailUnverified: string
   invalidPage: string
   pageNotFound: string
   invalidApiKey: string
@@ -79,7 +79,7 @@ export type ActionsDict = {
 export const es: ActionsDict = {
   notSignedIn: "No has iniciado sesión.",
   waitlisted: "Tu cuenta está en la lista de espera.",
-  noSubscription: "Tu suscripción no está activa.",
+  emailUnverified: "Confirma tu correo antes de conectar una red.",
   invalidPage: "Página inválida.",
   pageNotFound: "No encontramos esa página.",
   invalidApiKey: "La API key no es válida.",
@@ -168,7 +168,7 @@ export const es: ActionsDict = {
 export const en: ActionsDict = {
   notSignedIn: "You're not signed in.",
   waitlisted: "Your account is on the waitlist.",
-  noSubscription: "Your subscription isn't active.",
+  emailUnverified: "Confirm your email before connecting a network.",
   invalidPage: "Invalid page.",
   pageNotFound: "We couldn't find that page.",
   invalidApiKey: "That API key isn't valid.",

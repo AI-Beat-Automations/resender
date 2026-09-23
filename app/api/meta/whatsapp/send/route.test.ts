@@ -7,7 +7,6 @@ const mocks = vi.hoisted(() => ({
   getConversationById: vi.fn(),
   getOutboundMessageByIdempotencyKey: vi.fn(),
   getTenantEntitlement: vi.fn(),
-  hasActiveSubscription: vi.fn(),
   incrementUsage: vi.fn(),
   insertOutboundMessage: vi.fn(),
   isUserWaitlisted: vi.fn(),
@@ -32,10 +31,6 @@ vi.mock("@/lib/auth/waitlist", () => ({
 
 vi.mock("@/lib/billing/entitlement-status", () => ({
   getTenantEntitlement: mocks.getTenantEntitlement,
-}))
-
-vi.mock("@/lib/billing/subscription", () => ({
-  hasActiveSubscription: mocks.hasActiveSubscription,
 }))
 
 vi.mock("@/lib/billing/usage-counter", () => ({
@@ -107,7 +102,10 @@ const sendByConversation = (
   new Request("https://resender.test/api/meta/whatsapp/send", {
     method: "POST",
     headers: { authorization: "Bearer rk_test", "idempotency-key": "key-1" },
-    body: JSON.stringify({ conversationId: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a", ...body }),
+    body: JSON.stringify({
+      conversationId: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a",
+      ...body,
+    }),
   }) as unknown as NextRequest
 
 describe("POST /api/meta/whatsapp/send", () => {
@@ -118,7 +116,6 @@ describe("POST /api/meta/whatsapp/send", () => {
     mocks.authenticateApiKey.mockResolvedValue({ tenantId: "tenant-1" })
     mocks.resolveWhatsappAccess.mockResolvedValue(true)
     mocks.isUserWaitlisted.mockResolvedValue(false)
-    mocks.hasActiveSubscription.mockResolvedValue(true)
     mocks.getTenantEntitlement.mockResolvedValue({
       block: null,
       periodStart: new Date("2026-08-01"),
@@ -262,17 +259,6 @@ describe("POST /api/meta/whatsapp/send", () => {
     expect(mocks.sendWhatsappOutboundMessage).not.toHaveBeenCalled()
   })
 
-  it("blocks a tenant without an active subscription", async () => {
-    mocks.hasActiveSubscription.mockResolvedValue(false)
-
-    const response = await POST(sendRequest())
-
-    expect(response.status).toBe(403)
-    await expect(response.json()).resolves.toEqual({
-      error: "no active subscription",
-    })
-  })
-
   // ---- 5 ----------------------------------------------------------------
   it("replays a stored send without calling Meta", async () => {
     mocks.getOutboundMessageByIdempotencyKey.mockResolvedValue({
@@ -324,7 +310,10 @@ describe("POST /api/meta/whatsapp/send", () => {
     })
 
     const response = await POST(
-      sendRequest({ reply: "hola", conversationId: "9b8a7c6d-2222-4f0e-9d1c-3b4a5f6e7d8c" })
+      sendRequest({
+        reply: "hola",
+        conversationId: "9b8a7c6d-2222-4f0e-9d1c-3b4a5f6e7d8c",
+      })
     )
 
     expect(response.status).toBe(400)
@@ -343,7 +332,10 @@ describe("POST /api/meta/whatsapp/send", () => {
     })
 
     const response = await POST(
-      sendRequest({ reply: "hola", conversationId: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a" })
+      sendRequest({
+        reply: "hola",
+        conversationId: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a",
+      })
     )
 
     expect(response.status).toBe(409)
@@ -575,7 +567,10 @@ describe("POST /api/meta/whatsapp/send", () => {
     const response = await POST(sendByConversation())
 
     expect(response.status).toBe(200)
-    expect(mocks.getConversationById).toHaveBeenCalledWith("tenant-1", "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a")
+    expect(mocks.getConversationById).toHaveBeenCalledWith(
+      "tenant-1",
+      "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a"
+    )
     expect(mocks.getActivePageWithTokenByConnectionId).toHaveBeenCalledWith(
       "tenant-1",
       "conn-1"

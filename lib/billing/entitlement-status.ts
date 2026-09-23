@@ -2,8 +2,8 @@ import { countActivePages } from "@/lib/pages/page-registry"
 
 import {
   evaluateEntitlement,
-  resolvePlanLimits,
   resolveQuotaPeriodStart,
+  resolveTenantPlanLimits,
   type TenantEntitlement,
 } from "./entitlements"
 import { getSubscriptionByTenantId } from "./subscription"
@@ -23,14 +23,18 @@ export async function getTenantEntitlement(
     countActivePages(tenantId),
   ])
 
+  const subscriptionStatus = subscription?.status ?? null
   const priceLookupKey = subscription?.priceLookupKey ?? null
   const currentPeriodStart = subscription?.currentPeriodStart ?? null
   const currentPeriodEnd = subscription?.currentPeriodEnd ?? null
 
+  // Sin suscripción de pago el tenant está en el Free derivado (ADR 0022):
+  // límites del Free y mes calendario UTC, sin fila nueva en ningún lado.
   // Sin plan o sin período no hay contador que leer: el bloqueo ya está
   // decidido y una consulta más sería gasto puro en el hot path.
-  const limits = resolvePlanLimits(priceLookupKey)
+  const limits = resolveTenantPlanLimits(subscription)
   const periodStart = resolveQuotaPeriodStart({
+    subscriptionStatus,
     currentPeriodStart,
     currentPeriodEnd,
     now,
@@ -39,6 +43,7 @@ export async function getTenantEntitlement(
     limits && periodStart ? await getUsage(tenantId, periodStart) : 0
 
   return evaluateEntitlement({
+    subscriptionStatus,
     priceLookupKey,
     currentPeriodStart,
     currentPeriodEnd,

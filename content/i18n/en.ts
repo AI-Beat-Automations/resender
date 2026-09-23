@@ -163,12 +163,26 @@ export const en: Dict = {
     subtitle:
       "A plan for every stage. No contracts, no surprises. Cancel whenever you want.",
     intro: [
-      "All three plans include the same thing: the full API, inbound and outbound webhooks, and support. The only difference is how many messages you process per month and how many connections you keep active.",
+      "Every plan includes the same thing: the full API, inbound and outbound webhooks, and support. The only difference is how many messages you process per month and how many connections you keep active.",
       "A message is every event that crosses the relay, in either direction: the one a user sends you and that lands at your webhook counts as one, and your reply through the API counts as another. A ten-turn back-and-forth uses twenty messages. Webhook retries after an outage are not billed.",
-      "If in doubt, start with Starter. 50,000 messages a month is roughly 25,000 short conversations, plenty for a side project or your first clients. We warn you as you approach the limit, and moving up to Pro is immediate: no downtime and nothing to reconnect.",
+      "Start for free with Free: 2,000 messages a month and 1 connection, no card, to test your integration end to end. When you get serious, Starter: 50,000 messages a month is roughly 25,000 short conversations, plenty for a side project or your first clients. We warn you as you approach the limit, and moving up to Pro is immediate: no downtime and nothing to reconnect.",
       "We charge per message processed rather than per contact reached, which is the difference that shows most against ManyChat as you grow: your bill tracks real traffic, not the accumulated size of your audience.",
     ],
     plans: [
+      {
+        name: "Free",
+        price: "$0",
+        period: "/mo",
+        description: "To try Resender with no card.",
+        featured: false,
+        badge: null,
+        cta: "Start for free",
+        features: [
+          "2,000 messages per month",
+          "1 connection",
+          "Email + Discord support",
+        ],
+      },
       {
         name: "Starter",
         price: "$15",
@@ -195,6 +209,7 @@ export const en: Dict = {
           "100,000 messages per month",
           "5 connections",
           "Email + Discord support",
+          "Agency Mode",
         ],
       },
       {
@@ -209,6 +224,7 @@ export const en: Dict = {
           "1,000,000 messages per month",
           "40 connections",
           "Email + Discord support",
+          "Agency Mode",
         ],
       },
     ],
@@ -343,7 +359,7 @@ export const en: Dict = {
       },
       {
         q: "Can I connect more accounts than my plan includes?",
-        a: "The connection limit is per plan: 2 on Starter, 5 on Pro and 40 on Business. If you need more, move up a plan or write to us and we'll put something together for your volume.",
+        a: "The connection limit is per plan: 1 on Free, 2 on Starter, 5 on Pro and 40 on Business. If you need more, move up a plan or write to us and we'll put something together for your volume.",
       },
       {
         q: "What happens to my data if I cancel?",
@@ -586,12 +602,12 @@ export const en: Dict = {
         "WhatsApp, Instagram and Facebook via API. Connect your channels, point your webhook and reply with a POST. Developer-first.",
     },
     pricing: {
-      title: "Pricing and plans from $15 per month",
+      title: "Pricing: free plan and plans from $15 per month",
       description:
-        "Resender plans from $15/mo with 50,000 messages and 2 connections. No contracts, no per-contact charges, and you can cancel whenever you want.",
-      ogTitle: "Pricing and plans from $15 per month",
+        "Start free with 2,000 messages a month and 1 connection, or from $15/mo with 50,000 messages and 2 connections. No contracts, no per-contact charges, and you can cancel whenever you want.",
+      ogTitle: "Pricing: free plan and plans from $15 per month",
       ogDescription:
-        "Simple plans from $15/mo. The developer-first alternative to ManyChat.",
+        "Free plan and simple plans from $15/mo. The developer-first alternative to ManyChat.",
     },
     // The page is indexable (it left PRIVATE_PATHS in robots.ts, ADR 0007), so
     // the description has to work as a search snippet.
@@ -612,7 +628,7 @@ export const en: Dict = {
       "Resender solves one specific problem: receiving the messages sent to your Meta channels (WhatsApp, Instagram and Facebook Messenger) on your own server through a single webhook, and replying to them via API. The logic runs wherever you want it — n8n, Make, Zapier, an AI agent or your own backend — and Resender only handles the transport to and from each channel.",
       "How it works: you connect your channels with Facebook Login, set an HTTPS URL per connection, every incoming message arrives at that endpoint as JSON, and you reply with a POST to Resender's outbound API. The Messenger and Instagram permissions are already approved, so you don't go through an app review of your own.",
       "What it is NOT: Resender has no visual flow builder, broadcasts, templates or engagement analytics. If you need those, ManyChat is the better choice and we say so in the comparison.",
-      "Pricing: Starter $15/mo (50,000 messages, 2 connections), Pro $29/mo (100,000 messages, 5 connections) and Business $199/mo (1,000,000 messages, 40 connections). Billing is per message processed in either direction, not per contact reached. Retries after a webhook outage are not billed. No contracts: it's month to month.",
+      "Pricing: Free $0 (2,000 messages a month, 1 connection, no card), Starter $15/mo (50,000 messages, 2 connections), Pro $29/mo (100,000 messages, 5 connections) and Business $199/mo (1,000,000 messages, 40 connections). Billing is per message processed in either direction, not per contact reached. Retries after a webhook outage are not billed. No contracts: it's month to month.",
       "The site is in Spanish at the root and in English under /en. The legal pages exist in Spanish only.",
     ],
     sections: {
@@ -631,7 +647,7 @@ export const en: Dict = {
       pricing: {
         label: "Pricing",
         detail:
-          "The Starter, Pro and Business plans, what counts as a message, how billing works and billing questions.",
+          "The Free, Starter, Pro and Business plans, what counts as a message, how billing works and billing questions.",
       },
       vsManychat: {
         label: "Resender vs ManyChat",

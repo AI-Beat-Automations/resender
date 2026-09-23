@@ -7,7 +7,6 @@ const mocks = vi.hoisted(() => ({
   getConversationById: vi.fn(),
   getOutboundMessageByIdempotencyKey: vi.fn(),
   getTenantEntitlement: vi.fn(),
-  hasActiveSubscription: vi.fn(),
   incrementUsage: vi.fn(),
   insertOutboundMessage: vi.fn(),
   isUserWaitlisted: vi.fn(),
@@ -27,10 +26,6 @@ vi.mock("@/lib/auth/waitlist", () => ({
 
 vi.mock("@/lib/billing/entitlement-status", () => ({
   getTenantEntitlement: mocks.getTenantEntitlement,
-}))
-
-vi.mock("@/lib/billing/subscription", () => ({
-  hasActiveSubscription: mocks.hasActiveSubscription,
 }))
 
 vi.mock("@/lib/billing/usage-counter", () => ({
@@ -92,7 +87,10 @@ const sendByConversation = (body: Record<string, unknown>) =>
   new Request("https://resender.test/api/meta/send", {
     method: "POST",
     headers: { authorization: "Bearer rk_test" },
-    body: JSON.stringify({ conversationId: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a", ...body }),
+    body: JSON.stringify({
+      conversationId: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a",
+      ...body,
+    }),
   }) as unknown as NextRequest
 
 const attachment = {
@@ -105,7 +103,6 @@ describe("POST /api/meta/send", () => {
     for (const mock of Object.values(mocks)) mock.mockReset()
     mocks.authenticateApiKey.mockResolvedValue({ tenantId: "tenant-1" })
     mocks.isUserWaitlisted.mockResolvedValue(false)
-    mocks.hasActiveSubscription.mockResolvedValue(true)
     mocks.getTenantEntitlement.mockResolvedValue({
       block: null,
       periodStart: new Date("2026-08-01"),
@@ -224,13 +221,13 @@ describe("POST /api/meta/send", () => {
 
   // Los 4xx que ya existían no ganan `code`: el contrato viejo queda intacto.
   it("keeps the legacy 4xx bodies without a code", async () => {
-    mocks.hasActiveSubscription.mockResolvedValue(false)
+    mocks.isUserWaitlisted.mockResolvedValue(true)
 
     const response = await POST(sendRequest({ reply: "hola" }))
 
     expect(response.status).toBe(403)
     const body = await response.json()
-    expect(body).toEqual({ error: "no active subscription" })
+    expect(body).toEqual({ error: "account is on the waitlist" })
     expect("code" in body).toBe(false)
     expect(mocks.sendMetaMessage).not.toHaveBeenCalled()
   })
@@ -274,7 +271,10 @@ describe("POST /api/meta/send", () => {
     const response = await POST(sendByConversation({ reply: "hola" }))
 
     expect(response.status).toBe(200)
-    expect(mocks.getConversationById).toHaveBeenCalledWith("tenant-1", "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a")
+    expect(mocks.getConversationById).toHaveBeenCalledWith(
+      "tenant-1",
+      "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a"
+    )
     expect(mocks.getActivePageWithTokenByConnectionId).toHaveBeenCalledWith(
       "tenant-1",
       "conn-1"
