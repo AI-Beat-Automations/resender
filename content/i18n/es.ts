@@ -213,6 +213,7 @@ export const es: Dict = {
           "100.000 mensajes por mes",
           "5 conexiones",
           "Soporte por email + Discord",
+          "Agency Mode",
         ],
       },
       {
@@ -227,6 +228,7 @@ export const es: Dict = {
           "1.000.000 de mensajes por mes",
           "40 conexiones",
           "Soporte por email + Discord",
+          "Agency Mode",
         ],
       },
     ],
