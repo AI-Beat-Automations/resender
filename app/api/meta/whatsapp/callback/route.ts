@@ -5,7 +5,7 @@ import { NextResponse, type NextRequest } from "next/server"
 
 import { getSession } from "@/lib/auth/session"
 import { resolveWhatsappAccess } from "@/lib/auth/channel-access"
-import { resolvePlanLimits } from "@/lib/billing/entitlements"
+import { resolveTenantPlanLimits } from "@/lib/billing/entitlements"
 import { getSubscriptionByTenantId } from "@/lib/billing/subscription"
 import { getClientLimits } from "@/lib/clients/client-limits-status"
 import {
@@ -228,10 +228,7 @@ export async function POST(request: NextRequest) {
       countActivePages,
       resolveMaxPages: async (id) => {
         const subscription = await getSubscriptionByTenantId(id)
-        return (
-          resolvePlanLimits(subscription?.priceLookupKey ?? null)?.maxPages ??
-          null
-        )
+        return resolveTenantPlanLimits(subscription)?.maxPages ?? null
       },
       resolveOwnership: resolveWhatsappNumberOwnership,
       resolveClientLimits: getClientLimits,

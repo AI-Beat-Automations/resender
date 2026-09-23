@@ -13,6 +13,7 @@ import { getAppI18n } from "@/lib/i18n/app-dict"
 import { resolveProductAccess } from "@/lib/auth/waitlist"
 import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
 import type { TenantEntitlement } from "@/lib/billing/entitlements"
+import { needsEmailVerification } from "@/lib/billing/free-plan-gate"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
 import { isClientActor } from "@/lib/clients/actor"
 import { getClientOwner, ownerDisplayName } from "@/lib/clients/client-owner"
@@ -91,7 +92,10 @@ export default async function ProductLayout({
   } else {
     const access = await resolveProductAccess(actor.userId)
     if (access === "waitlisted") redirect("/pending")
-    if (!(await hasActiveSubscription(actor.tenantId))) redirect("/billing")
+    // Sin muro de pago (ADR 0022): quien no paga está en el plan Free. Lo
+    // único que se le pide es el correo confirmado, y `/pending` es donde se
+    // le pide.
+    if (await needsEmailVerification(actor.userId)) redirect("/pending")
   }
 
   // El aviso no debe poder tirar el dashboard: si el entitlement no se puede

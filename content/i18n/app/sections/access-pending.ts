@@ -29,6 +29,17 @@ export type AccessPendingDict = {
     sent: string
     linkExpired: string
   }
+  /**
+   * Gate de correo sin verificar (ADR 0022): la cuenta ya tiene el plan Free,
+   * pero no entra al producto hasta confirmar el correo. Misma pantalla
+   * `/pending`, sin el mensaje de la lista de espera.
+   */
+  verifyGate: {
+    eyebrow: string
+    title: string
+    /** `{email}` */
+    body: string
+  }
 }
 
 export const es: AccessPendingDict = {
@@ -48,6 +59,11 @@ export const es: AccessPendingDict = {
     sent: "Listo, te lo reenviamos.",
     linkExpired: "El enlace venció, pide uno nuevo.",
   },
+  verifyGate: {
+    eyebrow: "plan free",
+    title: "Confirma tu correo para empezar.",
+    body: "Tu cuenta ya tiene el plan Free: 2,000 mensajes al mes y 1 conexión. Te escribimos a {email}; abre el enlace del correo y entras directo a Resender.",
+  },
 }
 
 export const en: AccessPendingDict = {
@@ -66,5 +82,10 @@ export const en: AccessPendingDict = {
     resend: "Resend confirmation",
     sent: "Done, we sent it again.",
     linkExpired: "The link expired. Request a new one.",
+  },
+  verifyGate: {
+    eyebrow: "free plan",
+    title: "Confirm your email to get started.",
+    body: "Your account already has the Free plan: 2,000 messages a month and 1 connection. We emailed {email}; open the link in that email and you'll go straight into Resender.",
   },
 }

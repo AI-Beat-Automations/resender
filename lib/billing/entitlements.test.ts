@@ -8,6 +8,7 @@ import {
   resolveQuotaBar,
   resolveQuotaNotice,
   resolveQuotaPeriodStart,
+  resolveTenantPlanLimits,
   shouldPushInbound,
   type EntitlementInput,
 } from "./entitlements"
@@ -18,6 +19,7 @@ const PERIOD_END = new Date("2026-08-01T00:00:00Z")
 
 function input(overrides: Partial<EntitlementInput> = {}): EntitlementInput {
   return {
+    subscriptionStatus: "active",
     priceLookupKey: "starter_monthly",
     currentPeriodStart: PERIOD_START,
     currentPeriodEnd: PERIOD_END,
@@ -61,10 +63,93 @@ describe("plan limits resolution", () => {
   })
 })
 
+describe("free plan (ADR 0022)", () => {
+  const FREE_LIMITS = { messagesPerPeriod: 2_000, maxPages: 1 }
+
+  it.each([null, "canceled", "past_due", "unpaid", "incomplete"])(
+    "derives the free plan for subscription status %s",
+    (status) => {
+      const subscription =
+        status === null ? null : { status, priceLookupKey: "pro_monthly" }
+      expect(resolveTenantPlanLimits(subscription)).toEqual(FREE_LIMITS)
+    }
+  )
+
+  it("uses the paid plan limits while the subscription is active", () => {
+    expect(
+      resolveTenantPlanLimits({
+        status: "active",
+        priceLookupKey: "pro_monthly",
+      })
+    ).toEqual({ messagesPerPeriod: 100_000, maxPages: 5 })
+  })
+
+  it("keeps an active subscription with an unknown lookup key fail-closed", () => {
+    expect(
+      resolveTenantPlanLimits({
+        status: "active",
+        priceLookupKey: "enterprise_monthly",
+      })
+    ).toBe(null)
+  })
+
+  it("counts the free quota by UTC calendar month, ignoring the Stripe period", () => {
+    expect(
+      resolveQuotaPeriodStart({
+        subscriptionStatus: "canceled",
+        currentPeriodStart: new Date("2026-05-10T00:00:00Z"),
+        currentPeriodEnd: new Date("2026-06-10T00:00:00Z"),
+        now: new Date("2026-07-31T23:59:59Z"),
+      })
+    ).toEqual(new Date("2026-07-01T00:00:00Z"))
+    expect(
+      resolveQuotaPeriodStart({
+        subscriptionStatus: null,
+        currentPeriodStart: null,
+        currentPeriodEnd: null,
+        now: new Date("2026-12-01T00:00:00Z"),
+      })
+    ).toEqual(new Date("2026-12-01T00:00:00Z"))
+  })
+
+  it("lets a tenant without a subscription operate within the free limits", () => {
+    const result = evaluateEntitlement(
+      input({
+        subscriptionStatus: null,
+        priceLookupKey: null,
+        currentPeriodStart: null,
+        currentPeriodEnd: null,
+        usage: 1_999,
+        activePageCount: 1,
+      })
+    )
+    expect(result.isFree).toBe(true)
+    expect(result.limits).toEqual(FREE_LIMITS)
+    expect(result.periodStart).toEqual(new Date("2026-07-01T00:00:00Z"))
+    expect(result.block).toBe(null)
+  })
+
+  it("blocks the free plan at 2,000 messages with quota_exceeded", () => {
+    const result = evaluateEntitlement(
+      input({ subscriptionStatus: "canceled", usage: 2_000 })
+    )
+    expect(result.block?.code).toBe("quota_exceeded")
+    expect(result.block?.status).toBe(402)
+  })
+
+  it("restricts a downgraded tenant with more than one connection", () => {
+    const result = evaluateEntitlement(
+      input({ subscriptionStatus: "canceled", activePageCount: 2 })
+    )
+    expect(result.block?.code).toBe("page_limit_exceeded")
+  })
+})
+
 describe("quota period resolution", () => {
   it("returns the period start while the period is open", () => {
     expect(
       resolveQuotaPeriodStart({
+        subscriptionStatus: "active",
         currentPeriodStart: PERIOD_START,
         currentPeriodEnd: PERIOD_END,
         now: NOW,
@@ -75,6 +160,7 @@ describe("quota period resolution", () => {
   it("fails closed without a period start", () => {
     expect(
       resolveQuotaPeriodStart({
+        subscriptionStatus: "active",
         currentPeriodStart: null,
         currentPeriodEnd: PERIOD_END,
         now: NOW,
@@ -85,6 +171,7 @@ describe("quota period resolution", () => {
   it("fails closed once the period is over", () => {
     expect(
       resolveQuotaPeriodStart({
+        subscriptionStatus: "active",
         currentPeriodStart: PERIOD_START,
         currentPeriodEnd: PERIOD_END,
         now: new Date("2026-08-02T00:00:00Z"),

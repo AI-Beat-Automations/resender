@@ -1,4 +1,4 @@
-import { getPlanByLookupKey, type PlanLimits } from "./plans"
+import { FREE_PLAN, getPlanByLookupKey, type PlanLimits } from "./plans"
 
 // Módulo puro de entitlements (ADR 0003). Sin base de datos, sin red: recibe
 // valores planos (plan, período, consumo, páginas activas, resultado de Meta) y
@@ -6,9 +6,7 @@ import { getPlanByLookupKey, type PlanLimits } from "./plans"
 // actions y la UI son llamadores delgados de estas funciones.
 
 export type EntitlementBlockCode =
-  | "quota_exceeded"
-  | "page_limit_exceeded"
-  | "plan_unavailable"
+  "quota_exceeded" | "page_limit_exceeded" | "plan_unavailable"
 
 export type EntitlementBlock = {
   code: EntitlementBlockCode
@@ -29,6 +27,9 @@ export type QuotaNotice = {
 }
 
 export type EntitlementInput = {
+  // `subscriptions.status` replicado del webhook de Stripe; null sin fila.
+  // Decide si el tenant está en un plan de pago o en el Free derivado.
+  subscriptionStatus: string | null
   // `subscriptions.price_lookup_key` replicado del webhook de Stripe.
   priceLookupKey: string | null
   currentPeriodStart: Date | null
@@ -41,6 +42,8 @@ export type EntitlementInput = {
 }
 
 export type TenantEntitlement = {
+  // true = plan Free derivado (ADR 0022); false = suscripción de pago activa.
+  isFree: boolean
   limits: PlanLimits | null
   // Clave del contador de uso del período vigente; null si no hay período
   // conocido (fail-closed).
@@ -56,6 +59,13 @@ export type TenantEntitlement = {
 // del dashboard (ADR 0003).
 export const QUOTA_WARNING_RATIO = 0.8
 
+// Solo `active` es un plan de pago (ADR 0002). Cualquier otro status o la
+// fila ausente dejan al tenant en el plan Free derivado (ADR 0022): ya no
+// bloquean, limitan.
+export function isPaidStatus(status: string | null | undefined): boolean {
+  return status === "active"
+}
+
 // Un `price_lookup_key` desconocido es fail-closed: sin límites resueltos no
 // se deja pasar nada, para no regalar uso ilimitado por un price mal
 // configurado en Stripe.
@@ -66,16 +76,42 @@ export function resolvePlanLimits(
   return getPlanByLookupKey(priceLookupKey)?.limits ?? null
 }
 
-// La ventana de cuota es el período de facturación de Stripe, no el mes
-// calendario. Sin `current_period_start` no hay ventana; con un período ya
-// vencido tampoco (el webhook de renovación todavía no llegó y contar contra
-// una ventana cerrada sería inventarla).
+// Límites del plan efectivo del tenant: los del plan de pago si la
+// suscripción está `active`, los del Free si no. Una suscripción activa con
+// lookup key desconocido sigue siendo fail-closed: no cae al Free, porque es
+// un error de configuración que dejaría a un cliente que paga con 1 conexión.
+export function resolveTenantPlanLimits(
+  subscription: { status: string; priceLookupKey: string } | null
+): PlanLimits | null {
+  if (!isPaidStatus(subscription?.status)) return FREE_PLAN.limits
+  return resolvePlanLimits(subscription?.priceLookupKey)
+}
+
+// Inicio del mes calendario UTC que contiene `now`: la ventana de cuota del
+// plan Free, que no tiene período de Stripe (ADR 0022).
+export function calendarMonthStartUtc(now: Date): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
+}
+
+// Fin de la ventana del Free: el próximo día 1, que es cuando se reinicia.
+export function nextCalendarMonthStartUtc(now: Date): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1))
+}
+
+// La ventana de cuota de un plan de pago es el período de facturación de
+// Stripe, no el mes calendario. Sin `current_period_start` no hay ventana; con
+// un período ya vencido tampoco (el webhook de renovación todavía no llegó y
+// contar contra una ventana cerrada sería inventarla). El plan Free cuenta por
+// mes calendario UTC.
 export function resolveQuotaPeriodStart(input: {
+  subscriptionStatus: string | null
   currentPeriodStart: Date | null
   currentPeriodEnd: Date | null
   now: Date
 }): Date | null {
-  const { currentPeriodStart, currentPeriodEnd, now } = input
+  const { subscriptionStatus, currentPeriodStart, currentPeriodEnd, now } =
+    input
+  if (!isPaidStatus(subscriptionStatus)) return calendarMonthStartUtc(now)
   if (!currentPeriodStart) return null
   if (currentPeriodEnd && currentPeriodEnd.getTime() <= now.getTime()) {
     return null
@@ -90,12 +126,15 @@ export function resolveQuotaPeriodStart(input: {
 export function evaluateEntitlement(
   input: EntitlementInput
 ): TenantEntitlement {
-  const limits = resolvePlanLimits(input.priceLookupKey)
+  const isFree = !isPaidStatus(input.subscriptionStatus)
+  const limits = isFree
+    ? FREE_PLAN.limits
+    : resolvePlanLimits(input.priceLookupKey)
   const periodStart = resolveQuotaPeriodStart(input)
   const usage = input.usage
   const activePageCount = input.activePageCount
 
-  const base = { limits, periodStart, usage, activePageCount }
+  const base = { isFree, limits, periodStart, usage, activePageCount }
 
   if (!limits) {
     return {
@@ -146,7 +185,9 @@ export function evaluateEntitlement(
       block: {
         code: "quota_exceeded",
         status: 402,
-        message: `You used the ${limits.messagesPerPeriod} messages of your plan for this billing period. Upgrade your plan to resume sending.`,
+        message: isFree
+          ? `You used the ${limits.messagesPerPeriod} messages of the Free plan for this month. Upgrade your plan to resume sending.`
+          : `You used the ${limits.messagesPerPeriod} messages of your plan for this billing period. Upgrade your plan to resume sending.`,
       },
       notice,
     }

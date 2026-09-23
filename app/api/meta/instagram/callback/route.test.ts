@@ -95,7 +95,11 @@ import { GET } from "./route"
 
 const STATE = "state-1"
 const IG_USER_ID = "17841400000000000"
-const PARENT = { tenantId: "tenant-1", userId: "tenant-1", clientAccountId: null }
+const PARENT = {
+  tenantId: "tenant-1",
+  userId: "tenant-1",
+  clientAccountId: null,
+}
 const CLIENT = {
   tenantId: "tenant-1",
   userId: "user-2",
@@ -121,6 +125,7 @@ describe("GET /api/meta/instagram/callback", () => {
     mocks.resolveConnectGate.mockResolvedValue({ kind: "ok", actor: PARENT })
     mocks.resolveInstagramAccess.mockResolvedValue(true)
     mocks.getSubscriptionByTenantId.mockResolvedValue({
+      status: "active",
       priceLookupKey: "starter_monthly",
     })
     mocks.countActivePages.mockResolvedValue(0)
@@ -198,20 +203,19 @@ describe("GET /api/meta/instagram/callback", () => {
     expect(mocks.connectInstagramAccount).not.toHaveBeenCalled()
   })
 
-  // El orden de los gates (ADR 0010 y 0011): la suscripción primero, después el
-  // permiso de canal y recién al final el cupo. Un tenant sin suscripción va a
-  // /billing aunque además le falte el permiso y esté en el tope; que el cupo no
-  // se consulte es lo que fija que el orden no se dé vuelta.
-  it("checks the subscription before the channel permission and the plan cap", async () => {
-    mocks.resolveConnectGate.mockResolvedValue({
-      kind: "no_active_subscription",
-    })
+  // El orden de los gates (ADR 0010, 0011 y 0022): el correo confirmado
+  // primero, después el permiso de canal y recién al final el cupo. Un dueño
+  // sin correo confirmado va a /pending aunque además le falte el permiso y
+  // esté en el tope; que el cupo no se consulte fija que el orden no se dé
+  // vuelta.
+  it("checks the email gate before the channel permission and the plan cap", async () => {
+    mocks.resolveConnectGate.mockResolvedValue({ kind: "email_unverified" })
     mocks.resolveInstagramAccess.mockResolvedValue(false)
     mocks.countActivePages.mockResolvedValue(2)
 
     const response = await GET(callbackRequest())
 
-    expect(response.headers.get("location")).toContain("/billing")
+    expect(response.headers.get("location")).toContain("/pending")
     expect(mocks.resolveInstagramAccess).not.toHaveBeenCalled()
     expect(mocks.countActivePages).not.toHaveBeenCalled()
   })
@@ -231,6 +235,7 @@ describe("GET /api/meta/instagram/callback", () => {
   // hacer sin quemar el `code`: un plan que no resuelve rebota sin gastarlo.
   it("bounces before the exchange when the plan cannot be resolved", async () => {
     mocks.getSubscriptionByTenantId.mockResolvedValue({
+      status: "active",
       priceLookupKey: "algo_raro",
     })
 
@@ -306,7 +311,9 @@ describe("GET /api/meta/instagram/callback as a client", () => {
   })
 
   it("bounces with the client's own verdict as the reason", async () => {
-    mocks.getClientLimits.mockResolvedValue(clientLimits("client_limit_reached"))
+    mocks.getClientLimits.mockResolvedValue(
+      clientLimits("client_limit_reached")
+    )
 
     const response = await GET(callbackRequest())
 
@@ -316,7 +323,9 @@ describe("GET /api/meta/instagram/callback as a client", () => {
   })
 
   it("bounces with the parent's global limit as the reason", async () => {
-    mocks.getClientLimits.mockResolvedValue(clientLimits("tenant_limit_reached"))
+    mocks.getClientLimits.mockResolvedValue(
+      clientLimits("tenant_limit_reached")
+    )
 
     const response = await GET(callbackRequest())
 
@@ -326,7 +335,9 @@ describe("GET /api/meta/instagram/callback as a client", () => {
 
   // La reconexión de una cuenta ya activa del tenant sigue sin pedir hueco.
   it("still lets a reconnection through at the cap", async () => {
-    mocks.getClientLimits.mockResolvedValue(clientLimits("client_limit_reached"))
+    mocks.getClientLimits.mockResolvedValue(
+      clientLimits("client_limit_reached")
+    )
     mocks.getActivePageByMetaPageId.mockResolvedValue({
       id: "connection-1",
       tenantId: "tenant-1",

@@ -7,7 +7,6 @@ import {
 import { authenticateApiKey } from "@/lib/auth/api-keys"
 import { isUserWaitlisted } from "@/lib/auth/waitlist"
 import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
-import { hasActiveSubscription } from "@/lib/billing/subscription"
 import { incrementUsage } from "@/lib/billing/usage-counter"
 import {
   getOutboundMessageByIdempotencyKey,
@@ -110,13 +109,6 @@ async function handle(request: NextRequest, capture: ApiLogCapture) {
     return trace.drop(
       "waitlisted",
       Response.json({ error: "account is on the waitlist" }, { status: 403 })
-    )
-  }
-
-  if (!(await hasActiveSubscription(apiKey.tenantId))) {
-    return trace.drop(
-      "no_active_subscription",
-      Response.json({ error: "no active subscription" }, { status: 403 })
     )
   }
 

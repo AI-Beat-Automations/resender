@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   authenticateApiKey: vi.fn(),
-  hasActiveSubscription: vi.fn(),
   isUserWaitlisted: vi.fn(),
   resolveInstagramAccess: vi.fn(),
 }))
@@ -17,10 +16,6 @@ vi.mock("@/lib/auth/channel-access", () => ({
 
 vi.mock("@/lib/auth/waitlist", () => ({
   isUserWaitlisted: mocks.isUserWaitlisted,
-}))
-
-vi.mock("@/lib/billing/subscription", () => ({
-  hasActiveSubscription: mocks.hasActiveSubscription,
 }))
 
 import type { NextRequest } from "next/server"
@@ -40,7 +35,6 @@ describe("authenticateCommentReplyRequest", () => {
     for (const mock of Object.values(mocks)) mock.mockReset()
     mocks.authenticateApiKey.mockResolvedValue({ tenantId: "tenant-1" })
     mocks.isUserWaitlisted.mockResolvedValue(false)
-    mocks.hasActiveSubscription.mockResolvedValue(true)
     mocks.resolveInstagramAccess.mockResolvedValue(true)
   })
 
@@ -94,8 +88,8 @@ describe("authenticateCommentReplyRequest", () => {
 
   // Fail closed y en el orden canónico: el motivo que ve el cliente es el
   // primero que lo bloquea, y el permiso de canal ni siquiera se consulta.
-  it("reports the subscription before the channel permission", async () => {
-    mocks.hasActiveSubscription.mockResolvedValue(false)
+  it("reports the waitlist before the channel permission", async () => {
+    mocks.isUserWaitlisted.mockResolvedValue(true)
     mocks.resolveInstagramAccess.mockResolvedValue(false)
 
     const result = await authenticateCommentReplyRequest(requestWithKey())
@@ -103,7 +97,7 @@ describe("authenticateCommentReplyRequest", () => {
     expect(result.ok).toBe(false)
     if (result.ok) throw new Error("unreachable")
 
-    expect(result.reason).toBe("no_active_subscription")
+    expect(result.reason).toBe("waitlisted")
     expect(mocks.resolveInstagramAccess).not.toHaveBeenCalled()
   })
 })

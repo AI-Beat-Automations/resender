@@ -8,7 +8,6 @@ import {
   shouldPushInbound,
   type TenantEntitlement,
 } from "@/lib/billing/entitlements"
-import { hasActiveSubscription } from "@/lib/billing/subscription"
 import { incrementUsage } from "@/lib/billing/usage-counter"
 import {
   getConversationPausedAt,
@@ -48,7 +47,10 @@ import { extractInstagramDirectMessages } from "./instagram-webhook"
 import { extractInboundEvents } from "./meta-webhook"
 import { routeWhatsappWebhook } from "./whatsapp-webhook"
 import type { WhatsappStatusEvent } from "./whatsapp-parsers"
-import { indexRawFragments, type RawFragmentIndex } from "@/lib/logs/raw-fragments"
+import {
+  indexRawFragments,
+  type RawFragmentIndex,
+} from "@/lib/logs/raw-fragments"
 import { logInboundEvent } from "@/lib/logs/request-log"
 import { accountFields, describeError, log } from "@/lib/observability/logger"
 import { getCloudflareContext } from "@opennextjs/cloudflare"
@@ -243,9 +245,9 @@ export async function ingestWhatsappWebhookPayload(
 // Los acuses de entrega. No crean fila: mueven `delivery_status` de una que ya
 // existe, así que no pasan por la ingesta de mensajes ni devuelven `pushJob`.
 //
-// Mismos gates y en el mismo orden que un mensaje —cuenta, suscripción,
-// permiso de canal—: un tenant sin suscripción o con el canal revocado deja de
-// recibir en el acto, y eso incluye dejar de escribirle la fila.
+// Mismos gates y en el mismo orden que un mensaje —cuenta y permiso de
+// canal—: un tenant con el canal revocado deja de recibir en el acto, y eso
+// incluye dejar de escribirle la fila.
 async function applyWhatsappStatuses(
   statuses: WhatsappStatusEvent[],
   requestId: string,
@@ -274,19 +276,6 @@ async function applyWhatsappStatuses(
         requestId,
         channel: "whatsapp",
         accountId: status.providerPhoneNumberId,
-        ...logSubject,
-      })
-      continue
-    }
-
-    if (!(await hasActiveSubscription(page.tenantId))) {
-      log({
-        entrypoint: "route",
-        action: "inbound_ingest",
-        outcome: "dropped",
-        reason: "no_active_subscription",
-        requestId,
-        ...accountFields(page),
         ...logSubject,
       })
       continue
@@ -414,27 +403,11 @@ async function ingestInboundEvents(
       continue
     }
 
-    // Bloqueo total sin suscripción activa (ADR 0002): el entrante del tenant
-    // se descarta sin persistir ni reenviar; esos mensajes se pierden a
-    // propósito. El webhook responde 200 a Meta igualmente.
-    if (!(await hasActiveSubscription(page.tenantId))) {
-      log({
-        entrypoint: "route",
-        action: "inbound_ingest",
-        outcome: "dropped",
-        reason: "no_active_subscription",
-        requestId,
-        ...accountFields(page),
-        subject: "message",
-      })
-      continue
-    }
-
     // Permiso por cuenta del canal (ADR 0010): el tenant revocado deja de
-    // recibir en el acto y su DM se descarta sin persistir ni reenviar, igual
-    // que sin suscripción. Solo puede pasar por revocación —el gate del OAuth
-    // impide conectar sin permiso—, y por eso va después del portón que sí se
-    // cruza todos los días.
+    // recibir en el acto y su DM se descarta sin persistir ni reenviar. Solo
+    // puede pasar por revocación —el gate del OAuth impide conectar sin
+    // permiso—. Sin suscripción ya no se descarta nada: el tenant está en el
+    // plan Free (ADR 0022) y lo limita el entitlement.
     if (
       !(await resolveCachedChannelAccess(channelAccess, channel, page.tenantId))
     ) {
@@ -865,23 +838,6 @@ async function ingestInstagramComments(
         action: "inbound_ingest",
         outcome: "dropped",
         reason: "own_published_comment",
-        requestId,
-        ...accountFields(page),
-        subject: "comment",
-        providerId: event.igCommentId,
-      })
-      continue
-    }
-
-    // Bloqueo total sin suscripción activa (ADR 0002), igual que en los DMs: el
-    // comentario se descarta sin persistir ni reenviar, y el webhook le
-    // responde 200 a Meta igual.
-    if (!(await hasActiveSubscription(page.tenantId))) {
-      log({
-        entrypoint: "route",
-        action: "inbound_ingest",
-        outcome: "dropped",
-        reason: "no_active_subscription",
         requestId,
         ...accountFields(page),
         subject: "comment",

@@ -45,7 +45,7 @@ En el MVP, el registro pide nombre, email y password, crea la cuenta, abre sesio
 El registro esta abierto y el acceso al producto tambien: la bandera `users.waitlisted` nace en `false` desde la `0024`. El gate sigue cableado y se puede cerrar una cuenta a mano con `update users set waitlisted = true where email = '...'`. Se lee viva contra la base en cada request —**nunca de la [Sesion] ni de su cache**—, es fail-closed y se aplica en el layout de `(product)`, en `/billing` y en los `start`, `callback` y `send` de los tres canales. Meterla en la sesion la meteria en el cache de cinco minutos: aprobar o revocar una cuenta dejaria de pegar en la siguiente request.
 El gate nacio con la `0004`, se apago con la `0011` (ADR 0007, para que el CTA de registro de la [Lista de espera] publica no fuera mentira), volvio a encenderse con la `0019_reenable_access_gate.sql` (`default true`, sin tocar a los existentes) y **se apago otra vez con la `0024_open_access_and_instagram.sql`**: `default false` y todas las cuentas existentes a `false`. Cualquiera que inicie sesion conecta sus canales sin aprobacion.
 Una cuenta bloqueada a mano queda con sesion abierta y aterriza en `/pending`, la pantalla autenticada del gate: confirma que el registro salio bien, muestra a que correo se le va a escribir y ofrece cerrar sesion. **No** es `/waitlist`: esa ruta es la [Lista de espera] publica y pide un correo que esta persona ya dio.
-Aprobar una cuenta pega en la siguiente request, sin re-login. Despues del gate de acceso todavia falta el [Gate de suscripcion].
+Aprobar una cuenta pega en la siguiente request, sin re-login. Despues del gate de acceso todavia falta el [Gate de correo del Free].
 Decisiones en `docs/adr/0007-public-waitlist-and-access-gate-shutdown.md` (el primer apagado); ni la reactivacion de la `0019` ni el apagado de la `0024` tienen ADR propia.
 No confundir con el [Permiso de Instagram]: este gate es del producto entero; el permiso de Instagram es por canal y se opera igual —por SQL, sin pantalla—.
 
@@ -124,7 +124,7 @@ Es **solo del padre y de todos los planes**: un [Cliente] no ve el item en el si
 Un espacio que el [Padre] crea desde `/clientes` para un negocio cuyas redes administra: nombre, correo y un **tope de conexiones**. Vive en `client_accounts` (migración 0027) con `user_id` nulo hasta que la persona acepta la invitación; entonces pasa de `pending` a `active`. Un user es cliente de a lo sumo un padre.
 El tope es un **máximo, no una reserva**: se valida `1 ≤ tope ≤ maxPages del plan del padre` (ADR 0011: `maxPages` sigue significando «máximo de conexiones») y se acepta uno menor a lo que el cliente ya tiene conectado; la lista pinta `conectadas / tope` en rojo en vez de desconectar nada en nombre del cliente. La regla de cupo al conectar es el [Cupo del cliente].
 Crear al cliente manda la [Invitacion de cliente]. Reenviar emite un token nuevo y cancela el anterior; cancelar deja al cliente pendiente sin enlace vivo; **eliminar** muestra las conexiones que se van a desconectar y, al confirmar, da de baja cada una del webhook de Meta como la [Desconexión de páginas], borra el user del cliente si ya aceptó y borra el espacio con sus conexiones, conversaciones y mensajes por cascade. Nada vuelve al padre. Borrar la cuenta del padre elimina primero a sus clientes con ese mismo procedimiento (`lib/clients/client-deletion.ts`).
-Un cliente **nunca** ve el módulo Clientes ni nada de facturación. Su **consola reducida**: sidebar con Conexiones, Inbox y Ajustes (sin Clientes ni Documentación); Ajustes solo con la pestaña Cuenta, sin `tenant_id`, sin «Eliminar cuenta» y con la nota «Tu acceso lo administra [padre]»; `api-keys` y `suscripcion` no se dibujan ni se aceptan por URL. El [Aviso de cuota] no se monta para él. Salta la lista de espera y su [Gate de suscripcion] es el del padre: sin suscripción activa ve la [Cuenta restringida] sin CTA de pago y nunca pasa por `/billing` ni `/pending`. Entra por `/login` con correo y contraseña, y puede usar o vincular Google como cualquier user.
+Un cliente **nunca** ve el módulo Clientes ni nada de facturación. Su **consola reducida**: sidebar con Conexiones, Inbox y Ajustes (sin Clientes ni Documentación); Ajustes solo con la pestaña Cuenta, sin `tenant_id`, sin «Eliminar cuenta» y con la nota «Tu acceso lo administra [padre]»; `api-keys` y `suscripcion` no se dibujan ni se aceptan por URL. El [Aviso de cuota] no se monta para él. Salta la lista de espera y depende de la suscripción del padre: si el padre no tiene suscripción de pago activa (está en el [Plan Free]) ve la [Cuenta restringida] sin CTA de pago y nunca pasa por `/billing` ni `/pending`. Entra por `/login` con correo y contraseña, y puede usar o vincular Google como cualquier user.
 En **Conexiones** ve solo las filas con su `client_account_id` (`listTenantPages(tenantId, clientAccountId)`, misma llamada en la página y en el header para que el caché de petición la deduplique) y conecta Messenger, Instagram y WhatsApp **con su propio login de Meta**: el user access token de Messenger se guarda en el user del cliente, no en el del padre, y todo lo demás —cupo, ownership, la fila— es del tenant del padre. Los gates de conectar (`/api/meta/*/start`, los tres callbacks y las server actions) se resuelven por actor en `lib/clients/connect-gate.ts`: el cliente salta la lista de espera, usa la suscripción y el permiso de canal del padre y, cerrado, vuelve a `/connections` y nunca a `/billing`. Su tarjeta de conexión no tiene sección de webhook ni de secreto de firma (`saveWebhookUrlAction` y `rotateWebhookSecretAction` lo rechazan por POST directo); sí tiene el switch de [Pausa de reenvío] y desconectar, y las dos acciones llevan su `clientAccountId` al registro, que no encuentra las filas del padre ni las de otro cliente y responde «no encontramos esa página».
 En **Inbox** ve solo las conversaciones y publicaciones de sus conexiones, en los dos modos: los read models (`listConversationReadModel`, `listPublicationReadModel` y las lecturas del hilo) reciben su `clientAccountId` y lo aplican en la consulta sobre `connected_pages.client_account_id`, así que una conversación de otra conexión del tenant no existe para él ni por `?conversation=`. Sigue sin poder responder; sí tiene la [Pausa de reenvío] por conversación, cuya acción lleva el mismo alcance y responde «no encontramos esa conversación» ante un id ajeno. Nunca ve el [Filtro por cliente] ni etiquetas de cliente: todo lo suyo es suyo. **No confundir con [Cuenta conectada]**, que es una página, cuenta o número de Meta: un cliente es la persona a la que se le deja conectar las suyas.
 
@@ -162,11 +162,11 @@ Un enlace vencido o ya usado no es un error del formulario: es una pantalla prop
 
 ### Verificacion de correo
 
-El alta con password manda un correo que pide confirmar la direccion. **No bloquea nada**: la sesion se abre igual y el destino lo sigue decidiendo el [Gate de acceso]. Confirmar no da acceso al producto y no confirmar no lo quita.
-Para que sirve entonces: es lo unico que habilita vincular un proveedor social a esa cuenta ([Cuenta vinculada]). Una cuenta sin confirmar no se vincula, y esa es la puerta que cierra el robo de cuenta por registro anticipado.
+El alta con password manda un correo que pide confirmar la direccion. La sesion se abre igual, pero **una cuenta en el [Plan Free] no entra al producto hasta confirmar**: ver [Gate de correo del Free]. Una cuenta con suscripcion de pago `active` entra sin confirmar.
+Ademas habilita vincular un proveedor social a esa cuenta ([Cuenta vinculada]). Una cuenta sin confirmar no se vincula, y esa es la puerta que cierra el robo de cuenta por registro anticipado.
 Un alta por Google no manda este correo: Google ya dice que el buzon es suyo, y la cuenta nace con `email_verified = true`.
 Completar una [Recuperacion de password] tambien confirma el correo, porque el enlace probo el buzon igual de bien.
-El [Enlace de verificacion] aterriza en `/pending` (es su `callbackURL`), que ya hace lo correcto para todos: a quien tiene acceso lo manda a `/connections` y a quien no le muestra la espera, con el bloque de confirmacion arriba si su correo sigue sin confirmar. Si el enlace vencio, `/pending` lo dice y ofrece reenviar. Una cuenta aprobada no llega a leer nada de eso —`/pending` la rebota—, asi que confirma y reenvia desde `Settings` ([Cuenta vinculada]).
+El [Enlace de verificacion] aterriza en `/pending` (es su `callbackURL`), que ya hace lo correcto para todos: a quien tiene acceso y ya no necesita confirmar lo manda a `/connections`, a una cuenta del Free sin confirmar le pide confirmar, y a una cuenta en lista de espera le muestra la espera, con el bloque de confirmacion arriba si su correo sigue sin confirmar. Si el enlace vencio, `/pending` lo dice y ofrece reenviar. Una cuenta que paga y no confirmo no pasa por `/pending`: confirma y reenvia desde `Settings` ([Cuenta vinculada]).
 `email_verified` se lee **vivo** contra la base (`lib/auth/email-verified.ts`), nunca de la [Sesion] ni de su cache, por la misma doctrina que el [Gate de acceso]: la libreria lo trae en `session.user`, pero ese cache dura cinco minutos y le seguiria diciendo "sin confirmar" a quien acaba de confirmar.
 
 ### Enlace de verificacion
@@ -294,7 +294,7 @@ En Messenger, un [Adjunto de salida] suma dos traducciones propias: formato no p
 
 Instagram está **dentro de facturación, completo**: ocupa cupo como cualquier [Conexión], sus entrantes y salientes suman [Mensaje contabilizado], y se frena cuando el tenant queda [Cuenta restringida]. No hay excepción por canal (`docs/adr/0011-cupo-por-conexion-e-instagram-en-facturacion.md`).
 Los **comentarios** reciben el mismo trato que un DM: un comentario entrante persistido suma 1 y una respuesta que Meta acepta suma 1, sea pública o [Respuesta a un comentario] privada. Consecuencia asumida: un post con muchos comentarios puede consumir buena parte de la cuota del período, y el negocio no eligió recibirlos.
-El [Gate de suscripcion] **sí aplica** y sigue siendo otra cosa: sin suscripción activa no se conecta, no se envía y los entrantes se descartan sin persistir. [Cuenta restringida] sí persiste.
+Sin suscripción de pago el tenant está en el [Plan Free] y le aplican los mismos límites, Instagram incluido (ADR 0022). Ya no hay gate de suscripción que descarte entrantes.
 
 ### Entrega de entrantes al sistema externo
 
@@ -458,19 +458,26 @@ La pagina publica `/docs` documenta, en ingles y para developers externos, el fl
 
 ### Suscripcion (billing)
 
-El uso del producto requiere una suscripcion de pago gestionada por Stripe. Hay 3 planes mensuales en USD: **Starter $15**, **Pro $29** y **Business $199**. Solo ciclo mensual.
+Usar el producto **no** requiere pagar: toda cuenta sin suscripcion de pago `active` esta en el [Plan Free]. Las suscripciones de pago las gestiona Stripe. Hay 3 planes mensuales en USD: **Starter $15**, **Pro $29** y **Business $199**. Solo ciclo mensual.
 El plan **Business** se elimino en la ADR 0003 y vuelve en la ADR 0016 con un price nuevo en Stripe y la misma lookup key. Pro subio de $25 a $29 en la misma ADR.
-La diferenciacion funcional entre planes ya no es binaria: cada plan trae una cuota de mensajes y un limite de paginas. Ver [Límites por plan]. Decisiones en `docs/adr/0002-stripe-checkout-subscriptions.md`, `docs/adr/0003-plan-entitlements-usage-quota.md` y `docs/adr/0016-tres-planes-pro-a-29.md`.
+La diferenciacion funcional entre planes ya no es binaria: cada plan trae una cuota de mensajes y un limite de paginas. Ver [Límites por plan]. Decisiones en `docs/adr/0002-stripe-checkout-subscriptions.md`, `docs/adr/0003-plan-entitlements-usage-quota.md`, `docs/adr/0016-tres-planes-pro-a-29.md` y `docs/adr/0022-plan-free-derivado.md`.
+
+### Plan Free
+
+El plan de toda cuenta **sin suscripcion de pago `active`**: recien registrada, cancelada, `past_due` o `unpaid`. Es **derivado**: no existe en Stripe ni tiene fila en `subscriptions`; lo decide el status al resolver el entitlement (`FREE_PLAN` en `lib/billing/plans.ts`). Da 2.000 mensajes por mes calendario UTC y 1 [Conexión]. El soporte por email y Discord es solo copy del pricing.
+Pide el correo confirmado: ver [Gate de correo del Free]. No administra Clientes: si un padre con Pro o Business cae al Free, sus clientes quedan restringidos.
+Al cruzar entre Free y un plan de pago el contador arranca de cero en los dos sentidos, porque cambia la clave del [Período de cuota]. Decisiones en `docs/adr/0022-plan-free-derivado.md`.
 
 ### Límites por plan
 
 | Plan               | Precio | Mensajes por período | Conexiones |
 | ------------------ | ------ | -------------------- | ---------- |
+| [Plan Free]        | $0     | 2.000                | 1          |
 | `starter_monthly`  | $15    | 50.000               | 2          |
 | `pro_monthly`      | $29    | 100.000              | 5          |
 | `business_monthly` | $199   | 1.000.000            | 40         |
 
-El límite se resuelve desde `subscriptions.price_lookup_key` contra un mapa en código. Un `price_lookup_key` desconocido es fail-closed, igual que el resto de los gates.
+Con suscripcion `active` el límite se resuelve desde `subscriptions.price_lookup_key` contra un mapa en código; sin ella, son los del [Plan Free]. Un `price_lookup_key` desconocido en una suscripcion `active` es fail-closed (no cae al Free), igual que el resto de los gates.
 
 ### Mensaje contabilizado
 
@@ -481,20 +488,20 @@ La cuota mide **todos los canales**, incluidos los DMs y comentarios de Instagra
 
 ### Período de cuota
 
-La ventana es el **período de facturación de Stripe**, no el mes calendario: el contador se resetea cuando cierra el ciclo que el cliente pagó, para no regalar una cuota completa a quien paga el día 28. Requiere `subscriptions.current_period_start`, que la migración `0005` no incluía. Sin período conocido no hay envío (fail-closed).
+En un plan de pago la ventana es el **período de facturación de Stripe**, no el mes calendario: el contador se resetea cuando cierra el ciclo que el cliente pagó, para no regalar una cuota completa a quien paga el día 28. Requiere `subscriptions.current_period_start`, que la migración `0005` no incluía. Sin período conocido no hay envío (fail-closed).
+En el [Plan Free] la ventana es el **mes calendario UTC**: empieza el día 1 a las 00:00 UTC, sin cron.
 El límite es un **tope práctico, no exacto**: como solo cuentan los envíos que Meta acepta, hay que llamar a Meta y después incrementar, y sin transacciones interactivas en el driver HTTP de Neon un puñado de requests concurrentes puede pasarse por decenas de mensajes.
 
 ### Cambio de plan
 
-El **upgrade se aplica inmediato**: sube el techo y **conserva el consumo** del período (quien gastó 50.000 y sube a Pro tiene 50.000 restantes, no 100.000). Así ciclar planes no sirve para resetear cuota, y un cliente bloqueado puede desbloquearse pagando en el acto.
+Entre planes de pago, el **upgrade se aplica inmediato**: sube el techo y **conserva el consumo** del período (quien gastó 50.000 y sube a Pro tiene 50.000 restantes, no 100.000). Así ciclar planes no sirve para resetear cuota, y un cliente bloqueado puede desbloquearse pagando en el acto.
 El **downgrade se difiere** al cierre del período: quien pagó el mes lo usa completo, mismo criterio que `cancel_at_period_end`. El Customer Portal de Stripe debe configurarse para diferirlo; por defecto Stripe lo aplica inmediato con prorrateo.
 
 ### Cuenta restringida
 
-Estado degradado con dos causas: **cuota agotada** o **exceso de conexiones** tras un downgrade (bajar a Starter con 5 [Conexión]es activas). Como conectar valida cupo, el downgrade es la **única** vía de entrada al segundo caso.
+Estado degradado con dos causas: **cuota agotada** o **exceso de conexiones** tras un downgrade (bajar a Starter con 5 [Conexión]es activas, o caer al [Plan Free] con más de 1). Como conectar valida cupo, el downgrade es la **única** vía de entrada al segundo caso.
 En ambos casos el comportamiento es el mismo: los entrantes se siguen persistiendo en la bitácora, dejan de reenviarse al webhook del cliente, y el envío queda bloqueado **para todas las conexiones** del tenant —de cualquier canal—, no solo las excedentes. No desconectamos nada nosotros: desconectar es siempre acción del usuario, aunque eso deje al tenant apagado por completo mientras decide.
-Se levanta al resolverse la causa: nuevo período de facturación, o el usuario desconecta conexiones hasta quedar dentro de su límite.
-Se distingue del [Gate de suscripcion], que sí descarta los entrantes sin persistir.
+Se levanta al resolverse la causa: nuevo período de cuota, subir de plan, o el usuario desconecta conexiones hasta quedar dentro de su límite.
 
 ### Errores de límite en la API
 
@@ -511,13 +518,15 @@ Cada uno con `message` legible. Se suman al contrato de errores `snake_case` de 
 A partir del **80%** del consumo del período aparece una barra de alerta **global en el dashboard**, no solo en `Connections`: quien no entra a esa pantalla no se entera.
 El aviso no sale por correo en esta entrega: el [Canal de correo] existe, pero el aviso de cuota no se construyo. Pendiente: la FAQ pública promete "Te avisamos cuando te acercás al límite" dos veces en `content/i18n/es.ts`, que un cliente lee como email; hay que reescribirla para que apunte al dashboard.
 
-### Gate de suscripcion
+### Gate de correo del Free
 
-Es el **segundo** gate, detras del [Gate de acceso]: una cuenta aprobada a mano todavia tiene que pagar. La suscripcion decide quien puede usar. Un usuario sin suscripcion activa aterriza en la pagina de pricing. El acceso existe solo con status `active` en la tabla `subscriptions`; cualquier otro estado es **bloqueo total**: dashboard, OAuth de Meta y `POST /api/meta/send` (403) quedan cerrados, y los webhooks entrantes de Meta del tenant se descartan sin persistir (respondiendo `200` a Meta para no degradar la app). Mismo patron que usaba el gate de acceso: se lee de base de datos en cada request, fail-closed, nunca de la [Sesion] ni de su cache ni de la API de Stripe en el hot path.
+Es el **segundo** gate, detras del [Gate de acceso], y reemplaza al viejo gate de suscripcion (ADR 0022). Una cuenta del [Plan Free] sin el correo confirmado ([Verificacion de correo]) aterriza en `/pending`, que le pide confirmar; al confirmar entra al producto. Aplica al dueño en el layout de `(product)` y al conectar redes (`email_unverified` en el connect gate). Una suscripcion de pago `active` lo salta. La API y los webhooks entrantes no lo miran: los limitan la cuota y el cupo de conexiones. Se lee vivo contra la base (`lib/billing/free-plan-gate.ts`), nunca de la [Sesion].
+Ya no hay muro de pago: un tenant sin suscripcion no rebota a `/billing`, no recibe `403 no active subscription` y sus entrantes se persisten. `/billing` es la pagina de upgrade.
+Un cliente sigue dependiendo del padre: si el padre no tiene suscripcion de pago `active`, el cliente ve la cuenta restringida sin CTA de pago.
 
 ### Sin trial
 
-No hay periodo de prueba: para usar el producto hay que pagar. El primer cobro ocurre dentro del propio Stripe Checkout y no existe logica de trial en ninguna capa (ni `trial_period_days` en Checkout ni flags propios en base de datos).
+No hay periodo de prueba de los planes de pago: el primer cobro ocurre dentro del propio Stripe Checkout y no existe logica de trial en ninguna capa (ni `trial_period_days` en Checkout ni flags propios en base de datos). Lo que hay para probar sin pagar es el [Plan Free], que no vence.
 
 ### Stripe Checkout y Customer Portal
 

@@ -8,7 +8,6 @@ import { authenticateApiKey } from "@/lib/auth/api-keys"
 import { resolveInstagramAccess } from "@/lib/auth/channel-access"
 import { isUserWaitlisted } from "@/lib/auth/waitlist"
 import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
-import { hasActiveSubscription } from "@/lib/billing/subscription"
 import { incrementUsage } from "@/lib/billing/usage-counter"
 import {
   getOutboundMessageByIdempotencyKey,
@@ -60,7 +59,11 @@ export const runtime = "nodejs"
 // La sección Logs guarda esta request (`bot → Resender`) desde el envoltorio:
 // ve la respuesta que sale por cualquiera de los returns de abajo.
 export const POST = withApiRequestLog(
-  { channel: "instagram", eventType: "send", endpoint: "/api/meta/instagram/send" },
+  {
+    channel: "instagram",
+    eventType: "send",
+    endpoint: "/api/meta/instagram/send",
+  },
   handle
 )
 
@@ -123,13 +126,6 @@ async function handle(request: NextRequest, capture: ApiLogCapture) {
     return trace.drop(
       "waitlisted",
       Response.json({ error: "account is on the waitlist" }, { status: 403 })
-    )
-  }
-
-  if (!(await hasActiveSubscription(apiKey.tenantId))) {
-    return trace.drop(
-      "no_active_subscription",
-      Response.json({ error: "no active subscription" }, { status: 403 })
     )
   }
 

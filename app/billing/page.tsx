@@ -1,3 +1,4 @@
+import Link from "next/link"
 import { redirect } from "next/navigation"
 
 import { getSession, signOut } from "@/lib/auth/session"
@@ -24,9 +25,10 @@ export const metadata = privatePageMetadata("Suscripción")
 // El plan destacado. El diseño marca Pro con el anillo violeta grueso.
 const RECOMMENDED_PLAN = "pro_monthly"
 
-// Pricing para cuentas sin suscripción activa. Vive fuera del grupo
-// `(product)` a propósito: ese layout rebota aquí a los tenants sin
-// suscripción, así que esta página no puede estar envuelta por él.
+// Upgrade desde el plan Free (ADR 0022). Ya no es un muro: nadie rebota aquí,
+// se llega desde Ajustes → Suscripción o la franja de cuota, y se puede volver
+// a la app sin pagar. Vive fuera de `(product)` porque es la pantalla de
+// Checkout, con su propio shell.
 //
 // Los dos rebotes de abajo son el gate de acceso. Desde la 0024 ninguna
 // cuenta nace en `waitlisted = true`, así que solo muerde a cuentas cerradas a
@@ -59,12 +61,17 @@ export default async function BillingPage() {
     <AccessShell
       lang={lang}
       topbarEnd={
-        // `SignOutForm` hace el `posthog.reset()` antes de la server action.
-        <SignOutForm action={signOutAction}>
-          <Button type="submit" variant="outline">
-            {t.billing.signOut}
+        <div className="flex items-center gap-2">
+          <Button asChild variant="ghost">
+            <Link href="/connections">{t.billing.backToApp}</Link>
           </Button>
-        </SignOutForm>
+          {/* `SignOutForm` hace el `posthog.reset()` antes de la server action. */}
+          <SignOutForm action={signOutAction}>
+            <Button type="submit" variant="outline">
+              {t.billing.signOut}
+            </Button>
+          </SignOutForm>
+        </div>
       }
     >
       {/* Esta página está fuera de `(product)`, así que no hereda su identify.
