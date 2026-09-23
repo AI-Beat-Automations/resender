@@ -106,7 +106,11 @@ const authorizedPage = (pageId: string) => ({
   pageAccessToken: `token-${pageId}`,
 })
 
-const PARENT = { tenantId: "tenant-1", userId: "tenant-1", clientAccountId: null }
+const PARENT = {
+  tenantId: "tenant-1",
+  userId: "tenant-1",
+  clientAccountId: null,
+}
 const CLIENT = {
   tenantId: "tenant-1",
   userId: "user-2",
@@ -132,6 +136,7 @@ describe("connectSelectedPagesAction", () => {
       authorizedPage("page-3"),
     ])
     mocks.getSubscriptionByTenantId.mockResolvedValue({
+      status: "active",
       priceLookupKey: "starter_monthly",
     })
     mocks.countActivePages.mockResolvedValue(0)
@@ -235,14 +240,14 @@ describe("connectSelectedPagesAction", () => {
 
   // La action se puede invocar por POST directo, sin pasar por el layout de
   // `(product)`: los gates tienen que estar acá también.
-  it("blocks a tenant without an active subscription", async () => {
-    mocks.resolveConnectGate.mockResolvedValue({
-      kind: "no_active_subscription",
-    })
+  it("blocks an owner whose email is not confirmed", async () => {
+    mocks.resolveConnectGate.mockResolvedValue({ kind: "email_unverified" })
 
     const result = await connectSelectedPagesAction({}, selection("page-1"))
 
-    expect(result).toEqual({ error: "Tu suscripción no está activa." })
+    expect(result).toEqual({
+      error: "Confirma tu correo antes de conectar una red.",
+    })
     expect(mocks.getMetaUserAccessToken).not.toHaveBeenCalled()
     expect(mocks.connectAuthorizedPages).not.toHaveBeenCalled()
   })

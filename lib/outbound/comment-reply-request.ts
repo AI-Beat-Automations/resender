@@ -3,7 +3,6 @@ import { type NextRequest } from "next/server"
 import { authenticateApiKey } from "@/lib/auth/api-keys"
 import { resolveInstagramAccess } from "@/lib/auth/channel-access"
 import { isUserWaitlisted } from "@/lib/auth/waitlist"
-import { hasActiveSubscription } from "@/lib/billing/subscription"
 import {
   getInboundCommentByIgCommentId,
   type InstagramCommentRecord,
@@ -83,17 +82,6 @@ export async function authenticateCommentReplyRequest(
         { status: 403 }
       ),
       reason: "waitlisted",
-    }
-  }
-
-  if (!(await hasActiveSubscription(apiKey.tenantId))) {
-    return {
-      ok: false,
-      response: Response.json(
-        { error: "no active subscription" },
-        { status: 403 }
-      ),
-      reason: "no_active_subscription",
     }
   }
 

@@ -4,6 +4,7 @@ export type BillingDict = {
   title: string
   subtitle: string
   signOut: string
+  backToApp: string
   perMonth: string
   /** `{messages}`, `{pages}` */
   planLimitsOne: string
@@ -23,10 +24,11 @@ export type BillingDict = {
 export const es: BillingDict = {
   metaTitle: "Suscripción",
   eyebrow: "pricing",
-  title: "Elige tu plan.",
+  title: "Mejora tu plan.",
   subtitle:
-    "Tu cuenta está aprobada. El pago ocurre en una página segura de Stripe.",
+    "Estás en el plan Free. Sube de plan para tener más mensajes y conexiones; el pago ocurre en una página segura de Stripe.",
   signOut: "Cerrar sesión",
+  backToApp: "Volver a Resender",
   perMonth: "/ mes",
   planLimitsOne: "{messages} mensajes · {pages} conexión",
   planLimitsMany: "{messages} mensajes · {pages} conexiones",
@@ -46,10 +48,11 @@ export const es: BillingDict = {
 export const en: BillingDict = {
   metaTitle: "Subscription",
   eyebrow: "pricing",
-  title: "Choose your plan.",
+  title: "Upgrade your plan.",
   subtitle:
-    "Your account is approved. Payment happens on a secure Stripe page.",
+    "You're on the Free plan. Upgrade for more messages and connections; payment happens on a secure Stripe page.",
   signOut: "Sign out",
+  backToApp: "Back to Resender",
   perMonth: "/ month",
   planLimitsOne: "{messages} messages · {pages} connection",
   planLimitsMany: "{messages} messages · {pages} connections",

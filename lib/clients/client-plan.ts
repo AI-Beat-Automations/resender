@@ -1,4 +1,7 @@
-import { getPlanByLookupKey } from "@/lib/billing/plans"
+import {
+  isPaidStatus,
+  resolveTenantPlanLimits,
+} from "@/lib/billing/entitlements"
 import { getSubscriptionByTenantId } from "@/lib/billing/subscription"
 
 import { canManageClients } from "./client-rules"
@@ -14,10 +17,13 @@ export type ClientPlan = {
 
 export async function resolveClientPlan(tenantId: string): Promise<ClientPlan> {
   const subscription = await getSubscriptionByTenantId(tenantId)
-  const lookupKey = subscription?.priceLookupKey ?? null
-  const plan = lookupKey ? getPlanByLookupKey(lookupKey) : null
+  // Una suscripción que dejó de estar `active` conserva su lookup key en la
+  // fila, pero el tenant ya está en el Free derivado (ADR 0022): sin Clientes.
+  const lookupKey = isPaidStatus(subscription?.status)
+    ? (subscription?.priceLookupKey ?? null)
+    : null
   return {
     canManage: canManageClients(lookupKey),
-    maxPages: plan?.limits.maxPages ?? null,
+    maxPages: resolveTenantPlanLimits(subscription)?.maxPages ?? null,
   }
 }

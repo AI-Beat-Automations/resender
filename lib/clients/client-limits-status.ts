@@ -1,4 +1,4 @@
-import { resolvePlanLimits } from "@/lib/billing/entitlements"
+import { resolveTenantPlanLimits } from "@/lib/billing/entitlements"
 import { getSubscriptionByTenantId } from "@/lib/billing/subscription"
 import {
   countActiveClientPages,
@@ -37,7 +37,7 @@ export async function getClientLimits(scope: {
       getClientOwner(scope.tenantId),
     ])
 
-  const limits = resolvePlanLimits(subscription?.priceLookupKey ?? null)
+  const limits = resolveTenantPlanLimits(subscription)
   if (!limits) return { ok: false, reason: "plan_unresolved" }
   if (!client) return { ok: false, reason: "client_not_found" }
 

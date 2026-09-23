@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   getActivePageByMetaPageId: vi.fn(),
-  hasActiveSubscription: vi.fn(),
   resolveInstagramAccess: vi.fn(),
   resolveWhatsappAccess: vi.fn(),
   getTenantEntitlement: vi.fn(),
@@ -22,10 +21,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/pages/page-registry", () => ({
   getActivePageByMetaPageId: mocks.getActivePageByMetaPageId,
-}))
-
-vi.mock("@/lib/billing/subscription", () => ({
-  hasActiveSubscription: mocks.hasActiveSubscription,
 }))
 
 vi.mock("@/lib/auth/channel-access", () => ({
@@ -164,7 +159,6 @@ const restricted = {
 describe("ingesta de entrantes por canal", () => {
   beforeEach(() => {
     for (const mock of Object.values(mocks)) mock.mockReset()
-    mocks.hasActiveSubscription.mockResolvedValue(true)
     mocks.resolveInstagramAccess.mockResolvedValue(true)
     mocks.getTenantEntitlement.mockResolvedValue(unrestricted)
     mocks.upsertConversation.mockResolvedValue({
@@ -210,19 +204,6 @@ describe("ingesta de entrantes por canal", () => {
     expect(mocks.insertInboundMessage).not.toHaveBeenCalled()
   })
 
-  // ADR 0002: el gate de suscripción sí aplica a Instagram, a diferencia de la
-  // cuota y del cupo de páginas.
-  it("descarta sin persistir cuando el tenant no tiene suscripción activa", async () => {
-    mocks.hasActiveSubscription.mockResolvedValue(false)
-
-    await expect(
-      ingestInstagramWebhookPayload(
-        instagramPayload({ mid: "mid-1", text: "hola" })
-      )
-    ).resolves.toEqual([])
-    expect(mocks.insertInboundMessage).not.toHaveBeenCalled()
-  })
-
   it("filtra el eco antes de tocar la base", async () => {
     await expect(
       ingestInstagramWebhookPayload(
@@ -239,7 +220,6 @@ describe("ingesta de entrantes por canal", () => {
 describe("Instagram dentro de facturación", () => {
   beforeEach(() => {
     for (const mock of Object.values(mocks)) mock.mockReset()
-    mocks.hasActiveSubscription.mockResolvedValue(true)
     mocks.resolveInstagramAccess.mockResolvedValue(true)
     mocks.getTenantEntitlement.mockResolvedValue(unrestricted)
     mocks.upsertConversation.mockResolvedValue({ id: "conversation-1" })
@@ -403,20 +383,11 @@ describe("Instagram dentro de facturación", () => {
     )
   })
 
-  // Los dos gates que están **antes** de la medición siguen ganando: el
-  // entrante del tenant sin suscripción o sin permiso de canal no se persiste
-  // ni se cuenta, esté restringido o no.
-  it("el gate de suscripción y el permiso de canal ganan sobre la restricción", async () => {
+  // El gate que está **antes** de la medición sigue ganando: el entrante del
+  // tenant sin permiso de canal no se persiste ni se cuenta, esté restringido
+  // o no. Sin suscripción ya no hay gate: el tenant está en el Free (ADR 0022).
+  it("el permiso de canal gana sobre la restricción", async () => {
     mocks.getTenantEntitlement.mockResolvedValue(restricted)
-    mocks.hasActiveSubscription.mockResolvedValue(false)
-
-    await expect(
-      ingestInstagramWebhookPayload(
-        instagramPayload({ mid: "mid-1", text: "hola" })
-      )
-    ).resolves.toEqual([])
-
-    mocks.hasActiveSubscription.mockResolvedValue(true)
     mocks.resolveInstagramAccess.mockResolvedValue(false)
 
     await expect(
@@ -463,7 +434,6 @@ describe("Instagram dentro de facturación", () => {
 describe("Messenger sigue medido", () => {
   beforeEach(() => {
     for (const mock of Object.values(mocks)) mock.mockReset()
-    mocks.hasActiveSubscription.mockResolvedValue(true)
     mocks.resolveInstagramAccess.mockResolvedValue(true)
     mocks.upsertConversation.mockResolvedValue({ id: "conversation-1" })
     mocks.insertInboundMessage.mockResolvedValue({
@@ -533,7 +503,6 @@ const instagramPage = (overrides: Record<string, unknown> = {}) =>
 describe("ingesta de comentarios de Instagram", () => {
   beforeEach(() => {
     for (const mock of Object.values(mocks)) mock.mockReset()
-    mocks.hasActiveSubscription.mockResolvedValue(true)
     mocks.resolveInstagramAccess.mockResolvedValue(true)
     mocks.getTenantEntitlement.mockResolvedValue(unrestricted)
     mocks.getActivePageByMetaPageId.mockResolvedValue(instagramPage())
@@ -631,22 +600,6 @@ describe("ingesta de comentarios de Instagram", () => {
     )
 
     expect(mocks.isOwnPublishedComment).not.toHaveBeenCalled()
-  })
-
-  it("descarta sin persistir cuando el tenant no tiene suscripción activa", async () => {
-    mocks.hasActiveSubscription.mockResolvedValue(false)
-
-    await expect(
-      ingestInstagramWebhookPayload(
-        commentPayload({
-          id: "ig-comment-1",
-          from: { id: "9876543210", username: "un_seguidor" },
-          text: "hola",
-          media: { id: "media-1" },
-        })
-      )
-    ).resolves.toEqual([])
-    expect(mocks.insertInboundComment).not.toHaveBeenCalled()
   })
 
   it("no reenvía dos veces el mismo comentario", async () => {
@@ -756,7 +709,9 @@ describe("ingesta de comentarios de Instagram", () => {
     await ingested!.pushJob()
 
     expect(mocks.enqueueDelivery).toHaveBeenCalledWith(
-      expect.objectContaining({ subject: { kind: "comment", id: "comment-row" } })
+      expect.objectContaining({
+        subject: { kind: "comment", id: "comment-row" },
+      })
     )
     expect(mocks.recordSkippedDelivery).not.toHaveBeenCalled()
   })
@@ -814,7 +769,6 @@ describe("permiso de Instagram por cuenta", () => {
 
   beforeEach(() => {
     for (const mock of Object.values(mocks)) mock.mockReset()
-    mocks.hasActiveSubscription.mockResolvedValue(true)
     mocks.resolveInstagramAccess.mockResolvedValue(true)
     mocks.getTenantEntitlement.mockResolvedValue(unrestricted)
     mocks.isOwnPublishedComment.mockResolvedValue(false)
@@ -929,7 +883,6 @@ describe("ningún evento se descarta en silencio", () => {
 
   beforeEach(() => {
     for (const mock of Object.values(mocks)) mock.mockReset()
-    mocks.hasActiveSubscription.mockResolvedValue(true)
     mocks.resolveInstagramAccess.mockResolvedValue(true)
     mocks.getTenantEntitlement.mockResolvedValue(unrestricted)
     mocks.isOwnPublishedComment.mockResolvedValue(false)
@@ -956,10 +909,6 @@ describe("ningún evento se descarta en silencio", () => {
     [
       "la cuenta no resuelve",
       () => mocks.getActivePageByMetaPageId.mockResolvedValue(null),
-    ],
-    [
-      "no hay suscripción activa",
-      () => mocks.hasActiveSubscription.mockResolvedValue(false),
     ],
     [
       "el tenant no tiene el permiso de Instagram",
@@ -1119,7 +1068,6 @@ const liveText = (overrides: Record<string, unknown> = {}) =>
 
 const arrangeWhatsapp = () => {
   for (const mock of Object.values(mocks)) mock.mockReset()
-  mocks.hasActiveSubscription.mockResolvedValue(true)
   mocks.resolveWhatsappAccess.mockResolvedValue(true)
   mocks.getTenantEntitlement.mockResolvedValue(unrestricted)
   mocks.getActivePageByMetaPageId.mockResolvedValue(whatsappPage())
@@ -1153,14 +1101,8 @@ describe("ingesta de WhatsApp", () => {
   })
 
   // El mismo orden que Messenger e Instagram, con la bandera de WhatsApp:
-  // cuenta → suscripción → permiso de canal → persistir.
-  it("aplica los tres gates antes de persistir", async () => {
-    mocks.hasActiveSubscription.mockResolvedValue(false)
-    await expect(
-      ingestWhatsappWebhookPayload(whatsappPayload(liveText()))
-    ).resolves.toEqual([])
-
-    mocks.hasActiveSubscription.mockResolvedValue(true)
+  // cuenta → permiso de canal → persistir.
+  it("aplica los gates antes de persistir", async () => {
     mocks.resolveWhatsappAccess.mockResolvedValue(false)
     await expect(
       ingestWhatsappWebhookPayload(whatsappPayload(liveText()))

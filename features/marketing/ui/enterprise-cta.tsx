@@ -17,7 +17,7 @@ export function EnterpriseCta({ lang }: { lang: Locale }) {
   const [before, after] = dict.description.split("{email}")
 
   return (
-    <Card className="mx-auto max-w-5xl border-dashed py-0">
+    <Card className="mx-auto max-w-6xl border-dashed py-0">
       <CardContent className="flex flex-col gap-6 p-8 md:flex-row md:items-center md:justify-between md:p-10">
         <div className="max-w-xl">
           <h3 className="font-heading text-2xl font-bold tracking-tight">

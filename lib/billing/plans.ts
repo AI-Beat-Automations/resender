@@ -49,6 +49,16 @@ export const PLANS: Plan[] = [
   },
 ]
 
+// Plan Free (ADR 0022): no existe en Stripe ni tiene fila en `subscriptions`.
+// Es el plan **derivado** de cualquier tenant sin suscripción de pago
+// `active` — recién registrado, cancelado, `past_due` o `unpaid` —. Va aparte
+// de `PLANS` porque esa lista es el catálogo que se compra por Checkout.
+export const FREE_PLAN = {
+  name: "Free",
+  priceMonthlyUsd: 0,
+  limits: { messagesPerPeriod: 2_000, maxPages: 1 },
+} as const satisfies Omit<Plan, "lookupKey">
+
 export function isPlanLookupKey(value: unknown): value is PlanLookupKey {
   return (
     typeof value === "string" &&

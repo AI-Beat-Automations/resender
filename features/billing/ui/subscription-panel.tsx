@@ -14,9 +14,14 @@ import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 
 export type SubscriptionView = {
+  // Plan Free derivado (ADR 0022): sin suscripción de pago `active`.
+  isFree: boolean
   planName: string
   planPriceMonthlyUsd: number | null
-  status: string
+  // `subscriptions.status` de Stripe; null si la cuenta nunca pagó.
+  status: string | null
+  // Fin del período vigente: la renovación de Stripe, o el próximo día 1 en el
+  // plan Free.
   currentPeriodEnd: string | null
   cancelAtPeriodEnd: boolean
   // Consumo del período vigente contra el límite del plan; `limit` es null
@@ -33,26 +38,9 @@ export function SubscriptionPanel({
   subscription,
   t,
 }: {
-  subscription: SubscriptionView | null
+  subscription: SubscriptionView
   t: AppDict
 }) {
-  if (!subscription) {
-    return (
-      <SettingsCard>
-        <div className="flex items-center justify-between gap-3">
-          <SettingsCardTitle>{t.subscription.title}</SettingsCardTitle>
-          <Badge variant="ghost">{t.subscription.none}</Badge>
-        </div>
-        <p className="mt-3 text-[13.5px]/[1.6] text-muted-foreground">
-          {t.subscription.noneBody}
-        </p>
-        <Button asChild size="lg" className="mt-4">
-          <Link href="/billing">{t.subscription.choosePlan}</Link>
-        </Button>
-      </SettingsCard>
-    )
-  }
-
   // Mismos umbrales que la franja global de cuota (ADR 0005): el tono sale de
   // `resolveQuotaBar`, no de un porcentaje calculado aquí.
   const bar = resolveQuotaBar({
@@ -65,11 +53,24 @@ export function SubscriptionPanel({
       <div className="flex items-center justify-between gap-3">
         <SettingsCardTitle>{t.subscription.title}</SettingsCardTitle>
         {/* En minúscula y en inglés: es el valor literal de
-            `subscription.status` (spec C.1). */}
-        <Badge variant={statusBadgeVariant(subscription.status)}>
-          {subscription.status}
-        </Badge>
+            `subscription.status` (spec C.1). En el Free no hay status de
+            Stripe que mostrar: el badge es el plan. */}
+        {subscription.isFree ? (
+          <Badge variant="ghost">{t.subscription.freeBadge}</Badge>
+        ) : (
+          <Badge variant={statusBadgeVariant(subscription.status ?? "")}>
+            {subscription.status}
+          </Badge>
+        )}
       </div>
+
+      {subscription.isFree ? (
+        <p className="mt-3 text-[13.5px]/[1.6] text-muted-foreground">
+          {subscription.status
+            ? fmt(t.subscription.lapsedBody, { status: subscription.status })
+            : t.subscription.freeBody}
+        </p>
+      ) : null}
 
       <div className="mt-4 flex flex-col gap-2.5">
         <SettingsDataRow label={t.subscription.planLabel} labelWidth={92}>
@@ -87,9 +88,11 @@ export function SubscriptionPanel({
           // una renovación que no va a ocurrir.
           <SettingsDataRow
             label={
-              subscription.cancelAtPeriodEnd
-                ? t.subscription.cancelsLabel
-                : t.subscription.renewsLabel
+              subscription.isFree
+                ? t.subscription.resetsLabel
+                : subscription.cancelAtPeriodEnd
+                  ? t.subscription.cancelsLabel
+                  : t.subscription.renewsLabel
             }
             labelWidth={92}
           >
@@ -145,15 +148,29 @@ export function SubscriptionPanel({
         )}
       </div>
 
-      <form action={openPortal} className="mt-4">
-        <Button type="submit" variant="outline" size="lg">
-          <ExternalLink className="size-[15px]" aria-hidden />
-          {t.subscription.managePortal}
-        </Button>
-      </form>
-      <p className="mt-3 text-[12.5px] text-muted-foreground">
-        {t.subscription.portalHint}
-      </p>
+      {/* En el Free, subir de plan es la acción principal. El portal solo
+          aparece si hubo una suscripción: es donde se paga una factura
+          pendiente o se ven las anteriores. */}
+      <div className="mt-4 flex flex-wrap gap-2">
+        {subscription.isFree ? (
+          <Button asChild size="lg">
+            <Link href="/billing">{t.subscription.upgrade}</Link>
+          </Button>
+        ) : null}
+        {subscription.status ? (
+          <form action={openPortal}>
+            <Button type="submit" variant="outline" size="lg">
+              <ExternalLink className="size-[15px]" aria-hidden />
+              {t.subscription.managePortal}
+            </Button>
+          </form>
+        ) : null}
+      </div>
+      {subscription.status ? (
+        <p className="mt-3 text-[12.5px] text-muted-foreground">
+          {t.subscription.portalHint}
+        </p>
+      ) : null}
     </SettingsCard>
   )
 }

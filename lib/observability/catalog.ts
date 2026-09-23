@@ -155,6 +155,7 @@ export type LogReason =
   // @section connections
   // OAuth y conexión
   | "not_authenticated"
+  | "email_unverified" // ADR 0022: el dueño no confirmó su correo
   | "user_cancelled"
   | "missing_code"
   | "state_mismatch"

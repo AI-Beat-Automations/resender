@@ -1,6 +1,6 @@
 import "server-only"
 
-import { resolvePlanLimits } from "@/lib/billing/entitlements"
+import { resolveTenantPlanLimits } from "@/lib/billing/entitlements"
 import { getSubscriptionByTenantId } from "@/lib/billing/subscription"
 import type { Actor } from "@/lib/clients/actor"
 import {
@@ -81,7 +81,7 @@ export async function resolveSelectionContext(
 
   // Plan desconocido = fail-closed, igual que el resto de los gates: no
   // dejamos conectar páginas sin límite resuelto.
-  const limits = resolvePlanLimits(subscription?.priceLookupKey ?? null)
+  const limits = resolveTenantPlanLimits(subscription)
   if (!limits) return { ok: false, reason: "plan_unresolved" }
 
   return {
