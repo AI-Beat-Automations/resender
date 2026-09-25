@@ -1189,3 +1189,88 @@ describe("migración 0027: clientes", () => {
     expect(rows.rows).toHaveLength(0)
   })
 })
+
+// Migración 0029: el dato de cobro de Meta en los mensajes (ADR 0023).
+describe("migración 0029: cobro de Meta en messages", () => {
+  it("añade las cinco columnas nullable y sin default", async () => {
+    const columns = await db.query<{
+      column_name: string
+      data_type: string
+      is_nullable: string
+      column_default: string | null
+    }>(
+      `select column_name, data_type, is_nullable, column_default
+       from information_schema.columns
+       where table_schema = 'public' and table_name = 'messages'
+         and column_name in (
+           'meta_billable', 'meta_pricing_category', 'meta_pricing_type',
+           'meta_pricing_model', 'meta_billed_at'
+         )
+       order by column_name`
+    )
+    expect(columns.rows).toEqual([
+      {
+        column_name: "meta_billable",
+        data_type: "boolean",
+        is_nullable: "YES",
+        column_default: null,
+      },
+      {
+        column_name: "meta_billed_at",
+        data_type: "timestamp with time zone",
+        is_nullable: "YES",
+        column_default: null,
+      },
+      {
+        column_name: "meta_pricing_category",
+        data_type: "text",
+        is_nullable: "YES",
+        column_default: null,
+      },
+      {
+        column_name: "meta_pricing_model",
+        data_type: "text",
+        is_nullable: "YES",
+        column_default: null,
+      },
+      {
+        column_name: "meta_pricing_type",
+        data_type: "text",
+        is_nullable: "YES",
+        column_default: null,
+      },
+    ])
+  })
+
+  // Las filas que ya existían no tienen dato de cobro, ni lo van a tener.
+  it("la fila legacy queda sin dato de cobro", async () => {
+    const legacy = await db.query<{
+      meta_billable: boolean | null
+      meta_billed_at: Date | null
+    }>(
+      `select meta_billable, meta_billed_at from messages where text = 'hola legacy'`
+    )
+    expect(legacy.rows[0]).toEqual({
+      meta_billable: null,
+      meta_billed_at: null,
+    })
+  })
+
+  // Sin CHECK a propósito: Meta añade valores sin cambiar de versión de API, y
+  // un valor rechazado perdería el cobro de ese mensaje.
+  it("acepta cualquier valor de categoría, tipo y modelo", async () => {
+    const message = await insertMessage({ text: "respuesta cobrada" })
+    await expect(
+      db.query(
+        `update messages
+         set meta_billable = true,
+             meta_pricing_category = 'categoria_que_meta_estrena_manana',
+             meta_pricing_type = 'free_customer_service',
+             meta_pricing_model = 'PMP_V2',
+             meta_billed_at = '2026-10-02T15:00:03Z'
+         where id = $1`,
+        [message.id]
+      )
+    ).resolves.toBeDefined()
+  })
+})
