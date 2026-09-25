@@ -44,8 +44,77 @@ describe("WhatsApp statuses", () => {
         recipientId: USER_PHONE,
         timestamp: new Date(1_750_030_073_000),
         errors: [],
+        pricing: {
+          billable: true,
+          category: "marketing",
+          type: "regular",
+          pricingModel: "PMP",
+        },
       },
     ])
+  })
+
+  // Desde el 1 de octubre de 2026 Meta cobra los mensajes de servicio
+  // entregados (ADR 0023): el bloque es el único dato que dice cuáles.
+  it("reads the pricing block of a delivered service message", () => {
+    expect(
+      status({
+        status: "delivered",
+        pricing: {
+          billable: true,
+          pricing_model: "PMP",
+          type: "regular",
+          category: "service",
+        },
+      })[0]!.pricing
+    ).toEqual({
+      billable: true,
+      category: "service",
+      type: "regular",
+      pricingModel: "PMP",
+    })
+  })
+
+  it("leaves pricing null when the status carries no block", () => {
+    const [event] = status({ status: "read" })
+
+    expect(event!.pricing).toBeNull()
+    expect(event!.deliveryStatus).toBe("read")
+  })
+
+  // Sin `billable` el bloque no dice lo único que importa. Se trata como
+  // ausente, pero el acuse se procesa igual.
+  it.each([
+    ["not an object", "PMP"],
+    ["an array", [{ billable: true }]],
+    ["missing billable", { category: "service", type: "regular" }],
+    ["a string billable", { billable: "true", category: "service" }],
+  ])("leaves pricing null when the block is %s", (_, pricing) => {
+    const [event] = status({ status: "delivered", pricing })
+
+    expect(event!.pricing).toBeNull()
+    expect(event!.deliveryStatus).toBe("delivered")
+  })
+
+  // Meta añade valores sin cambiar de versión de API y el valor de `type` para
+  // el cupo gratis no está documentado: se guarda tal cual, nunca se descarta.
+  it("keeps unknown pricing values verbatim instead of dropping them", () => {
+    expect(
+      status({
+        status: "delivered",
+        pricing: {
+          billable: false,
+          pricing_model: "PMP_V2",
+          type: "free_customer_service",
+          category: "service_intervention",
+        },
+      })[0]!.pricing
+    ).toEqual({
+      billable: false,
+      category: "service_intervention",
+      type: "free_customer_service",
+      pricingModel: "PMP_V2",
+    })
   })
 
   it.each([

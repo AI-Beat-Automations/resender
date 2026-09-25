@@ -538,6 +538,56 @@ export async function updateDeliveryStatus(input: {
   return rows.length > 0
 }
 
+/**
+ * Guarda el bloque `pricing` de un acuse de WhatsApp (migración 0029), en un
+ * UPDATE **aparte** del de `updateDeliveryStatus` y sin su guarda de monotonía.
+ *
+ * Meta cobra al entregar, y un `delivered` que llega después del `read` pierde
+ * la guarda de `delivery_status` pero trae el dato de cobro: si viajaran en el
+ * mismo UPDATE, ese cobro se perdería.
+ *
+ * La guarda propia es otra: el bloque de un `delivered` pisa siempre, y el de
+ * cualquier otro acuse (`sent`) solo mientras no haya llegado el `delivered`.
+ * Un reintento reescribe los mismos valores, y `meta_billed_at` conserva el
+ * primer `delivered`, así que la escritura es idempotente.
+ *
+ * Devuelve si escribió. `false` es un `sent` atrasado o un wamid ajeno.
+ */
+export async function updateMetaPricing(input: {
+  connectedPageId: string
+  metaMessageId: string
+  deliveryStatus: DeliveryStatus
+  reportedAt: Date
+  pricing: {
+    billable: boolean
+    category: string | null
+    type: string | null
+    pricingModel: string | null
+  }
+}): Promise<boolean> {
+  const sql = getSql()
+  const delivered = input.deliveryStatus === "delivered"
+
+  const rows = await sql<{ id: string }[]>`
+    update messages
+    set meta_billable = ${input.pricing.billable},
+        meta_pricing_category = ${input.pricing.category},
+        meta_pricing_type = ${input.pricing.type},
+        meta_pricing_model = ${input.pricing.pricingModel},
+        meta_billed_at = case
+          when ${delivered}::boolean
+            then coalesce(meta_billed_at, ${input.reportedAt}::timestamptz)
+          else meta_billed_at
+        end
+    where connected_page_id = ${input.connectedPageId}
+      and meta_message_id = ${input.metaMessageId}
+      and (${delivered}::boolean or meta_billed_at is null)
+    returning id
+  `
+
+  return rows.length > 0
+}
+
 // `clientAccountId` es el alcance del [Actor] (issue #154, ticket 4): con él,
 // una conversación de una conexión del padre o de otro cliente no se
 // encuentra; null (el padre) ve todo el tenant. Mismo predicado que en

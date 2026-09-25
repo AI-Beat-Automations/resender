@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   insertInboundMessage: vi.fn(),
   insertCoexistenceMessage: vi.fn(),
   updateDeliveryStatus: vi.fn(),
+  updateMetaPricing: vi.fn(),
   queueSend: vi.fn(),
   insertInboundComment: vi.fn(),
   isOwnPublishedComment: vi.fn(),
@@ -42,6 +43,7 @@ vi.mock("@/lib/messages/message-log", () => ({
   insertInboundMessage: mocks.insertInboundMessage,
   insertCoexistenceMessage: mocks.insertCoexistenceMessage,
   updateDeliveryStatus: mocks.updateDeliveryStatus,
+  updateMetaPricing: mocks.updateMetaPricing,
 }))
 
 // La cola de WhatsApp es un binding de Cloudflare: fuera del Worker no existe,
@@ -1084,6 +1086,7 @@ const arrangeWhatsapp = () => {
     inserted: true,
   })
   mocks.updateDeliveryStatus.mockResolvedValue(true)
+  mocks.updateMetaPricing.mockResolvedValue(true)
 }
 
 describe("ingesta de WhatsApp", () => {
@@ -1363,7 +1366,7 @@ describe("historial y echoes de Coexistence", () => {
 })
 
 describe("acuses de entrega de WhatsApp", () => {
-  const statusPayload = (status: string) =>
+  const statusPayload = (status: string, extra: Record<string, unknown> = {}) =>
     whatsappPayload(
       whatsappChange("messages", {
         statuses: [
@@ -1372,10 +1375,19 @@ describe("acuses de entrega de WhatsApp", () => {
             status,
             timestamp: "1749416400",
             recipient_id: USER_PHONE,
+            ...extra,
           },
         ],
       })
     )
+  const servicePricing = {
+    pricing: {
+      billable: true,
+      pricing_model: "PMP",
+      type: "regular",
+      category: "service",
+    },
+  }
 
   beforeEach(arrangeWhatsapp)
 
@@ -1414,9 +1426,62 @@ describe("acuses de entrega de WhatsApp", () => {
   it("no toca la base con la cuenta sin permiso de canal", async () => {
     mocks.resolveWhatsappAccess.mockResolvedValue(false)
 
-    await ingestWhatsappWebhookPayload(statusPayload("delivered"))
+    await ingestWhatsappWebhookPayload(
+      statusPayload("delivered", servicePricing)
+    )
 
     expect(mocks.updateDeliveryStatus).not.toHaveBeenCalled()
+    expect(mocks.updateMetaPricing).not.toHaveBeenCalled()
+  })
+
+  it("no escribe el cobro de una cuenta que no está conectada", async () => {
+    mocks.getActivePageByMetaPageId.mockResolvedValue(null)
+
+    await ingestWhatsappWebhookPayload(
+      statusPayload("delivered", servicePricing)
+    )
+
+    expect(mocks.updateMetaPricing).not.toHaveBeenCalled()
+  })
+
+  it("guarda el cobro que trae el acuse con el momento del acuse", async () => {
+    await ingestWhatsappWebhookPayload(
+      statusPayload("delivered", servicePricing)
+    )
+
+    expect(mocks.updateMetaPricing).toHaveBeenCalledWith({
+      connectedPageId: "page-row",
+      metaMessageId: WAMID,
+      deliveryStatus: "delivered",
+      reportedAt: new Date(1_749_416_400_000),
+      pricing: {
+        billable: true,
+        category: "service",
+        type: "regular",
+        pricingModel: "PMP",
+      },
+    })
+  })
+
+  // Meta cobra al entregar: el `delivered` que llega después del `read` pierde
+  // la guarda del estado, pero su cobro se guarda igual.
+  it("guarda el cobro de un delivered que perdió la guarda del estado", async () => {
+    mocks.updateDeliveryStatus.mockResolvedValue(false)
+
+    await ingestWhatsappWebhookPayload(
+      statusPayload("delivered", servicePricing)
+    )
+
+    expect(mocks.updateMetaPricing).toHaveBeenCalledWith(
+      expect.objectContaining({ deliveryStatus: "delivered" })
+    )
+  })
+
+  it("no escribe cobro con un acuse que no trae el bloque", async () => {
+    await ingestWhatsappWebhookPayload(statusPayload("read"))
+
+    expect(mocks.updateDeliveryStatus).toHaveBeenCalled()
+    expect(mocks.updateMetaPricing).not.toHaveBeenCalled()
   })
 
   // Los mensajes se procesan antes que los acuses: si el mismo POST trae los

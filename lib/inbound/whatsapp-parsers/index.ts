@@ -19,5 +19,6 @@ export type {
   WhatsappHistoryEvent,
   WhatsappMessageEvent,
   WhatsappStatusEvent,
+  WhatsappStatusPricing,
   WhatsappWebhookBatch,
 } from "./types"

@@ -14,6 +14,7 @@ import {
   insertCoexistenceMessage,
   insertInboundMessage,
   updateDeliveryStatus,
+  updateMetaPricing,
   upsertConversation,
   type MessageRecord,
 } from "@/lib/messages/message-log"
@@ -305,6 +306,19 @@ async function applyWhatsappStatuses(
       metaMessageId: status.metaMessageId,
       deliveryStatus: status.deliveryStatus,
     })
+
+    // El cobro va aparte y no depende de `applied`: un `delivered` que llega
+    // después del `read` pierde la guarda de `delivery_status`, pero es el acuse
+    // con el que Meta cobra y su bloque `pricing` se guarda igual (ADR 0023).
+    if (status.pricing) {
+      await updateMetaPricing({
+        connectedPageId: page.id,
+        metaMessageId: status.metaMessageId,
+        deliveryStatus: status.deliveryStatus,
+        reportedAt: status.timestamp,
+        pricing: status.pricing,
+      })
+    }
 
     // Sección Logs: el acuse se guarda también cuando perdió la guarda. Un
     // `failed` de WhatsApp con su motivo es justo lo que el tenant busca cuando
