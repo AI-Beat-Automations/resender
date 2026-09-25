@@ -6,6 +6,7 @@ import {
 } from "@/components/ui/accordion"
 
 import { Section, SectionHeading } from "@/features/marketing/ui/section"
+import type { FaqItem } from "@/content/i18n"
 
 // Sección de FAQ reutilizable (landing y pricing). Recibe título e items.
 export function FaqSection({
@@ -18,7 +19,7 @@ export function FaqSection({
   id?: string
   kicker?: string
   title: string
-  items: ReadonlyArray<{ q: string; a: string }>
+  items: ReadonlyArray<FaqItem>
   tone?: "base" | "muted"
 }) {
   return (
@@ -33,6 +34,19 @@ export function FaqSection({
               </AccordionTrigger>
               <AccordionContent className="text-muted-foreground">
                 {item.a}
+                {item.link && (
+                  <>
+                    {" "}
+                    <a
+                      href={item.link.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-medium text-foreground underline underline-offset-4"
+                    >
+                      {item.link.label}
+                    </a>
+                  </>
+                )}
               </AccordionContent>
             </AccordionItem>
           ))}

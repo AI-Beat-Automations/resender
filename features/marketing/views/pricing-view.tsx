@@ -60,6 +60,9 @@ export function PricingView({ lang }: { lang: Locale }) {
             {dict.pricing.intro.map((paragraph) => (
               <p key={paragraph}>{paragraph}</p>
             ))}
+            <p className="rounded-xl border border-border bg-muted/40 px-5 py-4 text-sm leading-7">
+              {dict.pricing.metaNote}
+            </p>
           </div>
         </Section>
 

@@ -17,7 +17,13 @@ export type Locale = "es" | "en"
 export const locales: Locale[] = ["es", "en"]
 export const defaultLocale: Locale = "es"
 
-export type FaqItem = { q: string; a: string }
+// `link` es opcional y se dibuja después de la respuesta; el JSON-LD usa solo
+// `a`, así que la respuesta tiene que tener sentido sin él.
+export type FaqItem = {
+  q: string
+  a: string
+  link?: { label: string; href: string }
+}
 export type PainItem = { icon: string; title: string; body: string }
 export type Step = { title: string; body: string }
 export type Plan = {
@@ -102,6 +108,8 @@ export type Dict = {
     title: string
     subtitle: string
     intro: string[]
+    // Nota aparte del intro: en WhatsApp Meta cobra por su cuenta (ADR 0023).
+    metaNote: string
     plans: Plan[]
     // Banda «a medida» debajo de las cards: no es un plan con precio, es el
     // camino de contacto para quien supera Business.

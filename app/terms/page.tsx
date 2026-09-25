@@ -4,6 +4,7 @@ import type { Metadata } from "next"
 import { SiteHeader } from "@/components/site-header"
 import { SiteFooter } from "@/components/site-footer"
 import { SiteBackground } from "@/components/site-background"
+import { META_PAYMENT_SETTINGS_URL } from "@/lib/meta/whatsapp-billing-links"
 
 export const metadata: Metadata = {
   title: "Terms of Service",
@@ -11,7 +12,7 @@ export const metadata: Metadata = {
     "Terms for businesses using Resender, operated by Lorna Suriano Hernandez.",
 }
 
-const LAST_UPDATED = "August 24, 2026"
+const LAST_UPDATED = "September 25, 2026"
 const CONTACT_EMAIL = "info@resender.dev"
 
 export default function TermsPage() {
@@ -105,6 +106,30 @@ export default function TermsPage() {
               attempt and no call is made to Meta. Imported history, delivery
               receipts and your own outgoing messages do not open or extend the
               window.
+            </p>
+            <p className="mt-2">
+              <strong className="text-foreground">
+                Meta&apos;s charges are yours.
+              </strong>{" "}
+              Meta charges for WhatsApp messages separately from Resender,
+              including the replies Resender sends inside the 24-hour window
+              once a number uses up the free service messages Meta grants it
+              each month. Meta bills those charges directly to the payment
+              method on your WhatsApp Business Account; Resender does not
+              collect, resell or mark them up, and your Resender plan fee is
+              independent of them. Keeping a valid payment method on your
+              WhatsApp Business Account is your responsibility, in your{" "}
+              <a
+                href={META_PAYMENT_SETTINGS_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-foreground underline-offset-4 hover:underline"
+              >
+                Meta Business payment settings
+              </a>
+              : without one, Meta may stop delivering your messages. Any message
+              counts Resender shows you are informational; Meta&apos;s invoice
+              is the only authoritative record of what you owe Meta.
             </p>
           </Section>
 

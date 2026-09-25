@@ -12,6 +12,7 @@ import {
   prettyBody,
 } from "@/features/logs/log-format"
 import { inboxHref } from "@/lib/inbox/inbox-tabs"
+import { META_PAYMENT_SETTINGS_URL } from "@/lib/meta/whatsapp-billing-links"
 import type { RequestLogDetail } from "@/lib/logs/read-model"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -205,10 +206,13 @@ function attemptsText(detail: RequestLogDetail, t: DetailDict): string {
   }`
 }
 
+const WHATSAPP_PAYMENT_ERROR_CODE = "131042"
+
 // Rojo para un fallo —con el código de Meta cuando lo hay—, ámbar mientras se
 // reintenta y neutro para un omitido, que no es un error.
 function Callout({ detail }: { detail: RequestLogDetail }) {
-  const t = useAppDict().requestLogs.detail
+  const dict = useAppDict()
+  const t = dict.requestLogs.detail
   if (detail.status === "skipped") {
     return (
       <p className="rounded-[10px] border border-border bg-surface-sunken px-3.5 py-3 text-[13px] text-text-secondary">
@@ -232,6 +236,21 @@ function Callout({ detail }: { detail: RequestLogDetail }) {
         <span className="font-mono font-bold">{detail.errorCode} </span>
       )}
       {detail.errorMessage}
+      {/* 131042: el texto de Meta no dice qué hacer. Meta cobra directo a la
+          tarjeta de la WABA (ADR 0023), así que la salida es suya y en Meta. */}
+      {detail.errorCode === WHATSAPP_PAYMENT_ERROR_CODE && (
+        <span className="mt-2 block">
+          {dict.metaErrors.whatsappPaymentMethod}{" "}
+          <a
+            href={META_PAYMENT_SETTINGS_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium underline underline-offset-4"
+          >
+            {dict.metaErrors.whatsappPaymentLink}
+          </a>
+        </span>
+      )}
     </p>
   )
 }

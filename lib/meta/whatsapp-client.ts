@@ -1,4 +1,5 @@
 import { GRAPH_FACEBOOK_BASE } from "@/lib/meta/graph-version"
+import { META_PAYMENT_SETTINGS_URL } from "@/lib/meta/whatsapp-billing-links"
 import type { LogAction, LogReason } from "@/lib/observability/logger"
 import { describeError, log } from "@/lib/observability/logger"
 import {
@@ -1428,12 +1429,12 @@ export function explainWhatsappError(
   }
 
   // 131042 = problema de método de pago del negocio. Se ve como un fallo de
-  // envío y no lo es: la línea de crédito del WABA está sin resolver.
+  // envío y no lo es: la línea de crédito del WABA está sin resolver. Meta le
+  // cobra al cliente directo, así que la acción es suya y en Meta (ADR 0023).
   if (code === 131042) {
     return {
       code: null,
-      message:
-        "The WhatsApp Business account has a billing problem: add or fix the payment method on the WABA in Meta Business Manager.",
+      message: `Meta didn't deliver this message because the WhatsApp Business account has no valid payment method. Meta bills WhatsApp messages directly to the card on the WABA, not through Resender: add or fix the payment method in Meta Business payment settings (${META_PAYMENT_SETTINGS_URL}) and send again.`,
     }
   }
 
