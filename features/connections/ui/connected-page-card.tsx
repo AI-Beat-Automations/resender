@@ -19,6 +19,7 @@ import {
   type ConnectionActionState,
 } from "@/features/connections/actions"
 import { ChannelAvatar } from "@/features/connections/ui/channel-avatar"
+import { MetaFreeTierPanel } from "@/features/connections/ui/meta-free-tier-panel"
 import {
   Alert,
   AlertContent,
@@ -58,6 +59,7 @@ import {
 import { fmt, type AppDict } from "@/content/i18n/app"
 import { useAppDict } from "@/content/i18n/app/provider"
 import type { ChannelAccess } from "@/lib/auth/channel-access"
+import type { MetaFreeTierView } from "@/lib/meta/whatsapp-free-tier"
 import type { PageChannel } from "@/lib/pages/page-registry"
 
 // Tarjeta de página conectada (spec B2 + galería de estados B3). Las fechas
@@ -105,6 +107,10 @@ export type ConnectedPageView = {
   // recibe la lista del padre; la del cliente lo deja en null porque todo lo
   // que ve es suyo.
   clientName: string | null
+  // [Cupo gratis de Meta] del mes (issue #171): solo en WhatsApp activo. Null
+  // en los otros canales; `"unavailable"` si el conteo falló, para decirlo en
+  // vez de pintar un cero inventado.
+  metaFreeTier: MetaFreeTierView | "unavailable" | null
 }
 
 export function ConnectedPageCard({
@@ -392,6 +398,13 @@ export function ConnectedPageCard({
           )}
 
           {pinReveal && <WhatsappPinPanel connectionId={page.id} t={t} />}
+
+          {/* El consumo de Meta va con lo propio del número y no junto al
+              contador de cuota del header: son dos cuentas distintas y no se
+              descuentan una de la otra (ADR 0023). */}
+          {page.metaFreeTier && (
+            <MetaFreeTierPanel usage={page.metaFreeTier} t={t} />
+          )}
 
           {coexistence && (
             <div className="rounded-[10px] border border-border bg-surface-sunken px-3.5 py-3">

@@ -73,6 +73,12 @@
     // Invitación de un cliente (issue #154). Plantilla en Resend:
     // `docs/email/client-invitation.html`. Mismo criterio que las de arriba.
     "RESEND_TEMPLATE_CLIENT_INVITATION": "450ecbae-d818-4be7-9e19-bb75fbb4b744",
+    // Aviso del [Cupo gratis de Meta] al 80 % y al 100 % (issue #171).
+    // Plantilla en Resend: `docs/email/meta-free-tier.html`. Vacía hasta que
+    // se suba: mientras tanto `sendMetaFreeTierEmail` devuelve
+    // `not_configured`, lo deja en el log y suelta el reclamo del umbral, así
+    // que el aviso sale en cuanto haya id.
+    "RESEND_TEMPLATE_META_FREE_TIER": "",
   },
   // Entrega durable al webhook del tenant. Las colas ya existen en la cuenta
   // (`docs/api-cloudflare-manual-runbook.md`), creadas cuando esto vivía en el
@@ -269,6 +275,7 @@
         "RESEND_TEMPLATE_VERIFY_EMAIL": "a2be1ed8-a821-4916-871d-2a375dc3593b",
         "RESEND_TEMPLATE_ACCOUNT_LINKED": "f76d75f9-4b9f-4064-b195-c90a5cb8d0ae",
         "RESEND_TEMPLATE_CLIENT_INVITATION": "450ecbae-d818-4be7-9e19-bb75fbb4b744",
+        "RESEND_TEMPLATE_META_FREE_TIER": "",
       },
       // Colas propias. Compartirlas con producción haría que un job de prueba
       // saliera hacia el webhook real de un cliente que paga.
