@@ -10,6 +10,7 @@ vi.stubEnv("NEXT_PUBLIC_META_APP_ID", "meta-app-id")
 vi.stubEnv("META_APP_SECRET", "meta-app-secret")
 
 const { META_GRAPH_VERSION } = await import("./graph-version")
+const { META_PAYMENT_SETTINGS_URL } = await import("./whatsapp-billing-links")
 const {
   assertWhatsappWabaShared,
   beginWhatsappSignup,
@@ -927,6 +928,8 @@ describe("catálogo de errores de WhatsApp", () => {
     expect(message(131047)).toBe(WHATSAPP_WINDOW_CLOSED_REASON)
     expect(message(131026)).toContain("couldn't deliver")
     expect(message(131031)).toContain("locked or disabled")
+    expect(message(131042)).toContain("payment method")
+    expect(message(131042)).toContain(META_PAYMENT_SETTINGS_URL)
     expect(message(133005)).toContain("two-step verification")
     expect(message(368)).toContain("policy violation")
   })

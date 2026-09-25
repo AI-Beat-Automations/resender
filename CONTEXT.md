@@ -486,6 +486,11 @@ La cuota mide **ambas direcciones**: cada [Inbound message] persistido suma 1, y
 Los entrantes **cuentan aunque no se entreguen**: si el tenant está restringido o la página no tiene `webhookUrl`, el mensaje se persiste igual y consume cuota. Lo que la cuota cubre es recibir y persistir, no entregar.
 La cuota mide **todos los canales**, incluidos los DMs y comentarios de Instagram: ver [Instagram dentro de facturacion].
 
+### Mensaje cobrado por Meta
+
+Una respuesta de WhatsApp que **Meta le cobra al cliente**: desde el 1 de octubre de 2026, cada mensaje de servicio entregado después de los 1.000 gratis que Meta da por número al mes. Meta se lo factura directo a la tarjeta registrada en la WABA del cliente; **Resender no lo cobra, no lo revende y no le pone margen** (`docs/adr/0023-costo-de-meta-se-informa-no-se-cobra.md`). Sin método de pago en la WABA, Meta puede dejar de entregar (`131042`).
+**No confundir con [Mensaje contabilizado]**, que es la cuota del plan de Resender: una misma respuesta de WhatsApp suma 1 a la cuota, la cobre Meta o no, y los dos contadores no se descuentan uno del otro. Los conteos de Meta que muestre Resender son informativos; la factura de Meta es la fuente de lo que se le debe.
+
 ### Período de cuota
 
 En un plan de pago la ventana es el **período de facturación de Stripe**, no el mes calendario: el contador se resetea cuando cierra el ciclo que el cliente pagó, para no regalar una cuota completa a quien paga el día 28. Requiere `subscriptions.current_period_start`, que la migración `0005` no incluía. Sin período conocido no hay envío (fail-closed).
