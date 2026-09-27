@@ -157,7 +157,7 @@ export async function enqueueDelivery(input: {
   if (!job.enqueueable) {
     log({
       entrypoint: "after",
-      action: "webhook_delivery",
+      action: "webhook_enqueue",
       outcome: "duplicate",
       reason: "already_ingested",
       ...context,
@@ -167,9 +167,11 @@ export async function enqueueDelivery(input: {
   }
 
   await queue().send({ jobId: job.id })
+  // Encolado, no entregado: la entrega la registra el consumidor de la cola
+  // con `webhook_delivery` y el mismo `jobId`.
   log({
     entrypoint: "after",
-    action: "webhook_delivery",
+    action: "webhook_enqueue",
     outcome: "ok",
     ...context,
     jobId: job.id,
