@@ -84,6 +84,12 @@ type ContextFields = {
   messagingCount?: number
   changeCount?: number
   fields?: string[]
+  // Eventos del sobre que el parser ignoró **a propósito** (ecos, «visto»,
+  // mensajes borrados o sin texto), y de qué tipo. Es lo que separa un
+  // `webhook_receive_dropped` de puro ruido normal de uno en que el parser dejó
+  // de reconocer el payload. Son tipos de evento, nunca contenido.
+  ignoredCount?: number
+  ignoredKinds?: string[]
   // Sube el nivel de un descarte que sí es una alarma. Por defecto un descarte
   // es `info`: una cuenta desconectada a la que Meta le sigue mandando eventos
   // es la operación normal, no un error.
@@ -152,13 +158,14 @@ export function describeError(error: unknown): string {
 // al issue si lo hubo. Es el mismo objeto ya redactado que va a Workers Logs, y
 // ese es el punto: no hay un segundo camino hacia Sentry que pueda redactar
 // distinto. `event` es el mensaje y el resto van como atributos, que Sentry
-// solo acepta como string, número o booleano; por eso `fields` se aplana.
+// solo acepta como string, número o booleano; por eso las listas (`fields`,
+// `ignoredKinds`) se aplanan a texto separado por comas.
 // `environment` se descarta porque el SDK ya lo manda como
 // `sentry.environment`. Sin `Sentry.init` (los tests, o el consumidor de la
 // cola antes del primer request), `Sentry.logger` no hace nada.
 function toSentry(
   level: LogLevel,
-  { event, fields, ...rest }: Record<string, unknown>
+  { event, ...rest }: Record<string, unknown>
 ) {
   const attributes: Record<string, string | number | boolean> = {}
   for (const [key, value] of Object.entries(rest)) {
@@ -169,9 +176,10 @@ function toSentry(
       typeof value === "boolean"
     ) {
       attributes[key] = value
+    } else if (Array.isArray(value)) {
+      attributes[key] = value.join(",")
     }
   }
-  if (Array.isArray(fields)) attributes.fields = fields.join(",")
   Sentry.logger[level](String(event), attributes)
 }
 
