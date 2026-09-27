@@ -175,7 +175,21 @@ function toSentry(
   Sentry.logger[level](String(event), attributes)
 }
 
+// **Loguear nunca interrumpe el flujo.** Muchos `log()` viven dentro de un
+// `catch` del camino crítico (reenvío al tenant, DLQ, respuesta traducida de
+// Meta): si el log lanzara, lo que viene después —marcar el reintento, mandar
+// a la DLQ— no correría. Por eso `log()` no lanza nunca: ni si el SDK de Sentry
+// falla, ni si falla la consola. Perder una línea es aceptable; perder un
+// mensaje no.
 export function log(input: LogInput) {
+  try {
+    emit(input)
+  } catch {
+    // Silencio deliberado: no hay a dónde reportar que el reporte falló.
+  }
+}
+
+function emit(input: LogInput) {
   const { level, errorMessage, ...fields } = input
   const record = {
     worker: "web" as const,
@@ -189,7 +203,12 @@ export function log(input: LogInput) {
   }
 
   const resolved = level ?? LEVEL_BY_OUTCOME[input.outcome]
-  toSentry(resolved, record)
+  // Aislado de la consola: si Sentry falla, la línea igual llega a Workers Logs.
+  try {
+    toSentry(resolved, record)
+  } catch {
+    // Ver `log()`: Sentry es un destino más, no una dependencia del flujo.
+  }
   if (resolved === "error") {
     console.error(record)
     return
