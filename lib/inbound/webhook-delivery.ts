@@ -558,6 +558,9 @@ export async function deliverJob(input: {
     ...subjectFields(claimed),
     attempt: claimed.attemptCount,
     status: outcome.statusCode ?? undefined,
+    // Cuánto tardó el endpoint del tenant. Es la latencia que ve el contacto
+    // entre escribir y que el agente reciba el mensaje.
+    durationMs,
   })
 
   await logDeliveryAttempt({
