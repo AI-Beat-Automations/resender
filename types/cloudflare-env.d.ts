@@ -34,6 +34,11 @@ interface CloudflareEnv {
   // Bucket R2 privado con la media **entrante** de WhatsApp. La saliente no
   // pasa por acá: la hospeda el cliente y viaja por `link`.
   WHATSAPP_MEDIA: R2Bucket
+  // `vars` de `wrangler.jsonc`. Solo las que lee `worker.ts` directo de `env`.
+  ENVIRONMENT?: string
+  // DSN de Sentry para `queue` y `scheduled` (`worker.ts`). Lo pasa
+  // `deploy.yml` con `--var`; staging no lo tiene y queda apagado.
+  SENTRY_DSN?: string
 }
 
 // Mismo nombre y forma que genera `wrangler types`, para que sustituir este
