@@ -11,10 +11,13 @@ import { redactEventUrls } from "@/lib/posthog-redact"
 // Sentry va primero para que un error al inicializar PostHog ya quede capturado.
 // Sin replay a propósito: el de sesiones lo lleva PostHog. Sin `dataCollection`
 // por el mismo motivo que en `sentry.server.config.ts`. Sentry no escribe
-// cookies, así que no depende del consentimiento de la tarjeta.
+// cookies, así que no depende del consentimiento de la tarjeta. Solo reporta
+// el build de producción, con el mismo interruptor que el servidor.
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
-  tracesSampleRate: process.env.NODE_ENV === "development" ? 1.0 : 0.1,
+  enabled: process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT === "production",
+  environment: process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT ?? "development",
+  tracesSampleRate: 0.1,
 })
 
 // Spans de navegación del App Router.

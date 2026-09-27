@@ -14,9 +14,14 @@ import * as Sentry from "@sentry/nextjs"
 // Sentry Logs no se activa acá: en el SDK v11 `Sentry.logger` manda siempre que
 // haya `init` (ya no existe `enableLogs`). Lo que llega es lo que emite
 // `log()` de `lib/observability/logger.ts`, no la consola.
+//
+// Solo producción reporta. `NEXT_PUBLIC_SENTRY_ENVIRONMENT` se inlinea en build
+// y solo lo define `deploy.yml`: staging y local quedan con `enabled: false`
+// aunque el `.env` traiga el DSN. Es el mismo interruptor que en el navegador,
+// que no puede leer `ENVIRONMENT` de `wrangler.jsonc`.
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
-  // `ENVIRONMENT` viene de `vars` en `wrangler.jsonc` (production/staging).
-  environment: process.env.ENVIRONMENT ?? "development",
-  tracesSampleRate: process.env.NODE_ENV === "development" ? 1.0 : 0.1,
+  enabled: process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT === "production",
+  environment: process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT ?? "development",
+  tracesSampleRate: 0.1,
 })

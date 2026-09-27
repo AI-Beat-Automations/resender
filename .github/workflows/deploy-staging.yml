@@ -58,8 +58,7 @@ jobs:
           NEXT_PUBLIC_WHATSAPP_CONFIG_ID: ${{ vars.NEXT_PUBLIC_WHATSAPP_CONFIG_ID_STAGING }}
           NEXT_PUBLIC_POSTHOG_KEY: ${{ vars.NEXT_PUBLIC_POSTHOG_KEY_STAGING }}
           NEXT_PUBLIC_POSTHOG_HOST: ${{ vars.NEXT_PUBLIC_POSTHOG_HOST_STAGING }}
-          # Mismo DSN en ambos entornos: los separa `environment` (ENVIRONMENT).
-          NEXT_PUBLIC_SENTRY_DSN: ${{ vars.NEXT_PUBLIC_SENTRY_DSN }}
+          # Sin Sentry a propósito: solo reporta producción (ver `deploy.yml`).
           # Solo para que `next build` tenga un valor presente; en runtime el
           # Worker usa el secreto cargado con `wrangler secret put --env staging`.
           DATABASE_URL: ${{ secrets.DATABASE_URL_MIGRATIONS_STAGING }}
