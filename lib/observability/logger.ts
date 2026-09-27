@@ -1,3 +1,5 @@
+import * as Sentry from "@sentry/nextjs"
+
 import type { PageChannel } from "@/lib/pages/page-registry"
 
 import type { LogAction, LogEntrypoint, LogOutcome, LogReason } from "./catalog"
@@ -146,6 +148,33 @@ export function describeError(error: unknown): string {
   return "unknown error"
 }
 
+// El mismo registro va a Sentry Logs, donde queda pegado al trace del request y
+// al issue si lo hubo. Es el mismo objeto ya redactado que va a Workers Logs, y
+// ese es el punto: no hay un segundo camino hacia Sentry que pueda redactar
+// distinto. `event` es el mensaje y el resto van como atributos, que Sentry
+// solo acepta como string, número o booleano; por eso `fields` se aplana.
+// `environment` se descarta porque el SDK ya lo manda como
+// `sentry.environment`. Sin `Sentry.init` (los tests, o el consumidor de la
+// cola antes del primer request), `Sentry.logger` no hace nada.
+function toSentry(
+  level: LogLevel,
+  { event, fields, ...rest }: Record<string, unknown>
+) {
+  const attributes: Record<string, string | number | boolean> = {}
+  for (const [key, value] of Object.entries(rest)) {
+    if (key === "environment") continue
+    if (
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
+    ) {
+      attributes[key] = value
+    }
+  }
+  if (Array.isArray(fields)) attributes.fields = fields.join(",")
+  Sentry.logger[level](String(event), attributes)
+}
+
 export function log(input: LogInput) {
   const { level, errorMessage, ...fields } = input
   const record = {
@@ -160,6 +189,7 @@ export function log(input: LogInput) {
   }
 
   const resolved = level ?? LEVEL_BY_OUTCOME[input.outcome]
+  toSentry(resolved, record)
   if (resolved === "error") {
     console.error(record)
     return
