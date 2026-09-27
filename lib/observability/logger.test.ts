@@ -247,6 +247,21 @@ describe("log → Sentry", () => {
       )
     ).toBe(true)
   })
+
+  it("aplana cualquier lista, no solo `fields`", () => {
+    log({
+      entrypoint: "after",
+      action: "webhook_receive",
+      outcome: "dropped",
+      reason: "ignored_event_types",
+      ignoredCount: 2,
+      ignoredKinds: ["echo", "no_message"],
+    })
+
+    const [, attributes] = sentryLogger.info.mock.calls.at(-1) ?? []
+    expect(attributes.ignoredKinds).toBe("echo,no_message")
+    expect(attributes.ignoredCount).toBe(2)
+  })
 })
 
 // Muchos `log()` viven dentro de un `catch` del camino crítico: si loguear
