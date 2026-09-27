@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest"
 
-import { extractInstagramDirectMessages } from "./instagram-webhook"
+import {
+  describeIgnoredInstagramMessaging,
+  extractInstagramDirectMessages,
+} from "./instagram-webhook"
 
 const IG_ACCOUNT = "17841400000000000"
 const CONTACT = "1234567890"
@@ -178,5 +181,58 @@ describe("parser de mensajes directos de Instagram", () => {
     expect(
       extractInstagramDirectMessages({ entry: [{ id: 12345, messaging: [] }] })
     ).toEqual([])
+  })
+})
+
+// Lo que separa un `webhook_receive_dropped` de ruido normal de uno en que el
+// parser dejó de reconocer el payload. Tiene que coincidir exactamente con lo
+// que `extractInstagramDirectMessages` descarta.
+describe("eventos de Instagram ignorados a propósito", () => {
+  it("clasifica cada descarte por tipo", () => {
+    const body = {
+      object: "instagram",
+      entry: [
+        {
+          id: IG_ACCOUNT,
+          messaging: [
+            { sender: { id: CONTACT }, message: { mid: "a", is_echo: true } },
+            { sender: { id: CONTACT }, message: { mid: "b", is_deleted: true } },
+            { sender: { id: CONTACT }, message: { mid: "c" } },
+            { sender: { id: CONTACT }, read: { mid: "a" } },
+            { sender: { id: CONTACT }, message: { mid: "d", text: "hola" } },
+          ],
+        },
+      ],
+    }
+
+    expect(describeIgnoredInstagramMessaging(body)).toEqual({
+      ignoredCount: 4,
+      ignoredKinds: ["deleted", "echo", "no_message", "non_text"],
+    })
+    // Lo que no se ignoró es exactamente lo que el parser produce.
+    expect(extractInstagramDirectMessages(body)).toHaveLength(1)
+  })
+
+  it("no cuenta nada en un DM de texto normal", () => {
+    expect(
+      describeIgnoredInstagramMessaging(dm({ mid: "m", text: "hola" }))
+    ).toEqual({ ignoredCount: 0, ignoredKinds: [] })
+  })
+
+  it("no cuenta entradas sin id: ese payload raro tiene que seguir sonando", () => {
+    expect(
+      describeIgnoredInstagramMessaging(
+        dm({ mid: "m", is_echo: true }, 12345 as unknown as string)
+      )
+    ).toEqual({ ignoredCount: 0, ignoredKinds: [] })
+  })
+
+  it("tolera cuerpos que no son un sobre", () => {
+    for (const body of [null, "nope", {}, { entry: [{}] }]) {
+      expect(describeIgnoredInstagramMessaging(body)).toEqual({
+        ignoredCount: 0,
+        ignoredKinds: [],
+      })
+    }
   })
 })

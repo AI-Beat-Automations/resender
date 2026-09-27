@@ -3,6 +3,7 @@ import crypto from "crypto"
 import { after, type NextRequest } from "next/server"
 
 import { ingestInstagramWebhookPayload } from "@/lib/inbound/inbound-ingestion"
+import { describeIgnoredInstagramMessaging } from "@/lib/inbound/instagram-webhook"
 import { describeWebhookEnvelope } from "@/lib/inbound/webhook-envelope"
 import { verifyMetaSignature } from "@/lib/inbound/webhook-signature"
 import { describeError, log } from "@/lib/observability/logger"
@@ -112,6 +113,7 @@ export async function POST(request: NextRequest) {
   // Conteos del sobre, sin nada de contenido. Es lo que distingue «Meta no
   // mandó nada» de «mandó algo y el parser no lo reconoció».
   const envelope = describeWebhookEnvelope(body)
+  const ignored = describeIgnoredInstagramMessaging(body)
 
   // La ingesta entera va **fuera de la respuesta**, igual que en WhatsApp: son
   // ~8 round-trips a Neon por evento y Meta solo espera el 200. Con la ingesta
@@ -125,25 +127,39 @@ export async function POST(request: NextRequest) {
       const ingested = await ingestInstagramWebhookPayload(body, requestId)
 
       const nonEmpty = envelope.messagingCount + envelope.changeCount > 0
+      // Todo lo que trajo el sobre eran eventos que el parser descarta a
+      // propósito: ecos, «visto», borrados o DMs sin texto. Es la operación
+      // normal de Instagram, no un parser roto.
+      const onlyIgnored =
+        envelope.changeCount === 0 &&
+        envelope.messagingCount > 0 &&
+        ignored.ignoredCount === envelope.messagingCount
       log({
         entrypoint: "after",
         action: "webhook_receive",
-        // Un sobre con eventos que produce cero ingestas no es normal: o el
-        // parser dejó de reconocer el payload, o todo lo que vino se descartó
-        // —y en ese caso hay una línea `inbound_ingest_dropped` con el mismo
-        // `requestId` que dice por qué—.
+        // Un sobre con eventos que produce cero ingestas, y que no se explica
+        // por descartes a propósito, no es normal: o el parser dejó de
+        // reconocer el payload, o todo lo que vino se descartó —y en ese caso
+        // hay una línea `inbound_ingest_dropped` con el mismo `requestId` que
+        // dice por qué—.
         ...(ingested.length === 0 && nonEmpty
-          ? {
-              outcome: "dropped" as const,
-              reason: "no_events_in_payload" as const,
-              level: "warn" as const,
-            }
+          ? onlyIgnored
+            ? {
+                outcome: "dropped" as const,
+                reason: "ignored_event_types" as const,
+              }
+            : {
+                outcome: "dropped" as const,
+                reason: "no_events_in_payload" as const,
+                level: "warn" as const,
+              }
           : { outcome: "ok" as const }),
         requestId,
         channel: "instagram",
         route: ROUTE,
         count: ingested.length,
         ...envelope,
+        ...(ignored.ignoredCount > 0 ? ignored : {}),
       })
 
       // El reenvío al webhook del tenant: el endpoint del cliente puede tardar

@@ -117,6 +117,10 @@ export type LogReason =
   | "signature_mismatch"
   | "invalid_json"
   | "no_events_in_payload"
+  // El sobre solo traía eventos que el parser descarta a propósito (ecos,
+  // «visto», borrados, sin texto). Es ruido normal y va en `info`; la alarma
+  // de parser roto sigue siendo `no_events_in_payload`.
+  | "ignored_event_types"
   // ingesta
   | "account_not_connected"
   | "no_active_subscription"
