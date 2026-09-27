@@ -68,9 +68,14 @@ Para seguir un caso puntual: busca por `requestId` para ver las tres primeras y 
 `Line` · Filter `action:webhook_receive` · Group by `outcome`, `channel` · sin rangos
 
 - **Qué es:** cada webhook que Meta nos manda.
-- **Sano:** `ok` sigue el ritmo del tráfico. Algún `dropped` con `no_events_in_payload` es normal (avisos de Meta sin mensaje).
+- **Sano:** `ok` sigue el ritmo del tráfico. Los `dropped` se leen por su `reason`:
+  - `ignored_event_types` (nivel `info`): el sobre solo traía eventos que se descartan a propósito. Es normal. `ignoredKinds` dice cuáles: `echo` (mensaje de la propia cuenta), `no_message` (visto o reacción), `deleted` (el contacto borró el mensaje), `non_text` (foto, sticker o ❤️; Instagram solo acepta texto por ahora).
+  - `no_events_in_payload` (nivel `warn`): llegó algo que el parser no supo explicar. **Esta es la alarma.** Mira `entryCount`, `messagingCount` y `changeCount`, y busca una línea `inbound_ingest_dropped` con el mismo `requestId`: si existe, el mensaje se reconoció pero se descartó después (cuenta no conectada, sin suscripción).
+  - `signature_mismatch`: la firma no coincide, así que el secreto de la app está equivocado.
 - **Si `ok` cae a cero en horario normal:** Meta dejó de mandarnos eventos. Revisa la app de Meta (modo desarrollo), la suscripción del webhook y el secreto de la app.
-- **Si `dropped` sube de golpe:** el parser dejó de reconocer el payload, o la firma no coincide (`signature_mismatch`: secreto equivocado).
+- **Si `no_events_in_payload` sube de golpe:** el parser dejó de reconocer el payload.
+- **Si `non_text` sube de golpe sin que los contactos manden más fotos:** puede que Meta haya movido el texto de lugar. Revisa `lib/inbound/instagram-webhook.ts`.
+- Para ver los descartes por tipo: Filter `action:webhook_receive outcome:dropped`, Group by `reason` y `ignoredKinds`.
 - **`failed`:** error nuestro al procesar. Siempre debería estar en 0.
 
 ### 5. Latencia de entrega al agente
