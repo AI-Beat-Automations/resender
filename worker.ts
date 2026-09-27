@@ -30,6 +30,10 @@ import {
 } from "./lib/inbound/webhook-delivery"
 import { consumeWhatsappQueue } from "./lib/jobs/whatsapp-queue"
 import { purgeExpiredRequestLogs } from "./lib/logs/request-log"
+import {
+  type TrackedContext,
+  trackWaitUntil,
+} from "./lib/observability/request-flush"
 
 type WebWorker = {
   fetch(
@@ -88,11 +92,38 @@ function flushSentry(ctx: WorkerExecutionContext) {
 }
 
 const worker: WebWorker = {
-  // Sin envolver: todo el sitio —páginas, RSC, server actions y los route
-  // handlers de `/api/*`— sigue saliendo del bundle de OpenNext exactamente
-  // igual que antes. Interponer algo acá sería poner código en el camino de
-  // cada request del producto para servir a dos handlers que no lo necesitan.
-  fetch: nextHandler.fetch,
+  // Todo el sitio —páginas, RSC, server actions y los route handlers de
+  // `/api/*`— sigue saliendo del bundle de OpenNext. La única capa es la del
+  // flush de Sentry (`lib/observability/request-flush.ts`): anota las tareas
+  // de `waitUntil` del request y, cuando terminaron todas, manda los logs. La
+  // respuesta no espera nada de eso.
+  //
+  // Nada de la capa puede tumbar un request: si armar el contexto falla, el
+  // request va a OpenNext con el `ctx` original, exactamente como antes. El
+  // `fetch` de OpenNext no se envuelve en `try`: reintentarlo ejecutaría el
+  // request dos veces.
+  async fetch(request, env, ctx) {
+    let tracked: TrackedContext
+    try {
+      tracked = trackWaitUntil(ctx)
+    } catch {
+      return nextHandler.fetch(request, env, ctx)
+    }
+
+    const response = await nextHandler.fetch(request, env, tracked.ctx)
+
+    try {
+      ctx.waitUntil(
+        tracked
+          .settled()
+          .then(() => (Sentry.getClient() ? Sentry.flush(2000) : true))
+          .catch(() => false)
+      )
+    } catch {
+      // Ídem `initSentry`: perder los logs de un request es aceptable.
+    }
+    return response
+  },
 
   // Un solo handler `queue` para las **cuatro** colas: Cloudflare no permite
   // uno por cola, así que el despacho es por `batch.queue`. Dentro de cada
