@@ -2,6 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { accountFields, describeError, log } from "./logger"
 
+const sentryLogger = vi.hoisted(() => ({
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+}))
+
+vi.mock("@sentry/nextjs", () => ({ logger: sentryLogger }))
+
 // El logger es puro y concentra tres garantías que ningún test de call site
 // vuelve a revisar: el nivel que le toca a cada `outcome`, el `event` derivado,
 // y que ningún secreto salga adentro de un `errorMessage`. Por eso acá se
@@ -18,6 +26,9 @@ beforeEach(() => {
   spies.log.mockClear()
   spies.warn.mockClear()
   spies.error.mockClear()
+  sentryLogger.info.mockClear()
+  sentryLogger.warn.mockClear()
+  sentryLogger.error.mockClear()
 })
 
 afterEach(() => {
@@ -191,6 +202,50 @@ describe("log", () => {
       log({ entrypoint: "route", action: "webhook_receive", outcome: "ok" })
       expect(lastRecord(spies.log)).not.toHaveProperty("errorMessage")
     })
+  })
+})
+
+describe("log → Sentry", () => {
+  it("manda el mismo registro redactado, con `event` como mensaje", () => {
+    log({
+      entrypoint: "after",
+      action: "webhook_delivery",
+      outcome: "failed",
+      reason: "max_attempts_exhausted",
+      attempt: 5,
+      errorMessage: "GET /me?access_token=EAAB123 falló",
+    })
+
+    expect(sentryLogger.error).toHaveBeenCalledTimes(1)
+    const [message, attributes] = sentryLogger.error.mock.calls[0] ?? []
+    expect(message).toBe("webhook_delivery_failed")
+    expect(attributes).toMatchObject({
+      worker: "web",
+      reason: "max_attempts_exhausted",
+      attempt: 5,
+    })
+    expect(attributes.errorMessage).not.toContain("EAAB123")
+  })
+
+  it("respeta el nivel y deja solo valores que Sentry acepta", () => {
+    log({
+      entrypoint: "route",
+      action: "webhook_receive",
+      outcome: "ok",
+      fields: ["messages", "statuses"],
+    })
+
+    expect(sentryLogger.info).toHaveBeenCalledTimes(1)
+    const [, attributes] = sentryLogger.info.mock.calls[0] ?? []
+    // Sentry descarta arrays y objetos: `fields` se aplana y `environment`
+    // no se duplica con `sentry.environment`.
+    expect(attributes.fields).toBe("messages,statuses")
+    expect(attributes).not.toHaveProperty("environment")
+    expect(
+      Object.values(attributes).every((v) =>
+        ["string", "number", "boolean"].includes(typeof v)
+      )
+    ).toBe(true)
   })
 })
 

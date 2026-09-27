@@ -14,9 +14,11 @@ import {
   insertCoexistenceMessage,
   insertInboundMessage,
   updateDeliveryStatus,
+  updateMetaPricing,
   upsertConversation,
   type MessageRecord,
 } from "@/lib/messages/message-log"
+import { notifyMetaFreeTierThresholds } from "@/lib/meta/whatsapp-free-tier-alerts"
 import {
   getActivePageByMetaPageId,
   type ConnectedPageRecord,
@@ -305,6 +307,30 @@ async function applyWhatsappStatuses(
       metaMessageId: status.metaMessageId,
       deliveryStatus: status.deliveryStatus,
     })
+
+    // El cobro va aparte y no depende de `applied`: un `delivered` que llega
+    // después del `read` pierde la guarda de `delivery_status`, pero es el acuse
+    // con el que Meta cobra y su bloque `pricing` se guarda igual (ADR 0023).
+    if (status.pricing) {
+      const priced = await updateMetaPricing({
+        connectedPageId: page.id,
+        metaMessageId: status.metaMessageId,
+        deliveryStatus: status.deliveryStatus,
+        reportedAt: status.timestamp,
+        pricing: status.pricing,
+      })
+
+      // [Cupo gratis de Meta]: el conteo solo sube con un `delivered` de
+      // servicio, así que es el único acuse que puede cruzar el 80 % o el
+      // 100 %. La función no lanza y deduplica en la base (issue #171).
+      if (
+        priced &&
+        status.deliveryStatus === "delivered" &&
+        status.pricing.category === "service"
+      ) {
+        await notifyMetaFreeTierThresholds(page, status.timestamp)
+      }
+    }
 
     // Sección Logs: el acuse se guarda también cuando perdió la guarda. Un
     // `failed` de WhatsApp con su motivo es justo lo que el tenant busca cuando

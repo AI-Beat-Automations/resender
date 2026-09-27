@@ -4,6 +4,7 @@
 // resuelven el copy con `getDictionary(lang)`.
 
 import type { Dict } from "./dictionary"
+import { META_WHATSAPP_PRICING_URL } from "@/lib/meta/whatsapp-billing-links"
 
 export const es: Dict = {
   nav: {
@@ -172,6 +173,8 @@ export const es: Dict = {
       "Arranca gratis con Free: 2.000 mensajes al mes y 1 conexión, sin tarjeta, para probar tu integración de punta a punta. Cuando vayas en serio, Starter: 50.000 mensajes por mes son unas 25.000 conversaciones cortas, de sobra para un proyecto propio o los primeros clientes. Cuando te acerques al límite te avisamos, y subir a Pro es inmediato: no se corta el servicio ni hay que reconectar nada.",
       "Cobramos por mensaje procesado y no por contacto alcanzado, que es la diferencia que más se nota contra ManyChat a medida que creces: tu factura sigue al tráfico real, no al tamaño acumulado de tu audiencia.",
     ],
+    metaNote:
+      "En WhatsApp, Meta cobra aparte: después de 1.000 mensajes de servicio gratis por número al mes, le factura cada respuesta entregada directo a la tarjeta que registraste en tu cuenta de WhatsApp Business. Resender no cobra ese cargo ni le pone margen, y el precio de tu plan es independiente de él.",
     plans: [
       {
         name: "Free",
@@ -377,6 +380,14 @@ export const es: Dict = {
         q: "¿Qué pasa con mis datos si cancelo?",
         a: "Tus conexiones quedan inactivas y dejamos de recibir mensajes de tus cuentas. Puedes pedir la eliminación de tus datos cuando quieras desde la página de eliminación de datos.",
       },
+      {
+        q: "¿Cuánto cuesta WhatsApp?",
+        a: "Resender no te cobra nada extra por WhatsApp: tus mensajes cuentan en la cuota de tu plan igual que los de cualquier canal. Meta sí cobra aparte. Cada número tiene 1.000 mensajes de servicio gratis al mes; a partir de ahí, Meta cobra cada respuesta entregada según la tarifa del país del destinatario y se la factura a la tarjeta que registraste en tu cuenta de WhatsApp Business. Sin un método de pago ahí, Meta puede dejar de entregar tus mensajes. Los mensajes que te mandan tus clientes no tienen costo.",
+        link: {
+          label: "Ver las tarifas oficiales de Meta",
+          href: META_WHATSAPP_PRICING_URL,
+        },
+      },
     ],
   },
 
@@ -551,7 +562,7 @@ export const es: Dict = {
       title: "Un solo webhook para todos tus canales.",
       titleAccent: "Developer-first.",
       subtitle:
-        "Hoy Resender funciona con Facebook Messenger e Instagram, y ya estamos trabajando en la integración de WhatsApp. Deja tu correo y te avisamos cuando esté disponible.",
+        "Hoy Resender funciona con Facebook Messenger e Instagram, y WhatsApp ya está en acceso anticipado. Deja tu correo y te avisamos de las novedades del producto.",
       breadcrumb: "Lista de espera",
       registerTitle: "¿Ya atiendes por Messenger o Instagram?",
       registerBody:

@@ -48,6 +48,12 @@ import { offersChannel } from "@/lib/pages/channel-display"
 import { formatMetaConnectionError } from "@/lib/pages/meta-connection-error"
 import { formatRelativeTime } from "@/lib/inbox/log-format"
 import { listTenantPages } from "@/lib/pages/page-registry"
+import {
+  buildMetaFreeTierView,
+  metaFreeTierPeriod,
+  type MetaFreeTierUsage,
+} from "@/lib/meta/whatsapp-free-tier"
+import { countMetaServiceUsage } from "@/lib/meta/whatsapp-free-tier-usage"
 import { Alert, AlertContent } from "@/components/ui/alert"
 
 type ConnectedPage = { id: string; name: string }
@@ -154,6 +160,7 @@ export default async function ConnectionsPage({
     (left, right) => cardRank(left) - cardRank(right)
   )
   const firstActiveId = sortedPages.find((page) => page.status === "active")?.id
+  const metaFreeTier = await resolveMetaFreeTierUsage(sortedPages)
   // El filtro solo se monta para un padre con clientes: sin clientes «Todos»
   // y «Mis conexiones» dicen lo mismo.
   const filterOptions =
@@ -271,7 +278,8 @@ export default async function ConnectionsPage({
               // Solo el padre etiqueta: para el cliente todo es suyo.
               page.clientAccountId
                 ? (clientNames.get(page.clientAccountId) ?? null)
-                : null
+                : null,
+              metaFreeTier
             )}
             showWebhookHint={page.id === firstActiveId}
             // El webhook es del padre: la tarjeta del cliente no lo dibuja.
@@ -380,11 +388,31 @@ async function resolvePageQuota(tenantId: string): Promise<PageQuotaView> {
   }
 }
 
+// [Cupo gratis de Meta] de los números de WhatsApp activos, en una sola
+// consulta. El mes es el UTC de ahora (de ahí el «aprox.» de la tarjeta). Si
+// falla devuelve null y cada tarjeta dice que no se pudo leer, en vez de pintar
+// un cero.
+async function resolveMetaFreeTierUsage(
+  pages: Awaited<ReturnType<typeof listTenantPages>>
+): Promise<Map<string, MetaFreeTierUsage> | null> {
+  const ids = pages
+    .filter((page) => page.channel === "whatsapp" && page.status === "active")
+    .map((page) => page.id)
+  if (ids.length === 0) return new Map()
+  try {
+    return await countMetaServiceUsage(ids, metaFreeTierPeriod(new Date()))
+  } catch (error) {
+    console.error("meta free tier usage unavailable", error)
+    return null
+  }
+}
+
 function toPageView(
   page: Awaited<ReturnType<typeof listTenantPages>>[number],
   access: ChannelAccess,
   t: AppDict,
-  clientName: string | null
+  clientName: string | null,
+  metaFreeTier: Map<string, MetaFreeTierUsage> | null
 ): ConnectedPageView {
   const dateTimeFormat = dateTimeFormatFor(t.intl)
   const now = new Date()
@@ -422,6 +450,14 @@ function toPageView(
       ? dateTimeFormat.format(page.disconnectedAt)
       : null,
     clientName,
+    metaFreeTier:
+      page.channel !== "whatsapp" || page.status !== "active"
+        ? null
+        : metaFreeTier
+          ? buildMetaFreeTierView(
+              metaFreeTier.get(page.id) ?? { serviceCount: 0, billedCount: 0 }
+            )
+          : "unavailable",
   }
 }
 

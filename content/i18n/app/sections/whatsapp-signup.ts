@@ -13,6 +13,9 @@ export type WhatsappSignupDict = {
   pinLabel: string
   pinPlaceholder: string
   pinHint: string
+  /** Meta cobra aparte y factura a la tarjeta de la WABA (ADR 0023). */
+  paymentNotice: string
+  paymentLink: string
 }
 
 export const es: WhatsappSignupDict = {
@@ -38,6 +41,9 @@ export const es: WhatsappSignupDict = {
   pinLabel: "PIN de verificación en dos pasos",
   pinPlaceholder: "6 dígitos",
   pinHint: "Escribe el PIN actual del número y vuelve a lanzar la conexión.",
+  paymentNotice:
+    "Necesitas un método de pago en tu cuenta de WhatsApp Business. Meta cobra aparte cada respuesta entregada después de 1.000 mensajes de servicio gratis por número al mes, y se lo factura a esa tarjeta: Resender no cobra ese cargo. Sin método de pago, Meta puede dejar de entregar tus mensajes.",
+  paymentLink: "Configurar pagos en Meta",
 }
 
 export const en: WhatsappSignupDict = {
@@ -63,4 +69,7 @@ export const en: WhatsappSignupDict = {
   pinLabel: "Two-step verification PIN",
   pinPlaceholder: "6 digits",
   pinHint: "Type the number's current PIN and run the connection again.",
+  paymentNotice:
+    "You need a payment method on your WhatsApp Business account. Meta charges separately for each delivered reply after 1,000 free service messages per number each month, and bills that card: Resender doesn't collect that charge. Without a payment method, Meta may stop delivering your messages.",
+  paymentLink: "Set up payments on Meta",
 }

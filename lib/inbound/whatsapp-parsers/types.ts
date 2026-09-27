@@ -160,6 +160,19 @@ export type WhatsappStatusEvent = {
   // Solo con `failed`. Sin esto el diagnóstico se pierde y todos los fallos de
   // envío quedan indistinguibles entre sí.
   errors: WhatsappError[]
+  // El bloque `pricing`: si Meta le cobra este mensaje al negocio. Null si no
+  // vino o vino malformado; el acuse se procesa igual.
+  pricing: WhatsappStatusPricing | null
+}
+
+// Los textos van tal cual los manda Meta, sin catálogo: Meta añade categorías y
+// tipos sin cambiar de versión de API, y el valor de `type` para el cupo gratis
+// de servicio todavía no está documentado (issue #168).
+export type WhatsappStatusPricing = {
+  billable: boolean
+  category: string | null
+  type: string | null
+  pricingModel: string | null
 }
 
 export type WhatsappContactSyncEvent = {

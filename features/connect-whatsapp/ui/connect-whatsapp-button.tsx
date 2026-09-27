@@ -1,5 +1,6 @@
 "use client"
 
+import * as Sentry from "@sentry/nextjs"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { LoaderCircle, Plus } from "lucide-react"
 import { useRouter } from "next/navigation"
@@ -18,6 +19,7 @@ import {
 } from "@/features/connect-whatsapp/signup-events"
 import { decideWhatsappSubmission } from "@/features/connect-whatsapp/signup-submission"
 import { useAppDict } from "@/content/i18n/app/provider"
+import { META_PAYMENT_SETTINGS_URL } from "@/lib/meta/whatsapp-billing-links"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -240,8 +242,15 @@ export function ConnectWhatsAppButton({
         setActionError(
           result.error ?? dictRef.current.whatsappSignup.submitFailed
         )
-      } catch {
+      } catch (error) {
         setActionError(dictRef.current.whatsappSignup.networkFailed)
+        // El `code` de Meta vive 30 segundos: si este fetch falla, el alta se
+        // pierde y hay que repetir el diálogo entero. Un solo log con todo el
+        // contexto, sin el payload (lleva el `code`).
+        Sentry.logger.error("whatsapp signup submit failed", {
+          reason: "network",
+          errorMessage: error instanceof Error ? error.message : String(error),
+        })
       } finally {
         setSubmitting(false)
         // Cada intento **consume** el nonce en el servidor, salga bien o mal:
@@ -345,9 +354,14 @@ export function ConnectWhatsAppButton({
         sdkRef.current = sdk
         setSdkReady(true)
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (!active) return
         setSdkError(dictRef.current.whatsappSignup.sdkBlocked)
+        // No es un bug nuestro (casi siempre es un bloqueador), así que va como
+        // log y no como issue: sirve para ver cuánta gente no puede conectar.
+        Sentry.logger.warn("whatsapp signup facebook sdk failed to load", {
+          errorMessage: error instanceof Error ? error.message : String(error),
+        })
       })
     return () => {
       active = false
@@ -374,6 +388,13 @@ export function ConnectWhatsAppButton({
         console.warn(
           "[whatsapp] Embedded Signup: mensaje descartado por origen no permitido:",
           signup.origin
+        )
+        // La consola solo la ve quien tiene las devtools abiertas; en Sentry
+        // queda el origen de cada usuario real. `fmt` guarda el origen como
+        // atributo propio (`message.parameter.0`) para poder agrupar por él.
+        Sentry.logger.warn(
+          Sentry.logger
+            .fmt`whatsapp signup message dropped: foreign origin ${signup.origin}`
         )
         return
       }
@@ -461,6 +482,23 @@ export function ConnectWhatsAppButton({
 
   const disabled = !CONFIGURED || !sdkReady || !nonce || submitting
 
+  // Meta cobra aparte y factura a la tarjeta de la WABA (ADR 0023). Va antes
+  // del clic en la tarjeta y en el alta a pantalla completa; en el header no
+  // hay sitio, así que sale en el panel junto al aviso del modo, al conectar.
+  const paymentNotice = (
+    <p className="max-w-[420px] text-[12px]/[1.5] text-muted-foreground">
+      {t.whatsappSignup.paymentNotice}{" "}
+      <a
+        href={META_PAYMENT_SETTINGS_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="font-medium text-foreground underline underline-offset-4"
+      >
+        {t.whatsappSignup.paymentLink}
+      </a>
+    </p>
+  )
+
   return (
     // El id es el destino de «Reconectar» de las tarjetas de WhatsApp y del
     // redirect de `/api/meta/whatsapp/start`: no hay una ruta a la que navegar
@@ -516,6 +554,7 @@ export function ConnectWhatsAppButton({
             {t.whatsappSignup.description}
           </p>
         )}
+        {layout !== "header" && paymentNotice}
         {/* La consecuencia concreta, ya con el modo real en la mano. Es la
             mitad que antes vivía en la descripción de cada botón y que con un
             solo punto de entrada no se puede decir de antemano sin confundir:
@@ -534,6 +573,7 @@ export function ConnectWhatsAppButton({
           {modeCaveat && (
             <p className="text-[12.5px]/[1.5] text-foreground">{modeCaveat}</p>
           )}
+          {modeCaveat && paymentNotice}
           {pinRequired && (
             <div className="grid gap-1.5">
               <Label htmlFor="whatsapp-pin">{t.whatsappSignup.pinLabel}</Label>

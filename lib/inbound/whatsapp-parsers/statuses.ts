@@ -1,9 +1,15 @@
 import type { DeliveryStatus } from "@/lib/messages/message-enums"
 
-import { asArray, asRecord, asString, normalizeTimestamp } from "./coerce"
+import {
+  asArray,
+  asBoolean,
+  asRecord,
+  asString,
+  normalizeTimestamp,
+} from "./coerce"
 import type { WhatsappChange } from "./envelope"
 import { readErrors } from "./envelope"
-import type { WhatsappStatusEvent } from "./types"
+import type { WhatsappStatusEvent, WhatsappStatusPricing } from "./types"
 
 // `field: "messages"`, mitad saliente: los acuses de entrega de lo que
 // enviamos nosotros.
@@ -48,8 +54,30 @@ export function readStatuses(change: WhatsappChange): WhatsappStatusEvent[] {
       recipientId: asString(status.recipient_id),
       timestamp: normalizeTimestamp(status.timestamp),
       errors: readErrors(status.errors),
+      pricing: readPricing(status.pricing),
     })
   }
 
   return events
+}
+
+// El bloque `pricing` que acompaña a `sent` y `delivered`: el dato con el que
+// Meta cobra los mensajes de servicio desde el 1 de octubre de 2026 (ADR 0023).
+//
+// `billable` es lo único obligatorio: sin él el bloque no dice lo que importa y
+// se trata como ausente. El resto va tal cual llega y sin validar contra una
+// lista, por la misma razón que las columnas no tienen CHECK (0029): Meta
+// añade valores sin cambiar de versión de API, y descartar el cobro de un
+// mensaje por una categoría nueva sería perder justo el dato que se cuenta.
+function readPricing(value: unknown): WhatsappStatusPricing | null {
+  const pricing = asRecord(value)
+  const billable = asBoolean(pricing?.billable)
+  if (!pricing || billable === null) return null
+
+  return {
+    billable,
+    category: asString(pricing.category),
+    type: asString(pricing.type),
+    pricingModel: asString(pricing.pricing_model),
+  }
 }

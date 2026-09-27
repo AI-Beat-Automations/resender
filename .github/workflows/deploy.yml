@@ -40,6 +40,16 @@ jobs:
           NEXT_PUBLIC_WHATSAPP_CONFIG_ID: ${{ vars.NEXT_PUBLIC_WHATSAPP_CONFIG_ID }}
           NEXT_PUBLIC_POSTHOG_KEY: ${{ vars.NEXT_PUBLIC_POSTHOG_KEY }}
           NEXT_PUBLIC_POSTHOG_HOST: ${{ vars.NEXT_PUBLIC_POSTHOG_HOST }}
+          # Sentry solo reporta desde este build: `NEXT_PUBLIC_SENTRY_ENVIRONMENT`
+          # es lo que lo enciende en navegador, servidor y edge. Staging y local
+          # no lo tienen y quedan apagados aunque haya DSN.
+          NEXT_PUBLIC_SENTRY_DSN: ${{ vars.NEXT_PUBLIC_SENTRY_DSN }}
+          NEXT_PUBLIC_SENTRY_ENVIRONMENT: production
+          # Subida de source maps en `next build` (`withSentryConfig`). Sin el
+          # token el build sigue y los stack traces salen minificados.
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
           # Solo para que `next build` tenga un valor presente; en runtime el
           # Worker usa el secreto configurado con `wrangler secret put`.
           DATABASE_URL: ${{ secrets.DATABASE_URL_MIGRATIONS }}

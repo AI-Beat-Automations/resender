@@ -2,6 +2,7 @@
 // implement `Dict`, so a missing key on either side breaks the typecheck.
 
 import type { Dict } from "./dictionary"
+import { META_WHATSAPP_PRICING_URL } from "@/lib/meta/whatsapp-billing-links"
 
 export const en: Dict = {
   nav: {
@@ -168,6 +169,8 @@ export const en: Dict = {
       "Start for free with Free: 2,000 messages a month and 1 connection, no card, to test your integration end to end. When you get serious, Starter: 50,000 messages a month is roughly 25,000 short conversations, plenty for a side project or your first clients. We warn you as you approach the limit, and moving up to Pro is immediate: no downtime and nothing to reconnect.",
       "We charge per message processed rather than per contact reached, which is the difference that shows most against ManyChat as you grow: your bill tracks real traffic, not the accumulated size of your audience.",
     ],
+    metaNote:
+      "On WhatsApp, Meta charges separately: after 1,000 free service messages per number each month, it bills every delivered reply directly to the card you registered on your WhatsApp Business account. Resender doesn't collect that charge or add a margin to it, and your plan's price is independent of it.",
     plans: [
       {
         name: "Free",
@@ -365,6 +368,14 @@ export const en: Dict = {
         q: "What happens to my data if I cancel?",
         a: "Your connections go inactive and we stop receiving messages from your accounts. You can request deletion of your data at any time from the data deletion page.",
       },
+      {
+        q: "How much does WhatsApp cost?",
+        a: "Resender charges nothing extra for WhatsApp: your messages count toward your plan's quota like any other channel's. Meta does charge separately. Every number gets 1,000 free service messages a month; past that, Meta charges for each delivered reply at the rate for the recipient's country and bills it to the card you registered on your WhatsApp Business account. Without a payment method there, Meta may stop delivering your messages. Messages your customers send you are free.",
+        link: {
+          label: "See Meta's official rates",
+          href: META_WHATSAPP_PRICING_URL,
+        },
+      },
     ],
   },
 
@@ -533,7 +544,7 @@ export const en: Dict = {
       title: "One webhook for every channel.",
       titleAccent: "Developer-first.",
       subtitle:
-        "Today Resender works with Facebook Messenger and Instagram, and we're already working on the WhatsApp integration. Leave your email and we'll tell you when it's available.",
+        "Today Resender works with Facebook Messenger and Instagram, and WhatsApp is already in early access. Leave your email and we'll keep you posted on product news.",
       breadcrumb: "Waitlist",
       registerTitle: "Already on Messenger or Instagram?",
       registerBody:
