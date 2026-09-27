@@ -1274,3 +1274,45 @@ describe("migración 0029: cobro de Meta en messages", () => {
     ).resolves.toBeDefined()
   })
 })
+
+// Migración 0030: el [Cupo gratis de Meta] (issue #171).
+describe("migración 0030: cupo gratis de Meta", () => {
+  it("crea el índice parcial del conteo por número y mes", async () => {
+    const index = await db.query<{ indexdef: string }>(
+      `select indexdef from pg_indexes
+       where tablename = 'messages'
+         and indexname = 'messages_meta_service_billed_idx'`
+    )
+    expect(index.rows).toHaveLength(1)
+    expect(index.rows[0]!.indexdef).toContain(
+      "(connected_page_id, meta_billed_at)"
+    )
+    expect(index.rows[0]!.indexdef).toContain("INCLUDE (meta_billable)")
+    expect(index.rows[0]!.indexdef).toContain(
+      "WHERE (meta_pricing_category = 'service'::text)"
+    )
+  })
+
+  it("deduplica el correo por número, mes y umbral", async () => {
+    const insert = () =>
+      db.query(
+        `insert into meta_free_tier_alerts (connected_page_id, period_start, threshold)
+         values ($1, '2026-10-01T00:00:00Z', 80)
+         on conflict do nothing
+         returning threshold`,
+        [pageId]
+      )
+    expect((await insert()).rows).toHaveLength(1)
+    expect((await insert()).rows).toHaveLength(0)
+  })
+
+  it("solo acepta los umbrales 80 y 100", async () => {
+    await expect(
+      db.query(
+        `insert into meta_free_tier_alerts (connected_page_id, period_start, threshold)
+         values ($1, '2026-10-01T00:00:00Z', 50)`,
+        [pageId]
+      )
+    ).rejects.toThrow()
+  })
+})

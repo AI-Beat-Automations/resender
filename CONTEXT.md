@@ -491,6 +491,14 @@ La cuota mide **todos los canales**, incluidos los DMs y comentarios de Instagra
 Una respuesta de WhatsApp que **Meta le cobra al cliente**: desde el 1 de octubre de 2026, cada mensaje de servicio entregado después de los 1.000 gratis que Meta da por número al mes. Meta se lo factura directo a la tarjeta registrada en la WABA del cliente; **Resender no lo cobra, no lo revende y no le pone margen** (`docs/adr/0023-costo-de-meta-se-informa-no-se-cobra.md`). Sin método de pago en la WABA, Meta puede dejar de entregar (`131042`).
 **No confundir con [Mensaje contabilizado]**, que es la cuota del plan de Resender: una misma respuesta de WhatsApp suma 1 a la cuota, la cobre Meta o no, y los dos contadores no se descuentan uno del otro. Los conteos de Meta que muestre Resender son informativos; la factura de Meta es la fuente de lo que se le debe.
 
+### Cupo gratis de Meta
+
+Los **1.000 mensajes de servicio gratis al mes** que Meta da a cada número de WhatsApp. Pasado el cupo, cada respuesta entregada es un [Mensaje cobrado por Meta]. Es consumo **de Meta**, lo factura Meta directo a la WABA del cliente (ADR 0023) y es informativo: la factura de Meta es la fuente.
+Se cuenta **por número** (`connected_page_id`) y **por mes**: mensajes con `meta_pricing_category = 'service'` y `meta_billed_at` (el `delivered`) dentro del mes; de esos, los cobrados son los `meta_billable = true`. Se cuenta por categoría y no solo por `billable` porque Meta no documenta cómo marca los del cupo gratis. La constante y el período viven en `lib/meta/whatsapp-free-tier.ts`.
+El mes se corta en **UTC** y la UI lo marca «aprox.»: Meta lo reinicia en la zona horaria de la WABA, que todavía no guardamos (seguimiento aparte).
+Se ve en la tarjeta de cada número en **Conexiones**, para el padre y para el cliente, con tres estados: con cupo (< 80 %), cerca del límite (80 % a < 100 %) y con cobro (≥ 100 %). El dueño del tenant (el padre, también por los números de sus clientes) recibe un correo al 80 % y al 100 %, **una vez por número, mes y umbral**, deduplicado en `meta_free_tier_alerts`; si cruza los dos de golpe sale solo el del 100 %.
+**No confundir con [Límites por plan]** —los mensajes que el plan de Resender incluye— **ni con [Período de cuota]** —la ventana de esa cuota, que en un plan de pago es el ciclo de Stripe—. El cupo gratis de Meta no suma ni resta de la cuota de Resender, siempre es mes calendario y es por número, no por tenant.
+
 ### Período de cuota
 
 En un plan de pago la ventana es el **período de facturación de Stripe**, no el mes calendario: el contador se resetea cuando cierra el ciclo que el cliente pagó, para no regalar una cuota completa a quien paga el día 28. Requiere `subscriptions.current_period_start`, que la migración `0005` no incluía. Sin período conocido no hay envío (fail-closed).

@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   insertCoexistenceMessage: vi.fn(),
   updateDeliveryStatus: vi.fn(),
   updateMetaPricing: vi.fn(),
+  notifyMetaFreeTierThresholds: vi.fn(),
   queueSend: vi.fn(),
   insertInboundComment: vi.fn(),
   isOwnPublishedComment: vi.fn(),
@@ -44,6 +45,10 @@ vi.mock("@/lib/messages/message-log", () => ({
   insertCoexistenceMessage: mocks.insertCoexistenceMessage,
   updateDeliveryStatus: mocks.updateDeliveryStatus,
   updateMetaPricing: mocks.updateMetaPricing,
+}))
+
+vi.mock("@/lib/meta/whatsapp-free-tier-alerts", () => ({
+  notifyMetaFreeTierThresholds: mocks.notifyMetaFreeTierThresholds,
 }))
 
 // La cola de WhatsApp es un binding de Cloudflare: fuera del Worker no existe,
@@ -1475,6 +1480,38 @@ describe("acuses de entrega de WhatsApp", () => {
     expect(mocks.updateMetaPricing).toHaveBeenCalledWith(
       expect.objectContaining({ deliveryStatus: "delivered" })
     )
+  })
+
+  // [Cupo gratis de Meta] (issue #171): solo un `delivered` de servicio que
+  // guardó su cobro puede cruzar un umbral.
+  it("revisa el cupo gratis con un delivered de servicio que guardó el cobro", async () => {
+    mocks.updateMetaPricing.mockResolvedValue(true)
+
+    await ingestWhatsappWebhookPayload(
+      statusPayload("delivered", servicePricing)
+    )
+
+    expect(mocks.notifyMetaFreeTierThresholds).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "page-row" }),
+      new Date(1_749_416_400_000)
+    )
+  })
+
+  it("no revisa el cupo gratis con un sent, otra categoría o un cobro que no se escribió", async () => {
+    mocks.updateMetaPricing.mockResolvedValue(true)
+    await ingestWhatsappWebhookPayload(statusPayload("sent", servicePricing))
+    await ingestWhatsappWebhookPayload(
+      statusPayload("delivered", {
+        pricing: { ...servicePricing.pricing, category: "utility" },
+      })
+    )
+
+    mocks.updateMetaPricing.mockResolvedValue(false)
+    await ingestWhatsappWebhookPayload(
+      statusPayload("delivered", servicePricing)
+    )
+
+    expect(mocks.notifyMetaFreeTierThresholds).not.toHaveBeenCalled()
   })
 
   it("no escribe cobro con un acuse que no trae el bloque", async () => {
