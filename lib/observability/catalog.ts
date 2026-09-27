@@ -27,7 +27,12 @@ export type LogAction =
   | "webhook_verify" // GET del challenge de Meta
   | "webhook_receive" // POST: firma, parseo y recuento del sobre
   | "inbound_ingest" // un evento del sobre: mensaje o comentario
-  | "webhook_delivery" // reenvío al webhook del tenant
+  | "webhook_delivery" // reenvío al webhook del tenant: se entregó, o por qué no
+  // El job entró a `webhook-deliveries`. Es un verbo aparte y no un `ok` de
+  // `webhook_delivery` porque encolar no es entregar: con un solo verbo, cada
+  // mensaje contaba dos `webhook_delivery_ok` —uno al encolar, otro al
+  // entregar— y los paneles de entregas contaban el doble.
+  | "webhook_enqueue"
   | "queue_consume" // un mensaje de `webhook-deliveries` o de su DLQ
   | "delivery_recover" // cron: reclama jobs cuyo plazo durable ya venció
   // @section outbound
