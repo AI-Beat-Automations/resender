@@ -97,6 +97,19 @@ Para seguir un caso puntual: busca por `requestId` para ver las tres primeras y 
 - **Si varios tenants fallan a la vez:** revisa la configuración de la app de Meta.
 - Los tokens que se vencen **después** de conectar no aparecen aquí: salen en el widget 3 con `errorCode` `190`.
 
+### 7. Volumen por cliente (recibidos y enviados)
+
+`Table` · Filter `action:[inbound_ingest,outbound_send,comment_reply,comment_private_reply] outcome:ok` · columnas `tenantId` · `action` · `count(logs)` · High to low · límite 20
+
+- **Qué es:** cuántos mensajes recibe y envía cada cliente.
+- **Cómo se lee:** cada fila es un cliente con un tipo de mensaje. La primera es el de más volumen.
+  - `inbound_ingest`: **recibidos**, los DMs y comentarios que entraron.
+  - `outbound_send`: **enviados**, los DMs que mandó su agente.
+  - `comment_reply` / `comment_private_reply`: respuestas a comentarios.
+- **Para qué sirve:** ver quién usa más Resender y detectar cambios bruscos. Un cliente que recibe mucho y no envía nada suele tener el agente caído o el reenvío pausado.
+- **Dos rankings separados:** duplica la tabla con columnas `tenantId` · `count(logs)`. Una lleva el filtro `action:inbound_ingest outcome:ok` (más recibidos) y la otra `action:[outbound_send,comment_reply,comment_private_reply] outcome:ok` (más enviados).
+- **Cuidado con el historial de WhatsApp:** al conectar un número se importan hasta 180 días de conversaciones, y cada mensaje importado también cuenta como `inbound_ingest_ok`. Ese día el cliente aparece con miles de recibidos que no son tráfico real, y hoy el log no permite separarlos.
+
 ## Editar un widget
 
 En el dashboard, pasa el mouse sobre el widget → **⋯** → **Edit Widget** → **Update Widget**. Si entraste en modo edición del dashboard, termina con **Save and Finish**.
