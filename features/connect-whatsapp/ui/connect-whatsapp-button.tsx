@@ -1,5 +1,6 @@
 "use client"
 
+import * as Sentry from "@sentry/nextjs"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { LoaderCircle, Plus } from "lucide-react"
 import { useRouter } from "next/navigation"
@@ -241,8 +242,15 @@ export function ConnectWhatsAppButton({
         setActionError(
           result.error ?? dictRef.current.whatsappSignup.submitFailed
         )
-      } catch {
+      } catch (error) {
         setActionError(dictRef.current.whatsappSignup.networkFailed)
+        // El `code` de Meta vive 30 segundos: si este fetch falla, el alta se
+        // pierde y hay que repetir el diálogo entero. Un solo log con todo el
+        // contexto, sin el payload (lleva el `code`).
+        Sentry.logger.error("whatsapp signup submit failed", {
+          reason: "network",
+          errorMessage: error instanceof Error ? error.message : String(error),
+        })
       } finally {
         setSubmitting(false)
         // Cada intento **consume** el nonce en el servidor, salga bien o mal:
@@ -346,9 +354,14 @@ export function ConnectWhatsAppButton({
         sdkRef.current = sdk
         setSdkReady(true)
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (!active) return
         setSdkError(dictRef.current.whatsappSignup.sdkBlocked)
+        // No es un bug nuestro (casi siempre es un bloqueador), así que va como
+        // log y no como issue: sirve para ver cuánta gente no puede conectar.
+        Sentry.logger.warn("whatsapp signup facebook sdk failed to load", {
+          errorMessage: error instanceof Error ? error.message : String(error),
+        })
       })
     return () => {
       active = false
@@ -375,6 +388,13 @@ export function ConnectWhatsAppButton({
         console.warn(
           "[whatsapp] Embedded Signup: mensaje descartado por origen no permitido:",
           signup.origin
+        )
+        // La consola solo la ve quien tiene las devtools abiertas; en Sentry
+        // queda el origen de cada usuario real. `fmt` guarda el origen como
+        // atributo propio (`message.parameter.0`) para poder agrupar por él.
+        Sentry.logger.warn(
+          Sentry.logger
+            .fmt`whatsapp signup message dropped: foreign origin ${signup.origin}`
         )
         return
       }

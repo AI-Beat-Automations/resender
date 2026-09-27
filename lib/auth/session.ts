@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs"
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 
@@ -38,6 +39,12 @@ export async function getSession(options?: {
 
   const user = result?.user
   if (!user?.id) return null
+
+  // Los logs y errores de Sentry de este request llevan `user.id`. Solo el id:
+  // el correo y el nombre son PII y no hacen falta para cruzar con la base. En
+  // el servidor `setUser` escribe en el scope de aislamiento, que es uno por
+  // request, así que no se filtra a los requests concurrentes del isolate.
+  Sentry.setUser({ id: user.id })
 
   return {
     user: { id: user.id, email: user.email, name: user.name ?? "" },
