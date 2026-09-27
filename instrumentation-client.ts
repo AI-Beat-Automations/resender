@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs"
 import posthog from "posthog-js"
 
 import {
@@ -6,6 +7,18 @@ import {
   POSTHOG_KEY,
 } from "@/lib/posthog-client"
 import { redactEventUrls } from "@/lib/posthog-redact"
+
+// Sentry va primero para que un error al inicializar PostHog ya quede capturado.
+// Sin replay a propósito: el de sesiones lo lleva PostHog. Sin `dataCollection`
+// por el mismo motivo que en `sentry.server.config.ts`. Sentry no escribe
+// cookies, así que no depende del consentimiento de la tarjeta.
+Sentry.init({
+  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
+  tracesSampleRate: process.env.NODE_ENV === "development" ? 1.0 : 0.1,
+})
+
+// Spans de navegación del App Router.
+export const onRouterTransitionStart = Sentry.captureRouterTransitionStart
 
 // Convención `instrumentation-client.ts` de Next: corre en el navegador después
 // de cargar el HTML y ANTES de la hidratación de React. Es el único sitio donde
