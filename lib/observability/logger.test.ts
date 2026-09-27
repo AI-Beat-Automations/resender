@@ -249,6 +249,38 @@ describe("log → Sentry", () => {
   })
 })
 
+// Muchos `log()` viven dentro de un `catch` del camino crítico: si loguear
+// lanzara, el reintento o la DLQ que vienen después no correrían.
+describe("log nunca interrumpe el flujo", () => {
+  it("no lanza si Sentry falla, y la línea igual sale por consola", () => {
+    sentryLogger.error.mockImplementationOnce(() => {
+      throw new Error("sentry down")
+    })
+
+    expect(() =>
+      log({
+        entrypoint: "queue",
+        action: "webhook_delivery",
+        outcome: "failed",
+        reason: "http_error",
+      })
+    ).not.toThrow()
+    expect(lastRecord(spies.error)).toMatchObject({
+      event: "webhook_delivery_failed",
+    })
+  })
+
+  it("no lanza si la consola falla", () => {
+    spies.log.mockImplementationOnce(() => {
+      throw new Error("console down")
+    })
+
+    expect(() =>
+      log({ entrypoint: "route", action: "webhook_receive", outcome: "ok" })
+    ).not.toThrow()
+  })
+})
+
 describe("describeError", () => {
   it("saca el mensaje de un Error", () => {
     expect(describeError(new Error("boom"))).toBe("boom")
