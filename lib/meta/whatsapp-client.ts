@@ -1408,8 +1408,14 @@ export function extractWhatsappContactWaId(data: unknown): string | null {
 // «reconectá la Página» a quien conectó un número de WhatsApp lo manda a buscar
 // algo que no tiene; y la ventana de 24 horas, que en Messenger es un `10` con
 // subcódigo, acá es un código propio (131047) con un desenlace distinto: en
-// WhatsApp se puede reabrir con una plantilla, que es producto que todavía no
-// vendemos.
+// WhatsApp se puede reabrir con una plantilla (`POST /api/v1/whatsapp/
+// templates/send`), y los errores propios de escribir primero —la familia
+// `132xxx`, la baja del marketing y los topes del número— viven también acá.
+//
+// Todos los códigos de plantillas y de límites se verificaron contra la tabla
+// de errores de Cloud API (developers.facebook.com/docs/whatsapp/cloud-api/
+// support/error-codes). Lo que no se pudo confirmar ahí no se mapea: queda
+// crudo en el log.
 //
 // Los tres motivos que **no** dependen de qué se estaba enviando —token, rate
 // limit y bloqueo por política— se exportan sueltos, como en Instagram, para que
@@ -1474,7 +1480,7 @@ export function explainWhatsappError(
   if (code === 131042) {
     return {
       code: null,
-      message: `Meta didn't deliver this message because the WhatsApp Business account has no valid payment method. Meta bills WhatsApp messages directly to the card on the WABA, not through Resender: add or fix the payment method in Meta Business payment settings (${META_PAYMENT_SETTINGS_URL}) and send again.`,
+      message: `Meta didn't deliver this message because the WhatsApp Business account has no valid payment method. Meta bills WhatsApp messages (template messages included) directly to the card on the WABA, not through Resender: add or fix the payment method in Meta Business payment settings (${META_PAYMENT_SETTINGS_URL}) and send again.`,
     }
   }
 
@@ -1516,6 +1522,9 @@ export function explainWhatsappError(
     return { code: null, message: WHATSAPP_BLOCKED_REASON }
   }
 
+  const template = explainWhatsappTemplateError(code)
+  if (template) return { code: null, message: template }
+
   // 133005 no es de envío sino de `/register`, y está en el mismo catálogo a
   // propósito: la pantalla de conexión traduce con la misma función que la de
   // envío, y tener dos catálogos por canal fue justo lo que este archivo evita.
@@ -1524,6 +1533,59 @@ export function explainWhatsappError(
   }
 
   return null
+}
+
+// Los errores de escribir primero: plantillas (`132xxx`), la baja del
+// marketing y los topes de mensajería. Van aparte porque cada uno lleva a una
+// acción distinta del cliente —«pausada por calidad» se arregla editando la
+// plantilla, «no existe» revisando nombre e idioma— y juntarlos en la cadena de
+// arriba la volvería ilegible. Descripciones de Meta entre comillas.
+function explainWhatsappTemplateError(code: number): string | null {
+  switch (code) {
+    // "The template does not exist in the specified language or the template
+    // has not been approved."
+    case 132001:
+      return "This template doesn't exist in the requested language or isn't approved yet. Check the exact template name and language code (e.g. en_US) in WhatsApp Manager, and that its status is Active."
+    // "The number of variable parameter values included in the request did not
+    // match the number of variable parameters defined in the template."
+    case 132000:
+      return "The number of parameters sent doesn't match the variables the template defines. Send one value for each {{n}} variable in the template, in order."
+    // "Translated text is too long."
+    case 132005:
+      return "The template text is too long once the parameter values are filled in. Shorten the values you send, or check in WhatsApp Manager that the template translation meets Meta's length limits."
+    // "Variable parameter values formatted incorrectly."
+    case 132012:
+      return "A parameter value doesn't match the format the template expects for that variable (for example currency, date or media). Fix the parameter types and values and send again."
+    // "Template content violates a WhatsApp policy."
+    case 132007:
+      return "The template content violates a WhatsApp formatting or content policy. Review the template in WhatsApp Manager, edit it and submit it for approval again."
+    // "Template is paused due to low quality so it cannot be sent in a
+    // template message."
+    case 132015:
+      return "Meta paused this template because of low quality ratings from recipients. Edit the template in WhatsApp Manager to improve it and resubmit, or send a different approved template meanwhile."
+    // "Template has been paused too many times due to low quality and is now
+    // permanently disabled."
+    case 132016:
+      return "Meta permanently disabled this template after pausing it too many times for low quality. It can't be sent again: create a new template with different content."
+    // "This recipient has chosen to stop receiving marketing messages on
+    // WhatsApp from your business."
+    case 131050:
+      return "This contact opted out of marketing messages from your business on WhatsApp. Don't resend marketing templates to them; utility or authentication templates, or a reply once they write to you, can still be delivered."
+    // "Message failed to send because there are restrictions on how many
+    // messages can be sent from this phone number."
+    case 131048:
+      return "Meta is limiting how many messages this phone number can send, usually because of its quality rating or messaging limit. Check the number's quality status and messaging limit in WhatsApp Manager before sending more."
+    // "This message was not delivered to maintain healthy ecosystem
+    // engagement." (tope de plantillas de marketing por usuario)
+    case 131049:
+      return "Meta didn't deliver this marketing message to keep the contact from receiving too many marketing messages. Wait at least 24 hours before sending this contact another marketing template."
+    // "Too many messages sent from the sender phone number to the same
+    // recipient phone number in a short period of time."
+    case 131056:
+      return "Too many messages were sent to this same contact in a short time. Wait before sending to them again; other contacts are not affected."
+    default:
+      return null
+  }
 }
 
 export function isWhatsappExpiredTokenError(data: unknown): boolean {

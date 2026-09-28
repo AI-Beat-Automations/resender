@@ -10,6 +10,10 @@ import {
   whatsappMediaUrl,
 } from "@/lib/inbox/message-media"
 import type { PageChannel } from "@/lib/pages/page-registry"
+import {
+  formatTemplateLabel,
+  toTemplateDisplay,
+} from "@/lib/messages/template-display"
 import { fmt, type AppDict } from "@/content/i18n/app"
 
 import { effectiveStatus } from "./media-retention"
@@ -82,6 +86,13 @@ export type ThreadMessageView = {
   text: string
   /** Qué pintar por el adjunto (preview o fila); null si el mensaje no trae. */
   attachment: AttachmentDisplay | null
+  /**
+   * El saliente fue una [Plantilla] (`template_meta`): `text` es el cuerpo con
+   * las variables reemplazadas, o null si el envío no guardó el cuerpo; en ese
+   * caso la burbuja pinta `label` (`📋 order_update (es) · Juan`). Null en
+   * todo lo que no es plantilla.
+   */
+  template: { text: string | null; label: string } | null
   /** `respuesta · 14:02`, con `· respuesta a comentario` si lo es. */
   meta: string
   /** El saliente es la respuesta privada a un comentario de Instagram. */
@@ -208,12 +219,33 @@ export function formatConversationContent(
   const prefix = latestMessage.direction === "outbound" ? t.log.you : ""
   // Un mensaje solo-adjunto llega con texto vacío: el renglón muestra el type
   // entre corchetes (`[image]`) en su lugar. Con texto, el renglón no cambia
-  // — el adjunto se descubre al abrir el hilo.
-  const body =
-    latestMessage.text === "" && latestMessage.attachmentType
+  // — el adjunto se descubre al abrir el hilo. Una plantilla también llega
+  // con texto vacío y se resuelve igual que en la burbuja.
+  const template =
+    latestMessage.text === "" ? toTemplateView(latestMessage.templateMeta, t) : null
+  const body = template
+    ? (template.text ?? template.label)
+    : latestMessage.text === "" && latestMessage.attachmentType
       ? `[${latestMessage.attachmentType}]`
       : latestMessage.text
   return `${prefix}${body}`
+}
+
+// La regla vive en `template-display.ts`; acá solo se le pasa el copy.
+function toTemplateView(
+  meta: unknown,
+  t: AppDict
+): ThreadMessageView["template"] {
+  const display = toTemplateDisplay(meta)
+  if (!display) return null
+  return {
+    text: display.text,
+    label: formatTemplateLabel(display, {
+      label: t.inbox.templateLabel,
+      labelNoLanguage: t.inbox.templateLabelNoLanguage,
+      fallbackName: t.inbox.templateFallbackName,
+    }),
+  }
 }
 
 export function toConversationRowView(
@@ -428,6 +460,7 @@ function buildMessageViews(
             t
           )
         : null,
+      template: toTemplateView(message.templateMeta, t),
       meta: fromComment
         ? `${formatMessageMeta(message, t)} · ${t.log.fromCommentSuffix}`
         : formatMessageMeta(message, t),

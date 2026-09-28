@@ -1011,6 +1011,33 @@ describe("catálogo de errores de WhatsApp", () => {
     }
   )
 
+  // Errores de escribir primero, verificados contra la tabla de Cloud API.
+  // Cada uno dice qué hacer, y «pausada» no se confunde con «no existe».
+  it.each([
+    [132001, "doesn't exist in the requested language"],
+    [132000, "number of parameters"],
+    [132005, "too long"],
+    [132012, "doesn't match the format"],
+    [132007, "policy"],
+    [132015, "paused this template"],
+    [132016, "permanently disabled"],
+    [131050, "opted out of marketing"],
+    [131048, "messaging limit"],
+    [131049, "24 hours"],
+    [131056, "same contact"],
+  ])("traduce el %i de plantillas y límites", (code, fragment) => {
+    expect(explainWhatsappError({ error: { code } })).toEqual({
+      code: null,
+      message: expect.stringContaining(fragment),
+    })
+  })
+
+  it("cubre plantillas en el aviso de método de pago", () => {
+    expect(explainWhatsappError({ error: { code: 131042 } })?.message).toContain(
+      "template messages included"
+    )
+  })
+
   // Los fallos de media son los únicos con `code` estable, porque son los únicos
   // que la API pública tiene que distinguir programáticamente.
   it("le pone código estable sólo a los fallos de media", () => {
