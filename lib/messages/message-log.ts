@@ -775,6 +775,14 @@ export async function insertOutboundMessage(input: {
   // WhatsApp Business App (`business_app`), que llega como saliente pero no lo
   // enviamos nosotros.
   origin?: MessageOrigin | null
+  // La [Plantilla] de WhatsApp que salió (migración 0031): `{ name, language,
+  // components }` de ese envío. Solo la informa `/whatsapp/templates/send`; en
+  // el resto queda null. Una plantilla no es un adjunto: van por separado.
+  templateMeta?: {
+    name: string
+    language: string
+    components?: unknown[]
+  } | null
   error: string | null
   providerResponse: unknown
   createdAt: Date
@@ -784,6 +792,8 @@ export async function insertOutboundMessage(input: {
     input.providerResponse == null
       ? null
       : JSON.stringify(input.providerResponse)
+  const templateMeta =
+    input.templateMeta == null ? null : JSON.stringify(input.templateMeta)
 
   // Batch atómico (driver HTTP de Neon): las queries se crean sin await y se
   // ejecutan juntas en una transacción no interactiva.
@@ -802,6 +812,7 @@ export async function insertOutboundMessage(input: {
       attachment_type,
       attachment_url,
       origin,
+      template_meta,
       error,
       provider_response,
       created_at
@@ -820,6 +831,7 @@ export async function insertOutboundMessage(input: {
       ${input.attachment?.type ?? null},
       ${input.attachment?.url ?? null},
       ${input.origin ?? null},
+      ${templateMeta}::jsonb,
       ${input.error},
       ${providerResponse}::jsonb,
       ${input.createdAt}

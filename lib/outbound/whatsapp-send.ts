@@ -7,6 +7,7 @@ import {
 
 import type { MetaSendResult } from "./meta-send"
 import type { OutboundAttachment, OutboundAttachmentType } from "./send-request"
+import type { OutboundTemplate } from "./template-send-request"
 
 // El adaptador entre el body neutral de la API pública —el mismo de Messenger,
 // `{ reply } | { attachment: { type, url } }`— y el sobre de Cloud API.
@@ -44,13 +45,15 @@ export const WHATSAPP_MEDIA_TYPE_BY_ATTACHMENT: Record<
   file: "document",
 }
 
-// Exactamente una de las dos cosas, que es lo que garantiza
-// `parseOutboundSendInput`. La unión discriminada se repite acá —en vez de
-// aceptar dos opcionales— para que la función sea total y no haga falta un
-// `throw` para el caso imposible.
+// Exactamente una de las tres cosas. Texto o adjunto es lo que garantiza
+// `parseOutboundSendInput` para `/send`; la plantilla la trae
+// `parseTemplateSendInput` para `/templates/send`. La unión discriminada se
+// repite acá —en vez de aceptar opcionales— para que la función sea total y no
+// haga falta un `throw` para el caso imposible.
 export type WhatsappOutboundContent =
   | { reply: string; attachment: null }
   | { reply: null; attachment: OutboundAttachment }
+  | { template: OutboundTemplate }
 
 /**
  * Traduce el contenido de la request al mensaje de Cloud API.
@@ -62,10 +65,17 @@ export type WhatsappOutboundContent =
  * El adjunto va siempre por `link` y nunca por `id`: subir el archivo primero a
  * la Media API sería hospedar media saliente, que es justo lo que este canal no
  * hace. Sin `caption` ni `filename` porque el body público no los trae todavía.
+ *
+ * La plantilla pasa casi igual: el vocabulario público (`name`, `language`,
+ * `components`) es el de Meta, y el `{ code }` del idioma lo pone el builder.
  */
 export function toWhatsappOutboundMessage(
   content: WhatsappOutboundContent
 ): WhatsappOutboundMessage {
+  if ("template" in content) {
+    return { template: content.template }
+  }
+
   if (content.attachment) {
     return {
       media: {

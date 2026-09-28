@@ -1241,9 +1241,20 @@ export type WhatsappOutboundMedia = {
   filename?: string
 }
 
+// Una [Plantilla] aprobada, identificada por `name` + `language`: es lo único
+// que Cloud API acepta al enviar, no hay id. `components` son los parámetros con
+// que se llena y viajan tal cual —sin validar el conteo—: el que sabe si
+// encajan con la plantilla es Meta (ADR 0024).
+export type WhatsappOutboundTemplate = {
+  name: string
+  language: string
+  components?: unknown[]
+}
+
 export type WhatsappOutboundMessage =
   | { text: string; previewUrl?: boolean }
   | { media: WhatsappOutboundMedia }
+  | { template: WhatsappOutboundTemplate }
 
 // El sobre de Cloud API. `messaging_product` es obligatorio en **todas** las
 // llamadas de mensajería —no es el mismo campo que el `messaging_type` de
@@ -1268,6 +1279,22 @@ export function buildWhatsappMessagePayload(
       // del texto. Por defecto no: un preview que se genera solo cambia cómo se
       // ve el mensaje que el tenant escribió.
       text: { body: message.text, preview_url: message.previewUrl === true },
+    }
+  }
+
+  if ("template" in message) {
+    const { name, language, components } = message.template
+    return {
+      ...envelope,
+      type: "template",
+      template: {
+        name,
+        // `language` es un objeto con `code`, no el string suelto.
+        language: { code: language },
+        // Sin `components` cuando no hay nada que llenar: una plantilla sin
+        // variables (como `hello_world`) se manda sin la clave.
+        ...(components && components.length > 0 ? { components } : {}),
+      },
     }
   }
 

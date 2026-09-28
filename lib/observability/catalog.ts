@@ -42,6 +42,10 @@ export type LogAction =
   // WhatsApp (ADR 0024): Cloud API devolvió un `wa_id` distinto del número
   // marcado y el saliente se movió a la conversación de ese `wa_id`.
   | "whatsapp_contact_reconcile"
+  // WhatsApp (ADR 0024): envío de una [Plantilla] por `/templates/send`. Verbo
+  // aparte de `outbound_send` para que «cuántas plantillas salieron» sea un
+  // filtro y no una suposición sobre el `route`.
+  | "template_send"
   // @section connections
   | "oauth_start"
   | "oauth_callback"

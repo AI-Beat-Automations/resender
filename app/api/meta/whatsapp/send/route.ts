@@ -57,11 +57,12 @@ import { captureDeferred } from "@/lib/posthog"
 // cortar antes tiene tres ventajas: la respuesta es inmediata, dice exactamente
 // qué pasó, y no gasta una llamada a Cloud API que ya sabemos que va a fallar.
 //
-// **Las plantillas están fuera de alcance.** El 409 lo dice sin rodeos:
-// `requiresTemplate: true` explica qué haría falta, `templateSendingSupported:
-// false` admite que Resender todavía no lo hace. Es una señal honesta, no un
-// placeholder: un cliente que la lee sabe que tiene que esperar a que el
-// contacto escriba, y no que reintentando va a funcionar.
+// **Las plantillas van por otra ruta** (ADR 0024). El 409 lo dice sin rodeos:
+// `requiresTemplate: true` explica qué hace falta y `templateSendingSupported:
+// true` con el `message` le señalan al cliente `POST
+// /api/meta/whatsapp/templates/send`. Esta ruta no manda plantillas: el body
+// es el neutral de los tres canales, y reintentar acá no va a funcionar hasta
+// que el contacto escriba.
 export const runtime = "nodejs"
 
 // La sección Logs guarda esta request (`bot → Resender`) desde el envoltorio:
@@ -172,13 +173,12 @@ async function handle(request: NextRequest, capture: ApiLogCapture) {
       Response.json(
         {
           error: "customer_service_window_closed",
-          // Qué haría falta y qué no hacemos, en el mismo objeto. Sin
-          // `templateSendingSupported` un cliente leería `requiresTemplate` como
-          // "mandá una plantilla por esta misma ruta" y se quedaría reintentando
-          // contra algo que no existe.
+          // Qué hace falta y dónde se hace, en el mismo objeto. Sin el
+          // `message` un cliente leería `requiresTemplate` como "mandá una
+          // plantilla por esta misma ruta" y se quedaría reintentando acá.
           requiresTemplate: true,
-          templateSendingSupported: false,
-          message: `This contact hasn't messaged the number in the last ${CUSTOMER_SERVICE_WINDOW_HOURS} hours, so WhatsApp only accepts approved template messages. Resender doesn't send templates yet: wait for the contact to write again.`,
+          templateSendingSupported: true,
+          message: `This contact hasn't messaged the number in the last ${CUSTOMER_SERVICE_WINDOW_HOURS} hours, so WhatsApp only accepts approved template messages. Send one with POST /api/meta/whatsapp/templates/send, or wait for the contact to write again.`,
         },
         { status: 409 }
       )

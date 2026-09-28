@@ -14,21 +14,24 @@ const db = new PGlite({ extensions: { pgcrypto } })
 
 // El mismo disfraz de `lib/db.ts`: tag de postgres.js sobre un cliente que
 // habla `query(texto, params)`.
+// `transaction` recibe las queries ya lanzadas y las espera en orden: alcanza
+// para los batches de `insertOutboundMessage`, que no dependen entre sí.
 vi.mock("@/lib/db", () => ({
-  getSql: () => (strings: TemplateStringsArray, ...params: unknown[]) =>
-    db
-      .query(
-        strings.reduce(
-          (text, part, index) => `${text}$${index}${part}`
-        ),
-        params
-      )
-      .then((result) => result.rows),
+  getSql: () =>
+    Object.assign(
+      (strings: TemplateStringsArray, ...params: unknown[]) =>
+        db
+          .query(
+            strings.reduce((text, part, index) => `${text}$${index}${part}`),
+            params
+          )
+          .then((result) => result.rows),
+      { transaction: (queries: Promise<unknown>[]) => Promise.all(queries) }
+    ),
 }))
 
-const { updateDeliveryStatus, updateMetaPricing } = await import(
-  "./message-log"
-)
+const { insertOutboundMessage, updateDeliveryStatus, updateMetaPricing } =
+  await import("./message-log")
 
 const MIGRATIONS_DIR = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -249,5 +252,67 @@ describe("updateMetaPricing", () => {
       SERVICE_BILLABLE
     )
     expect(priced).toBe(false)
+  })
+})
+
+// Migración 0031: el saliente de una [Plantilla] (issue #190).
+describe("insertOutboundMessage con plantilla", () => {
+  it("guarda template_meta con text vacío y sin adjunto", async () => {
+    const templateMeta = {
+      name: "pedido_listo",
+      language: "es_MX",
+      components: [
+        { type: "body", parameters: [{ type: "text", text: "Ana" }] },
+      ],
+    }
+    const message = await insertOutboundMessage({
+      tenantId,
+      conversationId,
+      connectedPageId: pageId,
+      contactId: "5215550000000",
+      text: "",
+      status: "sent",
+      metaMessageId: "wamid.plantilla_1",
+      idempotencyKey: "plantilla-1",
+      origin: "resender_api",
+      templateMeta,
+      error: null,
+      providerResponse: { messages: [{ id: "wamid.plantilla_1" }] },
+      createdAt: SENT_AT,
+    })
+
+    expect(message).toMatchObject({
+      text: "",
+      attachmentType: null,
+      attachmentUrl: null,
+      origin: "resender_api",
+      metaMessageId: "wamid.plantilla_1",
+    })
+    const row = await db.query<{ template_meta: unknown }>(
+      `select template_meta from messages where id = $1`,
+      [message.id]
+    )
+    expect(row.rows[0]!.template_meta).toEqual(templateMeta)
+  })
+
+  it("deja template_meta en null en un saliente normal", async () => {
+    const message = await insertOutboundMessage({
+      tenantId,
+      conversationId,
+      connectedPageId: pageId,
+      contactId: "5215550000000",
+      text: "hola",
+      status: "sent",
+      metaMessageId: "wamid.texto_1",
+      idempotencyKey: "texto-1",
+      error: null,
+      providerResponse: null,
+      createdAt: SENT_AT,
+    })
+    const row = await db.query<{ template_meta: unknown }>(
+      `select template_meta from messages where id = $1`,
+      [message.id]
+    )
+    expect(row.rows[0]!.template_meta).toBeNull()
   })
 })

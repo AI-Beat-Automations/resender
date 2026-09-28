@@ -58,6 +58,10 @@ type SubjectFields = {
   // descartaron cuando el contacto mandó varios de una vez.
   attachmentType?: string
   droppedCount?: number
+  // El `name` de la [Plantilla] de WhatsApp enviada. Es del tenant, no del
+  // cliente final; los `components` —con los datos del cliente final— no se
+  // loguean.
+  templateName?: string
 }
 
 type ContextFields = {
