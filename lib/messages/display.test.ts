@@ -42,6 +42,7 @@ function conversation(
       status: "received",
       createdAt: new Date(2026, 6, 27, 14, 2),
       attachmentType: null,
+      templateMeta: null,
     },
     ...overrides,
   }
@@ -57,6 +58,7 @@ function message(overrides: Partial<ThreadMessage> = {}): ThreadMessage {
     error: null,
     instagramSourceCommentId: null,
     attachmentType: null,
+    templateMeta: null,
     attachmentUrl: null,
     attachmentMeta: null,
     attachmentStatus: null,
@@ -154,6 +156,7 @@ describe("toConversationRowView", () => {
           status: "sent",
           createdAt: new Date(2026, 6, 27, 14, 2),
           attachmentType: null,
+          templateMeta: null,
         },
       }),
       NOW,
@@ -177,6 +180,7 @@ describe("toConversationRowView", () => {
           status: "failed",
           createdAt: new Date(2026, 6, 27, 14, 2),
           attachmentType: null,
+          templateMeta: null,
         },
       }),
       NOW,
@@ -262,6 +266,7 @@ describe("toConversationRowView", () => {
           status: "failed",
           createdAt: new Date(2026, 6, 26, 19, 12),
           attachmentType: null,
+          templateMeta: null,
         },
         lastMessageAt: new Date(2026, 6, 26, 19, 12),
       }),
@@ -295,6 +300,7 @@ describe("toConversationRowView", () => {
           status: "received",
           createdAt: new Date(2026, 6, 27, 14, 2),
           attachmentType: "image",
+          templateMeta: null,
         },
       }),
       NOW,
@@ -314,6 +320,7 @@ describe("toConversationRowView", () => {
           status: "sent",
           createdAt: new Date(2026, 6, 27, 14, 2),
           attachmentType: "file",
+          templateMeta: null,
         },
       }),
       NOW,
@@ -332,6 +339,7 @@ describe("toConversationRowView", () => {
           status: "received",
           createdAt: new Date(2026, 6, 27, 14, 2),
           attachmentType: "image",
+          templateMeta: null,
         },
       }),
       NOW,
@@ -339,6 +347,44 @@ describe("toConversationRowView", () => {
     )
 
     expect(row.content).toBe("Mirá la foto")
+  })
+
+  // Un envío de plantilla se guarda con texto vacío (0031): el renglón no
+  // puede quedar en blanco (issue #191).
+  it("muestra la etiqueta de plantilla cuando el último mensaje es una plantilla", () => {
+    const latest = (templateMeta: unknown) =>
+      conversation({
+        latestMessage: {
+          text: "",
+          direction: "outbound",
+          status: "sent",
+          createdAt: new Date(2026, 6, 27, 14, 2),
+          attachmentType: null,
+          templateMeta,
+        },
+      })
+
+    expect(
+      toConversationRowView(
+        latest({ name: "hello_world", language: "en_US" }),
+        NOW,
+        es
+      ).content
+    ).toBe("Tú: 📋 hello_world (en_US)")
+    expect(
+      toConversationRowView(
+        latest({
+          name: "order_update",
+          language: "es",
+          body: "Hola {{1}}",
+          components: [
+            { type: "body", parameters: [{ type: "text", text: "Juan" }] },
+          ],
+        }),
+        NOW,
+        es
+      ).previewText
+    ).toBe("Hola Juan")
   })
 })
 
@@ -476,6 +522,35 @@ describe("toThreadMessageViews", () => {
     const [plainText] = toThreadMessageViews([message()], es)
 
     expect(plainText?.attachment).toBeNull()
+  })
+
+  it("arma la plantilla del saliente para que la burbuja no quede vacía", () => {
+    const [plain, template] = toThreadMessageViews(
+      [
+        message(),
+        message({
+          id: "msg-2",
+          channel: "whatsapp",
+          direction: "outbound",
+          status: "sent",
+          text: "",
+          templateMeta: {
+            name: "order_update",
+            language: "es",
+            components: [
+              { type: "body", parameters: [{ type: "text", text: "Juan" }] },
+            ],
+          },
+        }),
+      ],
+      en
+    )
+
+    expect(plain?.template).toBeNull()
+    expect(template?.template).toEqual({
+      text: null,
+      label: "📋 order_update (es) · Juan",
+    })
   })
 })
 
