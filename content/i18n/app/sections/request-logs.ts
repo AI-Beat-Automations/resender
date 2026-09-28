@@ -201,6 +201,7 @@ export const es: RequestLogsDict = {
       private_reply: "respuesta privada",
       template_send: "envío de plantilla",
       template_list: "listado de plantillas",
+      template: "cambio de estado de plantilla",
     },
     skipReasons: {
       duplicate: "Meta reenvió un evento que ya habíamos procesado. No se hizo nada.",
@@ -328,6 +329,7 @@ export const en: RequestLogsDict = {
       private_reply: "private reply",
       template_send: "template send",
       template_list: "template list",
+      template: "template status change",
     },
     skipReasons: {
       duplicate: "Meta re-sent an event we had already processed. Nothing was done.",

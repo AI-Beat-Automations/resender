@@ -124,6 +124,18 @@ describe("eventIdFor", () => {
     // colisionan. Lo que importa es que el id salga del sujeto y no del reloj.
     expect(eventIdFor({ kind: "comment", id: "abc-def" })).toBe("evt_abcdef")
   })
+
+  // Issue #193: el mismo cambio de estado sale una vez por conexión de la
+  // WABA, y `event_id` es único en toda la tabla de jobs. Cada webhook ve
+  // siempre el mismo id para el mismo cambio, y dos conexiones no chocan.
+  it("en un cambio de plantilla lo deriva del evento y de la conexión", () => {
+    const a = { kind: "template" as const, id: "ev-1", connectionId: "conn-a" }
+    const b = { kind: "template" as const, id: "ev-1", connectionId: "conn-b" }
+
+    expect(eventIdFor(a)).toBe("evt_ev1_conna")
+    expect(eventIdFor(a)).toBe(eventIdFor({ ...a }))
+    expect(eventIdFor(a)).not.toBe(eventIdFor(b))
+  })
 })
 
 describe("classifyDeliveryResponse", () => {
@@ -176,6 +188,8 @@ describe("enqueueDelivery", () => {
     expect(sqlMock.mock.calls[0]?.slice(1)).toEqual([
       "message-1",
       null,
+      null,
+      null,
       "http://example.com/hook",
       "failed",
       null,
@@ -198,7 +212,28 @@ describe("enqueueDelivery", () => {
     expect(sendMock).toHaveBeenCalledWith({ jobId: "job-1" })
     const params = sqlMock.mock.calls[0]?.slice(1)
     expect(params?.[0]).toBe("evt_message1")
-    expect(JSON.parse(String(params?.[5]))).toEqual(payload)
+    expect(JSON.parse(String(params?.[7]))).toEqual(payload)
+  })
+
+  it("escribe el job de un cambio de plantilla con su evento y su conexión", async () => {
+    sqlMock.mockResolvedValueOnce([{ id: "job-2" }])
+
+    await enqueueDelivery({
+      subject: { kind: "template", id: "ev-1", connectionId: "conn-a" },
+      webhookUrl: "https://example.com/hook",
+      payload,
+    })
+
+    expect(sendMock).toHaveBeenCalledWith({ jobId: "job-2" })
+    const params = sqlMock.mock.calls[0]?.slice(1)
+    expect(params?.slice(0, 6)).toEqual([
+      "evt_ev1_conna",
+      "tenant-1",
+      null,
+      null,
+      "ev-1",
+      "conn-a",
+    ])
   })
 
   it("no reencola un job que ya se intentó entregar", async () => {

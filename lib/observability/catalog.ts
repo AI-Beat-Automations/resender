@@ -103,6 +103,12 @@ export type LogAction =
   // es `template_send`, en `outbound`; acá va lo que mantiene y lee la copia.
   | "template_sync" // job: trae el catálogo de una WABA de Graph y lo guarda
   | "template_list" // `GET /api/meta/whatsapp/templates`
+  // Webhooks de la WABA (issue #193). El de estado actualiza la copia y avisa
+  // al tenant; el de categoría solo actualiza la copia; el de calidad solo se
+  // loguea, para enterarnos antes de que Meta pause la plantilla.
+  | "template_status_update"
+  | "template_category_update"
+  | "template_quality_update"
 // @section end
 
 export type LogOutcome =
@@ -226,4 +232,10 @@ export type LogReason =
   // se reintenta.
   | "connection_not_active"
   | "template_list_failed"
+  // `/templates/send` rechazó con 409 sin llamar a Meta: la copia sabe que la
+  // plantilla no está aprobada (issue #193).
+  | "template_not_approved"
+  // Un webhook de categoría de una plantilla que la copia no conoce: sin
+  // estado no hay con qué crear la fila, y el próximo sync la trae.
+  | "template_not_found"
 // @section end

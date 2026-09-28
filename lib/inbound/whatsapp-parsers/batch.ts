@@ -1,9 +1,12 @@
 import { readContactSync } from "./app-state-sync"
 import { readEchoes } from "./echoes"
-import { collectChanges } from "./envelope"
+import { collectChanges, collectWabaChanges } from "./envelope"
 import { readHistory } from "./history"
 import { readInboundMessages } from "./messages"
 import { readStatuses } from "./statuses"
+import { readTemplateCategoryUpdate } from "./template-category"
+import { readTemplateQuality } from "./template-quality"
+import { readTemplateStatus } from "./template-status"
 import type {
   WhatsappContactSyncEvent,
   WhatsappHistoryChunk,
@@ -27,6 +30,9 @@ export function parseWhatsappWebhook(value: unknown): WhatsappWebhookBatch {
     history: [],
     contactSync: [],
     echoes: [],
+    templateStatuses: [],
+    templateCategories: [],
+    templateQuality: [],
     unhandledFields: [],
   }
 
@@ -52,6 +58,22 @@ export function parseWhatsappWebhook(value: unknown): WhatsappWebhookBatch {
         if (!batch.unhandledFields.includes(change.field)) {
           batch.unhandledFields.push(change.field)
         }
+    }
+  }
+
+  // Los de la WABA van en su propio recorrido porque no traen número (ver
+  // `collectWabaChanges`). El `switch` es exhaustivo sobre sus tres `field`s.
+  for (const change of collectWabaChanges(value)) {
+    switch (change.field) {
+      case "message_template_status_update":
+        batch.templateStatuses.push(...readTemplateStatus(change))
+        break
+      case "template_category_update":
+        batch.templateCategories.push(...readTemplateCategoryUpdate(change))
+        break
+      case "message_template_quality_update":
+        batch.templateQuality.push(...readTemplateQuality(change))
+        break
     }
   }
 

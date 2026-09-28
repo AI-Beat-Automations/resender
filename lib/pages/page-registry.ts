@@ -615,6 +615,57 @@ export async function getActiveWhatsappWabaIdForTenant(
   return { connectionId: row.id, wabaId: row.waba_id }
 }
 
+/**
+ * Las conexiones activas de una WABA que tienen `webhookUrl`, de cualquier
+ * tenant: a quién se le avisa un cambio de estado de plantilla (issue #193).
+ * El estado es de la WABA y afecta a cualquier número que pueda enviar la
+ * plantilla, así que no se filtra por tenant.
+ */
+export async function listActiveWhatsappWebhookConnectionsInWaba(
+  wabaId: string
+): Promise<ConnectedPageRecord[]> {
+  const sql = getSql()
+  const rows = await sql<ConnectedPageRow[]>`
+    select id, tenant_id, client_account_id, channel, meta_page_id, name,
+      username, status, token_status, token_error, token_error_at,
+      token_expires_at, webhook_url, paused_at,
+      waba_id, whatsapp_phone_e164, onboarding_mode,
+      coexistence_status, history_sync_status,
+      (webhook_signing_secret_encrypted is not null) as has_signing_secret,
+      connected_at, disconnected_at, created_at, updated_at
+    from connected_pages
+    where channel = 'whatsapp'
+      and waba_id = ${wabaId}
+      and status = 'active'
+      and webhook_url is not null
+      and webhook_url <> ''
+    order by connected_at, id
+  `
+
+  return rows.map(mapConnectedPage)
+}
+
+/**
+ * Una conexión activa cualquiera de la WABA, para encolar el `template_sync`
+ * cuando un webhook no alcanza para saber el estado de una plantilla. El sync
+ * es por WABA: da igual desde qué número se pida.
+ */
+export async function findActiveWhatsappConnectionIdInWaba(
+  wabaId: string
+): Promise<string | null> {
+  const sql = getSql()
+  const [row] = await sql<{ id: string }[]>`
+    select id
+    from connected_pages
+    where channel = 'whatsapp'
+      and waba_id = ${wabaId}
+      and status = 'active'
+    order by connected_at, id
+    limit 1
+  `
+  return row?.id ?? null
+}
+
 export async function getActivePageByMetaPageId(
   metaPageId: string,
   channel: PageChannel

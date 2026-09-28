@@ -239,7 +239,7 @@ describe("runWhatsappSignup — flujo B (Coexistence)", () => {
     expect(calls).not.toContain("finishStandard")
   })
 
-  it("suscribe los tres campos antes de persistir, y en ese orden", async () => {
+  it("suscribe los campos de Coexistence antes de persistir, y en ese orden", async () => {
     const { deps: d, calls, connected } = coexistenceDeps()
 
     await runWhatsappSignup(d, request({ mode: "coexistence" }))
@@ -251,6 +251,9 @@ describe("runWhatsappSignup — flujo B (Coexistence)", () => {
       "history",
       "smb_app_state_sync",
       "smb_message_echoes",
+      "message_template_status_update",
+      "template_category_update",
+      "message_template_quality_update",
     ])
     expect(calls).toEqual([
       "begin",

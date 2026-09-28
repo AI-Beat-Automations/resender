@@ -16,6 +16,32 @@ export type WhatsappChange = {
   businessPhoneNumber: string | null
 }
 
+// Los `field`s de la WABA y no de un número: el estado, la categoría y la
+// calidad de una plantilla. Llegan **sin `value.metadata`** —la plantilla es de
+// la WABA, no de ningún `phone_number_id`— y por eso no pasan por
+// `collectChanges`, que sin número descarta el cambio.
+export const WHATSAPP_WABA_FIELDS = [
+  "message_template_status_update",
+  "template_category_update",
+  "message_template_quality_update",
+] as const
+
+export type WhatsappWabaField = (typeof WHATSAPP_WABA_FIELDS)[number]
+
+export type WhatsappWabaChange = {
+  // Obligatorio acá, a diferencia de `WhatsappChange`: sin número, el WABA es
+  // lo único que dice de quién es la plantilla.
+  wabaId: string
+  field: WhatsappWabaField
+  value: Record<string, unknown>
+  // `entry[].time`, en segundos. Es la única hora que traen estos payloads.
+  time: unknown
+}
+
+export function isWhatsappWabaField(field: string): field is WhatsappWabaField {
+  return (WHATSAPP_WABA_FIELDS as readonly string[]).includes(field)
+}
+
 export function collectChanges(body: unknown): WhatsappChange[] {
   const root = asRecord(body)
   if (!root) return []
@@ -44,6 +70,8 @@ export function collectChanges(body: unknown): WhatsappChange[] {
       const field = asString(change?.field)
       const value = asRecord(change?.value)
       if (!field || !value) continue
+      // Los de la WABA los recoge `collectWabaChanges`.
+      if (isWhatsappWabaField(field)) continue
 
       const metadata = asRecord(value.metadata)
       const providerPhoneNumberId = asString(metadata?.phone_number_id)
@@ -58,6 +86,31 @@ export function collectChanges(body: unknown): WhatsappChange[] {
         providerPhoneNumberId,
         businessPhoneNumber: asString(metadata?.display_phone_number),
       })
+    }
+  }
+
+  return changes
+}
+
+// El recorrido de los cambios de la WABA. Mismo sobre, otra regla de descarte:
+// acá lo que no puede faltar es el `entry.id`, porque sin WABA no hay copia que
+// actualizar ni conexiones a las que avisar.
+export function collectWabaChanges(body: unknown): WhatsappWabaChange[] {
+  const root = asRecord(body)
+  if (!root) return []
+
+  const changes: WhatsappWabaChange[] = []
+  for (const rawEntry of asArray(root.entry)) {
+    const entry = asRecord(rawEntry)
+    const wabaId = asString(entry?.id)
+    if (!entry || !wabaId) continue
+
+    for (const rawChange of asArray(entry.changes)) {
+      const change = asRecord(rawChange)
+      const field = asString(change?.field)
+      const value = asRecord(change?.value)
+      if (!field || !value || !isWhatsappWabaField(field)) continue
+      changes.push({ wabaId, field, value, time: entry.time })
     }
   }
 

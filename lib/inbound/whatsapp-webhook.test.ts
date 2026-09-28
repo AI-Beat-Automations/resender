@@ -4,6 +4,7 @@ import {
   BUSINESS_PHONE,
   PHONE_NUMBER_ID,
   USER_PHONE,
+  WABA_ID,
   message,
   webhook,
 } from "./whatsapp-parsers/test-fixtures"
@@ -237,11 +238,41 @@ describe("puente de WhatsApp hacia el evento neutro", () => {
   // desaparecer: la ruta lo registra desde acá.
   it("propaga los campos que ningún parser modela", () => {
     const routed = routeWhatsappWebhook(
-      webhook("message_template_status_update", { event: "APPROVED" })
+      webhook("account_update", { event: "VERIFIED_ACCOUNT" })
     )
 
     expect(routed.events).toEqual([])
-    expect(routed.unhandledFields).toEqual(["message_template_status_update"])
+    expect(routed.unhandledFields).toEqual(["account_update"])
+  })
+
+  // Los de plantillas son de la WABA: salen aparte, no como mensajes, y ya no
+  // cuentan como campos sin modelar.
+  it("devuelve los cambios de plantilla aparte de los mensajes", () => {
+    const routed = routeWhatsappWebhook({
+      object: "whatsapp_business_account",
+      entry: [
+        {
+          id: WABA_ID,
+          changes: [
+            {
+              field: "message_template_status_update",
+              value: {
+                event: "APPROVED",
+                message_template_id: 1,
+                message_template_name: "bienvenida",
+                message_template_language: "es",
+              },
+            },
+          ],
+        },
+      ],
+    })
+
+    expect(routed.events).toEqual([])
+    expect(routed.unhandledFields).toEqual([])
+    expect(routed.templateStatuses).toEqual([
+      expect.objectContaining({ name: "bienvenida", status: "APPROVED" }),
+    ])
   })
 
   it("no revienta con un cuerpo que no tiene forma de sobre", () => {
@@ -250,6 +281,9 @@ describe("puente de WhatsApp hacia el evento neutro", () => {
       statuses: [],
       contactSync: [],
       history: [],
+      templateStatuses: [],
+      templateCategories: [],
+      templateQuality: [],
       unhandledFields: [],
     })
   })
