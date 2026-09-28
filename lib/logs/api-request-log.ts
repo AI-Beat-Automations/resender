@@ -32,7 +32,7 @@ export type ApiLogCapture = {
 
 type ApiLogMeta = {
   channel: PageChannel
-  /** send | comment_reply | private_reply | template_send */
+  /** send | comment_reply | private_reply | template_send | template_list */
   eventType: string
   endpoint: string
 }

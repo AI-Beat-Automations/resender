@@ -30,6 +30,7 @@ import {
 } from "@/lib/outbound/whatsapp-send"
 import { markPageTokenInvalid } from "@/lib/pages/page-registry"
 import { captureDeferred } from "@/lib/posthog"
+import { findWhatsappTemplate } from "@/lib/whatsapp-templates/template-store"
 
 // Envía una [Plantilla] aprobada por WhatsApp (ADR 0024). Body:
 // { conversationId } | { pageId, recipientId, conversationId? }, más
@@ -50,8 +51,11 @@ import { captureDeferred } from "@/lib/posthog"
 // El Plan Free puede enviar plantillas: no hay control de plan extra. Consume 1
 // de cuota solo si Meta aceptó, como cualquier envío.
 //
-// **Todavía no se controla que la plantilla esté aprobada**: la copia local de
-// las plantillas no existe aún. Si no lo está, el rechazo llega de Meta.
+// **No se controla que la plantilla esté aprobada.** La copia local del
+// catálogo (migración 0032) no decide qué se envía: una plantilla que la copia
+// no conoce, o que conoce desactualizada, se envía igual y decide Meta. De la
+// copia solo sale el `body`, que se guarda en `template_meta` para que el
+// Inbox muestre el texto completo.
 export const runtime = "nodejs"
 
 export const POST = withApiRequestLog(
@@ -207,6 +211,14 @@ async function handle(request: NextRequest, capture: ApiLogCapture) {
     }
   }
 
+  const templateBody = await readTemplateBody({
+    wabaId: page.wabaId,
+    template,
+    requestId,
+    tenantId: apiKey.tenantId,
+    connectionId: page.id,
+  })
+
   let message: MessageRecord
   try {
     // Una plantilla no es un [Adjunto]: `text = ''`, sin `attachment_*`, y lo
@@ -222,7 +234,8 @@ async function handle(request: NextRequest, capture: ApiLogCapture) {
       idempotencyKey,
       attachment: null,
       origin: "resender_api",
-      templateMeta: template,
+      templateMeta:
+        templateBody === null ? template : { ...template, body: templateBody },
       error: metaResult.reason ?? metaResult.error,
       providerResponse: metaResult.data,
       createdAt: sentAt,
@@ -315,6 +328,42 @@ async function handle(request: NextRequest, capture: ApiLogCapture) {
     },
     { status: metaResult.status }
   )
+}
+
+// El cuerpo de la plantilla según la copia local, para `template_meta.body`.
+// Best-effort: sin la fila —la copia todavía no se sincronizó— o con la base
+// caída, el envío se guarda igual y el Inbox muestra la etiqueta con el nombre.
+async function readTemplateBody(input: {
+  wabaId: string | null
+  template: { name: string; language: string }
+  requestId: string
+  tenantId: string
+  connectionId: string
+}): Promise<string | null> {
+  if (!input.wabaId) return null
+  try {
+    const stored = await findWhatsappTemplate({
+      wabaId: input.wabaId,
+      name: input.template.name,
+      language: input.template.language,
+    })
+    return stored?.body ?? null
+  } catch (error) {
+    // `template_list` y no `template_send`: lo que falló es la lectura de la
+    // copia, no el envío, y contarlo como envío fallido mentiría en el panel.
+    log({
+      entrypoint: "route",
+      action: "template_list",
+      outcome: "failed",
+      reason: "internal_error",
+      requestId: input.requestId,
+      tenantId: input.tenantId,
+      connectionId: input.connectionId,
+      channel: "whatsapp",
+      errorMessage: `template body lookup: ${describeError(error)}`,
+    })
+    return null
+  }
 }
 
 function isUniqueViolation(error: unknown) {

@@ -542,6 +542,7 @@ export async function getActivePageWithTokenForTenant(
   const [row] = await sql<ConnectedPageWithTokenRow[]>`
     select id, tenant_id, channel, meta_page_id, name, username, status,
       token_status, token_error, token_error_at, token_expires_at, webhook_url,
+      waba_id,
       (webhook_signing_secret_encrypted is not null) as has_signing_secret,
       connected_at, disconnected_at, created_at, updated_at,
       page_access_token_encrypted
@@ -571,6 +572,7 @@ export async function getActivePageWithTokenByConnectionId(
     select id, tenant_id, client_account_id, channel, meta_page_id, name,
       username, status,
       token_status, token_error, token_error_at, token_expires_at, webhook_url,
+      waba_id,
       (webhook_signing_secret_encrypted is not null) as has_signing_secret,
       connected_at, disconnected_at, created_at, updated_at,
       page_access_token_encrypted
@@ -588,6 +590,29 @@ export async function getActivePageWithTokenByConnectionId(
     page: mapConnectedPage(row),
     pageAccessToken: decryptSecret(row.page_access_token_encrypted),
   }
+}
+
+// La WABA de un número de WhatsApp activo **de este tenant**, o null. Es la
+// comprobación de propiedad de `GET /api/meta/whatsapp/templates`: el
+// `phone_number_id` lo dice el cliente, la WABA se resuelve acá. Sin token: la
+// lista sale de la copia local y no de Graph.
+export async function getActiveWhatsappWabaIdForTenant(
+  tenantId: string,
+  phoneNumberId: string
+): Promise<{ connectionId: string; wabaId: string } | null> {
+  const sql = getSql()
+  const [row] = await sql<{ id: string; waba_id: string | null }[]>`
+    select id, waba_id
+    from connected_pages
+    where tenant_id = ${tenantId}
+      and channel = 'whatsapp'
+      and meta_page_id = ${phoneNumberId}
+      and status = 'active'
+    limit 1
+  `
+
+  if (!row?.waba_id) return null
+  return { connectionId: row.id, wabaId: row.waba_id }
 }
 
 export async function getActivePageByMetaPageId(

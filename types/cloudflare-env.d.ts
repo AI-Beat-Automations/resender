@@ -77,7 +77,7 @@ interface WebhookDeliveryMessage {
 // Cola de trabajo de WhatsApp.
 //
 // A diferencia de `WebhookDeliveryMessage`, acá el cuerpo **sí** discrimina: no
-// hay una tabla de jobs que sepa qué hay que hacer. Son cuatro trabajos con
+// hay una tabla de jobs que sepa qué hay que hacer. Son cinco trabajos con
 // formas distintas y sin estado compartido en Postgres, así que el tipo del
 // mensaje es lo único que los distingue y por eso es una unión y no un `type:
 // string`: un job nuevo no compila hasta que el consumidor lo atiende.
@@ -94,6 +94,10 @@ type WhatsappJobMessage =
   | { type: "media_download"; messageId: string; providerMediaId: string }
   // Vacía el prefijo R2 de una cuenta ya borrada. Reanudable con cursor.
   | { type: "media_purge"; prefix: string; cursor?: string }
+  // Trae el catálogo de plantillas de la WABA de la conexión a la copia local
+  // (ADR 0024). Por WABA: dos números de la misma WABA caen sobre las mismas
+  // filas.
+  | { type: "template_sync"; connectionId: string }
 
 interface QueueSendOptions {
   delaySeconds?: number

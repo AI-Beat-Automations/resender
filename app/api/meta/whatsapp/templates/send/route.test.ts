@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 const mocks = vi.hoisted(() => ({
   authenticateApiKey: vi.fn(),
   deleteConversationIfEmpty: vi.fn(),
+  findWhatsappTemplate: vi.fn(),
   getConversationByContact: vi.fn(),
   getActivePageWithTokenByConnectionId: vi.fn(),
   getActivePageWithTokenForTenant: vi.fn(),
@@ -71,6 +72,10 @@ vi.mock("@/lib/observability/logger", async (importOriginal) => ({
 
 vi.mock("@/lib/posthog", () => ({ posthog: null, captureDeferred: vi.fn() }))
 
+vi.mock("@/lib/whatsapp-templates/template-store", () => ({
+  findWhatsappTemplate: mocks.findWhatsappTemplate,
+}))
+
 import type { NextRequest } from "next/server"
 
 import { POST } from "./route"
@@ -126,10 +131,13 @@ describe("POST /api/meta/whatsapp/templates/send", () => {
         channel: "whatsapp",
         metaPageId: "phone-1",
         username: null,
+        wabaId: "waba-1",
       },
       pageAccessToken: "waba-token-1",
     }
     mocks.getActivePageWithTokenForTenant.mockResolvedValue(connection)
+    // Por defecto la copia local no conoce la plantilla: se envía igual.
+    mocks.findWhatsappTemplate.mockResolvedValue(null)
     mocks.getActivePageWithTokenByConnectionId.mockResolvedValue(connection)
     // Por defecto, un contacto que nunca escribió: es el caso de la plantilla.
     mocks.upsertConversation.mockResolvedValue(conversation(null))
@@ -352,6 +360,46 @@ describe("POST /api/meta/whatsapp/templates/send", () => {
         status: "sent",
       },
     })
+  })
+
+  // ---- el cuerpo de la copia local (issue #192) --------------------------
+  it("copies the stored body into template_meta", async () => {
+    mocks.findWhatsappTemplate.mockResolvedValue({ body: "Hello World" })
+
+    const response = await POST(sendRequest())
+
+    expect(response.status).toBe(200)
+    expect(mocks.findWhatsappTemplate).toHaveBeenCalledWith({
+      wabaId: "waba-1",
+      name: "hello_world",
+      language: "en_US",
+    })
+    expect(mocks.insertOutboundMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        templateMeta: { ...hello, body: "Hello World" },
+      })
+    )
+  })
+
+  it("sends and stores without body when the copy does not know it", async () => {
+    const response = await POST(sendRequest())
+
+    expect(response.status).toBe(200)
+    expect(mocks.sendWhatsappOutboundMessage).toHaveBeenCalled()
+    expect(mocks.insertOutboundMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ templateMeta: hello })
+    )
+  })
+
+  it("still sends when the body lookup fails", async () => {
+    mocks.findWhatsappTemplate.mockRejectedValue(new Error("db down"))
+
+    const response = await POST(sendRequest())
+
+    expect(response.status).toBe(200)
+    expect(mocks.insertOutboundMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ templateMeta: hello, status: "sent" })
+    )
   })
 
   it("sends with conversationId alone", async () => {

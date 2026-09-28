@@ -47,7 +47,7 @@ type AccountFields = {
 type SubjectFields = {
   // El sujeto del evento, con el mismo criterio que `DeliverySubject`:
   // nombrarlo evita que las métricas de comentarios y de mensajes se mezclen.
-  subject?: "message" | "comment"
+  subject?: "message" | "comment" | "template"
   subjectId?: string // uuid interno de la fila
   providerId?: string // `mid` de Meta o `ig_comment_id`
   contactId?: string // PSID / IGSID de quien escribió
