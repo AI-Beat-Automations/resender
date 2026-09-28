@@ -1357,6 +1357,19 @@ export function extractWhatsappMessageId(data: unknown): string | null {
   return readString((first as Record<string, unknown>).id)
 }
 
+// El `wa_id` del destinatario, del mismo sobre: `{"contacts":[{"input":"…",
+// "wa_id":"…"}]}`. Es el id con el que van a llegar sus respuestas, y en MX y
+// AR puede no ser el número marcado (`52…` contra `521…`). La ruta lo usa para
+// dejar el saliente en la conversación a la que después llega la respuesta.
+export function extractWhatsappContactWaId(data: unknown): string | null {
+  if (!data || typeof data !== "object") return null
+  const contacts = (data as Record<string, unknown>).contacts
+  if (!Array.isArray(contacts)) return null
+  const first = contacts[0]
+  if (!first || typeof first !== "object") return null
+  return readString((first as Record<string, unknown>).wa_id)
+}
+
 // ---------------------------------------------------------------------------
 // Catálogo de traducción
 // ---------------------------------------------------------------------------

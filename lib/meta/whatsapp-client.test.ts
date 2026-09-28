@@ -21,6 +21,7 @@ const {
   exceedsWhatsappTextLimit,
   exchangeWhatsappCode,
   explainWhatsappError,
+  extractWhatsappContactWaId,
   extractWhatsappMessageId,
   fetchWhatsappMediaMetadata,
   finishWhatsappSignup,
@@ -882,6 +883,27 @@ describe("envío", () => {
     expect(extractWhatsappMessageId({ message_id: "mid.ABC" })).toBeNull()
     expect(extractWhatsappMessageId({ messages: [] })).toBeNull()
     expect(extractWhatsappMessageId(null)).toBeNull()
+  })
+
+  // El `wa_id` es el id con el que llegan las respuestas del contacto, y en MX
+  // y AR puede no ser el número marcado.
+  it("saca el wa_id de contacts[0].wa_id", () => {
+    expect(
+      extractWhatsappContactWaId({
+        messaging_product: "whatsapp",
+        contacts: [{ input: "+52 55 1234 5678", wa_id: "5215512345678" }],
+        messages: [{ id: "wamid.ABC" }],
+      })
+    ).toBe("5215512345678")
+  })
+
+  it("devuelve null si la respuesta no trae contacts", () => {
+    expect(
+      extractWhatsappContactWaId({ messages: [{ id: "wamid.ABC" }] })
+    ).toBeNull()
+    expect(extractWhatsappContactWaId({ contacts: [] })).toBeNull()
+    expect(extractWhatsappContactWaId({ contacts: [{ input: "52" }] })).toBeNull()
+    expect(extractWhatsappContactWaId(null)).toBeNull()
   })
 
   it("traduce el error del envío en el mismo sobre que Messenger", async () => {

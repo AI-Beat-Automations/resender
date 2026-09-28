@@ -126,6 +126,7 @@ export async function sendWhatsappOutboundMessage(input: {
 export {
   exceedsWhatsappTextLimit,
   explainWhatsappError,
+  extractWhatsappContactWaId,
   extractWhatsappMessageId,
   isWhatsappExpiredTokenError,
   WHATSAPP_TEXT_MAX_CHARS,
