@@ -128,6 +128,138 @@ export async function findWhatsappTemplate(input: {
   return row ? mapTemplate(row) : null
 }
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * Una plantilla por nuestro id. Un id que no es uuid es null y no un error de
+ * la base: viene de la URL y lo escribe el cliente.
+ */
+export async function getWhatsappTemplateById(
+  id: string
+): Promise<WhatsappTemplateRecord | null> {
+  if (!UUID_PATTERN.test(id)) return null
+  const sql = getSql()
+  const [row] = await sql<TemplateRow[]>`
+    select id, waba_id, name, language, meta_template_id, category, status,
+      body, created_by_tenant_id, created_by_client_account_id, synced_at,
+      created_at
+    from whatsapp_templates
+    where id = ${id}
+    limit 1
+  `
+  return row ? mapTemplate(row) : null
+}
+
+/**
+ * Guarda una plantilla recién creada en Meta **con su dueño** (issue #194).
+ * Si la copia ya tenía la fila —una borrada que el sync seguía listando—, la
+ * pisa entera: Meta acaba de aceptarla como nueva.
+ */
+export async function insertOwnedWhatsappTemplate(input: {
+  wabaId: string
+  name: string
+  language: string
+  metaTemplateId: string | null
+  category: WhatsappTemplateCategory
+  status: string
+  body: string
+  createdByTenantId: string
+  createdByClientAccountId: string | null
+}): Promise<WhatsappTemplateRecord> {
+  const sql = getSql()
+  const [row] = await sql<TemplateRow[]>`
+    insert into whatsapp_templates (
+      waba_id, name, language, meta_template_id, category, status, body,
+      created_by_tenant_id, created_by_client_account_id
+    )
+    values (
+      ${input.wabaId}, ${input.name}, ${input.language},
+      ${input.metaTemplateId}::text, ${input.category}, ${input.status},
+      ${input.body}, ${input.createdByTenantId}::uuid,
+      ${input.createdByClientAccountId}::uuid
+    )
+    on conflict (waba_id, name, language) do update set
+      meta_template_id = excluded.meta_template_id,
+      category = excluded.category,
+      status = excluded.status,
+      body = excluded.body,
+      created_by_tenant_id = excluded.created_by_tenant_id,
+      created_by_client_account_id = excluded.created_by_client_account_id,
+      synced_at = now()
+    returning id, waba_id, name, language, meta_template_id, category, status,
+      body, created_by_tenant_id, created_by_client_account_id, synced_at,
+      created_at
+  `
+  return mapTemplate(row!)
+}
+
+/** El cuerpo y el estado después de editar en Meta. */
+export async function updateWhatsappTemplateContent(input: {
+  id: string
+  body: string
+  status: string
+}): Promise<WhatsappTemplateRecord | null> {
+  const sql = getSql()
+  const [row] = await sql<TemplateRow[]>`
+    update whatsapp_templates set
+      body = ${input.body},
+      status = ${input.status}
+    where id = ${input.id}
+    returning id, waba_id, name, language, meta_template_id, category, status,
+      body, created_by_tenant_id, created_by_client_account_id, synced_at,
+      created_at
+  `
+  return row ? mapTemplate(row) : null
+}
+
+export async function deleteWhatsappTemplateById(id: string): Promise<void> {
+  const sql = getSql()
+  await sql`delete from whatsapp_templates where id = ${id}`
+}
+
+/**
+ * El aviso de `PATCH` y `DELETE`: cuántos números de la WABA **fuera del
+ * alcance del actor** ya enviaron esa `(name, language)`, según
+ * `messages.template_meta`. Informa, no bloquea: la plantilla es de la WABA y
+ * editarla o borrarla les cambia algo a ellos también.
+ *
+ * El alcance es el de siempre: el [Padre] ve todos los números de su tenant,
+ * un [Cliente] solo los suyos. Se cuentan números (`meta_page_id`), no filas
+ * de conexión: el mismo número reconectado no cuenta dos veces.
+ */
+export async function countTemplateUsageByOtherNumbers(input: {
+  wabaId: string
+  name: string
+  language: string
+  actor: { tenantId: string; clientAccountId: string | null }
+}): Promise<number> {
+  const sql = getSql()
+  const [row] = await sql<{ count: number | string }[]>`
+    select count(distinct cp.meta_page_id) as count
+    from connected_pages cp
+    where cp.channel = 'whatsapp'
+      and cp.waba_id = ${input.wabaId}
+      and not (
+        cp.tenant_id = ${input.actor.tenantId}::uuid
+        and (
+          ${input.actor.clientAccountId}::uuid is null
+          or cp.client_account_id is not distinct from
+            ${input.actor.clientAccountId}::uuid
+        )
+      )
+      and exists (
+        select 1
+        from messages m
+        where m.connected_page_id = cp.id
+          and m.template_meta is not null
+          and m.template_meta->>'name' = ${input.name}
+          and m.template_meta->>'language' = ${input.language}
+      )
+  `
+  return Number(row?.count ?? 0)
+}
+
 // Filas por statement. Una WABA llega a 6.000 plantillas, y un cuerpo hasta
 // 1.024 caracteres: en tandas, el request al driver HTTP no crece sin techo.
 const UPSERT_CHUNK = 500

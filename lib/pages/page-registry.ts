@@ -616,6 +616,48 @@ export async function getActiveWhatsappWabaIdForTenant(
 }
 
 /**
+ * Un número de WhatsApp activo **del alcance del actor**, con su token: el de
+ * la administración de plantillas (issue #194), que sí llama a Graph. El
+ * [Padre] (`clientAccountId` null) ve todos los números del tenant; un
+ * [Cliente], solo los suyos. Null si el número no es del alcance o no tiene
+ * WABA.
+ */
+export async function getActiveWhatsappNumberWithTokenForActor(input: {
+  tenantId: string
+  clientAccountId: string | null
+  phoneNumberId: string
+}) {
+  const sql = getSql()
+  const [row] = await sql<ConnectedPageWithTokenRow[]>`
+    select id, tenant_id, client_account_id, channel, meta_page_id, name,
+      username, status,
+      token_status, token_error, token_error_at, token_expires_at, webhook_url,
+      waba_id,
+      (webhook_signing_secret_encrypted is not null) as has_signing_secret,
+      connected_at, disconnected_at, created_at, updated_at,
+      page_access_token_encrypted
+    from connected_pages
+    where tenant_id = ${input.tenantId}
+      and channel = 'whatsapp'
+      and meta_page_id = ${input.phoneNumberId}
+      and status = 'active'
+      and (
+        ${input.clientAccountId}::uuid is null
+        or client_account_id = ${input.clientAccountId}::uuid
+      )
+    limit 1
+  `
+
+  if (!row?.waba_id) return null
+
+  return {
+    page: mapConnectedPage(row),
+    wabaId: row.waba_id,
+    pageAccessToken: decryptSecret(row.page_access_token_encrypted),
+  }
+}
+
+/**
  * Las conexiones activas de una WABA que tienen `webhookUrl`, de cualquier
  * tenant: a quién se le avisa un cambio de estado de plantilla (issue #193).
  * El estado es de la WABA y afecta a cualquier número que pueda enviar la

@@ -2,9 +2,10 @@ import { GRAPH_FACEBOOK_BASE, GRAPH_FACEBOOK_HOST } from "@/lib/meta/graph-versi
 import {
   bearer,
   graphRequest,
+  WHATSAPP_TOKEN_EXPIRED_REASON,
   WhatsappApiError,
 } from "@/lib/meta/whatsapp-client"
-import { log } from "@/lib/observability/logger"
+import { log, type LogAction } from "@/lib/observability/logger"
 import {
   extractMetaErrorCode,
   extractMetaErrorMessage,
@@ -17,7 +18,10 @@ import {
 // envío. El transporte sí es el de allá (`graphRequest`): plazo, log del fallo
 // de red y `json()` defensivo son los mismos.
 //
-// Solo lee. Crear, editar y borrar plantillas llega con el ticket 7.
+// Lee el catálogo (job `template_sync`) y administra las plantillas propias:
+// crear, editar y borrar (issue #194). Las tres de administración no lanzan
+// ante un rechazo de Meta: devuelven el sobre ya traducido, porque la ruta
+// tiene que contestarlo tal cual y no es un fallo nuestro.
 
 // Lo que se le pide a Meta por plantilla. `components` trae el cuerpo; el resto
 // es la identidad (`name` + `language`), el hsm id y el estado.
@@ -101,6 +105,253 @@ export async function listWhatsappTemplates(
   }
 
   return templates
+}
+
+// ---------------------------------------------------------------------------
+// Administración: crear, editar y borrar (issue #194)
+// ---------------------------------------------------------------------------
+
+export type WhatsappTemplateAdminFailure = {
+  ok: false
+  // El HTTP de Meta, o 502 si la llamada ni siquiera llegó.
+  status: number
+  // Identificador estable para la API pública, o null si no hay traducción.
+  code: string | null
+  error: string
+  metaErrorCode: number | null
+  metaErrorSubcode: number | null
+}
+
+export type WhatsappTemplateAdminResult<T> =
+  ({ ok: true } & T) | WhatsappTemplateAdminFailure
+
+type AdminAction = Extract<
+  LogAction,
+  "template_create" | "template_edit" | "template_delete"
+>
+
+/**
+ * `POST /{waba_id}/message_templates`. Meta contesta `{ id, status, category }`:
+ * el `id` es el hsm id, lo único con que después se borra un solo idioma.
+ */
+export async function createWhatsappTemplate(
+  accessToken: string,
+  wabaId: string,
+  template: {
+    name: string
+    language: string
+    category: string
+    components: Record<string, unknown>[]
+  }
+): Promise<
+  WhatsappTemplateAdminResult<{ metaTemplateId: string | null; status: string }>
+> {
+  const response = await adminRequest(
+    "template_create",
+    wabaId,
+    `${GRAPH_FACEBOOK_BASE}/${encodeURIComponent(wabaId)}/message_templates`,
+    {
+      method: "POST",
+      headers: { ...bearer(accessToken), "content-type": "application/json" },
+      body: JSON.stringify({
+        name: template.name,
+        language: template.language,
+        // Graph la documenta en mayúsculas.
+        category: template.category.toUpperCase(),
+        components: template.components,
+      }),
+    }
+  )
+  if (!response.ok) return response
+
+  return {
+    ok: true,
+    metaTemplateId: readString(response.data.id),
+    // Meta la manda casi siempre `PENDING`; si no la manda, es lo que es.
+    status: readString(response.data.status) ?? "PENDING",
+  }
+}
+
+/**
+ * `POST /{template_id}` con los `components` nuevos, que **reemplazan** a los
+ * anteriores. Meta contesta `{ success: true }`; editar una aprobada la manda
+ * de nuevo a revisión.
+ */
+export async function editWhatsappTemplate(
+  accessToken: string,
+  input: {
+    wabaId: string
+    metaTemplateId: string
+    components: Record<string, unknown>[]
+  }
+): Promise<WhatsappTemplateAdminResult<object>> {
+  const response = await adminRequest(
+    "template_edit",
+    input.wabaId,
+    `${GRAPH_FACEBOOK_BASE}/${encodeURIComponent(input.metaTemplateId)}`,
+    {
+      method: "POST",
+      headers: { ...bearer(accessToken), "content-type": "application/json" },
+      body: JSON.stringify({ components: input.components }),
+    }
+  )
+  return response.ok ? { ok: true } : response
+}
+
+/**
+ * `DELETE /{waba_id}/message_templates?hsm_id=…&name=…`: borra **solo** ese
+ * idioma. Los dos parámetros son obligatorios y el `hsm_id` no es opcional
+ * acá: sin él, Meta borra la plantilla en todos los idiomas y bloquea el
+ * nombre 30 días. Por eso la firma lo exige y no hay variante por nombre.
+ */
+export async function deleteWhatsappTemplate(
+  accessToken: string,
+  input: { wabaId: string; metaTemplateId: string; name: string }
+): Promise<WhatsappTemplateAdminResult<object>> {
+  const url = new URL(
+    `${GRAPH_FACEBOOK_BASE}/${encodeURIComponent(input.wabaId)}/message_templates`
+  )
+  url.searchParams.set("hsm_id", input.metaTemplateId)
+  url.searchParams.set("name", input.name)
+
+  const response = await adminRequest("template_delete", input.wabaId, url, {
+    method: "DELETE",
+    headers: bearer(accessToken),
+  })
+  return response.ok ? { ok: true } : response
+}
+
+/**
+ * Traducción de los rechazos de administración de plantillas. Solo los
+ * códigos que Meta documenta (`/support/error-codes`): el nombre duplicado,
+ * el nombre bloqueado por un borrado reciente y los límites por hora y de
+ * ediciones no tienen subcódigo publicado, así que **no se traducen**: el
+ * mensaje de Meta viaja tal cual y el subcódigo queda en el log.
+ */
+export function explainWhatsappTemplateAdminError(
+  data: unknown
+): { code: string | null; message: string } | null {
+  const code = extractMetaErrorCode(data)
+  const subcode = extractMetaErrorSubcode(data)
+
+  if (code === 190) {
+    return { code: null, message: WHATSAPP_TOKEN_EXPIRED_REASON }
+  }
+
+  switch (subcode) {
+    case 2388019:
+      return {
+        code: "template_limit_reached",
+        message:
+          "This WhatsApp Business account reached its maximum number of templates (250 for unverified businesses, up to 6,000 for verified ones). Delete templates you don't use or verify the business in Meta.",
+      }
+    case 2388039:
+      return {
+        code: "template_under_review",
+        message:
+          "WhatsApp is still reviewing this template, so it can't be edited yet. Try again when the review finishes.",
+      }
+    case 2388040:
+      return {
+        code: "template_invalid_format",
+        message: "A field of the template is longer than WhatsApp allows.",
+      }
+    case 2388072:
+      return {
+        code: "template_invalid_format",
+        message: "WhatsApp rejected the formatting of the template body.",
+      }
+    case 2388073:
+      return {
+        code: "template_invalid_format",
+        message: "WhatsApp rejected the formatting of the template footer.",
+      }
+    case 2388293:
+      return {
+        code: "template_invalid_format",
+        message:
+          "The template has too many variables for its length: add more fixed text around them.",
+      }
+    case 2388299:
+      return {
+        code: "template_invalid_format",
+        message:
+          "Variables can't be at the start or the end of the template body.",
+      }
+    default:
+      return null
+  }
+}
+
+async function adminRequest(
+  action: AdminAction,
+  wabaId: string,
+  input: URL | string,
+  init: RequestInit
+): Promise<
+  { ok: true; data: Record<string, unknown> } | WhatsappTemplateAdminFailure
+> {
+  let response
+  try {
+    response = await graphRequest(
+      { step: "template_manage", action, accountId: wabaId },
+      input,
+      init
+    )
+  } catch (error) {
+    // `graphRequest` ya logueó el fallo de red.
+    if (!(error instanceof WhatsappApiError)) throw error
+    return {
+      ok: false,
+      status: 502,
+      code: null,
+      error: "We couldn't reach WhatsApp. Try again in a moment.",
+      metaErrorCode: null,
+      metaErrorSubcode: null,
+    }
+  }
+
+  const { ok, status, data } = response
+  if (ok) return { ok: true, data }
+
+  const metaErrorCode = extractMetaErrorCode(data)
+  const metaErrorSubcode = extractMetaErrorSubcode(data)
+  // Sin el body, como el listado: código, subcódigo y mensaje. Es donde se
+  // aprenden los subcódigos que Meta no documenta.
+  log({
+    entrypoint: "route",
+    action,
+    outcome: "failed",
+    reason: "meta_rejected",
+    channel: "whatsapp",
+    accountId: wabaId,
+    status,
+    errorCode: metaErrorCode ?? undefined,
+    errorSubcode: metaErrorSubcode ?? undefined,
+    errorMessage: extractMetaErrorMessage(data) ?? undefined,
+  })
+
+  const explained = explainWhatsappTemplateAdminError(data)
+  return {
+    ok: false,
+    // Un 5xx de Meta es un fallo de la dependencia, no del pedido.
+    status: status >= 500 ? 502 : status,
+    code: explained?.code ?? null,
+    error:
+      explained?.message ??
+      readMetaUserMessage(data) ??
+      extractMetaErrorMessage(data) ??
+      "WhatsApp rejected the request.",
+    metaErrorCode,
+    metaErrorSubcode,
+  }
+}
+
+// `error_user_msg` es el texto que Meta escribe para una persona («Ya existe
+// contenido en English (US)…»), más útil que `message`, que es genérico.
+function readMetaUserMessage(data: unknown): string | null {
+  const error = asRecord(asRecord(data)?.error)
+  return readString(error?.error_user_msg)
 }
 
 /** El texto del componente `BODY`, con sus `{{n}}` sin reemplazar. */

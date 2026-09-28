@@ -14,8 +14,14 @@ vi.mock("@/lib/observability/logger", async (importOriginal) => ({
 
 const { META_GRAPH_VERSION } = await import("./graph-version")
 const { WhatsappApiError } = await import("./whatsapp-client")
-const { extractWhatsappTemplateBody, listWhatsappTemplates } =
-  await import("./whatsapp-template-client")
+const {
+  createWhatsappTemplate,
+  deleteWhatsappTemplate,
+  editWhatsappTemplate,
+  explainWhatsappTemplateAdminError,
+  extractWhatsappTemplateBody,
+  listWhatsappTemplates,
+} = await import("./whatsapp-template-client")
 
 const WABA_ID = "524126980791429"
 const TOKEN = "business-token-abc123"
@@ -224,5 +230,198 @@ describe("extractWhatsappTemplateBody", () => {
     expect(extractWhatsappTemplateBody([{ type: "BODY" }])).toBe(null)
     expect(extractWhatsappTemplateBody(null)).toBe(null)
     expect(extractWhatsappTemplateBody({ type: "BODY", text: "x" })).toBe(null)
+  })
+})
+
+const metaError = (code: number, subcode?: number, extra = {}) => ({
+  error: {
+    message: "Invalid parameter",
+    type: "OAuthException",
+    code,
+    ...(subcode !== undefined ? { error_subcode: subcode } : {}),
+    ...extra,
+  },
+})
+
+describe("createWhatsappTemplate", () => {
+  it("POST a /{waba}/message_templates con la categoría en mayúsculas", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ id: "hsm-9", status: "PENDING", category: "UTILITY" })
+    )
+    const components = [{ type: "BODY", text: "Hola" }]
+
+    const result = await createWhatsappTemplate(TOKEN, WABA_ID, {
+      name: "aviso",
+      language: "es_MX",
+      category: "utility",
+      components,
+    })
+
+    expect(result).toEqual({
+      ok: true,
+      metaTemplateId: "hsm-9",
+      status: "PENDING",
+    })
+    const [input, init] = fetchMock.mock.calls[0]!
+    expect(hrefOf(input)).toBe(
+      `https://graph.facebook.com/${META_GRAPH_VERSION}/${WABA_ID}/message_templates`
+    )
+    expect(init?.method).toBe("POST")
+    expect(JSON.parse(String(init?.body))).toEqual({
+      name: "aviso",
+      language: "es_MX",
+      category: "UTILITY",
+      components,
+    })
+    expect(new Headers(init?.headers).get("authorization")).toBe(
+      `Bearer ${TOKEN}`
+    )
+  })
+
+  it("devuelve el rechazo traducido y loguea código y subcódigo", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(metaError(100, 2388019), { status: 400 })
+    )
+
+    const result = await createWhatsappTemplate(TOKEN, WABA_ID, {
+      name: "aviso",
+      language: "es_MX",
+      category: "utility",
+      components: [],
+    })
+
+    expect(result).toMatchObject({
+      ok: false,
+      status: 400,
+      code: "template_limit_reached",
+      metaErrorCode: 100,
+      metaErrorSubcode: 2388019,
+    })
+    expect(mocks.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "template_create",
+        outcome: "failed",
+        reason: "meta_rejected",
+        errorCode: 100,
+        errorSubcode: 2388019,
+      })
+    )
+  })
+
+  it("sin traducción, pasa el error_user_msg de Meta tal cual", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        metaError(100, 2388024, {
+          error_user_msg: "Content in this language already exists",
+        }),
+        { status: 400 }
+      )
+    )
+
+    const result = await createWhatsappTemplate(TOKEN, WABA_ID, {
+      name: "aviso",
+      language: "es_MX",
+      category: "utility",
+      components: [],
+    })
+
+    expect(result).toMatchObject({
+      ok: false,
+      code: null,
+      error: "Content in this language already exists",
+    })
+  })
+
+  it("un 5xx de Meta sale como 502 y un fallo de red también", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({}, { status: 500 }))
+    const failed = await createWhatsappTemplate(TOKEN, WABA_ID, {
+      name: "aviso",
+      language: "es_MX",
+      category: "utility",
+      components: [],
+    })
+    expect(failed).toMatchObject({ ok: false, status: 502 })
+
+    fetchMock.mockRejectedValueOnce(new TypeError("fetch failed"))
+    const offline = await createWhatsappTemplate(TOKEN, WABA_ID, {
+      name: "aviso",
+      language: "es_MX",
+      category: "utility",
+      components: [],
+    })
+    expect(offline).toMatchObject({ ok: false, status: 502 })
+  })
+})
+
+describe("editWhatsappTemplate", () => {
+  it("POST a /{template_id} con solo los components", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ success: true }))
+    const components = [{ type: "BODY", text: "Nuevo" }]
+
+    const result = await editWhatsappTemplate(TOKEN, {
+      wabaId: WABA_ID,
+      metaTemplateId: "hsm-9",
+      components,
+    })
+
+    expect(result).toEqual({ ok: true })
+    const [input, init] = fetchMock.mock.calls[0]!
+    expect(hrefOf(input)).toBe(
+      `https://graph.facebook.com/${META_GRAPH_VERSION}/hsm-9`
+    )
+    expect(init?.method).toBe("POST")
+    expect(JSON.parse(String(init?.body))).toEqual({ components })
+  })
+})
+
+describe("deleteWhatsappTemplate", () => {
+  it("DELETE por hsm_id y name: borra solo ese idioma", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ success: true }))
+
+    const result = await deleteWhatsappTemplate(TOKEN, {
+      wabaId: WABA_ID,
+      metaTemplateId: "hsm-9",
+      name: "aviso",
+    })
+
+    expect(result).toEqual({ ok: true })
+    const [input, init] = fetchMock.mock.calls[0]!
+    const url = new URL(hrefOf(input))
+    expect(`${url.origin}${url.pathname}`).toBe(
+      `https://graph.facebook.com/${META_GRAPH_VERSION}/${WABA_ID}/message_templates`
+    )
+    expect(url.searchParams.get("hsm_id")).toBe("hsm-9")
+    expect(url.searchParams.get("name")).toBe("aviso")
+    expect(init?.method).toBe("DELETE")
+  })
+})
+
+describe("explainWhatsappTemplateAdminError", () => {
+  it("traduce los subcódigos documentados", () => {
+    expect(
+      explainWhatsappTemplateAdminError(metaError(100, 2388019))?.code
+    ).toBe("template_limit_reached")
+    expect(
+      explainWhatsappTemplateAdminError(metaError(100, 2388039))?.code
+    ).toBe("template_under_review")
+    for (const subcode of [2388040, 2388072, 2388073, 2388293, 2388299]) {
+      expect(
+        explainWhatsappTemplateAdminError(metaError(100, subcode))?.code
+      ).toBe("template_invalid_format")
+    }
+  })
+
+  it("el token vencido se explica como en el resto del canal", () => {
+    expect(explainWhatsappTemplateAdminError(metaError(190))?.message).toMatch(
+      /reconnect the number/
+    )
+  })
+
+  it("no inventa: lo no documentado queda sin traducción", () => {
+    expect(
+      explainWhatsappTemplateAdminError(metaError(100, 2388024))
+    ).toBeNull()
+    expect(explainWhatsappTemplateAdminError(metaError(100))).toBeNull()
+    expect(explainWhatsappTemplateAdminError({})).toBeNull()
   })
 })

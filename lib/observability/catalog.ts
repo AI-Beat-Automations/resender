@@ -109,6 +109,11 @@ export type LogAction =
   | "template_status_update"
   | "template_category_update"
   | "template_quality_update"
+  // Administración de las plantillas propias por la API pública (issue #194):
+  // `POST /templates`, `PATCH` y `DELETE /templates/{id}`.
+  | "template_create"
+  | "template_edit"
+  | "template_delete"
 // @section end
 
 export type LogOutcome =
@@ -238,4 +243,10 @@ export type LogReason =
   // Un webhook de categoría de una plantilla que la copia no conoce: sin
   // estado no hay con qué crear la fila, y el próximo sync la trae.
   | "template_not_found"
+  // `PATCH`/`DELETE` de una plantilla que no creó este actor: la importada por
+  // el sync, la de un cliente vista por el padre o la de otro tenant (403).
+  | "template_not_owned"
+  // La fila no tiene hsm id y borrar por nombre se llevaría todos los idiomas:
+  // se rechaza con 409 sin llamar a Meta.
+  | "template_missing_meta_id"
 // @section end
