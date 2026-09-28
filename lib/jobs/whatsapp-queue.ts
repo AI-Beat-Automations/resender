@@ -1,6 +1,7 @@
 import { handleMediaPurgeJob } from "@/lib/account/media-purge"
 import { getMediaBucket } from "@/lib/messages/media-access"
 import { log } from "@/lib/observability/logger"
+import { syncWhatsappTemplates } from "@/lib/whatsapp-templates/template-sync"
 
 import { markHistorySyncFailed, requestHistorySync } from "./history-sync"
 import { downloadMediaToR2, markAttachmentFailed } from "./media-download"
@@ -25,7 +26,8 @@ function parseJob(value: unknown): WhatsappJobMessage | null {
     type !== "history_sync_request" &&
     type !== "history_chunk" &&
     type !== "media_download" &&
-    type !== "media_purge"
+    type !== "media_purge" &&
+    type !== "template_sync"
   ) {
     return null
   }
@@ -133,6 +135,14 @@ async function runJob(
       // esto; si acá no se llamara a Meta, no llegaría ningún `history` y la
       // conexión se perdería sola a las 24 h sin que nada fallara a la vista.
       await requestHistorySync({ connectionId: job.connectionId })
+      return
+
+    case "template_sync":
+      // Por WABA e idempotente: un segundo sync desde otro número de la misma
+      // WABA, o el reintento de la cola, cae sobre las mismas filas. Un fallo
+      // de Graph lanza y se reintenta; la DLQ solo deja constancia, porque la
+      // copia no decide nada y el próximo sync la pone al día.
+      await syncWhatsappTemplates({ connectionId: job.connectionId })
       return
 
     case "history_chunk":

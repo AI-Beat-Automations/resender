@@ -163,9 +163,18 @@ export type WhatsappFailureReason =
   // fallan por motivos distintos y se cuentan por separado.
   | "media_not_found"
   | "media_download_failed"
+  // El listado del catálogo de plantillas de la WABA.
+  | "template_list_failed"
   | "network_error"
 
 export type WhatsappOnboardingMode = "standard" | "coexistence"
+
+// Los pasos que puede reportar una llamada a Graph de WhatsApp: los del
+// onboarding y los de fuera de él. `template_list` es el listado del catálogo
+// de plantillas (`whatsapp-template-client.ts`), que corre en un job y no en
+// el callback, así que no tiene lugar en `WhatsappOnboardingStep` ni en su
+// mapa de motivos.
+export type WhatsappApiStep = WhatsappOnboardingStep | "template_list"
 
 // Mismo patrón que `InstagramApiError`: el `step` es lo que el callback traduce
 // a un mensaje accionable. Lleva dos campos más porque acá un mismo paso tiene
@@ -175,7 +184,7 @@ export type WhatsappOnboardingMode = "standard" | "coexistence"
 export class WhatsappApiError extends Error {
   constructor(
     message: string,
-    public readonly step: WhatsappOnboardingStep,
+    public readonly step: WhatsappApiStep,
     public readonly reason: WhatsappFailureReason,
     // Código de Meta cuando lo hubo. Nunca el body: ver `logMetaFailure`.
     public readonly metaErrorCode: number | null = null
@@ -286,7 +295,7 @@ export type WhatsappSignupResult = {
 // `client_secret=`, `access_token=` y `code=` si alguno se colara dentro del
 // mensaje de un error. El test «higiene de secretos» fija las dos mitades: dónde
 // va cada credencial y que ninguna sale por el log.
-function bearer(accessToken: string): Record<string, string> {
+export function bearer(accessToken: string): Record<string, string> {
   return { Authorization: `Bearer ${accessToken}` }
 }
 
@@ -326,9 +335,13 @@ function logMetaFailure(input: {
 // del runtime, que en un Worker es el de la request entera. El `timeoutMs` es
 // opcional y no una obligación de cada paso por lo mismo: quien no opine se
 // lleva el plazo común, y solo `/register` —que tarda otra cosa— lo cambia.
-async function graphRequest(
+//
+// Exportada para los clientes de Graph que viven fuera de este archivo
+// (`whatsapp-template-client.ts`): un segundo helper de request volvería a
+// abrir la puerta a un `fetch` sin plazo.
+export async function graphRequest(
   call: {
-    step: WhatsappOnboardingStep
+    step: WhatsappApiStep
     action: LogAction
     accountId?: string
     timeoutMs?: number

@@ -98,6 +98,11 @@ export type LogAction =
   // que es la única señal de que al tenant le falta una fila en pantalla.
   | "request_log_write"
   | "request_log_purge" // cron: borra las filas que cumplieron la retención
+  // @section templates
+  // El catálogo de [Plantilla]s de WhatsApp (ADR 0024, issue #192). El envío
+  // es `template_send`, en `outbound`; acá va lo que mantiene y lee la copia.
+  | "template_sync" // job: trae el catálogo de una WABA de Graph y lo guarda
+  | "template_list" // `GET /api/meta/whatsapp/templates`
 // @section end
 
 export type LogOutcome =
@@ -214,4 +219,11 @@ export type LogReason =
   // El [Canal de correo] no tiene `RESEND_API_KEY`. No es un fallo del
   // proveedor: es `next dev` o vitest, donde el secreto no existe a propósito.
   | "not_configured"
+  // @section templates
+  // Por qué no se sincronizó el catálogo de una WABA. `connection_not_active`
+  // es un descarte (la conexión se borró o se desconectó entre el encolado y
+  // el job); `template_list_failed` es Graph rechazando el listado, y ese sí
+  // se reintenta.
+  | "connection_not_active"
+  | "template_list_failed"
 // @section end

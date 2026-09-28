@@ -1359,3 +1359,59 @@ describe("migración 0031: template_meta en messages", () => {
     })
   })
 })
+
+// Migración 0032: la copia local del catálogo de plantillas (issue #192).
+describe("migración 0032: whatsapp_templates", () => {
+  it("una fila por (waba_id, name, language)", async () => {
+    await db.query(
+      `insert into whatsapp_templates (waba_id, name, language, status)
+       values ('waba-m', 'hello_world', 'en_US', 'APPROVED'),
+              ('waba-m', 'hello_world', 'es', 'APPROVED'),
+              ('waba-otra', 'hello_world', 'en_US', 'APPROVED')`
+    )
+    await expect(
+      db.query(
+        `insert into whatsapp_templates (waba_id, name, language, status)
+         values ('waba-m', 'hello_world', 'en_US', 'PENDING')`
+      )
+    ).rejects.toThrow()
+  })
+
+  // El catálogo de estados de Meta no es estable: sin check, un estado nuevo
+  // no tumba el sync.
+  it("acepta cualquier status, pero solo las tres categorías", async () => {
+    await db.query(
+      `insert into whatsapp_templates (waba_id, name, language, status, category)
+       values ('waba-m', 'nuevo', 'es', 'SOMETHING_NEW', 'marketing')`
+    )
+    await expect(
+      db.query(
+        `insert into whatsapp_templates (waba_id, name, language, status, category)
+         values ('waba-m', 'mala', 'es', 'APPROVED', 'UTILITY')`
+      )
+    ).rejects.toThrow()
+  })
+
+  it("borrar al dueño deja la plantilla sin dueño", async () => {
+    const owner = await db.query<{ id: string }>(
+      `insert into users (email) values ('duena-plantilla@example.com')
+       returning id`
+    )
+    const ownerId = owner.rows[0]!.id
+    await db.query(
+      `insert into whatsapp_templates (
+         waba_id, name, language, status, created_by_tenant_id
+       )
+       values ('waba-m', 'propia', 'es', 'APPROVED', $1)`,
+      [ownerId]
+    )
+
+    await db.query(`delete from users where id = $1`, [ownerId])
+
+    const rows = await db.query<{ created_by_tenant_id: string | null }>(
+      `select created_by_tenant_id from whatsapp_templates
+       where waba_id = 'waba-m' and name = 'propia'`
+    )
+    expect(rows.rows).toEqual([{ created_by_tenant_id: null }])
+  })
+})

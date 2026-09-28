@@ -776,12 +776,15 @@ export async function insertOutboundMessage(input: {
   // enviamos nosotros.
   origin?: MessageOrigin | null
   // La [Plantilla] de WhatsApp que salió (migración 0031): `{ name, language,
-  // components }` de ese envío. Solo la informa `/whatsapp/templates/send`; en
-  // el resto queda null. Una plantilla no es un adjunto: van por separado.
+  // components, body? }` de ese envío. Solo la informa
+  // `/whatsapp/templates/send`; en el resto queda null. Una plantilla no es un
+  // adjunto: van por separado. `body` es el cuerpo de la copia local al momento
+  // del envío (migración 0032), si la copia la conocía.
   templateMeta?: {
     name: string
     language: string
     components?: unknown[]
+    body?: string
   } | null
   error: string | null
   providerResponse: unknown
