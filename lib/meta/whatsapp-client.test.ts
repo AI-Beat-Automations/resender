@@ -873,6 +873,50 @@ describe("envío", () => {
     expect(image.image).toEqual({ link: "https://cdn.cliente/foto.jpg" })
   })
 
+  // `language` va como `{ code }` y no como string suelto; los `components`
+  // viajan tal cual, sin tocarlos.
+  it("arma la plantilla con name, language.code y components", () => {
+    const components = [
+      { type: "body", parameters: [{ type: "text", text: "Ana" }] },
+    ]
+    expect(
+      buildWhatsappMessagePayload("1631", {
+        template: { name: "pedido_listo", language: "es_MX", components },
+      })
+    ).toEqual({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: "1631",
+      type: "template",
+      template: {
+        name: "pedido_listo",
+        language: { code: "es_MX" },
+        components,
+      },
+    })
+  })
+
+  // Una plantilla sin variables (`hello_world`) se manda sin la clave.
+  it("omite components cuando no vienen o vienen vacíos", () => {
+    const expected = {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: "1631",
+      type: "template",
+      template: { name: "hello_world", language: { code: "en_US" } },
+    }
+    expect(
+      buildWhatsappMessagePayload("1631", {
+        template: { name: "hello_world", language: "en_US" },
+      })
+    ).toEqual(expected)
+    expect(
+      buildWhatsappMessagePayload("1631", {
+        template: { name: "hello_world", language: "en_US", components: [] },
+      })
+    ).toEqual(expected)
+  })
+
   // Cloud API no devuelve `message_id` como Messenger: reusar la extracción de
   // allá devolvería `null` siempre y el mensaje quedaría sin el id con el que
   // después llegan sus `statuses`.

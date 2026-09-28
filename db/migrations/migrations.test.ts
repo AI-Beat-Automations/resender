@@ -1316,3 +1316,46 @@ describe("migración 0030: cupo gratis de Meta", () => {
     ).rejects.toThrow()
   })
 })
+
+// Migración 0031: el envío de plantillas de WhatsApp (issue #190).
+describe("migración 0031: template_meta en messages", () => {
+  it("añade `template_meta` jsonb, nullable y sin default", async () => {
+    const columns = await db.query<{
+      data_type: string
+      is_nullable: string
+      column_default: string | null
+    }>(
+      `select data_type, is_nullable, column_default
+       from information_schema.columns
+       where table_schema = 'public' and table_name = 'messages'
+         and column_name = 'template_meta'`
+    )
+    expect(columns.rows).toEqual([
+      { data_type: "jsonb", is_nullable: "YES", column_default: null },
+    ])
+  })
+
+  // Una plantilla no es un [Adjunto]: la fila sale con `text = ''` y sin
+  // `attachment_type`, y el check de la 0016 la acepta igual.
+  it("acepta una plantilla con texto vacío y sin adjunto", async () => {
+    const message = await insertMessage({ text: "" })
+    const template = {
+      name: "hello_world",
+      language: "en_US",
+      components: [],
+    }
+    const updated = await db.query<{
+      template_meta: Record<string, unknown>
+      attachment_type: string | null
+    }>(
+      `update messages set template_meta = $2
+       where id = $1
+       returning template_meta, attachment_type`,
+      [message.id, JSON.stringify(template)]
+    )
+    expect(updated.rows[0]).toEqual({
+      template_meta: template,
+      attachment_type: null,
+    })
+  })
+})
