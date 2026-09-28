@@ -126,6 +126,9 @@ el fallo es «no aparece la opción», no «registramos de más».
 
 ### La ventana de 24 h se aplica localmente y no hay plantillas
 
+> **Superseded en parte por la [ADR 0024](0024-plantillas-de-whatsapp.md):** la ventana se sigue
+> resolviendo en local, pero ahora hay plantillas y el 409 dice `templateSendingSupported: true`.
+
 `conversations.last_inbound_at` se escribe en un solo módulo y solo cuando el
 mensaje es entrante, vivo y del cliente final: no la abre un saliente, ni un
 status, ni un mensaje importado, ni un echo de Business App. Con la ventana
@@ -305,7 +308,8 @@ tiene:
 1. **Cuando Meta apruebe Advanced Access y Access Verification.** Ese día
    `whatsapp_enabled` deja de ser un gate de lanzamiento y pasa a ser código
    muerto, como `waitlisted` después de la 0011.
-2. **Cuando haga falta iniciar conversaciones.** Las plantillas son la fase
+2. **Cuando haga falta iniciar conversaciones.** _(Resuelto por la
+   [ADR 0024](0024-plantillas-de-whatsapp.md).)_ Las plantillas son la fase
    siguiente y rompen tres supuestos de esta: que el usuario final escribe
    primero, que la ventana de 24 h es la única regla de envío, y que no
    administramos assets de mensajería en Meta. No se acomodan como un tipo de

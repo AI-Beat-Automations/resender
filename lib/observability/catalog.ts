@@ -39,6 +39,9 @@ export type LogAction =
   | "outbound_send" // DM (Messenger o Instagram)
   | "comment_reply" // respuesta pública debajo del comentario
   | "comment_private_reply" // DM al autor del comentario
+  // WhatsApp (ADR 0024): Cloud API devolvió un `wa_id` distinto del número
+  // marcado y el saliente se movió a la conversación de ese `wa_id`.
+  | "whatsapp_contact_reconcile"
   // @section connections
   | "oauth_start"
   | "oauth_callback"

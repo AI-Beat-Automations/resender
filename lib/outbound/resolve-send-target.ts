@@ -6,6 +6,10 @@ import {
 import type { LogReason } from "@/lib/observability/logger"
 import type { SendTarget } from "@/lib/outbound/send-request"
 import {
+  INVALID_WHATSAPP_RECIPIENT_ERROR,
+  normalizeWhatsappRecipientId,
+} from "@/lib/outbound/whatsapp-recipient"
+import {
   getActivePageWithTokenByConnectionId,
   getActivePageWithTokenForTenant,
   type ConnectedPageRecord,
@@ -35,7 +39,7 @@ export type ResolvedSendTarget = {
 export type ResolveSendTargetError = {
   ok: false
   status: 400 | 404
-  code?: "conversation_channel_mismatch"
+  code?: "conversation_channel_mismatch" | "invalid_recipient"
   error: string
   // Para `trace.drop`: la razón del log y el detalle que hoy loguean las rutas
   // (`accountId=…` / `phoneNumberId=…`), sin que la ruta tenga que rearmarlos.
@@ -134,6 +138,26 @@ export async function resolveSendTarget(input: {
     }
   }
 
+  // En WhatsApp el `recipientId` es un teléfono y se normaliza a dígitos, como
+  // el `wa_id` con el que llegan los entrantes (ADR 0024): sin esto, un envío a
+  // `+52 55 …` y la respuesta del contacto abren dos conversaciones. Acá y no
+  // en `parseSendTarget`, que es neutral de canal: en Messenger e Instagram el
+  // `recipientId` es un PSID o un IGSID y no se toca.
+  let recipientId = target.recipientId
+  if (channel === "whatsapp") {
+    const normalized = normalizeWhatsappRecipientId(recipientId)
+    if (!normalized) {
+      return {
+        ok: false,
+        status: 400,
+        code: "invalid_recipient",
+        error: INVALID_WHATSAPP_RECIPIENT_ERROR,
+        reason: "invalid_request",
+      }
+    }
+    recipientId = normalized
+  }
+
   // Modo `contact`. El canal va explícito: `meta_page_id` es único por
   // `(channel, meta_page_id)` desde la migración 0013, así que buscar sin canal
   // puede traer la fila de otro.
@@ -163,7 +187,7 @@ export async function resolveSendTarget(input: {
     if (
       !conversation ||
       conversation.connectedPageId !== connectedPage.page.id ||
-      conversation.contactId !== target.recipientId
+      conversation.contactId !== recipientId
     ) {
       return {
         ok: false,
@@ -180,7 +204,7 @@ export async function resolveSendTarget(input: {
     conversation = await upsertConversation({
       tenantId,
       connectedPageId: connectedPage.page.id,
-      contactId: target.recipientId,
+      contactId: recipientId,
       lastMessageAt: new Date(),
     })
   }

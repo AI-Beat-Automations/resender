@@ -681,6 +681,78 @@ export async function getConversationPausedAt(input: {
   return row?.paused_at ?? null
 }
 
+// La conversación de un contacto en una conexión, sin crearla. La usa la
+// conciliación del `wa_id` de WhatsApp para saber si la respuesta del contacto
+// ya tiene conversación propia antes de mover nada.
+export async function getConversationByContact(input: {
+  tenantId: string
+  connectedPageId: string
+  contactId: string
+}) {
+  const sql = getSql()
+  const [row] = await sql<ConversationRow[]>`
+    select id, tenant_id, connected_page_id, contact_id, contact_name, last_message_at, last_inbound_at, paused_at
+    from conversations
+    where tenant_id = ${input.tenantId}
+      and connected_page_id = ${input.connectedPageId}
+      and contact_id = ${input.contactId}
+    limit 1
+  `
+
+  return row ? mapConversation(row) : null
+}
+
+// Cambia el contacto de una conversación. Devuelve null si ya existe otra con
+// ese `(connected_page_id, contact_id)`: el unique de la 0001 rechaza el
+// update, y el llamador lo trata como «la conversación destino ya existe» en
+// vez de como un error, porque es la carrera de un entrante que la creó entre
+// la lectura y este update.
+export async function updateConversationContactId(input: {
+  tenantId: string
+  conversationId: string
+  contactId: string
+}) {
+  const sql = getSql()
+  try {
+    const [row] = await sql<ConversationRow[]>`
+      update conversations
+      set contact_id = ${input.contactId},
+        updated_at = now()
+      where id = ${input.conversationId} and tenant_id = ${input.tenantId}
+      returning id, tenant_id, connected_page_id, contact_id, contact_name, last_message_at, last_inbound_at, paused_at
+    `
+    return row ? mapConversation(row) : null
+  } catch (error) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      (error as { code?: unknown }).code === "23505"
+    ) {
+      return null
+    }
+    throw error
+  }
+}
+
+// Borra una conversación **solo si no tiene mensajes**. La condición va en el
+// `where` y no en una lectura previa: los mensajes cuelgan con `on delete
+// cascade` (0002), así que un borrado que se equivocara se llevaría historial.
+export async function deleteConversationIfEmpty(input: {
+  tenantId: string
+  conversationId: string
+}) {
+  const sql = getSql()
+  const rows = await sql<{ id: string }[]>`
+    delete from conversations c
+    where c.id = ${input.conversationId}
+      and c.tenant_id = ${input.tenantId}
+      and not exists (select 1 from messages m where m.conversation_id = c.id)
+    returning c.id
+  `
+
+  return rows.length > 0
+}
+
 export async function insertOutboundMessage(input: {
   tenantId: string
   conversationId: string

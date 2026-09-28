@@ -112,6 +112,8 @@ Resender debe quedar además con una cuenta demo, documentación y evidencias su
 
 ## Regla explícita sobre plantillas
 
+> **Superseded por la [ADR 0024](docs/adr/0024-plantillas-de-whatsapp.md):** Resender envía plantillas por `POST /api/meta/whatsapp/templates/send`. Lo que sigue describe la fase anterior.
+
 Las plantillas **no son obligatorias** para recibir mensajes ni para responder con mensajes libres dentro de las 24 horas posteriores al último mensaje entrante del usuario.
 
 En esta fase:

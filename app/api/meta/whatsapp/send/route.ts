@@ -33,8 +33,10 @@ import {
   parseOutboundSendInput,
   parseSendTarget,
 } from "@/lib/outbound/send-request"
+import { reconcileWhatsappContact } from "@/lib/outbound/whatsapp-recipient"
 import {
   exceedsWhatsappTextLimit,
+  extractWhatsappContactWaId,
   extractWhatsappMessageId,
   isWhatsappExpiredTokenError,
   sendWhatsappOutboundMessage,
@@ -273,7 +275,8 @@ async function handle(request: NextRequest, capture: ApiLogCapture) {
       }
     )
   }
-  const { page, pageAccessToken, conversation } = resolved.value
+  const { page, pageAccessToken } = resolved.value
+  let conversation = resolved.value.conversation
   trace.setAccount(page)
 
   // ---- 8. La ventana de atención de 24 h ----------------------------------
@@ -375,6 +378,48 @@ async function handle(request: NextRequest, capture: ApiLogCapture) {
   // `statuses` para decir si el mensaje se entregó o lo leyeron: sin guardarlo
   // acá, ese callback no encuentra la fila que tiene que actualizar.
   const wamid = extractWhatsappMessageId(metaResult.data)
+
+  // El `wa_id` con el que van a llegar las respuestas puede no ser el número
+  // marcado (ADR 0024): el mensaje se guarda en la conversación de ese `wa_id`,
+  // y esa es la que vuelve en `resender.conversationId`. Best-effort: Meta ya
+  // aceptó el mensaje, así que un fallo acá lo deja donde estaba en vez de
+  // perder la fila.
+  if (metaResult.ok) {
+    try {
+      const reconciled = await reconcileWhatsappContact({
+        tenantId: apiKey.tenantId,
+        conversation,
+        waId: extractWhatsappContactWaId(metaResult.data),
+      })
+      if (reconciled.kind !== "unchanged") {
+        conversation = reconciled.conversation
+        log({
+          entrypoint: "route",
+          action: "whatsapp_contact_reconcile",
+          outcome: "ok",
+          requestId,
+          tenantId: apiKey.tenantId,
+          connectionId: page.id,
+          channel: "whatsapp",
+          accountId: page.metaPageId,
+          contactId: conversation.contactId,
+        })
+      }
+    } catch (error) {
+      log({
+        entrypoint: "route",
+        action: "whatsapp_contact_reconcile",
+        outcome: "failed",
+        reason: "internal_error",
+        requestId,
+        tenantId: apiKey.tenantId,
+        connectionId: page.id,
+        channel: "whatsapp",
+        accountId: page.metaPageId,
+        errorMessage: describeError(error),
+      })
+    }
+  }
 
   let message: MessageRecord
   try {
