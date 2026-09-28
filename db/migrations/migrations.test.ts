@@ -1415,3 +1415,64 @@ describe("migración 0032: whatsapp_templates", () => {
     expect(rows.rows).toEqual([{ created_by_tenant_id: null }])
   })
 })
+
+describe("migración 0033: eventos de plantilla como sujeto de entrega", () => {
+  async function templateEvent() {
+    const template = await db.query<{ id: string }>(
+      `insert into whatsapp_templates (waba_id, name, language, status)
+       values ('waba-e', 'evento', 'es', 'PENDING')
+       on conflict (waba_id, name, language) do update set status = 'PENDING'
+       returning id`
+    )
+    const event = await db.query<{ id: string }>(
+      `insert into whatsapp_template_events (
+         template_id, waba_id, name, language, status
+       )
+       values ($1, 'waba-e', 'evento', 'es', 'APPROVED')
+       returning id`,
+      [template.rows[0]!.id]
+    )
+    return event.rows[0]!.id
+  }
+
+  const insertJob = (eventId: string, connectionId: string | null, key: string) =>
+    db.query(
+      `insert into external_webhook_jobs (
+         event_id, tenant_id, template_event_id, connected_page_id, payload
+       )
+       values ($1, $2, $3, $4, '{}')`,
+      [key, tenantId, eventId, connectionId]
+    )
+
+  it("un job por evento y conexión, y la conexión es obligatoria", async () => {
+    const eventId = await templateEvent()
+
+    await insertJob(eventId, pageId, "evt_0033_a")
+    // La misma conexión otra vez: el reintento del mismo evento.
+    await expect(insertJob(eventId, pageId, "evt_0033_b")).rejects.toThrow()
+    // Sin conexión no hay a quién entregarle.
+    await expect(insertJob(eventId, null, "evt_0033_c")).rejects.toThrow()
+  })
+
+  it("sigue exigiendo exactamente un sujeto", async () => {
+    const eventId = await templateEvent()
+    const message = await insertMessage({ text: "hola" })
+
+    await expect(
+      db.query(
+        `insert into external_webhook_deliveries (
+           message_id, template_event_id, connected_page_id, status, attempt
+         )
+         values ($1, $2, $3, 'skipped', 1)`,
+        [message.id, eventId, pageId]
+      )
+    ).rejects.toThrow()
+    await db.query(
+      `insert into external_webhook_deliveries (
+         template_event_id, connected_page_id, status, attempt
+       )
+       values ($1, $2, 'skipped', 1)`,
+      [eventId, pageId]
+    )
+  })
+})

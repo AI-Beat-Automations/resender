@@ -31,12 +31,47 @@ import type {
 export type { AttachmentDetails, InboundAttachment } from "./inbound-event"
 
 // Sujeto de la entrega. `external_webhook_deliveries` acepta desde la migración
-// 0013 un mensaje **o** un comentario, con un check de que sea exactamente uno;
-// este tipo es esa restricción expresada en TypeScript, para que no se pueda
-// construir una entrega sin sujeto ni con los dos.
+// 0013 un mensaje **o** un comentario, y desde la 0033 un cambio de estado de
+// plantilla, con un check de que sea exactamente uno; este tipo es esa
+// restricción expresada en TypeScript, para que no se pueda construir una
+// entrega sin sujeto ni con dos.
+//
+// El de plantilla lleva además la conexión: un mensaje o un comentario cuelgan
+// de una sola, pero un cambio de estado es de la WABA y se reparte a cada
+// conexión con webhook de esa WABA. El sujeto es el par, no el evento solo.
 export type DeliverySubject =
   | { kind: "message"; id: string }
   | { kind: "comment"; id: string }
+  | { kind: "template"; id: string; connectionId: string }
+
+// El id del evento es determinista y sale del uuid del sujeto. Podría ser un
+// hash del contenido, pero no hace falta: `external_webhook_jobs` ya tiene
+// índices únicos parciales por sujeto, así que un sujeto no puede tener dos
+// jobs. Derivarlo del uuid hace que el mismo evento reingerido produzca el
+// mismo `event_id`, que es justo lo que un consumidor necesita para
+// deduplicar de su lado.
+//
+// En una plantilla entran los dos uuids: `event_id` es único en toda la tabla
+// de jobs, y el mismo cambio de estado sale una vez por conexión. Cada webhook
+// ve siempre el mismo id para el mismo cambio.
+export function eventIdFor(subject: DeliverySubject): string {
+  const base = `evt_${subject.id.replace(/-/g, "")}`
+  return subject.kind === "template"
+    ? `${base}_${subject.connectionId.replace(/-/g, "")}`
+    : base
+}
+
+// Las columnas de la bitácora y de los jobs para cada sujeto: exactamente una
+// de las tres va informada, y la conexión solo en el de plantilla.
+export function subjectColumns(subject: DeliverySubject) {
+  return {
+    messageId: subject.kind === "message" ? subject.id : null,
+    commentId: subject.kind === "comment" ? subject.id : null,
+    templateEventId: subject.kind === "template" ? subject.id : null,
+    templateConnectionId:
+      subject.kind === "template" ? subject.connectionId : null,
+  }
+}
 
 export type InboundPushPayload = {
   // Discrimina el tipo de evento sin que el consumidor tenga que adivinar por
@@ -299,7 +334,63 @@ export function buildInboundCommentPayload(input: {
   }
 }
 
-export type PushPayload = InboundPushPayload | InboundCommentPushPayload
+// El cambio de estado de una [Plantilla] (issue #193). Mismo `tenant` y mismo
+// `page` que un mensaje de WhatsApp —con los tres campos propios del canal—,
+// porque el consumidor los lee igual en los tres tipos. El `page` es la
+// conexión que recibe **esta** entrega: el mismo cambio sale una vez por cada
+// conexión de la WABA.
+export type TemplatePushPayload = {
+  type: "template"
+  tenant: { id: string }
+  page: InboundPushPayload["page"]
+  template: {
+    name: string
+    language: string
+    // Tal cual lo manda Meta (`APPROVED`, `REJECTED`, `PAUSED`…).
+    status: string
+    category: string | null
+    // El motivo de Meta (`INVALID_FORMAT`, `FIRST_PAUSE`…), o null.
+    reason: string | null
+  }
+}
+
+export function buildTemplatePushPayload(input: {
+  page: ConnectedPageRecord
+  template: {
+    name: string
+    language: string
+    status: string
+    category: string | null
+    reason: string | null
+  }
+}): TemplatePushPayload {
+  return {
+    type: "template",
+    tenant: { id: input.page.tenantId },
+    page: {
+      id: input.page.id,
+      channel: input.page.channel,
+      metaPageId: input.page.metaPageId,
+      name: input.page.name,
+      username: input.page.username,
+      phoneNumberId: input.page.metaPageId,
+      wabaId: input.page.wabaId,
+      onboardingMode: input.page.onboardingMode,
+    },
+    template: {
+      name: input.template.name,
+      language: input.template.language,
+      status: input.template.status,
+      category: input.template.category,
+      reason: input.template.reason,
+    },
+  }
+}
+
+export type PushPayload =
+  | InboundPushPayload
+  | InboundCommentPushPayload
+  | TemplatePushPayload
 
 // Contexto de log de una entrega. Viaja desde la ingesta adentro del closure
 // del `pushJob`, porque cuando este código corre —en el `after()` de Next— la
@@ -315,7 +406,7 @@ export type DeliveryLogContext = {
   channel?: PageChannel
   accountId?: string
   accountHandle?: string
-  subject?: "message" | "comment"
+  subject?: "message" | "comment" | "template"
   subjectId?: string
   providerId?: string
   contactId?: string
@@ -359,7 +450,7 @@ export async function recordSkippedDelivery(
     subject,
     status: "skipped",
     webhookUrl: null,
-    eventId: `evt_${subject.id.replace(/-/g, "")}`,
+    eventId: eventIdFor(subject),
     skipReason: options.logReason ?? "webhook_url_not_configured",
     requestId: options.context?.requestId ?? null,
     requestBody: options.payload,
@@ -385,16 +476,19 @@ export async function recordDelivery(input: {
   attempt: number
 }) {
   const sql = getSql()
-  // Exactamente una de las dos columnas va informada; la otra es null. El check
-  // `num_nonnulls(...) = 1` de la migración 0013 rechaza cualquier otra cosa, y
-  // el tipo `DeliverySubject` hace que no se pueda llegar hasta acá con las dos.
-  const messageId = input.subject.kind === "message" ? input.subject.id : null
-  const commentId = input.subject.kind === "comment" ? input.subject.id : null
+  // Exactamente una de las tres columnas va informada; las otras son null. El
+  // check `num_nonnulls(...) = 1` (0013, ampliado en la 0033) rechaza
+  // cualquier otra cosa, y el tipo `DeliverySubject` hace que no se pueda
+  // llegar hasta acá con dos.
+  const { messageId, commentId, templateEventId, templateConnectionId } =
+    subjectColumns(input.subject)
 
   await sql`
     insert into external_webhook_deliveries (
       message_id,
       instagram_comment_id,
+      template_event_id,
+      connected_page_id,
       webhook_url,
       status,
       status_code,
@@ -404,6 +498,8 @@ export async function recordDelivery(input: {
     values (
       ${messageId},
       ${commentId},
+      ${templateEventId},
+      ${templateConnectionId},
       ${input.webhookUrl},
       ${input.status},
       ${input.statusCode},

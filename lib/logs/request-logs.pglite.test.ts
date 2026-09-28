@@ -100,6 +100,25 @@ async function insertJob(messageId: string) {
   return result.rows[0]!.id
 }
 
+// Un cambio de estado de plantilla (0033): la fila de la copia y su evento.
+async function insertTemplateEvent() {
+  const template = await db.query<{ id: string }>(
+    `insert into whatsapp_templates (waba_id, name, language, status)
+     values ('waba-1', 'bienvenida', 'es', 'APPROVED')
+     on conflict (waba_id, name, language) do update set status = 'APPROVED'
+     returning id`
+  )
+  const event = await db.query<{ id: string }>(
+    `insert into whatsapp_template_events (
+       template_id, waba_id, name, language, status
+     )
+     values ($1, 'waba-1', 'bienvenida', 'es', 'APPROVED')
+     returning id`,
+    [template.rows[0]!.id]
+  )
+  return event.rows[0]!.id
+}
+
 beforeAll(async () => {
   const files = readdirSync(MIGRATIONS_DIR)
     .filter((file) => file.endsWith(".sql"))
@@ -323,6 +342,82 @@ describe("escritura", () => {
       skipReason: "connection_paused",
       accountName: "Clínica Sonrisa",
       conversationId,
+    })
+    expect(logMock).not.toHaveBeenCalled()
+  })
+
+  // Issue #193: una entrega sin `message_id` ni comentario. La cuenta sale de
+  // la conexión que lleva el job, y ni la lista ni el detalle se rompen.
+  it("una entrega de cambio de plantilla se ve en la lista y en el detalle", async () => {
+    const eventId = await insertTemplateEvent()
+    const job = await db.query<{ id: string }>(
+      `insert into external_webhook_jobs (
+         event_id, tenant_id, template_event_id, connected_page_id,
+         webhook_url, payload, status, recover_after
+       )
+       values ($1, $2, $3, $4, 'https://bot.example/hook', '{}', 'pending',
+         now())
+       returning id`,
+      [`evt_tpl_${eventId}`, tenantId, eventId, pageId]
+    )
+
+    await logDeliveryAttempt({
+      jobId: job.rows[0]!.id,
+      tenantId,
+      status: "success",
+      httpStatus: 200,
+      durationMs: 90,
+      attempt: 1,
+      maxAttempts: 6,
+      retryDelaySeconds: null,
+      signed: true,
+      error: null,
+      requestBody: '{"type":"template"}',
+      responseBody: "ok",
+    })
+
+    const { rows } = await listRequestLogs({
+      tenantId,
+      filters: filters(),
+      clientFilter: ALL,
+    })
+    expect(rows).toHaveLength(1)
+    const detail = await getRequestLog(tenantId, rows[0]!.id)
+    expect(detail).toMatchObject({
+      direction: "resender_to_bot",
+      status: "success",
+      eventType: "template",
+      accountName: "Clínica Sonrisa",
+      messageId: null,
+      conversationId: null,
+      providerMessageId: null,
+    })
+    expect(logMock).not.toHaveBeenCalled()
+  })
+
+  it("un cambio de plantilla omitido queda como skipped en su conexión", async () => {
+    const eventId = await insertTemplateEvent()
+    await logDeliveryOutcome({
+      subject: { kind: "template", id: eventId, connectionId: pageId },
+      status: "skipped",
+      webhookUrl: null,
+      eventId: "evt_tpl",
+      skipReason: "connection_paused",
+      requestBody: { type: "template" },
+    })
+
+    const { rows } = await listRequestLogs({
+      tenantId,
+      filters: filters({ estado: "skipped" }),
+      clientFilter: ALL,
+    })
+    expect(rows).toHaveLength(1)
+    const detail = await getRequestLog(tenantId, rows[0]!.id)
+    expect(detail).toMatchObject({
+      eventType: "template",
+      skipReason: "connection_paused",
+      accountName: "Clínica Sonrisa",
+      messageId: null,
     })
     expect(logMock).not.toHaveBeenCalled()
   })

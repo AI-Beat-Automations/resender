@@ -30,7 +30,11 @@ import {
 } from "@/lib/outbound/whatsapp-send"
 import { markPageTokenInvalid } from "@/lib/pages/page-registry"
 import { captureDeferred } from "@/lib/posthog"
-import { findWhatsappTemplate } from "@/lib/whatsapp-templates/template-store"
+import { decideTemplateSend } from "@/lib/whatsapp-templates/send-gate"
+import {
+  findWhatsappTemplate,
+  type WhatsappTemplateRecord,
+} from "@/lib/whatsapp-templates/template-store"
 
 // Envía una [Plantilla] aprobada por WhatsApp (ADR 0024). Body:
 // { conversationId } | { pageId, recipientId, conversationId? }, más
@@ -51,11 +55,11 @@ import { findWhatsappTemplate } from "@/lib/whatsapp-templates/template-store"
 // El Plan Free puede enviar plantillas: no hay control de plan extra. Consume 1
 // de cuota solo si Meta aceptó, como cualquier envío.
 //
-// **No se controla que la plantilla esté aprobada.** La copia local del
-// catálogo (migración 0032) no decide qué se envía: una plantilla que la copia
-// no conoce, o que conoce desactualizada, se envía igual y decide Meta. De la
-// copia solo sale el `body`, que se guarda en `template_meta` para que el
-// Inbox muestre el texto completo.
+// **El control de aprobada falla abierto** (issue #193, `send-gate.ts`): si la
+// copia local del catálogo (migración 0032) sabe que la plantilla no está
+// aprobada, 409 `template_not_approved` sin llamar a Meta; si no la conoce, se
+// envía igual y decide Meta. De la copia sale además el `body`, que se guarda
+// en `template_meta` para que el Inbox muestre el texto completo.
 export const runtime = "nodejs"
 
 export const POST = withApiRequestLog(
@@ -135,6 +139,32 @@ async function handle(request: NextRequest, capture: ApiLogCapture) {
   let conversation = resolved.value.conversation
   trace.setAccount(page)
 
+  // Después de resolver el destino —la WABA sale de la conexión— y antes de
+  // llamar a Meta. Una lectura que falla cuenta como fila ausente: el control
+  // falla abierto también ante la base caída.
+  const stored = await readStoredTemplate({
+    wabaId: page.wabaId,
+    template,
+    requestId,
+    tenantId: apiKey.tenantId,
+    connectionId: page.id,
+  })
+  const gate = decideTemplateSend(stored)
+  if (!gate.ok) {
+    return trace.drop(
+      "template_not_approved",
+      Response.json(
+        {
+          code: "template_not_approved",
+          error: `The template "${template.name}" (${template.language}) is ${gate.status} in WhatsApp, not APPROVED, so it can't be sent yet.`,
+          templateStatus: gate.status,
+        },
+        { status: 409 }
+      ),
+      { errorCode: "template_not_approved", templateName: template.name }
+    )
+  }
+
   const sentAt = new Date()
   const metaResult = await sendWhatsappOutboundMessage({
     accessToken: pageAccessToken,
@@ -211,13 +241,7 @@ async function handle(request: NextRequest, capture: ApiLogCapture) {
     }
   }
 
-  const templateBody = await readTemplateBody({
-    wabaId: page.wabaId,
-    template,
-    requestId,
-    tenantId: apiKey.tenantId,
-    connectionId: page.id,
-  })
+  const templateBody = stored?.body ?? null
 
   let message: MessageRecord
   try {
@@ -330,24 +354,24 @@ async function handle(request: NextRequest, capture: ApiLogCapture) {
   )
 }
 
-// El cuerpo de la plantilla según la copia local, para `template_meta.body`.
-// Best-effort: sin la fila —la copia todavía no se sincronizó— o con la base
-// caída, el envío se guarda igual y el Inbox muestra la etiqueta con el nombre.
-async function readTemplateBody(input: {
+// La plantilla según la copia local: su estado para el control de aprobada y
+// su cuerpo para `template_meta.body`. Best-effort: sin la fila —la copia
+// todavía no se sincronizó— o con la base caída, el envío sigue, y el Inbox
+// muestra la etiqueta con el nombre.
+async function readStoredTemplate(input: {
   wabaId: string | null
   template: { name: string; language: string }
   requestId: string
   tenantId: string
   connectionId: string
-}): Promise<string | null> {
+}): Promise<WhatsappTemplateRecord | null> {
   if (!input.wabaId) return null
   try {
-    const stored = await findWhatsappTemplate({
+    return await findWhatsappTemplate({
       wabaId: input.wabaId,
       name: input.template.name,
       language: input.template.language,
     })
-    return stored?.body ?? null
   } catch (error) {
     // `template_list` y no `template_send`: lo que falló es la lectura de la
     // copia, no el envío, y contarlo como envío fallido mentiría en el panel.

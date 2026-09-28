@@ -15,7 +15,10 @@
 //   - `logApiRequest`       bot → Resender, una fila por request a la API.
 
 import { getSql } from "@/lib/db"
-import type { DeliverySubject } from "@/lib/inbound/external-push"
+import {
+  subjectColumns,
+  type DeliverySubject,
+} from "@/lib/inbound/external-push"
 import { formatAccountShortLabel } from "@/lib/messages/display"
 import { describeError, log } from "@/lib/observability/logger"
 import type { PageChannel } from "@/lib/pages/page-registry"
@@ -276,7 +279,11 @@ export function logDeliveryAttempt(input: {
       )
       select
         j.tenant_id, 'resender_to_bot', ${input.status}::text, p.channel,
-        case when j.message_id is not null then 'message' else 'comment' end,
+        case
+          when j.message_id is not null then 'message'
+          when j.template_event_id is not null then 'template'
+          else 'comment'
+        end,
         'POST', coalesce(j.webhook_url, ''),
         ${input.httpStatus}::int, ${input.durationMs}::int,
         p.id, p.client_account_id,
@@ -300,7 +307,11 @@ export function logDeliveryAttempt(input: {
       left join messages m on m.id = j.message_id
       left join instagram_comments c on c.id = j.instagram_comment_id
       join connected_pages p
-        on p.id = coalesce(m.connected_page_id, c.connected_page_id)
+        on p.id = coalesce(
+          m.connected_page_id,
+          c.connected_page_id,
+          j.connected_page_id
+        )
       where j.id = ${input.jobId}
       on conflict (job_id) where job_id is not null do update set
         status = excluded.status,
@@ -348,13 +359,15 @@ export function logDeliveryOutcome(input: {
   return guarded("resender_to_bot", undefined, async () => {
     const sql = getSql()
     const request = serializeBody(input.requestBody)
-    const messageId = input.subject.kind === "message" ? input.subject.id : null
-    const commentId = input.subject.kind === "comment" ? input.subject.id : null
+    const { messageId, commentId, templateConnectionId } = subjectColumns(
+      input.subject
+    )
     // Los parámetros van casteados: en un `insert … select` Postgres no les
     // presta el tipo de la columna destino, como sí hace en un `values`.
-    // Un solo `select` para los dos sujetos, sin componer fragmentos (el driver
-    // HTTP de Neon no los soporta): `columna = NULL` nunca es verdadero, así
-    // que el sujeto que no es se descarta solo.
+    // Un solo `select` para los tres sujetos, sin componer fragmentos (el
+    // driver HTTP de Neon no los soporta): `columna = NULL` nunca es verdadero,
+    // así que el sujeto que no es se descarta solo. El de plantilla no tiene
+    // fila propia que cruzar con la cuenta: la trae el sujeto.
     await sql`
       insert into request_logs (
         tenant_id, direction, status, channel, event_type, method, endpoint,
@@ -388,7 +401,9 @@ export function logDeliveryOutcome(input: {
         on m.id = ${messageId}::uuid and m.connected_page_id = p.id
       left join instagram_comments c
         on c.id = ${commentId}::uuid and c.connected_page_id = p.id
-      where m.id is not null or c.id is not null
+      where m.id is not null
+        or c.id is not null
+        or p.id = ${templateConnectionId}::uuid
       limit 1
     `
   })

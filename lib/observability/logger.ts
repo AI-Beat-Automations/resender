@@ -62,6 +62,14 @@ type SubjectFields = {
   // cliente final; los `components` —con los datos del cliente final— no se
   // loguean.
   templateName?: string
+  // Los webhooks de plantillas (issue #193). Son valores del catálogo de Meta
+  // (`en_US`, `APPROVED`, `marketing`, `GREEN`), nunca contenido.
+  templateLanguage?: string
+  templateStatus?: string
+  previousTemplateStatus?: string
+  templateCategory?: string
+  templateQuality?: string
+  previousTemplateQuality?: string
 }
 
 type ContextFields = {

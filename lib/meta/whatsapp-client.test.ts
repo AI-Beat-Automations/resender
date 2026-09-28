@@ -515,7 +515,7 @@ describe("suscripción del WABA", () => {
     expect(calls[0]?.url).not.toContain("subscribed_fields")
   })
 
-  it("manda los tres campos de Coexistence cuando se los pide", async () => {
+  it("manda los campos de Coexistence cuando se los pide", async () => {
     const calls = mockGraph()
 
     await subscribeWhatsappWebhook(BUSINESS_TOKEN, WABA_ID, {
@@ -524,7 +524,9 @@ describe("suscripción del WABA", () => {
 
     const url = new URL(calls[0]?.url ?? "")
     expect(url.searchParams.get("subscribed_fields")).toBe(
-      "history,smb_app_state_sync,smb_message_echoes"
+      "history,smb_app_state_sync,smb_message_echoes," +
+        "message_template_status_update,template_category_update," +
+        "message_template_quality_update"
     )
   })
 
@@ -1221,7 +1223,7 @@ describe("onboarding completo", () => {
 // El flujo B. Comparte el canje, la validación de assets y la lectura del WABA;
 // se separa en que suscribe los tres campos, **no registra** y pide el historial.
 describe("onboarding de Coexistence", () => {
-  it("suscribe los tres campos, pide el sync y NO llama a /register", async () => {
+  it("suscribe los campos de Coexistence, pide el sync y NO llama a /register", async () => {
     const calls = mockGraph({ phones: () => coexistencePhones() })
 
     const result = await completeWhatsappSignup(coexistenceInput)
@@ -1242,7 +1244,11 @@ describe("onboarding de Coexistence", () => {
     const subscribeCall = calls.find((call) => call.stage === "subscribe")
     expect(
       new URL(subscribeCall?.url ?? "").searchParams.get("subscribed_fields")
-    ).toBe("history,smb_app_state_sync,smb_message_echoes")
+    ).toBe(
+      "history,smb_app_state_sync,smb_message_echoes," +
+        "message_template_status_update,template_category_update," +
+        "message_template_quality_update"
+    )
 
     expect(result).toMatchObject({
       wabaId: WABA_ID,

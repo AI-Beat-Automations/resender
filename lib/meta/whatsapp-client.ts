@@ -102,10 +102,18 @@ export const WHATSAPP_REQUIRED_SCOPES = [
 // `smb_app_state_sync` trae los cambios de contactos y `smb_message_echoes` los
 // mensajes que el negocio manda **desde la app**; los que salen por Cloud API no
 // producen echo, así que no hay doble canal que deduplicar.
+//
+// Los tres de plantillas (issue #193) mantienen al día la copia del catálogo:
+// estado, categoría y calidad. Van acá porque en Coexistence la suscripción
+// lleva lista; en el estándar la llamada va pelada y los recibe por lo que la
+// app tiene activado en el dashboard (ver `subscribeWhatsappWebhook`).
 export const WHATSAPP_COEXISTENCE_WEBHOOK_FIELDS = [
   "history",
   "smb_app_state_sync",
   "smb_message_echoes",
+  "message_template_status_update",
+  "template_category_update",
+  "message_template_quality_update",
 ] as const
 
 // "Two-step verification PIN incorrect." Es el único subcódigo del registro que

@@ -44,6 +44,7 @@ vi.mock("@/lib/observability/logger", async (importOriginal) => ({
 }))
 
 const {
+  applyWhatsappTemplateUpdate,
   findWhatsappTemplate,
   isOwnedByParent,
   listWhatsappTemplatesForWaba,
@@ -109,6 +110,7 @@ beforeAll(async () => {
 })
 
 beforeEach(async () => {
+  await db.exec(`delete from whatsapp_template_events`)
   await db.exec(`delete from whatsapp_templates`)
   await db.query(
     `update connected_pages set status = 'active', waba_id = $2 where id = $1`,
@@ -317,5 +319,160 @@ describe("syncWhatsappTemplates (job template_sync)", () => {
     await expect(syncWhatsappTemplates({ connectionId })).rejects.toThrow(
       "graph down"
     )
+  })
+})
+
+describe("applyWhatsappTemplateUpdate (issue #193)", () => {
+  const update = (
+    overrides: Partial<Parameters<typeof applyWhatsappTemplateUpdate>[0]> = {}
+  ) =>
+    applyWhatsappTemplateUpdate({
+      wabaId: WABA,
+      metaTemplateId: "hsm-bienvenida",
+      name: "bienvenida",
+      language: "en_US",
+      status: "APPROVED",
+      category: null,
+      reason: null,
+      ...overrides,
+    })
+
+  const events = async () =>
+    (
+      await db.query<{ status: string; reason: string | null }>(
+        `select status, reason from whatsapp_template_events order by created_at`
+      )
+    ).rows
+
+  it("actualiza el estado de la fila del sync y escribe un evento", async () => {
+    await upsertSyncedWhatsappTemplates({
+      wabaId: WABA,
+      templates: [listing("bienvenida", { status: "PENDING" })],
+    })
+
+    const result = await update({ status: "APPROVED" })
+
+    expect(result).toMatchObject({
+      kind: "status_changed",
+      event: {
+        wabaId: WABA,
+        name: "bienvenida",
+        language: "en_US",
+        status: "APPROVED",
+        previousStatus: "PENDING",
+        category: "utility",
+      },
+    })
+    const stored = await findWhatsappTemplate({
+      wabaId: WABA,
+      name: "bienvenida",
+      language: "en_US",
+    })
+    expect(stored?.status).toBe("APPROVED")
+    // El cuerpo no se toca: el webhook no lo trae.
+    expect(stored?.body).toBe("Cuerpo de bienvenida")
+    expect(await events()).toEqual([{ status: "APPROVED", reason: null }])
+  })
+
+  // Un reintento de Meta, o un `APPROVED` que el sync ya había traído.
+  it("el mismo estado repetido no genera un evento nuevo", async () => {
+    await upsertSyncedWhatsappTemplates({
+      wabaId: WABA,
+      templates: [listing("bienvenida", { status: "PENDING" })],
+    })
+
+    expect((await update()).kind).toBe("status_changed")
+    expect((await update()).kind).toBe("unchanged")
+    expect(await events()).toHaveLength(1)
+
+    // Un cambio real después sí escribe el segundo.
+    expect(
+      (await update({ status: "PAUSED", reason: "FIRST_PAUSE" })).kind
+    ).toBe("status_changed")
+    expect(await events()).toEqual([
+      { status: "APPROVED", reason: null },
+      { status: "PAUSED", reason: "FIRST_PAUSE" },
+    ])
+  })
+
+  it("busca primero por meta_template_id", async () => {
+    await upsertSyncedWhatsappTemplates({
+      wabaId: WABA,
+      templates: [listing("bienvenida", { status: "PENDING" })],
+    })
+
+    // Mismo id, otro idioma escrito distinto: la encuentra igual.
+    const result = await update({ language: "en_GB" })
+
+    expect(result.kind).toBe("status_changed")
+    const rows = await listWhatsappTemplatesForWaba(WABA)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ language: "en_US", status: "APPROVED" })
+  })
+
+  it("si no está el id, busca por (waba, name, language) y lo completa", async () => {
+    await upsertSyncedWhatsappTemplates({
+      wabaId: WABA,
+      templates: [
+        listing("bienvenida", { status: "PENDING", metaTemplateId: null }),
+      ],
+    })
+
+    await update({ metaTemplateId: "hsm-nuevo" })
+
+    const [row] = await listWhatsappTemplatesForWaba(WABA)
+    expect(row).toMatchObject({ metaTemplateId: "hsm-nuevo", status: "APPROVED" })
+  })
+
+  // Una plantilla recién creada en WhatsApp Manager, antes de cualquier sync.
+  it("crea la fila sin dueño ni cuerpo cuando la copia no la conoce", async () => {
+    const result = await update({ status: "PENDING", category: "marketing" })
+
+    expect(result).toMatchObject({
+      kind: "status_changed",
+      event: { status: "PENDING", previousStatus: null },
+    })
+    const [row] = await listWhatsappTemplatesForWaba(WABA)
+    expect(row).toMatchObject({
+      name: "bienvenida",
+      status: "PENDING",
+      category: "marketing",
+      body: null,
+      createdByTenantId: null,
+      createdByClientAccountId: null,
+    })
+  })
+
+  it("una recategorización cambia la categoría sin escribir evento", async () => {
+    await upsertSyncedWhatsappTemplates({
+      wabaId: WABA,
+      templates: [listing("bienvenida")],
+    })
+
+    const result = await update({ status: null, category: "marketing" })
+
+    expect(result.kind).toBe("unchanged")
+    const [row] = await listWhatsappTemplatesForWaba(WABA)
+    expect(row).toMatchObject({ status: "APPROVED", category: "marketing" })
+    expect(await events()).toEqual([])
+  })
+
+  it("una recategorización de una plantilla desconocida no crea nada", async () => {
+    const result = await update({ status: null, category: "marketing" })
+
+    expect(result).toEqual({ kind: "not_found" })
+    expect(await listWhatsappTemplatesForWaba(WABA)).toEqual([])
+  })
+
+  it("no toca la plantilla homónima de otra WABA", async () => {
+    await upsertSyncedWhatsappTemplates({
+      wabaId: "waba-2",
+      templates: [listing("bienvenida", { status: "PENDING" })],
+    })
+
+    await update({ metaTemplateId: null, status: "REJECTED" })
+
+    const [other] = await listWhatsappTemplatesForWaba("waba-2")
+    expect(other?.status).toBe("PENDING")
   })
 })

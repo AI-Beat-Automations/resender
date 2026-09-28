@@ -4,11 +4,13 @@ import type {
   MessageAttachmentType,
   MessageOrigin,
 } from "@/lib/messages/message-enums"
+import type { WhatsappTemplateCategory } from "@/lib/meta/whatsapp-template-client"
 
 // Tipos públicos de los parsers del webhook de WhatsApp Cloud API. Viven en su
-// propio módulo porque los cinco parsers (`messages`, `statuses`, `history`,
-// `smb_app_state_sync`, `smb_message_echoes`) se los pasan entre sí y el
-// barril `index.ts` los reexporta para el que cablea la ingesta.
+// propio módulo porque los parsers (`messages`, `statuses`, `history`,
+// `smb_app_state_sync`, `smb_message_echoes` y los tres de plantillas) se los
+// pasan entre sí y el barril `index.ts` los reexporta para el que cablea la
+// ingesta.
 
 // Error de Meta, ya aplanado. Viaja en tres sitios distintos con la misma
 // forma: colgando de un mensaje `unsupported`, de un status `failed` y de un
@@ -190,14 +192,69 @@ export type WhatsappContactSyncEvent = {
   timestamp: Date
 }
 
+// Lo que identifica una [Plantilla] en los tres webhooks de la WABA. La copia
+// se busca primero por `metaTemplateId` y, si no, por `(wabaId, name,
+// language)`.
+export type WhatsappTemplateRef = {
+  wabaId: string
+  // `message_template_id`, que Meta manda como **número**. Se pasa a string
+  // porque la columna `meta_template_id` es texto y el id cabe entero en un
+  // double (16 dígitos).
+  metaTemplateId: string | null
+  name: string
+  // Normalizado a la forma del listado de Graph (`en_US`). Los ejemplos de los
+  // webhooks lo muestran con guion (`en-US`) y con esa forma la búsqueda por
+  // `(name, language)` no encontraría la fila del sync.
+  language: string
+  timestamp: Date
+}
+
+// `field: "message_template_status_update"`.
+export type WhatsappTemplateStatusEvent = WhatsappTemplateRef & {
+  // El `event` tal cual lo manda Meta, para el log.
+  event: string
+  // Lo que hay que escribir en `whatsapp_templates.status`, o null cuando el
+  // evento no es un estado: `FLAGGED` (riesgo de pausa, se sigue enviando),
+  // `LOCKED` (no se puede editar) y `UNARCHIVED` (vuelve al estado anterior,
+  // que el webhook no dice). `REINSTATED` se escribe como `APPROVED`: Meta lo
+  // documenta como «se puede volver a enviar».
+  status: string | null
+  // `UNARCHIVED`: la plantilla volvió a un estado que solo el listado sabe.
+  needsResync: boolean
+  category: WhatsappTemplateCategory | null
+  // `reason` de Meta (`INVALID_FORMAT`…), o el `other_info.title` de una pausa
+  // (`FIRST_PAUSE`). Null cuando es `NONE` o no vino.
+  reason: string | null
+}
+
+// `field: "template_category_update"`. Llega en dos variantes: el aviso de un
+// cambio que va a pasar en 24 h (`correctCategory` informado, la categoría
+// todavía no cambió) y el cambio ya hecho (`previousCategory` informado).
+export type WhatsappTemplateCategoryEvent = WhatsappTemplateRef & {
+  // La categoría **vigente**: en el aviso es la de hoy, en el cambio la nueva.
+  category: WhatsappTemplateCategory | null
+  previousCategory: string | null
+  // Solo en el aviso: la que va a tener cuando Meta la recategorice.
+  upcomingCategory: string | null
+}
+
+// `field: "message_template_quality_update"`. Solo va a logs.
+export type WhatsappTemplateQualityEvent = WhatsappTemplateRef & {
+  previousQuality: string | null
+  newQuality: string | null
+}
+
 export type WhatsappWebhookBatch = {
   messages: WhatsappMessageEvent[]
   statuses: WhatsappStatusEvent[]
   history: WhatsappHistoryChunk[]
   contactSync: WhatsappContactSyncEvent[]
   echoes: WhatsappMessageEvent[]
+  templateStatuses: WhatsappTemplateStatusEvent[]
+  templateCategories: WhatsappTemplateCategoryEvent[]
+  templateQuality: WhatsappTemplateQualityEvent[]
   // `field`s que llegaron y estos parsers no modelan (`account_update`,
-  // `message_template_status_update`, `calls`…). Se listan en vez de tragarse
+  // `calls`…). Se listan en vez de tragarse
   // para que la ingesta los registre: un campo nuevo de Meta debe aparecer en
   // la bitácora, no desaparecer.
   unhandledFields: string[]

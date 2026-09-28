@@ -364,7 +364,10 @@ describe("POST /api/meta/whatsapp/templates/send", () => {
 
   // ---- el cuerpo de la copia local (issue #192) --------------------------
   it("copies the stored body into template_meta", async () => {
-    mocks.findWhatsappTemplate.mockResolvedValue({ body: "Hello World" })
+    mocks.findWhatsappTemplate.mockResolvedValue({
+      status: "APPROVED",
+      body: "Hello World",
+    })
 
     const response = await POST(sendRequest())
 
@@ -389,6 +392,43 @@ describe("POST /api/meta/whatsapp/templates/send", () => {
     expect(mocks.insertOutboundMessage).toHaveBeenCalledWith(
       expect.objectContaining({ templateMeta: hello })
     )
+  })
+
+  // ---- el control «no aprobada» (issue #193) -----------------------------
+  it("409s a template the copy knows is not approved, without calling Meta", async () => {
+    mocks.findWhatsappTemplate.mockResolvedValue({
+      status: "PENDING",
+      body: "Hello World",
+    })
+
+    const response = await POST(sendRequest())
+
+    expect(response.status).toBe(409)
+    await expect(response.json()).resolves.toEqual({
+      code: "template_not_approved",
+      error: expect.stringContaining("PENDING"),
+      templateStatus: "PENDING",
+    })
+    expect(mocks.sendWhatsappOutboundMessage).not.toHaveBeenCalled()
+    expect(mocks.insertOutboundMessage).not.toHaveBeenCalled()
+    expect(mocks.incrementUsage).not.toHaveBeenCalled()
+    expect(mocks.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "template_send",
+        outcome: "dropped",
+        reason: "template_not_approved",
+        templateName: "hello_world",
+      })
+    )
+  })
+
+  it("409s a template in a status we do not recognize", async () => {
+    mocks.findWhatsappTemplate.mockResolvedValue({ status: "unknown" })
+
+    const response = await POST(sendRequest())
+
+    expect(response.status).toBe(409)
+    expect(mocks.sendWhatsappOutboundMessage).not.toHaveBeenCalled()
   })
 
   it("still sends when the body lookup fails", async () => {
