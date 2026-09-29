@@ -256,6 +256,10 @@ export default function PrivacyPage() {
                 <strong className="text-foreground">Neon</strong> — managed
                 PostgreSQL database.
               </li>
+              <li>
+                <strong className="text-foreground">Sentry</strong> — error
+                monitoring, so we can detect and fix failures in the service.
+              </li>
             </ul>
           </Section>
 
