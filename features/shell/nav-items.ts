@@ -1,13 +1,14 @@
 // Qué destinos dibuja el sidebar del producto, decidido en el servidor y sin
 // React: el layout resuelve el actor y el plan, y el sidebar solo pinta. Dos
 // entradas condicionales (issue #154): «Clientes» solo existe para los planes
-// que pueden invitar, y un cliente ve la consola reducida —Conexiones, Inbox y
-// Ajustes— sin Logs, sin Clientes y sin la documentación de la API, que no
-// consume.
+// que pueden invitar, y un cliente ve la consola reducida —Conexiones, Inbox,
+// Plantillas y Ajustes— sin Logs, sin Clientes y sin la documentación de la
+// API, que no consume.
 
 export type NavKey =
   | "navConnections"
   | "navInbox"
+  | "navTemplates"
   | "navLogs"
   | "navClients"
   | "navSettings"
@@ -32,6 +33,9 @@ export function productNavItems(visibility: NavVisibility): NavItemSpec[] {
     return [
       { href: "/connections", label: "navConnections" },
       { href: "/inbox", label: "navInbox" },
+      // Plantillas sí entra en la consola reducida (issue #195): el cliente
+      // ve las de las WABAs de sus números.
+      { href: "/templates", label: "navTemplates" },
       { href: "/settings", label: "navSettings" },
     ]
   }
@@ -39,6 +43,7 @@ export function productNavItems(visibility: NavVisibility): NavItemSpec[] {
   return [
     { href: "/connections", label: "navConnections" },
     { href: "/inbox", label: "navInbox" },
+    { href: "/templates", label: "navTemplates" },
     // Logs es del padre y de todos los planes: el cliente no lo ve (arriba).
     { href: "/logs", label: "navLogs" },
     ...(visibility.showClients

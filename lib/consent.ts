@@ -48,6 +48,7 @@ export function clearConsentCookieValue(): string {
 export const X_PIXEL_PRIVATE_PREFIXES = [
   "/connections",
   "/inbox",
+  "/templates",
   "/settings",
   "/billing",
   "/pending",

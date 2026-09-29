@@ -12,6 +12,7 @@ describe("productNavItems", () => {
     ).toEqual([
       "/connections",
       "/inbox",
+      "/templates",
       "/logs",
       "/clientes",
       "/settings",
@@ -19,18 +20,38 @@ describe("productNavItems", () => {
     ])
     expect(
       hrefs(productNavItems({ showClients: false, isClient: false }))
-    ).toEqual(["/connections", "/inbox", "/logs", "/settings", "/docs"])
+    ).toEqual([
+      "/connections",
+      "/inbox",
+      "/templates",
+      "/logs",
+      "/settings",
+      "/docs",
+    ])
   })
 
-  it("el cliente ve solo Conexiones, Inbox y Ajustes, aunque el plan del padre invite", () => {
+  it("el cliente ve solo Conexiones, Inbox, Plantillas y Ajustes, aunque el plan del padre invite", () => {
     expect(
       hrefs(productNavItems({ showClients: true, isClient: true }))
-    ).toEqual(["/connections", "/inbox", "/settings"])
+    ).toEqual(["/connections", "/inbox", "/templates", "/settings"])
     expect(
       productNavItems({ showClients: true, isClient: true }).some(
         (i) => i.external
       )
     ).toBe(false)
+  })
+
+  it("«Plantillas» aparece para el padre y para el cliente", () => {
+    for (const visibility of [
+      { showClients: false, isClient: false },
+      { showClients: true, isClient: false },
+      { showClients: true, isClient: true },
+    ]) {
+      expect(productNavItems(visibility)).toContainEqual({
+        href: "/templates",
+        label: "navTemplates",
+      })
+    }
   })
 
   it("la documentación sigue siendo el único destino externo del padre", () => {
