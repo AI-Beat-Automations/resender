@@ -15,20 +15,30 @@ import {
   TableRow,
 } from "@/components/ui/table"
 
+import { DeleteTemplateDialog } from "./delete-template-dialog"
+import { TemplateEditorDialog } from "./template-editor-dialog"
+
 // Cabeceras de tabla en mono MAYÚSCULAS (spec C.5), como API keys.
 const HEAD =
   "px-3 py-2.5 font-mono text-[11px] font-normal tracking-[0.06em] text-muted-foreground"
 
 const CELL = "px-3 py-3 font-mono text-xs text-muted-foreground"
 
-// El catálogo de una WABA (issue #195). Server component y de solo lectura: el
-// estado lo mantiene al día el webhook y la página lo lee al cargar, sin
-// polling. El cuerpo va abreviado a dos renglones; el `title` lo da entero.
+// El catálogo de una WABA (issue #195). Server component: el estado lo
+// mantiene al día el webhook y la página lo lee al cargar, sin polling. El
+// cuerpo va abreviado a dos renglones; el `title` lo da entero. Las propias
+// traen editar y borrar (issue #196); las demás, ningún botón.
 export function TemplatesTable({
   rows,
+  phoneNumberId,
+  usage,
   t,
 }: {
   rows: TemplateRowView[]
+  /** El número elegido, con el que se edita y borra. */
+  phoneNumberId: string
+  /** Por id de plantilla propia: cuántos números más la enviaron. */
+  usage: Record<string, number>
   t: AppDict
 }) {
   const copy = t.templates
@@ -42,8 +52,9 @@ export function TemplatesTable({
             <TableHead className={HEAD}>{copy.columnCategory}</TableHead>
             <TableHead className={HEAD}>{copy.columnStatus}</TableHead>
             <TableHead className={HEAD}>{copy.columnBody}</TableHead>
-            <TableHead className={`${HEAD} pr-5`}>
-              {copy.columnOwnership}
+            <TableHead className={HEAD}>{copy.columnOwnership}</TableHead>
+            <TableHead className={`${HEAD} pr-5 text-right`}>
+              {copy.columnActions}
             </TableHead>
           </TableRow>
         </TableHeader>
@@ -76,7 +87,7 @@ export function TemplatesTable({
                   </span>
                 )}
               </TableCell>
-              <TableCell className="px-3 py-3 pr-5">
+              <TableCell className="px-3 py-3">
                 {row.owned ? (
                   <Badge variant="info">{copy.owned}</Badge>
                 ) : (
@@ -85,6 +96,27 @@ export function TemplatesTable({
                     {copy.readOnly}
                   </Badge>
                 )}
+              </TableCell>
+              <TableCell className="px-3 py-3 pr-5">
+                {row.owned ? (
+                  <div className="flex justify-end gap-1.5">
+                    <TemplateEditorDialog
+                      mode="edit"
+                      phoneNumberId={phoneNumberId}
+                      template={{
+                        ...row,
+                        usedByOtherNumbers: usage[row.id] ?? 0,
+                      }}
+                    />
+                    <DeleteTemplateDialog
+                      phoneNumberId={phoneNumberId}
+                      template={{
+                        ...row,
+                        usedByOtherNumbers: usage[row.id] ?? 0,
+                      }}
+                    />
+                  </div>
+                ) : null}
               </TableCell>
             </TableRow>
           ))}
