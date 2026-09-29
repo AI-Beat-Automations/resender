@@ -23,6 +23,9 @@ type OutboundAction = Extract<
   | "comment_private_reply"
   | "template_send"
   | "template_list"
+  | "template_create"
+  | "template_edit"
+  | "template_delete"
 >
 
 type Extra = {

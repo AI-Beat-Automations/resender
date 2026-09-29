@@ -201,6 +201,9 @@ export const es: RequestLogsDict = {
       private_reply: "respuesta privada",
       template_send: "envío de plantilla",
       template_list: "listado de plantillas",
+      template_create: "creación de plantilla",
+      template_edit: "edición de plantilla",
+      template_delete: "borrado de plantilla",
       template: "cambio de estado de plantilla",
     },
     skipReasons: {
@@ -329,6 +332,9 @@ export const en: RequestLogsDict = {
       private_reply: "private reply",
       template_send: "template send",
       template_list: "template list",
+      template_create: "template create",
+      template_edit: "template edit",
+      template_delete: "template delete",
       template: "template status change",
     },
     skipReasons: {

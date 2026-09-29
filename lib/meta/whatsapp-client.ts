@@ -182,7 +182,11 @@ export type WhatsappOnboardingMode = "standard" | "coexistence"
 // de plantillas (`whatsapp-template-client.ts`), que corre en un job y no en
 // el callback, así que no tiene lugar en `WhatsappOnboardingStep` ni en su
 // mapa de motivos.
-export type WhatsappApiStep = WhatsappOnboardingStep | "template_list"
+export type WhatsappApiStep =
+  | WhatsappOnboardingStep
+  | "template_list"
+  // Crear, editar o borrar una plantilla (issue #194).
+  | "template_manage"
 
 // Mismo patrón que `InstagramApiError`: el `step` es lo que el callback traduce
 // a un mensaje accionable. Lleva dos campos más porque acá un mismo paso tiene

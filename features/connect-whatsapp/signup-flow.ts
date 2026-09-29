@@ -210,7 +210,10 @@ export async function runWhatsappSignup(
         kind: "failed",
         // Un paso de fuera del onboarding no debería salir de acá; si sale, se
         // atribuye al paso en que íbamos.
-        step: error.step === "template_list" ? step : error.step,
+        step:
+          error.step === "template_list" || error.step === "template_manage"
+            ? step
+            : error.step,
         metaErrorCode: error.metaErrorCode,
         errorMessage: error.message,
       }

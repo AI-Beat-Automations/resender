@@ -11,6 +11,14 @@ import {
 } from "@/lib/observability/outbound-log"
 import { runWhatsappApiGates } from "@/lib/outbound/whatsapp-send-gates"
 import { getActiveWhatsappWabaIdForTenant } from "@/lib/pages/page-registry"
+import { createTemplate } from "@/lib/whatsapp-templates/template-admin"
+import {
+  numberNotConnectedResponse,
+  readJsonBody,
+  serializeTemplate,
+  templateMetaRejectedResponse,
+} from "@/lib/whatsapp-templates/template-admin-http"
+import { validateTemplateDraft } from "@/lib/whatsapp-templates/template-draft"
 import {
   isOwnedByParent,
   listWhatsappTemplatesForWaba,
@@ -87,14 +95,92 @@ async function handle(request: NextRequest, capture: ApiLogCapture) {
   trace.ok()
 
   return Response.json({
-    templates: templates.map((template) => ({
-      id: template.id,
-      name: template.name,
-      language: template.language,
-      category: template.category,
-      status: template.status,
-      body: template.body,
-      own: isOwnedByParent(template, apiKey.tenantId),
-    })),
+    templates: templates.map((template) =>
+      serializeTemplate(template, isOwnedByParent(template, apiKey.tenantId))
+    ),
   })
+}
+
+// Crea una [Plantilla] del [Padre] en la WABA del número (issue #194):
+// `POST /api/meta/whatsapp/templates` con
+// `{ pageId, name, language, category, body: { text, examples }, footer? }`.
+//
+// Los mismos controles que el listado —el Plan Free pasa— y sin
+// Idempotency-Key: un segundo intento con el mismo nombre e idioma lo rechaza
+// Meta. La fila queda con dueño (este tenant, sin cliente), el hsm id y el
+// estado que devolvió Meta, casi siempre `PENDING`: el webhook de estado avisa
+// cuando se aprueba.
+export const POST = withApiRequestLog(
+  {
+    channel: "whatsapp",
+    eventType: "template_create",
+    endpoint: "/api/meta/whatsapp/templates",
+  },
+  handleCreate
+)
+
+async function handleCreate(request: NextRequest, capture: ApiLogCapture) {
+  const requestId = resolveRequestId(request.headers.get("x-request-id"))
+  const trace = outboundLogger({
+    action: "template_create",
+    channel: "whatsapp",
+    subject: "template",
+    requestId,
+    capture,
+  })
+
+  const gates = await runWhatsappApiGates(request, trace)
+  if (!gates.ok) return gates.response
+  const { apiKey } = gates
+
+  const body = await readJsonBody(request)
+  if (!body.ok) return trace.drop("invalid_request", body.response)
+
+  const pageId =
+    typeof body.value.pageId === "string" ? body.value.pageId.trim() : ""
+  if (!pageId) {
+    return trace.drop(
+      "invalid_request",
+      Response.json({ error: "pageId is required" }, { status: 400 })
+    )
+  }
+
+  const draft = validateTemplateDraft(body.value)
+  if (!draft.ok) {
+    return trace.drop(
+      "invalid_request",
+      Response.json({ code: draft.code, error: draft.error }, { status: 400 }),
+      { errorCode: draft.code }
+    )
+  }
+
+  let result
+  try {
+    result = await createTemplate({
+      actor: { tenantId: apiKey.tenantId, clientAccountId: null },
+      phoneNumberId: pageId,
+      draft: draft.value,
+    })
+  } catch (error) {
+    trace.failed("internal_error", { errorMessage: describeError(error) })
+    throw error
+  }
+
+  if (result.kind === "number_not_connected") {
+    return trace.drop("page_not_connected", numberNotConnectedResponse())
+  }
+  trace.setAccount(result.page)
+  if (result.kind === "meta_rejected") {
+    return templateMetaRejectedResponse(trace, result.failure, draft.value.name)
+  }
+
+  trace.ok({
+    subjectId: result.template.id,
+    templateName: result.template.name,
+  })
+
+  return Response.json(
+    { template: serializeTemplate(result.template, true) },
+    { status: 201 }
+  )
 }
