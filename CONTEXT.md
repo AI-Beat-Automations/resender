@@ -505,6 +505,7 @@ La cuota mide **todos los canales**, incluidos los DMs y comentarios de Instagra
 ### Mensaje cobrado por Meta
 
 Una respuesta de WhatsApp que **Meta le cobra al cliente**: desde el 1 de octubre de 2026, cada mensaje de servicio entregado después de los 1.000 gratis que Meta da por número al mes. Meta se lo factura directo a la tarjeta registrada en la WABA del cliente; **Resender no lo cobra, no lo revende y no le pone margen** (`docs/adr/0023-costo-de-meta-se-informa-no-se-cobra.md`). Sin método de pago en la WABA, Meta puede dejar de entregar (`131042`).
+Desde la ADR 0024 también son mensajes cobrados por Meta las [Plantilla]s, según su categoría: las de marketing y utilidad **desde el primer envío**, sin pasar por el [Cupo gratis de Meta], que es solo de servicio.
 **No confundir con [Mensaje contabilizado]**, que es la cuota del plan de Resender: una misma respuesta de WhatsApp suma 1 a la cuota, la cobre Meta o no, y los dos contadores no se descuentan uno del otro. Los conteos de Meta que muestre Resender son informativos; la factura de Meta es la fuente de lo que se le debe.
 
 ### Cupo gratis de Meta

@@ -174,7 +174,7 @@ export const es: Dict = {
       "Cobramos por mensaje procesado y no por contacto alcanzado, que es la diferencia que más se nota contra ManyChat a medida que creces: tu factura sigue al tráfico real, no al tamaño acumulado de tu audiencia.",
     ],
     metaNote:
-      "En WhatsApp, Meta cobra aparte: después de 1.000 mensajes de servicio gratis por número al mes, le factura cada respuesta entregada directo a la tarjeta que registraste en tu cuenta de WhatsApp Business. Resender no cobra ese cargo ni le pone margen, y el precio de tu plan es independiente de él.",
+      "En WhatsApp, Meta cobra aparte: después de 1.000 mensajes de servicio gratis por número al mes, le factura cada respuesta entregada directo a la tarjeta que registraste en tu cuenta de WhatsApp Business. Las plantillas, con las que escribes primero, Meta las cobra aparte según su categoría y no entran en esos 1.000. Resender no cobra esos cargos ni le pone margen, y el precio de tu plan es independiente de él.",
     plans: [
       {
         name: "Free",
@@ -382,7 +382,7 @@ export const es: Dict = {
       },
       {
         q: "¿Cuánto cuesta WhatsApp?",
-        a: "Resender no te cobra nada extra por WhatsApp: tus mensajes cuentan en la cuota de tu plan igual que los de cualquier canal. Meta sí cobra aparte. Cada número tiene 1.000 mensajes de servicio gratis al mes; a partir de ahí, Meta cobra cada respuesta entregada según la tarifa del país del destinatario y se la factura a la tarjeta que registraste en tu cuenta de WhatsApp Business. Sin un método de pago ahí, Meta puede dejar de entregar tus mensajes. Los mensajes que te mandan tus clientes no tienen costo.",
+        a: "Resender no te cobra nada extra por WhatsApp: tus mensajes cuentan en la cuota de tu plan igual que los de cualquier canal. Meta sí cobra aparte. Cada número tiene 1.000 mensajes de servicio gratis al mes; a partir de ahí, Meta cobra cada respuesta entregada según la tarifa del país del destinatario y se la factura a la tarjeta que registraste en tu cuenta de WhatsApp Business. Las plantillas, que son la forma de escribir primero o fuera de las 24 h, se cobran aparte según su categoría (las de marketing y utilidad desde el primer envío) y no entran en los 1.000 gratis. Sin un método de pago ahí, Meta puede dejar de entregar tus mensajes. Los mensajes que te mandan tus clientes no tienen costo.",
         link: {
           label: "Ver las tarifas oficiales de Meta",
           href: META_WHATSAPP_PRICING_URL,
@@ -659,7 +659,7 @@ export const es: Dict = {
     context: [
       "Resender resuelve un problema puntual: recibir en tu propio servidor, por un solo webhook, los mensajes que llegan a tus canales de Meta (WhatsApp, Instagram y Facebook Messenger) y responderlos por API. La lógica corre donde tú quieras — n8n, Make, Zapier, un agente de IA o tu propio backend — y Resender se encarga solo del transporte hacia y desde cada canal.",
       "Cómo funciona: conectas tus canales con Facebook Login, configuras una URL HTTPS por conexión, cada mensaje entrante llega a ese endpoint como JSON, y respondes con un POST a la API de salida de Resender. Los permisos de Messenger y de Instagram ya están aprobados, así que no pasas por un review de app propio.",
-      "Qué NO es: Resender no tiene builder visual de flujos, difusiones, plantillas ni analítica de engagement. Si necesitas eso, ManyChat es la mejor opción y así lo decimos en la comparativa.",
+      "Qué NO es: Resender no tiene builder visual de flujos, difusiones ni analítica de engagement. En WhatsApp sí envía plantillas aprobadas por Meta, una por una por API, para escribir primero; no hace envíos masivos. Si necesitas eso, ManyChat es la mejor opción y así lo decimos en la comparativa.",
       "Precios: Free $0 (2.000 mensajes al mes, 1 conexión, sin tarjeta), Starter $15/mes (50.000 mensajes, 2 conexiones), Pro $29/mes (100.000 mensajes, 5 conexiones) y Business $199/mes (1.000.000 de mensajes, 40 conexiones). Se cobra por mensaje procesado en cualquier dirección, no por contacto alcanzado. Los reintentos por webhook caído no se cobran. Sin contratos: es mes a mes.",
       "El sitio está en español en la raíz y en inglés bajo /en. Las páginas legales existen solo en español.",
     ],

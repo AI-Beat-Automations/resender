@@ -38,7 +38,7 @@ const WINDOW_MS = CUSTOMER_SERVICE_WINDOW_HOURS * 60 * 60 * 1000
  *
  * `null` es cerrada, y no "desconocida": una conversación sin entrante nunca
  * tuvo ventana. Es el caso del primer contacto, donde el negocio quiere
- * escribir primero y no puede.
+ * escribir primero y solo puede con una [Plantilla] (ADR 0024).
  *
  * Puro y con `now` inyectado: la ventana es aritmética de fechas y no tiene por
  * qué depender del reloj del proceso para poder testearse en el borde.
