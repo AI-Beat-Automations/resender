@@ -17,6 +17,7 @@ const client = { tenantId: TENANT, clientAccountId: CLIENT }
 
 const page = (overrides: Record<string, unknown> = {}) => ({
   id: "conn-parent",
+  metaPageId: "phone-parent",
   tenantId: TENANT,
   clientAccountId: null as string | null,
   channel: "whatsapp" as "whatsapp" | "messenger" | "instagram",
@@ -31,6 +32,7 @@ const pages = [
   page(),
   page({
     id: "conn-client",
+    metaPageId: "phone-client",
     clientAccountId: CLIENT,
     wabaId: "waba-client",
     whatsappPhoneE164: "+5215500000002",
@@ -65,14 +67,19 @@ const template = (
 
 describe("templateNumbersForActor", () => {
   it("el padre ve los números de WhatsApp activos de todo el tenant, también los de sus clientes", () => {
-    expect(
-      templateNumbersForActor(pages, parent).map((n) => n.wabaId)
-    ).toEqual(["waba-parent", "waba-client", "waba-other"])
+    expect(templateNumbersForActor(pages, parent).map((n) => n.wabaId)).toEqual(
+      ["waba-parent", "waba-client", "waba-other"]
+    )
   })
 
   it("el cliente ve solo los suyos, aunque la lista traiga los de otros", () => {
     expect(templateNumbersForActor(pages, client)).toEqual([
-      { id: "conn-client", wabaId: "waba-client", label: "+5215500000002" },
+      {
+        id: "conn-client",
+        wabaId: "waba-client",
+        phoneNumberId: "phone-client",
+        label: "+5215500000002",
+      },
     ])
   })
 

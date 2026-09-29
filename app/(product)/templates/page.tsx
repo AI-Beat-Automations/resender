@@ -5,11 +5,15 @@ import { resolveActorCached } from "@/features/clients/queries"
 import { listTenantPagesCached } from "@/features/connections/queries"
 import { ConsolePage } from "@/features/shell/ui/console-page"
 import { TemplateNumberCombobox } from "@/features/templates/ui/template-number-combobox"
+import { TemplateEditorDialog } from "@/features/templates/ui/template-editor-dialog"
 import { TemplatesEmpty } from "@/features/templates/ui/templates-empty"
 import { TemplatesTable } from "@/features/templates/ui/templates-table"
 import { getSession } from "@/lib/auth/session"
 import { getAppDict } from "@/lib/i18n/app-dict"
-import { listWhatsappTemplatesForWaba } from "@/lib/whatsapp-templates/template-store"
+import {
+  countTemplateUsageByOtherNumbers,
+  listWhatsappTemplatesForWaba,
+} from "@/lib/whatsapp-templates/template-store"
 import {
   resolveTemplateNumber,
   templateNumbersForActor,
@@ -18,9 +22,10 @@ import {
 import { Button } from "@/components/ui/button"
 
 // `/templates` (issue #195): el catálogo de [Plantilla]s de WhatsApp de los
-// números del actor, de solo lectura. El padre ve las de todas las WABAs del
-// tenant; el cliente, solo las de sus números. Lee la copia local al cargar:
-// el estado lo mantiene el webhook y no hay polling.
+// números del actor. El padre ve las de todas las WABAs del tenant; el
+// cliente, solo las de sus números. Lee la copia local al cargar: el estado lo
+// mantiene el webhook y no hay polling. Las propias se crean, editan y borran
+// desde acá (issue #196).
 export default async function TemplatesPage({
   searchParams,
 }: {
@@ -40,7 +45,10 @@ export default async function TemplatesPage({
 
   // Misma llamada que Conexiones e Inbox para que el caché de petición la
   // deduplique; ya viene con el alcance del actor.
-  const pages = await listTenantPagesCached(actor.tenantId, actor.clientAccountId)
+  const pages = await listTenantPagesCached(
+    actor.tenantId,
+    actor.clientAccountId
+  )
   const numbers = templateNumbersForActor(pages, actor)
   const numberParam = Array.isArray(params.number)
     ? params.number[0]
@@ -50,6 +58,25 @@ export default async function TemplatesPage({
     ? await listWhatsappTemplatesForWaba(selected.wabaId)
     : []
   const rows = toTemplateRows(templates, actor)
+  // El aviso «la usaron N números más» se muestra antes de confirmar, así que
+  // se cuenta al cargar; solo para las propias, que son las que tienen botones.
+  const usage = selected
+    ? Object.fromEntries(
+        await Promise.all(
+          rows
+            .filter((row) => row.owned)
+            .map(async (row) => [
+              row.id,
+              await countTemplateUsageByOtherNumbers({
+                wabaId: selected.wabaId,
+                name: row.name,
+                language: row.language,
+                actor,
+              }),
+            ])
+        )
+      )
+    : {}
 
   return (
     <ConsolePage className="flex flex-col gap-5">
@@ -62,11 +89,19 @@ export default async function TemplatesPage({
             {t.templates.subtitle}
           </p>
         </div>
-        {selected && numbers.length > 1 ? (
-          <TemplateNumberCombobox
-            numbers={numbers.map(({ id, label }) => ({ id, label }))}
-            selectedId={selected.id}
-          />
+        {selected ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {numbers.length > 1 ? (
+              <TemplateNumberCombobox
+                numbers={numbers.map(({ id, label }) => ({ id, label }))}
+                selectedId={selected.id}
+              />
+            ) : null}
+            <TemplateEditorDialog
+              mode="create"
+              phoneNumberId={selected.phoneNumberId}
+            />
+          </div>
         ) : null}
       </header>
 
@@ -88,7 +123,12 @@ export default async function TemplatesPage({
           body={t.templates.emptyTemplatesBody}
         />
       ) : (
-        <TemplatesTable rows={rows} t={t} />
+        <TemplatesTable
+          rows={rows}
+          phoneNumberId={selected.phoneNumberId}
+          usage={usage}
+          t={t}
+        />
       )}
     </ConsolePage>
   )

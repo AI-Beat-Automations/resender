@@ -20,6 +20,8 @@ export type TemplateNumber = {
   /** El id de la conexión (`connected_pages.id`), el que va en `?number=`. */
   id: string
   wabaId: string
+  /** El phone number id de Meta: el número con que el editor crea, edita y borra. */
+  phoneNumberId: string
   /** El número en E.164, o el nombre de la conexión si no lo tiene. */
   label: string
 }
@@ -28,6 +30,7 @@ export function templateNumbersForActor(
   pages: Pick<
     ConnectedPageRecord,
     | "id"
+    | "metaPageId"
     | "tenantId"
     | "clientAccountId"
     | "channel"
@@ -51,6 +54,7 @@ export function templateNumbersForActor(
     numbers.push({
       id: page.id,
       wabaId: page.wabaId,
+      phoneNumberId: page.metaPageId,
       label: page.whatsappPhoneE164 ?? page.name,
     })
   }
@@ -99,11 +103,7 @@ export function toTemplateRows(
 }
 
 export type TemplateStatusTone =
-  | "success"
-  | "info"
-  | "warning"
-  | "destructiveSoft"
-  | "outline"
+  "success" | "info" | "warning" | "destructiveSoft" | "outline"
 
 /** El color del badge: aprobada, en revisión, frenada, caída o desconocida. */
 export function templateStatusTone(
