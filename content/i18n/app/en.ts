@@ -25,6 +25,7 @@ import * as actions from "./sections/actions"
 import * as whatsappEvents from "./sections/whatsapp-events"
 import * as whatsappSignup from "./sections/whatsapp-signup"
 import * as metaFreeTier from "./sections/meta-free-tier"
+import * as templates from "./sections/templates"
 
 // El inglés del producto. Mismo registro que el español de la consola: directo,
 // segunda persona, sin exclamaciones. Los identificadores técnicos que el
@@ -57,4 +58,5 @@ export const en: AppDict = {
   whatsappEvents: whatsappEvents.en,
   whatsappSignup: whatsappSignup.en,
   metaFreeTier: metaFreeTier.en,
+  templates: templates.en,
 }
