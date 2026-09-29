@@ -12,7 +12,7 @@ export const metadata: Metadata = {
     "Terms for businesses using Resender, operated by Lorna Suriano Hernandez.",
 }
 
-const LAST_UPDATED = "September 25, 2026"
+const LAST_UPDATED = "September 28, 2026"
 const CONTACT_EMAIL = "info@resender.dev"
 
 export default function TermsPage() {
@@ -71,29 +71,32 @@ export default function TermsPage() {
             </p>
           </Section>
 
-          <Section title="WhatsApp: opt-in and the 24-hour window">
+          <Section title="WhatsApp: opt-in, templates and the 24-hour window">
             <p>
-              WhatsApp is not an outreach channel in Resender. Two rules follow
-              from that, and they are conditions of use, not settings:
+              WhatsApp is not a bulk outreach channel in Resender. The rules
+              below are conditions of use, not settings:
             </p>
             <ul className="mt-2 ml-5 list-disc space-y-1">
               <li>
                 <strong className="text-foreground">
                   You need the person&apos;s opt-in.
                 </strong>{" "}
-                You may only handle WhatsApp conversations with people who have
-                agreed to be contacted by your business on WhatsApp, and you
-                must be able to show that agreement. Contact details obtained
-                without consent, bought, scraped or repurposed from another
-                channel do not qualify.
+                You may only message people on WhatsApp who have agreed to be
+                contacted by your business on WhatsApp, and you must be able to
+                show that agreement. Before you write to someone first, with a
+                template, it is your responsibility to hold that opt-in, as the
+                WhatsApp Business Messaging Policy requires. Contact details
+                obtained without consent, bought, scraped or repurposed from
+                another channel do not qualify.
               </li>
               <li>
                 <strong className="text-foreground">
-                  The end user has to write first.
+                  Writing first takes an approved template.
                 </strong>{" "}
-                Resender cannot initiate a conversation and cannot reopen a
-                closed one. It does not send WhatsApp message templates in this
-                phase, and there is no way to make it do so.
+                Resender sends WhatsApp message templates that Meta has
+                approved. A template is the only way to start a conversation or
+                to write to someone outside the 24-hour window. Meta reviews
+                each template and only delivers the ones it has approved.
               </li>
             </ul>
             <p className="mt-2">
@@ -101,21 +104,25 @@ export default function TermsPage() {
               <strong className="text-foreground">
                 24-hour customer service window
               </strong>
-              , and Resender only sends inside it. Once 24 hours pass with no
-              new message from that person, sending stops: the API rejects the
-              attempt and no call is made to Meta. Imported history, delivery
-              receipts and your own outgoing messages do not open or extend the
-              window.
+              . Free-form messages, the ones that are not templates, are only
+              sent inside it. Once 24 hours pass with no new message from that
+              person, free-form sending stops: the API rejects the attempt, no
+              call is made to Meta, and the only way to write again is a
+              template. Imported history, delivery receipts and your own
+              outgoing messages do not open or extend the window.
             </p>
             <p className="mt-2">
               <strong className="text-foreground">
                 Meta&apos;s charges are yours.
               </strong>{" "}
-              Meta charges for WhatsApp messages separately from Resender,
-              including the replies Resender sends inside the 24-hour window
-              once a number uses up the free service messages Meta grants it
-              each month. Meta bills those charges directly to the payment
-              method on your WhatsApp Business Account; Resender does not
+              Meta charges for WhatsApp messages separately from Resender. It
+              charges for templates according to their category (marketing
+              and utility templates from the first message) and for the
+              free-form replies Resender sends inside the 24-hour window once a
+              number uses up the free service messages Meta grants it each
+              month; templates do not count toward those free messages. Meta
+              bills those charges directly to the payment method on your
+              WhatsApp Business Account; Resender does not
               collect, resell or mark them up, and your Resender plan fee is
               independent of them. Keeping a valid payment method on your
               WhatsApp Business Account is your responsibility, in your{" "}
@@ -179,7 +186,8 @@ export default function TermsPage() {
               <li>
                 Send spam, deceptive messages, phishing, or unwanted outreach —
                 on WhatsApp this includes messaging anyone who has not opted in,
-                and any bulk, promotional or campaign-style use of a connected
+                sending marketing templates to people who did not agree to
+                receive them, and bulk or campaign-style blasts from a connected
                 number.
               </li>
               <li>

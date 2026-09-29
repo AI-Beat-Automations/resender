@@ -81,7 +81,7 @@ export const es: ConnectionsDict = {
       "Autoriza tu cuenta profesional para recibir mensajes directos y comentarios. No necesitas una página de Facebook.",
     whatsappTitle: "WhatsApp",
     whatsappBody:
-      "Da de alta un número nuevo, o conecta el que ya usas en WhatsApp Business App sin dejar de usarlo desde el teléfono. Solo se puede responder dentro de las 24 horas posteriores al último mensaje del cliente.",
+      "Da de alta un número nuevo, o conecta el que ya usas en WhatsApp Business App sin dejar de usarlo desde el teléfono. Los mensajes libres solo salen dentro de las 24 horas posteriores al último mensaje del cliente; para escribir primero o después, usa una plantilla aprobada.",
     title: "Todavía no hay cuentas conectadas.",
     body: "Cuando autorices una cuenta aparecerá acá, con su webhook y su estado. Reconectar actualiza el token y los metadatos sin duplicar cuentas.",
     step1: "autorizas la cuenta",
@@ -126,7 +126,7 @@ export const en: ConnectionsDict = {
       "Authorize your professional account to receive direct messages and comments. You don't need a Facebook page.",
     whatsappTitle: "WhatsApp",
     whatsappBody:
-      "Register a new number, or connect the one you already use in the WhatsApp Business App without giving it up on your phone. You can only reply within 24 hours of the customer's last message.",
+      "Register a new number, or connect the one you already use in the WhatsApp Business App without giving it up on your phone. Free-form messages only go out within 24 hours of the customer's last message; to write first or later, use an approved template.",
     title: "No accounts connected yet.",
     body: "Once you authorize an account it shows up here, with its webhook and its status. Reconnecting refreshes the token and the metadata without duplicating accounts.",
     step1: "authorize the account",

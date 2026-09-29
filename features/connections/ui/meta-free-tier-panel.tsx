@@ -64,6 +64,10 @@ export function MetaFreeTierPanel({
       <p className="mt-2 text-[12px]/[1.55] text-[var(--text-subtle)]">
         {copy.explainer}
       </p>
+      {/* El conteo es solo `service`: las plantillas no entran en el cupo. */}
+      <p className="mt-1 text-[12px]/[1.55] text-[var(--text-subtle)]">
+        {copy.templatesNote}
+      </p>
     </div>
   )
 }

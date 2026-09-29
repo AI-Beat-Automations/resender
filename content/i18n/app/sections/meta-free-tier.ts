@@ -17,6 +17,8 @@ export type MetaFreeTierDict = {
   /** `{limit}` */
   nearHint: string
   explainer: string
+  /** Las plantillas no cuentan en el cupo: Meta las cobra aparte (ADR 0023). */
+  templatesNote: string
   pricingLink: string
   unavailable: string
   email: {
@@ -47,12 +49,14 @@ export const es: MetaFreeTierDict = {
   approxHint:
     "Contamos el mes en UTC. Meta lo corta en la zona horaria de tu WABA, así que puede haber unas horas de diferencia al cambiar de mes.",
   freeUsed: "{used} de {limit} mensajes gratis de Meta este mes",
-  billed: "{billed} mensajes cobrados por Meta",
+  billed: "{billed} mensajes de servicio cobrados por Meta",
   exhausted: "Ya usaste los {limit} mensajes gratis de este mes.",
   nearHint:
     "Te queda poco cupo gratis. Pasando de {limit}, Meta cobra cada respuesta entregada.",
   explainer:
     "Meta te factura estos mensajes directo, a la tarjeta de tu WABA. No es la cuota de tu plan de Resender y no lo cobramos nosotros.",
+  templatesNote:
+    "Este cupo es solo de mensajes de servicio, las respuestas libres dentro de las 24 h. Las plantillas no cuentan acá: Meta las cobra aparte según su categoría, las de marketing y utilidad desde el primer envío.",
   pricingLink: "Ver tarifas de Meta",
   unavailable: "No pudimos leer el consumo de Meta de este número.",
   email: {
@@ -86,12 +90,14 @@ export const en: MetaFreeTierDict = {
   approxHint:
     "We count the month in UTC. Meta cuts it in your WABA's time zone, so it can be a few hours off around the turn of the month.",
   freeUsed: "{used} of {limit} free Meta messages this month",
-  billed: "{billed} messages charged by Meta",
+  billed: "{billed} service messages charged by Meta",
   exhausted: "You've used the {limit} free messages for this month.",
   nearHint:
     "You're running low on free messages. Past {limit}, Meta charges for every delivered reply.",
   explainer:
     "Meta bills these messages to you directly, on your WABA's card. This isn't your Resender plan quota and we don't charge it.",
+  templatesNote:
+    "This allowance only covers service messages, the free-form replies inside the 24 hours. Templates don't count here: Meta charges them separately by category, marketing and utility ones from the first send.",
   pricingLink: "See Meta's rates",
   unavailable: "We couldn't read this number's Meta usage.",
   email: {
