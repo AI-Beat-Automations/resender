@@ -18,7 +18,14 @@ import { accountFields, log, type LogAction, type LogReason } from "./logger"
 
 type OutboundAction = Extract<
   LogAction,
-  "outbound_send" | "comment_reply" | "comment_private_reply"
+  | "outbound_send"
+  | "comment_reply"
+  | "comment_private_reply"
+  | "template_send"
+  | "template_list"
+  | "template_create"
+  | "template_edit"
+  | "template_delete"
 >
 
 type Extra = {
@@ -26,6 +33,7 @@ type Extra = {
   providerId?: string
   contactId?: string
   textLength?: number
+  templateName?: string
   status?: number
   durationMs?: number
   errorCode?: string | number
@@ -46,7 +54,7 @@ export function outboundLogger(base: {
   action: OutboundAction
   channel: PageChannel
   requestId: string
-  subject: "message" | "comment"
+  subject: "message" | "comment" | "template"
   // La sección Logs (`withApiRequestLog`) se entera de quién es la request por
   // los mismos `setTenant`/`setAccount` que ya se llamaban para Workers Logs:
   // así la ruta no tiene que contarlo dos veces.

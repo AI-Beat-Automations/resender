@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   authenticateApiKey: vi.fn(),
+  deleteConversationIfEmpty: vi.fn(),
+  getConversationByContact: vi.fn(),
   getActivePageWithTokenByConnectionId: vi.fn(),
   getActivePageWithTokenForTenant: vi.fn(),
   getConversationById: vi.fn(),
@@ -14,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   markPageTokenInvalid: vi.fn(),
   resolveWhatsappAccess: vi.fn(),
   sendWhatsappOutboundMessage: vi.fn(),
+  updateConversationContactId: vi.fn(),
   upsertConversation: vi.fn(),
 }))
 
@@ -38,9 +41,12 @@ vi.mock("@/lib/billing/usage-counter", () => ({
 }))
 
 vi.mock("@/lib/messages/message-log", () => ({
+  deleteConversationIfEmpty: mocks.deleteConversationIfEmpty,
+  getConversationByContact: mocks.getConversationByContact,
   getConversationById: mocks.getConversationById,
   getOutboundMessageByIdempotencyKey: mocks.getOutboundMessageByIdempotencyKey,
   insertOutboundMessage: mocks.insertOutboundMessage,
+  updateConversationContactId: mocks.updateConversationContactId,
   upsertConversation: mocks.upsertConversation,
 }))
 
@@ -342,7 +348,8 @@ describe("POST /api/meta/whatsapp/send", () => {
     const body = await response.json()
     expect(body.error).toBe("customer_service_window_closed")
     expect(body.requiresTemplate).toBe(true)
-    expect(body.templateSendingSupported).toBe(false)
+    expect(body.templateSendingSupported).toBe(true)
+    expect(body.message).toContain("POST /api/meta/whatsapp/templates/send")
     expect(mocks.sendWhatsappOutboundMessage).not.toHaveBeenCalled()
     expect(mocks.insertOutboundMessage).not.toHaveBeenCalled()
     expect(mocks.incrementUsage).not.toHaveBeenCalled()
@@ -662,6 +669,179 @@ describe("POST /api/meta/whatsapp/send", () => {
     const body = await response.json()
     expect(body.code).toBe("send_destination_missing")
     expect(mocks.getConversationById).not.toHaveBeenCalled()
+    expect(mocks.sendWhatsappOutboundMessage).not.toHaveBeenCalled()
+  })
+
+  // ---- wa_id (ADR 0024) -------------------------------------------------
+  // Cloud API contesta con `contacts[0].wa_id`, que es el id con el que van a
+  // llegar las respuestas. En MX y AR puede no ser el número marcado, y el
+  // saliente tiene que quedar en la conversación de ese `wa_id`.
+  describe("when Meta answers with a different wa_id", () => {
+    const dialed = {
+      id: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a",
+      connectedPageId: "conn-1",
+      contactId: "525512345678",
+      lastInboundAt: OPEN,
+    }
+
+    beforeEach(() => {
+      mocks.upsertConversation.mockResolvedValue(dialed)
+      mocks.sendWhatsappOutboundMessage.mockResolvedValue({
+        ok: true,
+        status: 200,
+        data: {
+          messaging_product: "whatsapp",
+          contacts: [{ input: "525512345678", wa_id: "5215512345678" }],
+          messages: [{ id: "wamid.HBg1" }],
+        },
+        error: null,
+        reason: null,
+        code: null,
+      })
+    })
+
+    it("normalizes the dialed number before creating the conversation", async () => {
+      mocks.getConversationByContact.mockResolvedValue(null)
+      mocks.updateConversationContactId.mockResolvedValue({
+        ...dialed,
+        contactId: "5215512345678",
+      })
+
+      await POST(sendRequest({ reply: "hola", recipientId: "+52 55 1234-5678" }))
+
+      expect(mocks.upsertConversation).toHaveBeenCalledWith(
+        expect.objectContaining({ contactId: "525512345678" })
+      )
+    })
+
+    it("renames the conversation when there is none for the wa_id", async () => {
+      mocks.getConversationByContact.mockResolvedValue(null)
+      mocks.updateConversationContactId.mockResolvedValue({
+        ...dialed,
+        contactId: "5215512345678",
+      })
+
+      const response = await POST(
+        sendRequest({ reply: "hola", recipientId: "+52 55 1234-5678" })
+      )
+
+      expect(response.status).toBe(200)
+      expect(mocks.updateConversationContactId).toHaveBeenCalledWith({
+        tenantId: "tenant-1",
+        conversationId: dialed.id,
+        contactId: "5215512345678",
+      })
+      expect(mocks.deleteConversationIfEmpty).not.toHaveBeenCalled()
+      expect(mocks.insertOutboundMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: dialed.id,
+          contactId: "5215512345678",
+        })
+      )
+      const body = await response.json()
+      expect(body.resender.conversationId).toBe(dialed.id)
+      expect(mocks.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "whatsapp_contact_reconcile",
+          outcome: "ok",
+          contactId: "5215512345678",
+        })
+      )
+    })
+
+    it("stores the message in the existing wa_id conversation and drops the empty one", async () => {
+      const existing = {
+        id: "9b8a7c6d-2222-4f0e-9d1c-3b4a5f6e7d8c",
+        connectedPageId: "conn-1",
+        contactId: "5215512345678",
+        lastInboundAt: OPEN,
+      }
+      mocks.getConversationByContact.mockResolvedValue(existing)
+      mocks.deleteConversationIfEmpty.mockResolvedValue(true)
+
+      const response = await POST(
+        sendRequest({ reply: "hola", recipientId: "+52 55 1234-5678" })
+      )
+
+      expect(response.status).toBe(200)
+      expect(mocks.updateConversationContactId).not.toHaveBeenCalled()
+      expect(mocks.deleteConversationIfEmpty).toHaveBeenCalledWith({
+        tenantId: "tenant-1",
+        conversationId: dialed.id,
+      })
+      expect(mocks.insertOutboundMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: existing.id,
+          contactId: "5215512345678",
+        })
+      )
+      const body = await response.json()
+      expect(body.resender.conversationId).toBe(existing.id)
+    })
+
+    // Si el unique rechaza el rename, es que un entrante creó la conversación
+    // del `wa_id` entre la lectura y el update: se usa esa.
+    it("falls back to the wa_id conversation when the rename loses a race", async () => {
+      const existing = {
+        id: "9b8a7c6d-2222-4f0e-9d1c-3b4a5f6e7d8c",
+        connectedPageId: "conn-1",
+        contactId: "5215512345678",
+        lastInboundAt: OPEN,
+      }
+      mocks.getConversationByContact
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(existing)
+      mocks.updateConversationContactId.mockResolvedValue(null)
+      mocks.deleteConversationIfEmpty.mockResolvedValue(true)
+
+      const response = await POST(sendRequest())
+
+      const body = await response.json()
+      expect(body.resender.conversationId).toBe(existing.id)
+    })
+
+    // Meta ya aceptó el mensaje: un fallo de la conciliación no puede hacer
+    // que se pierda la fila.
+    it("keeps the dialed conversation when reconciliation fails", async () => {
+      mocks.getConversationByContact.mockRejectedValue(new Error("db down"))
+
+      const response = await POST(sendRequest())
+
+      expect(response.status).toBe(200)
+      expect(mocks.insertOutboundMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ conversationId: dialed.id })
+      )
+      expect(mocks.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "whatsapp_contact_reconcile",
+          outcome: "failed",
+        })
+      )
+    })
+
+    it("does not reconcile when Meta rejected the send", async () => {
+      mocks.sendWhatsappOutboundMessage.mockResolvedValue({
+        ok: false,
+        status: 400,
+        data: { error: { code: 131026 } },
+        error: "rejected",
+        reason: "rejected",
+        code: null,
+      })
+
+      await POST(sendRequest())
+
+      expect(mocks.getConversationByContact).not.toHaveBeenCalled()
+    })
+  })
+
+  it("400s a WhatsApp recipient that is not a phone number", async () => {
+    const response = await POST(sendRequest({ reply: "hola", recipientId: "not-a-phone" }))
+
+    expect(response.status).toBe(400)
+    const body = await response.json()
+    expect(body.code).toBe("invalid_recipient")
+    expect(mocks.upsertConversation).not.toHaveBeenCalled()
     expect(mocks.sendWhatsappOutboundMessage).not.toHaveBeenCalled()
   })
 })

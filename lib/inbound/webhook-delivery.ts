@@ -13,7 +13,7 @@ import {
 import { accountFields, describeError, log } from "@/lib/observability/logger"
 import { posthog } from "@/lib/posthog"
 
-import { recordDelivery } from "./external-push"
+import { eventIdFor, recordDelivery, subjectColumns } from "./external-push"
 import type {
   DeliveryLogContext,
   DeliverySubject,
@@ -29,7 +29,8 @@ import type {
 // un relay, esa es la promesa central.
 //
 // El estado vive en `external_webhook_jobs` (migración 0010, relajada por la
-// 0013 para aceptar mensajes **y** comentarios), no en la cola: la cola es solo
+// 0013 para aceptar mensajes **y** comentarios, y por la 0033 para los cambios
+// de estado de plantilla), no en la cola: la cola es solo
 // el disparador. Eso es lo que hace que el cron pueda recuperar un job cuyo
 // mensaje se perdió, y que un reintento lea el estado actual y no el que existía
 // cuando se encoló.
@@ -62,15 +63,9 @@ const RECOVERY_RETRY_GRACE_SECONDS = 120
 
 const RECOVERY_BATCH_SIZE = 100
 
-// El id del evento es determinista y sale del uuid del sujeto. Podría ser un
-// hash del contenido, pero no hace falta: `external_webhook_jobs` ya tiene
-// índices únicos parciales por `message_id` y por `instagram_comment_id`, así
-// que un sujeto no puede tener dos jobs. Derivarlo del uuid hace que el mismo
-// evento reingerido produzca el mismo `event_id`, que es justo lo que un
-// consumidor necesita para deduplicar de su lado.
-export function eventIdFor(subject: DeliverySubject): string {
-  return `evt_${subject.id.replace(/-/g, "")}`
-}
+// Vive en `external-push.ts`, junto a `DeliverySubject`, porque también lo usa
+// la entrega omitida; se re-exporta para los que ya lo importaban de acá.
+export { eventIdFor }
 
 function queue(): Queue<WebhookDeliveryMessage> {
   // A diferencia de `lib/waitlist/rate-limit.ts`, acá no se degrada a `null`: un
@@ -186,26 +181,28 @@ async function insertJob(input: {
   payload: PushPayload
 }): Promise<{ id: string; enqueueable: boolean }> {
   const sql = getSql()
-  const messageId = input.subject.kind === "message" ? input.subject.id : null
-  const commentId = input.subject.kind === "comment" ? input.subject.id : null
+  const { messageId, commentId, templateEventId, templateConnectionId } =
+    subjectColumns(input.subject)
   // `recover_after` arranca en el futuro a propósito: es la ventana en la que la
   // cola tiene la posta y el cron no debe tocar el job.
   const recoverAfter = new Date(
     Date.now() + RECOVERY_HANDOFF_GRACE_SECONDS * 1000
   )
 
-  // `on conflict do nothing` sobre los índices únicos parciales de la 0013. El
+  // `on conflict do nothing` sobre los índices únicos parciales de la 0013 y
+  // de la 0033. El
   // `select` de abajo cubre el caso en que la fila ya existía: hace falta saber
   // su estado para decidir si se encola o no.
   const inserted = await sql`
     insert into external_webhook_jobs (
-      event_id, tenant_id, message_id, instagram_comment_id, webhook_url,
-      payload, status, recover_after
+      event_id, tenant_id, message_id, instagram_comment_id,
+      template_event_id, connected_page_id, webhook_url, payload, status,
+      recover_after
     )
     values (
       ${input.eventId}, ${input.tenantId}, ${messageId}, ${commentId},
-      ${input.webhookUrl}, ${JSON.stringify(input.payload)}, 'pending',
-      ${recoverAfter}
+      ${templateEventId}, ${templateConnectionId}, ${input.webhookUrl},
+      ${JSON.stringify(input.payload)}, 'pending', ${recoverAfter}
     )
     on conflict do nothing
     returning id
@@ -214,16 +211,18 @@ async function insertJob(input: {
     return { id: String(inserted[0].id), enqueueable: true }
   }
 
-  // Las dos columnas en un solo `where`, sin componer fragmentos: el driver HTTP
-  // de Neon no soporta `sql` anidado —eso es idiom de postgres.js— y trataría el
-  // fragmento como un parámetro más. Funciona porque `columna = NULL` nunca es
-  // verdadero, y exactamente uno de los dos parámetros viene informado: el
-  // sujeto que no es se descarta solo.
+  // Los tres sujetos en un solo `where`, sin componer fragmentos: el driver
+  // HTTP de Neon no soporta `sql` anidado —eso es idiom de postgres.js— y
+  // trataría el fragmento como un parámetro más. Funciona porque `columna =
+  // NULL` nunca es verdadero, y exactamente un sujeto viene informado: los que
+  // no son se descartan solos.
   const existing = await sql`
     select id, status, attempt_count
     from external_webhook_jobs
     where message_id = ${messageId}::uuid
        or instagram_comment_id = ${commentId}::uuid
+       or (template_event_id = ${templateEventId}::uuid
+         and connected_page_id = ${templateConnectionId}::uuid)
     limit 1
   `
   const row = existing[0]
@@ -247,6 +246,7 @@ type JobRecord = {
   tenantId: string
   messageId: string | null
   commentId: string | null
+  templateEventId: string | null
   connectionId: string
   channel: PageChannel
   metaPageId: string
@@ -264,19 +264,25 @@ type JobRecord = {
 // Los dos joins son `left` y la cuenta sale del que venga informado. Con un join
 // interno a `messages`, un job de comentario no devolvía fila y la entrega
 // quedaba colgada sin explicación — el mismo error que `apps/api` ya corrigió.
+// El job de plantilla no tiene de dónde sacarla: la lleva en su propia columna
+// (0033).
 async function getJob(jobId: string): Promise<JobRecord | null> {
   const sql = getSql()
   const rows = await sql`
     select j.id, j.event_id, j.tenant_id, j.message_id,
-      j.instagram_comment_id, j.webhook_url, j.payload, j.status,
-      j.attempt_count, j.recover_after,
+      j.instagram_comment_id, j.template_event_id, j.webhook_url, j.payload,
+      j.status, j.attempt_count, j.recover_after,
       p.id as connected_page_id, p.channel, p.meta_page_id, p.username,
       p.webhook_signing_secret_encrypted
     from external_webhook_jobs j
     left join messages m on m.id = j.message_id
     left join instagram_comments c on c.id = j.instagram_comment_id
     join connected_pages p
-      on p.id = coalesce(m.connected_page_id, c.connected_page_id)
+      on p.id = coalesce(
+        m.connected_page_id,
+        c.connected_page_id,
+        j.connected_page_id
+      )
     where j.id = ${jobId}
     limit 1
   `
@@ -327,11 +333,15 @@ async function recordJobAttempt(input: {
   await sql.transaction([
     sql`
       insert into external_webhook_deliveries (
-        message_id, instagram_comment_id, webhook_url, status, status_code,
-        error, attempt, job_id, event_id
+        message_id, instagram_comment_id, template_event_id,
+        connected_page_id, webhook_url, status, status_code, error, attempt,
+        job_id, event_id
       )
       values (
-        ${input.job.messageId}, ${input.job.commentId}, ${input.job.webhookUrl},
+        ${input.job.messageId}, ${input.job.commentId},
+        ${input.job.templateEventId},
+        ${input.job.templateEventId ? input.job.connectionId : null},
+        ${input.job.webhookUrl},
         ${deliveryStatus}, ${input.statusCode}, ${input.error},
         ${input.job.attemptCount}, ${input.job.id}, ${input.job.eventId}
       )
@@ -726,13 +736,20 @@ function parseJobId(value: unknown): string | null {
 }
 
 function subjectOf(job: JobRecord): DeliverySubject | null {
+  if (job.templateEventId) {
+    return {
+      kind: "template",
+      id: job.templateEventId,
+      connectionId: job.connectionId,
+    }
+  }
   if (job.commentId) return { kind: "comment", id: job.commentId }
   if (job.messageId) return { kind: "message", id: job.messageId }
   return null
 }
 
-// El sujeto es un mensaje **o** un comentario desde la 0013; el job sabe de cuál
-// cuelga y acá se nombra el que corresponda, para que las métricas de comentarios
+// El sujeto es un mensaje, un comentario (0013) o un cambio de estado de
+// plantilla (0033); el job sabe de cuál cuelga y acá se nombra el que corresponda, para que las métricas de comentarios
 // y de mensajes no se mezclen.
 function subjectFields(job: JobRecord) {
   const subject = subjectOf(job)
@@ -754,9 +771,11 @@ async function captureDeliveryFailed(
       // bajo `message_id` mezclaría dos cosas distintas en las métricas.
       ...(subject?.kind === "comment"
         ? { instagram_comment_id: subject.id }
-        : subject
-          ? { message_id: subject.id }
-          : {}),
+        : subject?.kind === "template"
+          ? { template_event_id: subject.id, connection_id: subject.connectionId }
+          : subject
+            ? { message_id: subject.id }
+            : {}),
     },
   })
   await posthog.flush()
@@ -777,6 +796,7 @@ function mapJob(row: Record<string, unknown>): JobRecord {
     tenantId: String(row.tenant_id),
     messageId: nullableText(row.message_id),
     commentId: nullableText(row.instagram_comment_id),
+    templateEventId: nullableText(row.template_event_id),
     connectionId: String(row.connected_page_id),
     channel: row.channel as PageChannel,
     metaPageId: String(row.meta_page_id),

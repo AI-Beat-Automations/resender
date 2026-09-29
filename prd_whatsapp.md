@@ -14,6 +14,8 @@ Incluye dos formas de conectar un número:
 1. **Onboarding estándar:** número nuevo o exclusivo para WhatsApp Cloud API.
 2. **Coexistence:** número que ya opera en WhatsApp Business App y seguirá utilizándose simultáneamente desde la aplicación móvil y Cloud API.
 
+> **Superseded por la [ADR 0024](docs/adr/0024-plantillas-de-whatsapp.md):** Resender ya envía y administra plantillas; ver también la «Actualización (ADR 0024)» de la [ADR 0023](docs/adr/0023-costo-de-meta-se-informa-no-se-cobra.md) para su cobro. El párrafo siguiente describe esta fase.
+
 Incluye mensajería bidireccional de texto y los tipos multimedia comunes soportados por Cloud API. **No incluye envío ni gestión de plantillas.** Resender solo enviará mensajes dentro de la ventana de atención de 24 horas abierta por un mensaje del usuario. Fuera de esa ventana responderá con un error de dominio explícito y no llamará a Meta.
 
 Todo el canal vive en **`apps/web`**, el único Worker desplegado. No hay backend separado, no hay `packages/contracts` y no hay rutas `/v1`.
@@ -96,6 +98,8 @@ Resender debe quedar además con una cuenta demo, documentación y evidencias su
 
 ### Fuera de alcance
 
+> **Superseded por la [ADR 0024](docs/adr/0024-plantillas-de-whatsapp.md):** las plantillas y el inicio de conversaciones con plantilla salieron de esta lista.
+
 - Envío, creación, edición o listado de plantillas de WhatsApp.
 - Inicio de conversaciones por API cuando no existe una ventana de atención abierta.
 - Campañas, broadcasts o marketing masivo.
@@ -111,6 +115,8 @@ Resender debe quedar además con una cuenta demo, documentación y evidencias su
 - Retención de media configurable por tenant o por plan.
 
 ## Regla explícita sobre plantillas
+
+> **Superseded por la [ADR 0024](docs/adr/0024-plantillas-de-whatsapp.md):** Resender envía plantillas por `POST /api/meta/whatsapp/templates/send`. Lo que sigue describe la fase anterior.
 
 Las plantillas **no son obligatorias** para recibir mensajes ni para responder con mensajes libres dentro de las 24 horas posteriores al último mensaje entrante del usuario.
 
@@ -490,6 +496,8 @@ where connected_page_id = $2 and meta_message_id = $3
 
 ### Ventana de 24 horas
 
+> **Superseded por la [ADR 0024](docs/adr/0024-plantillas-de-whatsapp.md):** la ventana sigue aplicándose en local para los mensajes libres, pero el 409 ahora lleva `templateSendingSupported: true` y apunta a `/api/meta/whatsapp/templates/send`.
+
 `conversations.last_inbound_at`, escrita en **un solo lugar** (`lib/messages/message-log.ts`) y solo cuando `direction='inbound' and historical=false and origin='customer'`, con semántica `greatest(...)`.
 
 ```ts
@@ -817,7 +825,7 @@ Con assets propios de Meta:
 - **Media saliente hospedada por el cliente:** un origen caído en el instante del envío falla el mensaje, y Meta cachea solo 10 minutos.
 - **Privacidad y costo de R2:** ownership, borrado y retención de 180 días son criterio de aceptación, no optimización.
 - **Techo de 20 mps en Coexistence:** un número en Coexistence no escala por messaging tier. Documentarlo antes de venderlo.
-- **Sin plantillas:** el producto no puede iniciar ni reabrir conversaciones; UI, API y marketing deben decirlo claramente.
+- **Sin plantillas** (superseded por la [ADR 0024](docs/adr/0024-plantillas-de-whatsapp.md): ahora se escribe primero con plantilla): el producto no puede iniciar ni reabrir conversaciones; UI, API y marketing deben decirlo claramente.
 - **Bundle:** el canal entero entra en el Worker que ya mide 5,82 de 8 MB. Si lo cruza, el corte es marketing y blog.
 - **Políticas de automatización:** Resender es infraestructura para casos de negocio; los términos deben prohibir spam y usos incompatibles con las políticas vigentes de WhatsApp.
 

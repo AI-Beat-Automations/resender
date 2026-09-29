@@ -91,6 +91,27 @@ describe("whatsapp outbound content", () => {
       text: { body: "mirá https://resender.dev", preview_url: false },
     })
   })
+
+  it("maps a template to the Cloud API template envelope", () => {
+    const components = [
+      { type: "body", parameters: [{ type: "text", text: "Ana" }] },
+    ]
+    expect(
+      buildWhatsappOutboundPayload("5491100000000", {
+        template: { name: "pedido_listo", language: "es_AR", components },
+      })
+    ).toEqual({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: "5491100000000",
+      type: "template",
+      template: {
+        name: "pedido_listo",
+        language: { code: "es_AR" },
+        components,
+      },
+    })
+  })
 })
 
 describe("sendWhatsappOutboundMessage", () => {

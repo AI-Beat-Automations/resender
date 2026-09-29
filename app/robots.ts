@@ -19,6 +19,7 @@ const PRIVATE_PATHS = [
   "/pending",
   "/connections",
   "/inbox",
+  "/templates",
   "/settings",
 ]
 

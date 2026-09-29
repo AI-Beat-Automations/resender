@@ -32,16 +32,30 @@ export type ApiLogCapture = {
 
 type ApiLogMeta = {
   channel: PageChannel
-  /** send | comment_reply | private_reply */
+  /**
+   * send | comment_reply | private_reply | template_send | template_list |
+   * template_create | template_edit | template_delete
+   */
   eventType: string
   endpoint: string
 }
 
-export function withApiRequestLog(
+// `context` es el segundo argumento de Next (`{ params }` en una ruta dinámica)
+// y pasa tal cual al handler: las rutas estáticas lo ignoran. Es opcional en
+// la firma pública para que un test de una ruta estática la llame solo con el
+// request; en una dinámica Next lo manda siempre.
+export function withApiRequestLog<Context = unknown>(
   meta: ApiLogMeta,
-  handler: (request: NextRequest, capture: ApiLogCapture) => Promise<Response>
+  handler: (
+    request: NextRequest,
+    capture: ApiLogCapture,
+    context: Context
+  ) => Promise<Response>
 ) {
-  return async function POST(request: NextRequest): Promise<Response> {
+  return async function POST(
+    request: NextRequest,
+    context?: Context
+  ): Promise<Response> {
     const startedAt = Date.now()
     const state: {
       requestId: string | null
@@ -79,7 +93,7 @@ export function withApiRequestLog(
       .text()
       .catch(() => null)
 
-    const response = await handler(request, capture)
+    const response = await handler(request, capture, context as Context)
 
     const tenantId = state.tenantId
     if (!tenantId) return response

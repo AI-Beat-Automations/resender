@@ -31,6 +31,17 @@ const messengerPage = {
   pageAccessToken: "page-token-1",
 }
 
+const whatsappPage = {
+  page: {
+    id: "conn-wa",
+    tenantId: "tenant-1",
+    channel: "whatsapp",
+    metaPageId: "phone-1",
+    username: null,
+  },
+  pageAccessToken: "waba-token-1",
+}
+
 const conversation = {
   id: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a",
   tenantId: "tenant-1",
@@ -256,5 +267,96 @@ describe("resolveSendTarget", () => {
 
     expect(result).toMatchObject({ ok: true, value: { conversation } })
     expect(mocks.upsertConversation).not.toHaveBeenCalled()
+  })
+
+  // ADR 0024: el `contact_id` de WhatsApp es el `wa_id`, solo dígitos y sin
+  // `+`. Un envío con el número como lo teclea una persona tiene que caer en la
+  // misma conversación que la respuesta del contacto.
+  describe("WhatsApp recipient normalization", () => {
+    it("normalizes +52 55 1234-5678 to 525512345678 before the upsert", async () => {
+      mocks.getActivePageWithTokenForTenant.mockResolvedValue(whatsappPage)
+      mocks.upsertConversation.mockResolvedValue(conversation)
+
+      const result = await resolveSendTarget({
+        tenantId: "tenant-1",
+        channel: "whatsapp",
+        target: {
+          kind: "contact",
+          pageId: "phone-1",
+          recipientId: "+52 55 1234-5678",
+        },
+      })
+
+      expect(result.ok).toBe(true)
+      expect(mocks.upsertConversation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          connectedPageId: "conn-wa",
+          contactId: "525512345678",
+        })
+      )
+    })
+
+    it("compares the normalized number against conversationId", async () => {
+      mocks.getActivePageWithTokenForTenant.mockResolvedValue(whatsappPage)
+      mocks.getConversationById.mockResolvedValue({
+        ...conversation,
+        connectedPageId: "conn-wa",
+        contactId: "525512345678",
+      })
+
+      const result = await resolveSendTarget({
+        tenantId: "tenant-1",
+        channel: "whatsapp",
+        target: {
+          kind: "contact",
+          pageId: "phone-1",
+          recipientId: "+52 (55) 1234 5678",
+          conversationId: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a",
+        },
+      })
+
+      expect(result.ok).toBe(true)
+    })
+
+    it.each(["abc", "+52 55", "1234567", "1234567890123456"])(
+      "400s an invalid number (%s) without touching the database",
+      async (recipientId) => {
+        const result = await resolveSendTarget({
+          tenantId: "tenant-1",
+          channel: "whatsapp",
+          target: { kind: "contact", pageId: "phone-1", recipientId },
+        })
+
+        expect(result).toMatchObject({
+          ok: false,
+          status: 400,
+          code: "invalid_recipient",
+          reason: "invalid_request",
+        })
+        expect(mocks.getActivePageWithTokenForTenant).not.toHaveBeenCalled()
+        expect(mocks.upsertConversation).not.toHaveBeenCalled()
+      }
+    )
+
+    // En Messenger e Instagram `recipientId` es un PSID o un IGSID: ni se
+    // normaliza ni se valida como teléfono.
+    it.each([
+      ["messenger", "psid-1"],
+      ["instagram", "+17841 igsid"],
+    ] as const)("does not normalize the %s recipientId", async (channel, recipientId) => {
+      mocks.getActivePageWithTokenForTenant.mockResolvedValue(messengerPage)
+      mocks.upsertConversation.mockResolvedValue(conversation)
+
+      const result = await resolveSendTarget({
+        tenantId: "tenant-1",
+        channel,
+        target: { kind: "contact", pageId: "page-1", recipientId },
+      })
+
+      expect(result.ok).toBe(true)
+      expect(mocks.upsertConversation).toHaveBeenCalledWith(
+        expect.objectContaining({ contactId: recipientId })
+      )
+    })
   })
 })

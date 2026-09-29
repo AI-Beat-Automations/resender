@@ -47,7 +47,7 @@ type AccountFields = {
 type SubjectFields = {
   // El sujeto del evento, con el mismo criterio que `DeliverySubject`:
   // nombrarlo evita que las métricas de comentarios y de mensajes se mezclen.
-  subject?: "message" | "comment"
+  subject?: "message" | "comment" | "template"
   subjectId?: string // uuid interno de la fila
   providerId?: string // `mid` de Meta o `ig_comment_id`
   contactId?: string // PSID / IGSID de quien escribió
@@ -58,6 +58,18 @@ type SubjectFields = {
   // descartaron cuando el contacto mandó varios de una vez.
   attachmentType?: string
   droppedCount?: number
+  // El `name` de la [Plantilla] de WhatsApp enviada. Es del tenant, no del
+  // cliente final; los `components` —con los datos del cliente final— no se
+  // loguean.
+  templateName?: string
+  // Los webhooks de plantillas (issue #193). Son valores del catálogo de Meta
+  // (`en_US`, `APPROVED`, `marketing`, `GREEN`), nunca contenido.
+  templateLanguage?: string
+  templateStatus?: string
+  previousTemplateStatus?: string
+  templateCategory?: string
+  templateQuality?: string
+  previousTemplateQuality?: string
 }
 
 type ContextFields = {

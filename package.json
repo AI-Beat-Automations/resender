@@ -15,6 +15,7 @@
     "db:migrate": "node scripts/migrate.mjs",
     "stripe:preflight": "node scripts/stripe-preflight.mjs",
     "waitlist:export": "node scripts/waitlist-export.mjs",
+    "whatsapp:template-backfill": "node scripts/whatsapp-template-backfill.mjs",
     "auth:seed-credentials": "node scripts/seed-credentials.mjs",
     "check:bundle": "node scripts/check-bundle-size.mjs",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",

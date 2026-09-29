@@ -57,3 +57,17 @@ el tráfico saliente de WhatsApp de los clientes. Hoy nada en el producto dice q
 - Tarifas por país y estimación del costo en dinero quedan fuera: se puede evaluar después.
 - El cupo de 1.000 gratis lo publican varios proveedores pero la página de precios de Meta
   todavía no lo menciona. Si Meta publica otro número, se corrige el copy.
+
+## Actualización (ADR 0024)
+
+Fecha: 2026-09-28. No cambia la decisión: Meta sigue cobrando directo al cliente y Resender solo
+informa. Cambia el supuesto del contexto de que «Resender solo envía mensajes libres dentro de la
+ventana de 24 h».
+
+- Desde la [ADR 0024](0024-plantillas-de-whatsapp.md) Resender **también envía [Plantilla]s**
+  aprobadas por Meta, que son la única forma de escribir primero o fuera de la ventana.
+- Meta cobra las plantillas según su categoría. Las de **marketing** y **utilidad** las cobra
+  **desde el primer mensaje**.
+- Las plantillas **no entran en el cupo gratis de 1.000**, que es solo de mensajes de servicio.
+  El [Cupo gratis de Meta] sigue contando `meta_pricing_category = 'service'` y no cambia.
+- Términos, precios, preguntas frecuentes, alta de WhatsApp y el panel del cupo lo dicen.

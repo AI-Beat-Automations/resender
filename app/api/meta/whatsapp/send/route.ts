@@ -1,13 +1,5 @@
 import { type NextRequest } from "next/server"
 
-import {
-  API_KEY_RATE_LIMIT_RETRY_AFTER_SECONDS,
-  allowApiKeyRequest,
-} from "@/lib/auth/api-key-rate-limit"
-import { authenticateApiKey } from "@/lib/auth/api-keys"
-import { resolveWhatsappAccess } from "@/lib/auth/channel-access"
-import { isUserWaitlisted } from "@/lib/auth/waitlist"
-import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
 import { incrementUsage } from "@/lib/billing/usage-counter"
 import {
   CUSTOMER_SERVICE_WINDOW_HOURS,
@@ -29,12 +21,17 @@ import {
 } from "@/lib/observability/outbound-log"
 import { resolveSendTarget } from "@/lib/outbound/resolve-send-target"
 import {
-  getBearerToken,
   parseOutboundSendInput,
   parseSendTarget,
 } from "@/lib/outbound/send-request"
+import { reconcileWhatsappContact } from "@/lib/outbound/whatsapp-recipient"
+import {
+  idempotentReplayResponse,
+  runWhatsappSendGates,
+} from "@/lib/outbound/whatsapp-send-gates"
 import {
   exceedsWhatsappTextLimit,
+  extractWhatsappContactWaId,
   extractWhatsappMessageId,
   isWhatsappExpiredTokenError,
   sendWhatsappOutboundMessage,
@@ -60,11 +57,12 @@ import { captureDeferred } from "@/lib/posthog"
 // cortar antes tiene tres ventajas: la respuesta es inmediata, dice exactamente
 // qué pasó, y no gasta una llamada a Cloud API que ya sabemos que va a fallar.
 //
-// **Las plantillas están fuera de alcance.** El 409 lo dice sin rodeos:
-// `requiresTemplate: true` explica qué haría falta, `templateSendingSupported:
-// false` admite que Resender todavía no lo hace. Es una señal honesta, no un
-// placeholder: un cliente que la lee sabe que tiene que esperar a que el
-// contacto escriba, y no que reintentando va a funcionar.
+// **Las plantillas van por otra ruta** (ADR 0024). El 409 lo dice sin rodeos:
+// `requiresTemplate: true` explica qué hace falta y `templateSendingSupported:
+// true` con el `message` le señalan al cliente `POST
+// /api/meta/whatsapp/templates/send`. Esta ruta no manda plantillas: el body
+// es el neutral de los tres canales, y reintentar acá no va a funcionar hasta
+// que el contacto escriba.
 export const runtime = "nodejs"
 
 // La sección Logs guarda esta request (`bot → Resender`) desde el envoltorio:
@@ -88,124 +86,11 @@ async function handle(request: NextRequest, capture: ApiLogCapture) {
     capture,
   })
 
-  // ---- 1. API key ---------------------------------------------------------
-  const bearer = getBearerToken(request.headers.get("authorization"))
-  const apiKey = await authenticateApiKey(bearer)
-  if (!apiKey) {
-    return trace.drop(
-      "unauthorized",
-      Response.json({ error: "unauthorized" }, { status: 401 })
-    )
-  }
-  trace.setTenant(apiKey.tenantId)
-
-  // Antes de cualquier otro round-trip: el límite protege justamente a los
-  // gates que vienen después.
-  if (!(await allowApiKeyRequest(apiKey.id))) {
-    return trace.drop(
-      "rate_limited",
-      Response.json(
-        { error: "rate_limited" },
-        {
-          status: 429,
-          headers: {
-            "retry-after": String(API_KEY_RATE_LIMIT_RETRY_AFTER_SECONDS),
-          },
-        }
-      )
-    )
-  }
-
-  // ---- 2. Idempotency-Key -------------------------------------------------
-  // **Obligatoria en este canal**, a diferencia de Messenger e Instagram donde
-  // es opcional. En WhatsApp el mensaje le llega a un teléfono y un duplicado se
-  // ve como una molestia real del negocio hacia su cliente, no como una línea
-  // repetida en un chat de escritorio. Exigirla es lo que hace que el reintento
-  // —que en una API HTTP siempre va a pasar— sea seguro por defecto en vez de
-  // por buena voluntad del que integra.
-  const idempotencyHeader = request.headers.get("idempotency-key")
-  const idempotencyKey = idempotencyHeader?.trim() ?? null
-  if (!idempotencyKey || idempotencyKey.length > 200) {
-    return trace.drop(
-      "invalid_request",
-      Response.json(
-        {
-          error:
-            "Idempotency-Key is required and must be a non-empty string of at most 200 characters",
-        },
-        { status: 400 }
-      )
-    )
-  }
-
-  // ---- 3. Permiso de canal (ADR 0010) -------------------------------------
-  // Va **antes** del replay idempotente: un envío guardado de cuando el canal
-  // estaba habilitado no puede seguir contestando 200 después de que se revocó
-  // el permiso.
-  //
-  // El `error` es genérico a propósito y no `whatsapp_not_enabled`: se escribió
-  // así anticipando este canal justamente para que un cliente que ya distingue
-  // el caso en Messenger o Instagram no tenga que aprender un código nuevo. Es
-  // el `message` el que nombra a WhatsApp, porque la misma API key sirve para
-  // los otros canales, que sí pueden estar abiertos.
-  if (!(await resolveWhatsappAccess(apiKey.tenantId))) {
-    return trace.drop(
-      "channel_not_enabled",
-      Response.json(
-        {
-          error: "channel_not_enabled",
-          message: "whatsapp channel is not enabled",
-        },
-        { status: 403 }
-      )
-    )
-  }
-
-  // ---- 4. Waitlist y cuota -----------------------------------
-  if (await isUserWaitlisted(apiKey.tenantId)) {
-    return trace.drop(
-      "waitlisted",
-      Response.json({ error: "account is on the waitlist" }, { status: 403 })
-    )
-  }
-
-  // ADR 0003: con la cuota del período agotada o con más conexiones de las que
-  // permite el plan, la cuenta queda restringida y no envía por ninguna de sus
-  // conexiones, de cualquier canal.
-  const { block, periodStart } = await getTenantEntitlement(apiKey.tenantId)
-  // Un período sin resolver siempre viene acompañado de `block` (el módulo puro
-  // es fail-closed); comprobar ambos es lo que estrecha el tipo de `periodStart`
-  // hasta el incremento del contador, sin recurrir a `!`.
-  if (block || !periodStart) {
-    return trace.drop(
-      "plan_restricted",
-      Response.json(
-        {
-          error: block?.code ?? "plan_unavailable",
-          message:
-            block?.message ??
-            "We couldn't resolve your current billing period. Contact support at info@resender.dev.",
-        },
-        { status: block?.status ?? 403 }
-      ),
-      { errorCode: block?.code ?? "plan_unavailable" }
-    )
-  }
-
-  // ---- 5. Replay idempotente ----------------------------------------------
-  // No llama a Meta ni inserta, así que devolver el resultado ya almacenado es
-  // lo único correcto: bloquearlo con un 402 le diría al cliente que falló un
-  // mensaje que Meta ya entregó, justo en el reintento que la Idempotency-Key
-  // existe para hacer seguro.
-  const replay = await getOutboundMessageByIdempotencyKey(
-    apiKey.tenantId,
-    idempotencyKey
-  )
-  if (replay) {
-    return trace.duplicate(idempotentReplayResponse(replay), {
-      subjectId: replay.id,
-    })
-  }
+  // API key, Idempotency-Key, permiso de canal, waitlist, cuota y replay
+  // idempotente: los comparte con las demás rutas de envío de WhatsApp.
+  const gates = await runWhatsappSendGates(request, trace)
+  if (!gates.ok) return gates.response
+  const { apiKey, periodStart, idempotencyKey } = gates
 
   let body: unknown
   try {
@@ -273,7 +158,8 @@ async function handle(request: NextRequest, capture: ApiLogCapture) {
       }
     )
   }
-  const { page, pageAccessToken, conversation } = resolved.value
+  const { page, pageAccessToken } = resolved.value
+  let conversation = resolved.value.conversation
   trace.setAccount(page)
 
   // ---- 8. La ventana de atención de 24 h ----------------------------------
@@ -287,13 +173,12 @@ async function handle(request: NextRequest, capture: ApiLogCapture) {
       Response.json(
         {
           error: "customer_service_window_closed",
-          // Qué haría falta y qué no hacemos, en el mismo objeto. Sin
-          // `templateSendingSupported` un cliente leería `requiresTemplate` como
-          // "mandá una plantilla por esta misma ruta" y se quedaría reintentando
-          // contra algo que no existe.
+          // Qué hace falta y dónde se hace, en el mismo objeto. Sin el
+          // `message` un cliente leería `requiresTemplate` como "mandá una
+          // plantilla por esta misma ruta" y se quedaría reintentando acá.
           requiresTemplate: true,
-          templateSendingSupported: false,
-          message: `This contact hasn't messaged the number in the last ${CUSTOMER_SERVICE_WINDOW_HOURS} hours, so WhatsApp only accepts approved template messages. Resender doesn't send templates yet: wait for the contact to write again.`,
+          templateSendingSupported: true,
+          message: `This contact hasn't messaged the number in the last ${CUSTOMER_SERVICE_WINDOW_HOURS} hours, so WhatsApp only accepts approved template messages. Send one with POST /api/meta/whatsapp/templates/send, or wait for the contact to write again.`,
         },
         { status: 409 }
       )
@@ -375,6 +260,48 @@ async function handle(request: NextRequest, capture: ApiLogCapture) {
   // `statuses` para decir si el mensaje se entregó o lo leyeron: sin guardarlo
   // acá, ese callback no encuentra la fila que tiene que actualizar.
   const wamid = extractWhatsappMessageId(metaResult.data)
+
+  // El `wa_id` con el que van a llegar las respuestas puede no ser el número
+  // marcado (ADR 0024): el mensaje se guarda en la conversación de ese `wa_id`,
+  // y esa es la que vuelve en `resender.conversationId`. Best-effort: Meta ya
+  // aceptó el mensaje, así que un fallo acá lo deja donde estaba en vez de
+  // perder la fila.
+  if (metaResult.ok) {
+    try {
+      const reconciled = await reconcileWhatsappContact({
+        tenantId: apiKey.tenantId,
+        conversation,
+        waId: extractWhatsappContactWaId(metaResult.data),
+      })
+      if (reconciled.kind !== "unchanged") {
+        conversation = reconciled.conversation
+        log({
+          entrypoint: "route",
+          action: "whatsapp_contact_reconcile",
+          outcome: "ok",
+          requestId,
+          tenantId: apiKey.tenantId,
+          connectionId: page.id,
+          channel: "whatsapp",
+          accountId: page.metaPageId,
+          contactId: conversation.contactId,
+        })
+      }
+    } catch (error) {
+      log({
+        entrypoint: "route",
+        action: "whatsapp_contact_reconcile",
+        outcome: "failed",
+        reason: "internal_error",
+        requestId,
+        tenantId: apiKey.tenantId,
+        connectionId: page.id,
+        channel: "whatsapp",
+        accountId: page.metaPageId,
+        errorMessage: describeError(error),
+      })
+    }
+  }
 
   let message: MessageRecord
   try {
@@ -489,21 +416,6 @@ async function handle(request: NextRequest, capture: ApiLogCapture) {
     },
     { status: metaResult.status }
   )
-}
-
-function idempotentReplayResponse(message: MessageRecord) {
-  return Response.json({
-    ...(message.status === "failed" && message.error
-      ? { error: message.error }
-      : {}),
-    meta: message.providerResponse,
-    resender: {
-      conversationId: message.conversationId,
-      messageId: message.id,
-      status: message.status,
-      idempotentReplay: true,
-    },
-  })
 }
 
 function isUniqueViolation(error: unknown) {

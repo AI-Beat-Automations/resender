@@ -39,6 +39,13 @@ export type LogAction =
   | "outbound_send" // DM (Messenger o Instagram)
   | "comment_reply" // respuesta pública debajo del comentario
   | "comment_private_reply" // DM al autor del comentario
+  // WhatsApp (ADR 0024): Cloud API devolvió un `wa_id` distinto del número
+  // marcado y el saliente se movió a la conversación de ese `wa_id`.
+  | "whatsapp_contact_reconcile"
+  // WhatsApp (ADR 0024): envío de una [Plantilla] por `/templates/send`. Verbo
+  // aparte de `outbound_send` para que «cuántas plantillas salieron» sea un
+  // filtro y no una suposición sobre el `route`.
+  | "template_send"
   // @section connections
   | "oauth_start"
   | "oauth_callback"
@@ -91,6 +98,22 @@ export type LogAction =
   // que es la única señal de que al tenant le falta una fila en pantalla.
   | "request_log_write"
   | "request_log_purge" // cron: borra las filas que cumplieron la retención
+  // @section templates
+  // El catálogo de [Plantilla]s de WhatsApp (ADR 0024, issue #192). El envío
+  // es `template_send`, en `outbound`; acá va lo que mantiene y lee la copia.
+  | "template_sync" // job: trae el catálogo de una WABA de Graph y lo guarda
+  | "template_list" // `GET /api/meta/whatsapp/templates`
+  // Webhooks de la WABA (issue #193). El de estado actualiza la copia y avisa
+  // al tenant; el de categoría solo actualiza la copia; el de calidad solo se
+  // loguea, para enterarnos antes de que Meta pause la plantilla.
+  | "template_status_update"
+  | "template_category_update"
+  | "template_quality_update"
+  // Administración de las plantillas propias por la API pública (issue #194):
+  // `POST /templates`, `PATCH` y `DELETE /templates/{id}`.
+  | "template_create"
+  | "template_edit"
+  | "template_delete"
 // @section end
 
 export type LogOutcome =
@@ -207,4 +230,23 @@ export type LogReason =
   // El [Canal de correo] no tiene `RESEND_API_KEY`. No es un fallo del
   // proveedor: es `next dev` o vitest, donde el secreto no existe a propósito.
   | "not_configured"
+  // @section templates
+  // Por qué no se sincronizó el catálogo de una WABA. `connection_not_active`
+  // es un descarte (la conexión se borró o se desconectó entre el encolado y
+  // el job); `template_list_failed` es Graph rechazando el listado, y ese sí
+  // se reintenta.
+  | "connection_not_active"
+  | "template_list_failed"
+  // `/templates/send` rechazó con 409 sin llamar a Meta: la copia sabe que la
+  // plantilla no está aprobada (issue #193).
+  | "template_not_approved"
+  // Un webhook de categoría de una plantilla que la copia no conoce: sin
+  // estado no hay con qué crear la fila, y el próximo sync la trae.
+  | "template_not_found"
+  // `PATCH`/`DELETE` de una plantilla que no creó este actor: la importada por
+  // el sync, la de un cliente vista por el padre o la de otro tenant (403).
+  | "template_not_owned"
+  // La fila no tiene hsm id y borrar por nombre se llevaría todos los idiomas:
+  // se rechaza con 409 sin llamar a Meta.
+  | "template_missing_meta_id"
 // @section end

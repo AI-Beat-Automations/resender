@@ -1316,3 +1316,163 @@ describe("migración 0030: cupo gratis de Meta", () => {
     ).rejects.toThrow()
   })
 })
+
+// Migración 0031: el envío de plantillas de WhatsApp (issue #190).
+describe("migración 0031: template_meta en messages", () => {
+  it("añade `template_meta` jsonb, nullable y sin default", async () => {
+    const columns = await db.query<{
+      data_type: string
+      is_nullable: string
+      column_default: string | null
+    }>(
+      `select data_type, is_nullable, column_default
+       from information_schema.columns
+       where table_schema = 'public' and table_name = 'messages'
+         and column_name = 'template_meta'`
+    )
+    expect(columns.rows).toEqual([
+      { data_type: "jsonb", is_nullable: "YES", column_default: null },
+    ])
+  })
+
+  // Una plantilla no es un [Adjunto]: la fila sale con `text = ''` y sin
+  // `attachment_type`, y el check de la 0016 la acepta igual.
+  it("acepta una plantilla con texto vacío y sin adjunto", async () => {
+    const message = await insertMessage({ text: "" })
+    const template = {
+      name: "hello_world",
+      language: "en_US",
+      components: [],
+    }
+    const updated = await db.query<{
+      template_meta: Record<string, unknown>
+      attachment_type: string | null
+    }>(
+      `update messages set template_meta = $2
+       where id = $1
+       returning template_meta, attachment_type`,
+      [message.id, JSON.stringify(template)]
+    )
+    expect(updated.rows[0]).toEqual({
+      template_meta: template,
+      attachment_type: null,
+    })
+  })
+})
+
+// Migración 0032: la copia local del catálogo de plantillas (issue #192).
+describe("migración 0032: whatsapp_templates", () => {
+  it("una fila por (waba_id, name, language)", async () => {
+    await db.query(
+      `insert into whatsapp_templates (waba_id, name, language, status)
+       values ('waba-m', 'hello_world', 'en_US', 'APPROVED'),
+              ('waba-m', 'hello_world', 'es', 'APPROVED'),
+              ('waba-otra', 'hello_world', 'en_US', 'APPROVED')`
+    )
+    await expect(
+      db.query(
+        `insert into whatsapp_templates (waba_id, name, language, status)
+         values ('waba-m', 'hello_world', 'en_US', 'PENDING')`
+      )
+    ).rejects.toThrow()
+  })
+
+  // El catálogo de estados de Meta no es estable: sin check, un estado nuevo
+  // no tumba el sync.
+  it("acepta cualquier status, pero solo las tres categorías", async () => {
+    await db.query(
+      `insert into whatsapp_templates (waba_id, name, language, status, category)
+       values ('waba-m', 'nuevo', 'es', 'SOMETHING_NEW', 'marketing')`
+    )
+    await expect(
+      db.query(
+        `insert into whatsapp_templates (waba_id, name, language, status, category)
+         values ('waba-m', 'mala', 'es', 'APPROVED', 'UTILITY')`
+      )
+    ).rejects.toThrow()
+  })
+
+  it("borrar al dueño deja la plantilla sin dueño", async () => {
+    const owner = await db.query<{ id: string }>(
+      `insert into users (email) values ('duena-plantilla@example.com')
+       returning id`
+    )
+    const ownerId = owner.rows[0]!.id
+    await db.query(
+      `insert into whatsapp_templates (
+         waba_id, name, language, status, created_by_tenant_id
+       )
+       values ('waba-m', 'propia', 'es', 'APPROVED', $1)`,
+      [ownerId]
+    )
+
+    await db.query(`delete from users where id = $1`, [ownerId])
+
+    const rows = await db.query<{ created_by_tenant_id: string | null }>(
+      `select created_by_tenant_id from whatsapp_templates
+       where waba_id = 'waba-m' and name = 'propia'`
+    )
+    expect(rows.rows).toEqual([{ created_by_tenant_id: null }])
+  })
+})
+
+describe("migración 0033: eventos de plantilla como sujeto de entrega", () => {
+  async function templateEvent() {
+    const template = await db.query<{ id: string }>(
+      `insert into whatsapp_templates (waba_id, name, language, status)
+       values ('waba-e', 'evento', 'es', 'PENDING')
+       on conflict (waba_id, name, language) do update set status = 'PENDING'
+       returning id`
+    )
+    const event = await db.query<{ id: string }>(
+      `insert into whatsapp_template_events (
+         template_id, waba_id, name, language, status
+       )
+       values ($1, 'waba-e', 'evento', 'es', 'APPROVED')
+       returning id`,
+      [template.rows[0]!.id]
+    )
+    return event.rows[0]!.id
+  }
+
+  const insertJob = (eventId: string, connectionId: string | null, key: string) =>
+    db.query(
+      `insert into external_webhook_jobs (
+         event_id, tenant_id, template_event_id, connected_page_id, payload
+       )
+       values ($1, $2, $3, $4, '{}')`,
+      [key, tenantId, eventId, connectionId]
+    )
+
+  it("un job por evento y conexión, y la conexión es obligatoria", async () => {
+    const eventId = await templateEvent()
+
+    await insertJob(eventId, pageId, "evt_0033_a")
+    // La misma conexión otra vez: el reintento del mismo evento.
+    await expect(insertJob(eventId, pageId, "evt_0033_b")).rejects.toThrow()
+    // Sin conexión no hay a quién entregarle.
+    await expect(insertJob(eventId, null, "evt_0033_c")).rejects.toThrow()
+  })
+
+  it("sigue exigiendo exactamente un sujeto", async () => {
+    const eventId = await templateEvent()
+    const message = await insertMessage({ text: "hola" })
+
+    await expect(
+      db.query(
+        `insert into external_webhook_deliveries (
+           message_id, template_event_id, connected_page_id, status, attempt
+         )
+         values ($1, $2, $3, 'skipped', 1)`,
+        [message.id, eventId, pageId]
+      )
+    ).rejects.toThrow()
+    await db.query(
+      `insert into external_webhook_deliveries (
+         template_event_id, connected_page_id, status, attempt
+       )
+       values ($1, $2, 'skipped', 1)`,
+      [eventId, pageId]
+    )
+  })
+})

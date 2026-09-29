@@ -170,7 +170,7 @@ export const en: Dict = {
       "We charge per message processed rather than per contact reached, which is the difference that shows most against ManyChat as you grow: your bill tracks real traffic, not the accumulated size of your audience.",
     ],
     metaNote:
-      "On WhatsApp, Meta charges separately: after 1,000 free service messages per number each month, it bills every delivered reply directly to the card you registered on your WhatsApp Business account. Resender doesn't collect that charge or add a margin to it, and your plan's price is independent of it.",
+      "On WhatsApp, Meta charges separately: after 1,000 free service messages per number each month, it bills every delivered reply directly to the card you registered on your WhatsApp Business account. Templates, which you use to write first, are charged separately by category and don't count toward those 1,000. Resender doesn't collect those charges or add a margin to it, and your plan's price is independent of it.",
     plans: [
       {
         name: "Free",
@@ -370,7 +370,7 @@ export const en: Dict = {
       },
       {
         q: "How much does WhatsApp cost?",
-        a: "Resender charges nothing extra for WhatsApp: your messages count toward your plan's quota like any other channel's. Meta does charge separately. Every number gets 1,000 free service messages a month; past that, Meta charges for each delivered reply at the rate for the recipient's country and bills it to the card you registered on your WhatsApp Business account. Without a payment method there, Meta may stop delivering your messages. Messages your customers send you are free.",
+        a: "Resender charges nothing extra for WhatsApp: your messages count toward your plan's quota like any other channel's. Meta does charge separately. Every number gets 1,000 free service messages a month; past that, Meta charges for each delivered reply at the rate for the recipient's country and bills it to the card you registered on your WhatsApp Business account. Templates, the way to write first or outside the 24 hours, are charged separately by category (marketing and utility ones from the first send) and don't count toward the 1,000 free. Without a payment method there, Meta may stop delivering your messages. Messages your customers send you are free.",
         link: {
           label: "See Meta's official rates",
           href: META_WHATSAPP_PRICING_URL,
@@ -638,7 +638,7 @@ export const en: Dict = {
     context: [
       "Resender solves one specific problem: receiving the messages sent to your Meta channels (WhatsApp, Instagram and Facebook Messenger) on your own server through a single webhook, and replying to them via API. The logic runs wherever you want it — n8n, Make, Zapier, an AI agent or your own backend — and Resender only handles the transport to and from each channel.",
       "How it works: you connect your channels with Facebook Login, set an HTTPS URL per connection, every incoming message arrives at that endpoint as JSON, and you reply with a POST to Resender's outbound API. The Messenger and Instagram permissions are already approved, so you don't go through an app review of your own.",
-      "What it is NOT: Resender has no visual flow builder, broadcasts, templates or engagement analytics. If you need those, ManyChat is the better choice and we say so in the comparison.",
+      "What it is NOT: Resender has no visual flow builder, broadcasts or engagement analytics. On WhatsApp it does send Meta-approved templates, one at a time through the API, so you can write first; it doesn't do bulk sends. If you need those, ManyChat is the better choice and we say so in the comparison.",
       "Pricing: Free $0 (2,000 messages a month, 1 connection, no card), Starter $15/mo (50,000 messages, 2 connections), Pro $29/mo (100,000 messages, 5 connections) and Business $199/mo (1,000,000 messages, 40 connections). Billing is per message processed in either direction, not per contact reached. Retries after a webhook outage are not billed. No contracts: it's month to month.",
       "The site is in Spanish at the root and in English under /en. The legal pages exist in Spanish only.",
     ],

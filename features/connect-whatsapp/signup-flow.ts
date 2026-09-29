@@ -76,6 +76,11 @@ export type WhatsappSignupDeps = {
   ): Promise<ConnectedPageRecord>
   /** Encola `{ type: "history_sync_request", connectionId }` en `WHATSAPP_JOBS`. */
   enqueueHistorySync(connectionId: string): Promise<void>
+  /**
+   * Encola `{ type: "template_sync", connectionId }` en `WHATSAPP_JOBS`: trae
+   * el catálogo de plantillas de la WABA. Va en los dos flujos.
+   */
+  enqueueTemplateSync(connectionId: string): Promise<void>
   /** Deja el estado del import visible cuando el encolado no salió. */
   markHistorySyncStatus(
     connectionId: string,
@@ -106,6 +111,8 @@ export type WhatsappSignupOutcome =
       historySync: HistorySyncStatus | null
       /** Por qué no se pudo encolar la solicitud de historial, si pasó. */
       historySyncError: string | null
+      /** Por qué no se pudo encolar el sync de plantillas, si pasó. */
+      templateSyncError: string | null
     }
   // El 133005: el número ya tenía verificación en dos pasos con un PIN que no
   // es el nuestro. Sale aparte de `failed` porque el remedio es del cliente y
@@ -201,7 +208,12 @@ export async function runWhatsappSignup(
       }
       return {
         kind: "failed",
-        step: error.step,
+        // Un paso de fuera del onboarding no debería salir de acá; si sale, se
+        // atribuye al paso en que íbamos.
+        step:
+          error.step === "template_list" || error.step === "template_manage"
+            ? step
+            : error.step,
         metaErrorCode: error.metaErrorCode,
         errorMessage: error.message,
       }
@@ -270,6 +282,7 @@ async function finishStandard(
     pinGenerated: signup.pinGenerated,
     historySync: null,
     historySyncError: null,
+    templateSyncError: await enqueueTemplateSync(deps, page.id),
   }
 }
 
@@ -318,12 +331,19 @@ async function finishCoexistence(
   // ese historial nunca y el plazo se agota igual, así que el estado queda en
   // `failed` —visible en la tarjeta, con su acción— en vez de en
   // `not_requested`, que se lee como «todavía no le tocó».
+  let historySyncError: string | null = null
   try {
     await deps.enqueueHistorySync(page.id)
   } catch (error) {
-    const historySyncError =
-      error instanceof Error ? error.message : "unknown error"
+    historySyncError = error instanceof Error ? error.message : "unknown error"
     await deps.markHistorySyncStatus(page.id, "failed")
+  }
+
+  // El catálogo de plantillas va después del historial, que es el que tiene
+  // reloj, y sale aunque el del historial no.
+  const templateSyncError = await enqueueTemplateSync(deps, page.id)
+
+  if (historySyncError !== null) {
     return {
       kind: "connected",
       page,
@@ -331,6 +351,7 @@ async function finishCoexistence(
       pinGenerated: false,
       historySync: "failed",
       historySyncError,
+      templateSyncError,
     }
   }
 
@@ -341,6 +362,24 @@ async function finishCoexistence(
     pinGenerated: false,
     historySync: "not_requested",
     historySyncError: null,
+    templateSyncError,
+  }
+}
+
+// El sync del catálogo de plantillas, en los dos flujos y **sin poder tumbar
+// el alta**: el número ya quedó conectado y la copia no decide qué se envía.
+// Si el encolado no sale, se devuelve el motivo para que la ruta lo loguee, y
+// el catálogo se puede traer después con el backfill
+// (`scripts/whatsapp-template-backfill.mjs`) o reconectando.
+async function enqueueTemplateSync(
+  deps: WhatsappSignupDeps,
+  connectionId: string
+): Promise<string | null> {
+  try {
+    await deps.enqueueTemplateSync(connectionId)
+    return null
+  } catch (error) {
+    return error instanceof Error ? error.message : "unknown error"
   }
 }
 

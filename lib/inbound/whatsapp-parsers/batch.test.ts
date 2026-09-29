@@ -8,7 +8,13 @@ import {
   extractWhatsappStatuses,
   parseWhatsappWebhook,
 } from "./index"
-import { PHONE_NUMBER_ID, USER_PHONE, WABA_ID, message } from "./test-fixtures"
+import {
+  PHONE_NUMBER_ID,
+  TEMPLATE_APPROVED,
+  USER_PHONE,
+  WABA_ID,
+  message,
+} from "./test-fixtures"
 
 describe("WhatsApp webhook batch", () => {
   it("groups a POST that mixes fields and does not let an unknown one break it", () => {
@@ -36,8 +42,13 @@ describe("WhatsApp webhook batch", () => {
               // Un campo al que estamos suscritos y estos parsers no modelan.
               // Se reporta para que la ingesta lo registre, en vez de
               // tragárselo.
-              field: "message_template_status_update",
+              field: "account_update",
               value: { metadata: { phone_number_id: PHONE_NUMBER_ID } },
+            },
+            {
+              // Uno de la WABA, sin `metadata`, en el mismo `entry`.
+              field: "message_template_status_update",
+              value: TEMPLATE_APPROVED,
             },
             {
               field: "smb_app_state_sync",
@@ -63,7 +74,8 @@ describe("WhatsApp webhook batch", () => {
     expect(batch.contactSync).toHaveLength(1)
     expect(batch.history).toEqual([])
     expect(batch.echoes).toEqual([])
-    expect(batch.unhandledFields).toEqual(["message_template_status_update"])
+    expect(batch.templateStatuses).toHaveLength(1)
+    expect(batch.unhandledFields).toEqual(["account_update"])
   })
 
   it.each([
@@ -81,6 +93,9 @@ describe("WhatsApp webhook batch", () => {
       history: [],
       contactSync: [],
       echoes: [],
+      templateStatuses: [],
+      templateCategories: [],
+      templateQuality: [],
       unhandledFields: [],
     })
     expect(extractWhatsappMessages(payload)).toEqual([])

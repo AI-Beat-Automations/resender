@@ -42,7 +42,7 @@ export const es: WhatsappSignupDict = {
   pinPlaceholder: "6 dígitos",
   pinHint: "Escribe el PIN actual del número y vuelve a lanzar la conexión.",
   paymentNotice:
-    "Necesitas un método de pago en tu cuenta de WhatsApp Business. Meta cobra aparte cada respuesta entregada después de 1.000 mensajes de servicio gratis por número al mes, y se lo factura a esa tarjeta: Resender no cobra ese cargo. Sin método de pago, Meta puede dejar de entregar tus mensajes.",
+    "Necesitas un método de pago en tu cuenta de WhatsApp Business. Meta cobra aparte cada respuesta entregada después de 1.000 mensajes de servicio gratis por número al mes, y se lo factura a esa tarjeta. Las plantillas las cobra aparte según su categoría y no entran en ese cupo. Resender no cobra esos cargos. Sin método de pago, Meta puede dejar de entregar tus mensajes.",
   paymentLink: "Configurar pagos en Meta",
 }
 
@@ -70,6 +70,6 @@ export const en: WhatsappSignupDict = {
   pinPlaceholder: "6 digits",
   pinHint: "Type the number's current PIN and run the connection again.",
   paymentNotice:
-    "You need a payment method on your WhatsApp Business account. Meta charges separately for each delivered reply after 1,000 free service messages per number each month, and bills that card: Resender doesn't collect that charge. Without a payment method, Meta may stop delivering your messages.",
+    "You need a payment method on your WhatsApp Business account. Meta charges separately for each delivered reply after 1,000 free service messages per number each month, and bills that card. Templates are charged separately by category and don't count toward that allowance. Resender doesn't collect those charges. Without a payment method, Meta may stop delivering your messages.",
   paymentLink: "Set up payments on Meta",
 }

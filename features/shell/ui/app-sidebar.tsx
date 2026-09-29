@@ -9,6 +9,7 @@ import {
   Link2,
   List,
   LogOut,
+  MessageSquareText,
   Settings,
   Users,
   type LucideIcon,
@@ -32,6 +33,7 @@ import { cn } from "@/lib/utils"
 const NAV_ICONS: Record<NavKey, LucideIcon> = {
   navConnections: Link2,
   navInbox: Inbox,
+  navTemplates: MessageSquareText,
   navLogs: List,
   navClients: Users,
   navSettings: Settings,

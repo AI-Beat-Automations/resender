@@ -65,6 +65,16 @@ export type InboxDict = {
   pauseEventResumed: string
   /** `title` del icono de pausa en la fila de la lista. */
   pausedRowTitle: string
+  /**
+   * Saliente de [Plantilla] sin cuerpo guardado (issue #191): `{name}` y
+   * `{language}`; los valores de las variables se agregan detrás con ` · `.
+   * Sin idioma se usa `templateLabelNoLanguage`, sin nombre el genérico.
+   */
+  templateLabel: string
+  templateLabelNoLanguage: string
+  templateFallbackName: string
+  /** `title` de la burbuja de plantilla. */
+  templateTitle: string
 }
 
 export const es: InboxDict = {
@@ -121,6 +131,10 @@ export const es: InboxDict = {
   pauseEventPaused: "Automatización pausada desde el {date}",
   pauseEventResumed: "Automatización activada desde el {date}",
   pausedRowTitle: "Automatización pausada para este contacto",
+  templateLabel: "📋 {name} ({language})",
+  templateLabelNoLanguage: "📋 {name}",
+  templateFallbackName: "plantilla",
+  templateTitle: "Enviado como plantilla de WhatsApp",
   attachmentStatus: {
     pending: "descargando…",
     available: "preview / descarga",
@@ -183,6 +197,10 @@ export const en: InboxDict = {
   pauseEventPaused: "Automation paused since {date}",
   pauseEventResumed: "Automation resumed on {date}",
   pausedRowTitle: "Automation paused for this contact",
+  templateLabel: "📋 {name} ({language})",
+  templateLabelNoLanguage: "📋 {name}",
+  templateFallbackName: "template",
+  templateTitle: "Sent as a WhatsApp template",
   attachmentStatus: {
     pending: "downloading…",
     available: "preview / download",

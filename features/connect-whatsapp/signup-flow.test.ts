@@ -103,6 +103,7 @@ function deps(overrides: Partial<WhatsappSignupDeps> = {}) {
       return page()
     },
     enqueueHistorySync: async () => {},
+    enqueueTemplateSync: async () => {},
     markHistorySyncStatus: async () => {},
     ...overrides,
   }
@@ -136,6 +137,7 @@ describe("runWhatsappSignup — flujo A (estándar)", () => {
       "resolveOwnership",
       "finishStandard",
       "connect",
+      "enqueueTemplateSync",
     ])
     expect(connected[0]).toMatchObject({
       onboardingMode: "standard",
@@ -237,7 +239,7 @@ describe("runWhatsappSignup — flujo B (Coexistence)", () => {
     expect(calls).not.toContain("finishStandard")
   })
 
-  it("suscribe los tres campos antes de persistir, y en ese orden", async () => {
+  it("suscribe los campos de Coexistence antes de persistir, y en ese orden", async () => {
     const { deps: d, calls, connected } = coexistenceDeps()
 
     await runWhatsappSignup(d, request({ mode: "coexistence" }))
@@ -249,6 +251,9 @@ describe("runWhatsappSignup — flujo B (Coexistence)", () => {
       "history",
       "smb_app_state_sync",
       "smb_message_echoes",
+      "message_template_status_update",
+      "template_category_update",
+      "message_template_quality_update",
     ])
     expect(calls).toEqual([
       "begin",
@@ -256,6 +261,7 @@ describe("runWhatsappSignup — flujo B (Coexistence)", () => {
       "subscribe",
       "connect",
       "enqueueHistorySync",
+      "enqueueTemplateSync",
     ])
     expect(connected[0]).toMatchObject({
       onboardingMode: "coexistence",
@@ -305,6 +311,19 @@ describe("runWhatsappSignup — flujo B (Coexistence)", () => {
     })
   })
 
+  it("encola el sync de plantillas aunque el del historial no salga", async () => {
+    const { deps: d } = coexistenceDeps({
+      enqueueHistorySync: vi.fn(async () => {
+        throw new Error("queue unavailable")
+      }),
+    })
+
+    const outcome = await runWhatsappSignup(d, request({ mode: "coexistence" }))
+
+    expect(d.enqueueTemplateSync).toHaveBeenCalledWith("conn-1")
+    expect(outcome).toMatchObject({ historySync: "failed", templateSyncError: null })
+  })
+
   it("sigue adelante sin phone_number_id: Graph resuelve el número vinculado", async () => {
     const { deps: d, connected } = coexistenceDeps()
 
@@ -320,6 +339,35 @@ describe("runWhatsappSignup — flujo B (Coexistence)", () => {
       })
     )
     expect(connected[0]).toMatchObject({ phoneNumberId: "phone-1" })
+  })
+})
+
+describe("runWhatsappSignup — sync del catálogo de plantillas", () => {
+  it("encola el sync con el id de la conexión en el flujo estándar", async () => {
+    const { deps: d } = deps()
+
+    const outcome = await runWhatsappSignup(d, request())
+
+    expect(d.enqueueTemplateSync).toHaveBeenCalledWith("conn-1")
+    expect(outcome).toMatchObject({ kind: "connected", templateSyncError: null })
+  })
+
+  it("un encolado que falla no tumba el alta: devuelve el motivo", async () => {
+    // El número ya quedó conectado y la copia no decide qué se envía: perder
+    // el catálogo no es motivo para decirle al cliente que la conexión falló.
+    const { deps: d } = deps({
+      enqueueTemplateSync: vi.fn(async () => {
+        throw new Error("queue unavailable")
+      }),
+    })
+
+    const outcome = await runWhatsappSignup(d, request())
+
+    expect(outcome).toMatchObject({
+      kind: "connected",
+      mode: "standard",
+      templateSyncError: "queue unavailable",
+    })
   })
 })
 

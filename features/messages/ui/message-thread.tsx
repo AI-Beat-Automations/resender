@@ -233,7 +233,16 @@ function MessageBubble({
           <BubbleAttachment attachment={message.attachment} t={t} />
         </div>
       ) : null}
-      {message.text !== "" ? message.text : null}
+      {/* Una plantilla se guarda con texto vacío: se pinta su cuerpo o, si el
+          envío no lo guardó, la etiqueta con nombre, idioma y valores. La
+          regla está en `lib/messages/template-display.ts`. */}
+      {message.template && message.text === "" ? (
+        <span title={t.inbox.templateTitle}>
+          {message.template.text ?? message.template.label}
+        </span>
+      ) : message.text !== "" ? (
+        message.text
+      ) : null}
     </Bubble>
   )
 }

@@ -21,6 +21,7 @@ const {
   exceedsWhatsappTextLimit,
   exchangeWhatsappCode,
   explainWhatsappError,
+  extractWhatsappContactWaId,
   extractWhatsappMessageId,
   fetchWhatsappMediaMetadata,
   finishWhatsappSignup,
@@ -514,7 +515,7 @@ describe("suscripción del WABA", () => {
     expect(calls[0]?.url).not.toContain("subscribed_fields")
   })
 
-  it("manda los tres campos de Coexistence cuando se los pide", async () => {
+  it("manda los campos de Coexistence cuando se los pide", async () => {
     const calls = mockGraph()
 
     await subscribeWhatsappWebhook(BUSINESS_TOKEN, WABA_ID, {
@@ -523,7 +524,9 @@ describe("suscripción del WABA", () => {
 
     const url = new URL(calls[0]?.url ?? "")
     expect(url.searchParams.get("subscribed_fields")).toBe(
-      "history,smb_app_state_sync,smb_message_echoes"
+      "history,smb_app_state_sync,smb_message_echoes," +
+        "message_template_status_update,template_category_update," +
+        "message_template_quality_update"
     )
   })
 
@@ -872,6 +875,50 @@ describe("envío", () => {
     expect(image.image).toEqual({ link: "https://cdn.cliente/foto.jpg" })
   })
 
+  // `language` va como `{ code }` y no como string suelto; los `components`
+  // viajan tal cual, sin tocarlos.
+  it("arma la plantilla con name, language.code y components", () => {
+    const components = [
+      { type: "body", parameters: [{ type: "text", text: "Ana" }] },
+    ]
+    expect(
+      buildWhatsappMessagePayload("1631", {
+        template: { name: "pedido_listo", language: "es_MX", components },
+      })
+    ).toEqual({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: "1631",
+      type: "template",
+      template: {
+        name: "pedido_listo",
+        language: { code: "es_MX" },
+        components,
+      },
+    })
+  })
+
+  // Una plantilla sin variables (`hello_world`) se manda sin la clave.
+  it("omite components cuando no vienen o vienen vacíos", () => {
+    const expected = {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: "1631",
+      type: "template",
+      template: { name: "hello_world", language: { code: "en_US" } },
+    }
+    expect(
+      buildWhatsappMessagePayload("1631", {
+        template: { name: "hello_world", language: "en_US" },
+      })
+    ).toEqual(expected)
+    expect(
+      buildWhatsappMessagePayload("1631", {
+        template: { name: "hello_world", language: "en_US", components: [] },
+      })
+    ).toEqual(expected)
+  })
+
   // Cloud API no devuelve `message_id` como Messenger: reusar la extracción de
   // allá devolvería `null` siempre y el mensaje quedaría sin el id con el que
   // después llegan sus `statuses`.
@@ -882,6 +929,27 @@ describe("envío", () => {
     expect(extractWhatsappMessageId({ message_id: "mid.ABC" })).toBeNull()
     expect(extractWhatsappMessageId({ messages: [] })).toBeNull()
     expect(extractWhatsappMessageId(null)).toBeNull()
+  })
+
+  // El `wa_id` es el id con el que llegan las respuestas del contacto, y en MX
+  // y AR puede no ser el número marcado.
+  it("saca el wa_id de contacts[0].wa_id", () => {
+    expect(
+      extractWhatsappContactWaId({
+        messaging_product: "whatsapp",
+        contacts: [{ input: "+52 55 1234 5678", wa_id: "5215512345678" }],
+        messages: [{ id: "wamid.ABC" }],
+      })
+    ).toBe("5215512345678")
+  })
+
+  it("devuelve null si la respuesta no trae contacts", () => {
+    expect(
+      extractWhatsappContactWaId({ messages: [{ id: "wamid.ABC" }] })
+    ).toBeNull()
+    expect(extractWhatsappContactWaId({ contacts: [] })).toBeNull()
+    expect(extractWhatsappContactWaId({ contacts: [{ input: "52" }] })).toBeNull()
+    expect(extractWhatsappContactWaId(null)).toBeNull()
   })
 
   it("traduce el error del envío en el mismo sobre que Messenger", async () => {
@@ -944,6 +1012,33 @@ describe("catálogo de errores de WhatsApp", () => {
       )
     }
   )
+
+  // Errores de escribir primero, verificados contra la tabla de Cloud API.
+  // Cada uno dice qué hacer, y «pausada» no se confunde con «no existe».
+  it.each([
+    [132001, "doesn't exist in the requested language"],
+    [132000, "number of parameters"],
+    [132005, "too long"],
+    [132012, "doesn't match the format"],
+    [132007, "policy"],
+    [132015, "paused this template"],
+    [132016, "permanently disabled"],
+    [131050, "opted out of marketing"],
+    [131048, "messaging limit"],
+    [131049, "24 hours"],
+    [131056, "same contact"],
+  ])("traduce el %i de plantillas y límites", (code, fragment) => {
+    expect(explainWhatsappError({ error: { code } })).toEqual({
+      code: null,
+      message: expect.stringContaining(fragment),
+    })
+  })
+
+  it("cubre plantillas en el aviso de método de pago", () => {
+    expect(explainWhatsappError({ error: { code: 131042 } })?.message).toContain(
+      "template messages included"
+    )
+  })
 
   // Los fallos de media son los únicos con `code` estable, porque son los únicos
   // que la API pública tiene que distinguir programáticamente.
@@ -1128,7 +1223,7 @@ describe("onboarding completo", () => {
 // El flujo B. Comparte el canje, la validación de assets y la lectura del WABA;
 // se separa en que suscribe los tres campos, **no registra** y pide el historial.
 describe("onboarding de Coexistence", () => {
-  it("suscribe los tres campos, pide el sync y NO llama a /register", async () => {
+  it("suscribe los campos de Coexistence, pide el sync y NO llama a /register", async () => {
     const calls = mockGraph({ phones: () => coexistencePhones() })
 
     const result = await completeWhatsappSignup(coexistenceInput)
@@ -1149,7 +1244,11 @@ describe("onboarding de Coexistence", () => {
     const subscribeCall = calls.find((call) => call.stage === "subscribe")
     expect(
       new URL(subscribeCall?.url ?? "").searchParams.get("subscribed_fields")
-    ).toBe("history,smb_app_state_sync,smb_message_echoes")
+    ).toBe(
+      "history,smb_app_state_sync,smb_message_echoes," +
+        "message_template_status_update,template_category_update," +
+        "message_template_quality_update"
+    )
 
     expect(result).toMatchObject({
       wabaId: WABA_ID,

@@ -25,6 +25,7 @@ import * as actions from "./sections/actions"
 import * as whatsappEvents from "./sections/whatsapp-events"
 import * as whatsappSignup from "./sections/whatsapp-signup"
 import * as metaFreeTier from "./sections/meta-free-tier"
+import * as templates from "./sections/templates"
 
 // El español del producto. Es el copy que ya estaba en el JSX: la migración al
 // diccionario no reescribe nada, solo lo saca de los componentes.
@@ -59,4 +60,5 @@ export const es: AppDict = {
   whatsappEvents: whatsappEvents.es,
   whatsappSignup: whatsappSignup.es,
   metaFreeTier: metaFreeTier.es,
+  templates: templates.es,
 }

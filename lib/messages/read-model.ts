@@ -43,6 +43,9 @@ export type ConversationListItem = {
     // Solo el type: el renglón de la lista lo muestra entre corchetes cuando
     // el mensaje no trae texto; la URL y el meta solo importan en el hilo.
     attachmentType: string | null
+    // El `template_meta` crudo (0031): un envío de plantilla va con texto
+    // vacío, y el renglón lo resuelve con `lib/messages/template-display.ts`.
+    templateMeta: unknown
   } | null
 }
 
@@ -76,6 +79,10 @@ export type ThreadMessage = {
   // «lo aceptamos y lo mandamos» y «el destinatario lo leyó» son dos hechos y
   // mezclarlos en una columna pierde uno de los dos.
   deliveryStatus: DeliveryStatus | null
+  // `{ name, language, components, body? }` del envío de plantilla (0031),
+  // crudo: lo interpreta `template-display.ts`, que tolera cualquier forma.
+  // Null en todo lo que no es una plantilla.
+  templateMeta: unknown
   createdAt: Date
 }
 
@@ -99,6 +106,7 @@ type ConversationListRow = {
   latest_status: MessageStatus | null
   latest_created_at: Date | null
   latest_attachment_type: string | null
+  latest_template_meta: unknown
 }
 
 type ThreadMessageRow = {
@@ -118,6 +126,7 @@ type ThreadMessageRow = {
   meta_message_id: string | null
   reply_to_meta_message_id: string | null
   delivery_status: DeliveryStatus | null
+  template_meta: unknown
   created_at: Date
 }
 
@@ -157,11 +166,13 @@ export async function listConversationReadModel(input: {
       latest.direction as latest_direction,
       latest.status as latest_status,
       latest.created_at as latest_created_at,
-      latest.attachment_type as latest_attachment_type
+      latest.attachment_type as latest_attachment_type,
+      latest.template_meta as latest_template_meta
     from conversations c
     join connected_pages p on p.id = c.connected_page_id
     left join lateral (
-      select text, direction, status, created_at, attachment_type
+      select text, direction, status, created_at, attachment_type,
+             template_meta
       from messages m
       where m.conversation_id = c.id
         and m.tenant_id = c.tenant_id
@@ -194,7 +205,7 @@ export async function listThreadMessages(input: {
            m.instagram_source_comment_id,
            m.attachment_type, m.attachment_url, m.attachment_meta,
            m.attachment_status, m.meta_message_id, m.reply_to_meta_message_id,
-           m.delivery_status, m.created_at,
+           m.delivery_status, m.template_meta, m.created_at,
            p.channel as page_channel
     from messages m
     join connected_pages p on p.id = m.connected_page_id
@@ -221,6 +232,7 @@ export async function listThreadMessages(input: {
     metaMessageId: row.meta_message_id,
     replyToMetaMessageId: row.reply_to_meta_message_id,
     deliveryStatus: row.delivery_status,
+    templateMeta: parseJson(row.template_meta),
     createdAt: row.created_at,
   }))
 }
@@ -295,8 +307,19 @@ function mapConversationListItem(
             status: row.latest_status,
             createdAt: row.latest_created_at,
             attachmentType: row.latest_attachment_type,
+            templateMeta: parseJson(row.latest_template_meta),
           }
         : null,
+  }
+}
+
+// Como `asJsonObject`, pero sin exigir la forma: la valida quien lo lee.
+function parseJson(value: unknown): unknown {
+  if (typeof value !== "string") return value ?? null
+  try {
+    return JSON.parse(value)
+  } catch {
+    return null
   }
 }
 

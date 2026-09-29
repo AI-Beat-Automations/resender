@@ -46,6 +46,7 @@ import type { ActionsDict } from "./sections/actions"
 import type { WhatsappEventsDict } from "./sections/whatsapp-events"
 import type { WhatsappSignupDict } from "./sections/whatsapp-signup"
 import type { MetaFreeTierDict } from "./sections/meta-free-tier"
+import type { TemplatesDict } from "./sections/templates"
 
 export type { ChannelMap, HistorySyncCopy } from "./sections/shared"
 
@@ -82,4 +83,5 @@ export type AppDict = {
   whatsappEvents: WhatsappEventsDict
   whatsappSignup: WhatsappSignupDict
   metaFreeTier: MetaFreeTierDict
+  templates: TemplatesDict
 }

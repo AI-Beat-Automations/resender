@@ -88,7 +88,7 @@ export const es: MetaErrorsDict = {
   whatsappNumberOwned:
     "No se pudo conectar: el número de WhatsApp {id} ya pertenece a otra cuenta de Resender.",
   whatsappPaymentMethod:
-    "Meta no entregó el mensaje porque tu cuenta de WhatsApp Business no tiene un método de pago válido. Meta cobra los mensajes de WhatsApp directo a la tarjeta de esa cuenta, no a través de Resender: agrega o corrige el método de pago en la configuración de pagos de Meta Business y vuelve a enviar.",
+    "Meta no entregó el mensaje porque tu cuenta de WhatsApp Business no tiene un método de pago válido. Meta cobra los mensajes de WhatsApp, incluidas las plantillas, directo a la tarjeta de esa cuenta, no a través de Resender: agrega o corrige el método de pago en la configuración de pagos de Meta Business y vuelve a enviar.",
   whatsappPaymentLink: "Abrir la configuración de pagos de Meta",
 }
 
@@ -141,6 +141,6 @@ export const en: MetaErrorsDict = {
   whatsappNumberOwned:
     "Couldn't connect: the WhatsApp number {id} already belongs to another Resender account.",
   whatsappPaymentMethod:
-    "Meta didn't deliver the message because your WhatsApp Business account has no valid payment method. Meta bills WhatsApp messages directly to that account's card, not through Resender: add or fix the payment method in Meta Business payment settings and send again.",
+    "Meta didn't deliver the message because your WhatsApp Business account has no valid payment method. Meta bills WhatsApp messages, templates included, directly to that account's card, not through Resender: add or fix the payment method in Meta Business payment settings and send again.",
   whatsappPaymentLink: "Open Meta payment settings",
 }

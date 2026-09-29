@@ -10,31 +10,22 @@ import type { WhatsappOnboardingMode } from "@/lib/meta/whatsapp-client"
 // qué opciones le ofrece Meta al usuario dentro del diálogo.
 
 // ---------------------------------------------------------------------------
-// ⚠️ `sessionInfoVersion` — DECISIÓN QUE UN HUMANO TIENE QUE VERIFICAR
+// `sessionInfoVersion` — verificado contra la documentación de Meta (2026-09-29)
 // ---------------------------------------------------------------------------
 //
-// El PRD lo pide («`sessionInfoVersion` vigente») y exige **session logging**,
-// que además es requisito formal de Coexistence. Una rama anterior lo omitía
-// argumentando que es de Embedded Signup v2 y que Meta lo deprecia el
-// 2026-10-15.
+// La página de versiones de Embedded Signup dice que `sessionInfoVersion` solo
+// es obligatorio en v2 («Partners are required to add a `sessionInfoVersion` to
+// receive the callback»); v3 y v4 entregan el session logging sin pedirlo. La
+// deprecación del 2026-10-15 es de **Embedded Signup v2**, no de la clave, y
+// este launcher ya sale con `version: "v4"` (ver abajo), así que la fecha no
+// nos toca.
 //
-// Se manda, por tres razones:
-//
-// 1. Todo `signup-events.ts` —los `postMessage` `WA_EMBEDDED_SIGNUP` con
-//    `FINISH`, `CANCEL`, `current_step`, `error_message`— **es** el session
-//    logging. Sin él el launcher no tiene cómo saber qué WABA se conectó, por
-//    cuál de los dos flujos terminó ni por qué el usuario cerró, y el flujo se
-//    queda con un solo canal (el `code`).
-// 2. Coexistence lo exige, y este slice implementa Coexistence.
-// 3. El coste de mandarlo de más es una clave ignorada en `extras`; el de
-//    omitirlo de menos es un onboarding de Coexistence que Meta puede rechazar y
-//    un popup que no reporta nada.
-//
-// **Verificar contra la documentación viva antes del primer onboarding real**:
-// el valor correcto de `sessionInfoVersion` (hoy `"3"`), y si la deprecación
-// del 2026-10-15 aplica a la clave entera o solo a la versión 2. Si aplica a la
-// clave, se borra esta constante y nada más: no hay ninguna otra rama que
-// dependa de ella.
+// Se sigue mandando `"3"` porque es lo que trae el enlace que genera el propio
+// App Dashboard para v4: en v4 es una clave redundante e inocua, y quitarla
+// sería apartarse del valor canónico de Meta sin ganar nada. Si algún día Meta
+// la rechaza, se borra esta constante y nada más: ninguna otra rama depende de
+// ella. El session logging —los `postMessage` `WA_EMBEDDED_SIGNUP` que lee
+// `signup-events.ts`— no depende de esta clave en v4.
 export const WHATSAPP_SESSION_INFO_VERSION = "3"
 
 // El `featureType` con el que Meta abre el diálogo. **Va siempre**, y eso no es

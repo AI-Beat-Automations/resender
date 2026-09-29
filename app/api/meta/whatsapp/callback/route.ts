@@ -282,6 +282,13 @@ export async function POST(request: NextRequest) {
           connectionId,
         })
       },
+      // El catálogo de plantillas de la WABA (ADR 0024), en los dos flujos.
+      enqueueTemplateSync: async (connectionId) => {
+        await getCloudflareContext().env.WHATSAPP_JOBS.send({
+          type: "template_sync",
+          connectionId,
+        })
+      },
       markHistorySyncStatus: (connectionId, status) =>
         updateWhatsappHistorySyncStatus({ connectionId, status, tenantId }),
     },
@@ -362,6 +369,22 @@ export async function POST(request: NextRequest) {
       tenantId,
       connectionId: page.id,
       errorMessage: `sync_request enqueue: ${outcome.historySyncError}`,
+    })
+  }
+
+  // Best-effort: el número quedó conectado igual. Sin el sync, `GET /templates`
+  // lista vacío hasta el backfill o la próxima reconexión.
+  if (outcome.templateSyncError) {
+    log({
+      entrypoint: "route",
+      action: "template_sync",
+      outcome: "failed",
+      reason: "internal_error",
+      channel: "whatsapp",
+      route: "/api/meta/whatsapp/callback",
+      tenantId,
+      connectionId: page.id,
+      errorMessage: `template_sync enqueue: ${outcome.templateSyncError}`,
     })
   }
 

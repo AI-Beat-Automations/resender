@@ -47,6 +47,7 @@ import type { InboundEvent } from "./inbound-event"
 import { extractInstagramComments } from "./instagram-comments"
 import { extractInstagramDirectMessages } from "./instagram-webhook"
 import { extractInboundEvents } from "./meta-webhook"
+import { ingestWhatsappTemplateEvents } from "./whatsapp-template-ingestion"
 import { routeWhatsappWebhook } from "./whatsapp-webhook"
 import type { WhatsappStatusEvent } from "./whatsapp-parsers"
 import {
@@ -221,9 +222,19 @@ export async function ingestWhatsappWebhookPayload(
   )
   await applyWhatsappStatuses(routed.statuses, requestId, raw)
 
+  // Los webhooks de plantillas son de la WABA, no de un número: no pasan por
+  // la resolución de cuenta de arriba. Sus entregas se suman a las de los
+  // mensajes y la ruta las corre igual, en `after()`.
+  const templateDeliveries = await ingestWhatsappTemplateEvents({
+    statuses: routed.templateStatuses,
+    categories: routed.templateCategories,
+    quality: routed.templateQuality,
+    requestId,
+  })
+
   if (routed.unhandledFields.length > 0) {
     // Un `field` que Meta manda y los parsers no modelan (`account_update`,
-    // `message_template_status_update`, `calls`…) tiene que aparecer en la
+    // `calls`…) tiene que aparecer en la
     // bitácora, no desaparecer: es la señal de que hay algo nuevo que atender.
     //
     // El motivo se reusa del catálogo cerrado de `logger.ts` —el más cercano a
@@ -241,7 +252,7 @@ export async function ingestWhatsappWebhookPayload(
     })
   }
 
-  return ingested
+  return [...ingested, ...templateDeliveries]
 }
 
 // Los acuses de entrega. No crean fila: mueven `delivery_status` de una que ya

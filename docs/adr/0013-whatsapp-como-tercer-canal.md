@@ -126,6 +126,9 @@ el fallo es «no aparece la opción», no «registramos de más».
 
 ### La ventana de 24 h se aplica localmente y no hay plantillas
 
+> **Superseded en parte por la [ADR 0024](0024-plantillas-de-whatsapp.md):** la ventana se sigue
+> resolviendo en local, pero ahora hay plantillas y el 409 dice `templateSendingSupported: true`.
+
 `conversations.last_inbound_at` se escribe en un solo módulo y solo cuando el
 mensaje es entrante, vivo y del cliente final: no la abre un saliente, ni un
 status, ni un mensaje importado, ni un echo de Business App. Con la ventana
@@ -202,20 +205,20 @@ nuestro hay que poder enseñárselo al cliente; `null` significa «no consta» y
 trata como «no lo enseñes». Es dato del cliente que custodiamos, no un secreto
 nuestro.
 
-### `sessionInfoVersion` queda sin resolver
+### `sessionInfoVersion`: verificado el 2026-09-29
 
 El PRD pide `sessionInfoVersion` vigente en la configuración del Embedded
 Signup. Una implementación anterior lo **omitió a propósito**, con dos
 argumentos: que el parámetro pertenece a Embedded Signup v2, y que Meta lo
 deprecia el **15 de octubre de 2026**.
 
-No se decide acá cuál de las dos posturas es la correcta, porque las dos son
-afirmaciones sobre la documentación de Meta y ninguna se verificó contra ella al
-escribir esto. **Queda registrado como pendiente explícito: hay que comprobarlo
-contra la documentación viva de Meta antes de correr el primer onboarding real**,
-y dejar escrita la fecha de esa verificación como se hizo con la tabla de hechos
-de plataforma. Un Embedded Signup mal configurado no falla en desarrollo con
-assets propios: falla el día del primer cliente.
+Verificado contra la página de versiones de Embedded Signup de Meta el
+2026-09-29: los dos argumentos eran medio ciertos. `sessionInfoVersion` es
+obligatorio solo en v2; v3 y v4 entregan el session logging sin él. Lo que se
+deprecia el 15 de octubre de 2026 es **Embedded Signup v2**, no la clave. El
+launcher sale con `version: "v4"`, así que la fecha no lo afecta. Se conserva
+`sessionInfoVersion: "3"` porque es el valor que emite el enlace del propio App
+Dashboard para v4: redundante e inocuo.
 
 ## Consecuencias
 
@@ -274,10 +277,9 @@ tiene:
     devolvérselo, y su pérdida —una rotación de `TOKEN_ENCRYPTION_KEY` sin
     re-cifrado, por ejemplo— deja al cliente sin poder re-registrar su propio
     número en ninguna parte.
-13. **`sessionInfoVersion` está sin resolver.** El PRD lo pide, una
-    implementación anterior lo omitió argumentando v2 y deprecación el 15 de
-    octubre de 2026, y nadie lo verificó contra la documentación viva de Meta.
-    Hay que hacerlo antes del primer onboarding real.
+13. ~~**`sessionInfoVersion` está sin resolver.**~~ Resuelto el 2026-09-29:
+    solo es obligatorio en Embedded Signup v2, que es lo que se deprecia el 15
+    de octubre de 2026; el launcher usa v4. Ver la sección de arriba.
 
 ### Lo demás que hay que asumir
 
@@ -305,7 +307,8 @@ tiene:
 1. **Cuando Meta apruebe Advanced Access y Access Verification.** Ese día
    `whatsapp_enabled` deja de ser un gate de lanzamiento y pasa a ser código
    muerto, como `waitlisted` después de la 0011.
-2. **Cuando haga falta iniciar conversaciones.** Las plantillas son la fase
+2. **Cuando haga falta iniciar conversaciones.** _(Resuelto por la
+   [ADR 0024](0024-plantillas-de-whatsapp.md).)_ Las plantillas son la fase
    siguiente y rompen tres supuestos de esta: que el usuario final escribe
    primero, que la ventana de 24 h es la única regla de envío, y que no
    administramos assets de mensajería en Meta. No se acomodan como un tipo de
