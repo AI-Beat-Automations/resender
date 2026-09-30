@@ -13,6 +13,8 @@ export type ClientPlan = {
   canManage: boolean
   /** Nulo si no hay plan resuelto: fail-closed, no se crea nada. */
   maxPages: number | null
+  /** Lookup key del plan de pago `active`; nulo en el Free derivado. */
+  lookupKey: string | null
 }
 
 export async function resolveClientPlan(tenantId: string): Promise<ClientPlan> {
@@ -25,5 +27,6 @@ export async function resolveClientPlan(tenantId: string): Promise<ClientPlan> {
   return {
     canManage: canManageClients(lookupKey),
     maxPages: resolveTenantPlanLimits(subscription)?.maxPages ?? null,
+    lookupKey,
   }
 }

@@ -14,6 +14,7 @@ import { AppI18nProvider } from "@/content/i18n/app/provider"
 import { getAppI18n } from "@/lib/i18n/app-dict"
 import { resolveProductAccess } from "@/lib/auth/waitlist"
 import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
+import { TOP_PLAN_LOOKUP_KEY } from "@/lib/billing/plans"
 import type { TenantEntitlement } from "@/lib/billing/entitlements"
 import { isEmailVerified } from "@/lib/auth/email-verified"
 import { needsEmailVerification } from "@/lib/billing/free-plan-gate"
@@ -120,10 +121,16 @@ export default async function ProductLayout({
   // «Clientes» en el sidebar solo para Pro y Business (issue #154), y nunca
   // para un cliente. Como el aviso de cuota: si el plan no se puede resolver,
   // el item no aparece y la ruta `/clientes` sigue cerrada por su cuenta.
+  // «Mejora tu plan» para todo padre que no esté en Business, el plan más alto.
+  // Si el plan no se puede resolver se muestra: lleva a Ajustes, no cobra nada.
   let showClients = false
+  let showUpgrade = false
   if (!isClient) {
+    showUpgrade = true
     try {
-      showClients = (await resolveClientPlanCached(actor.tenantId)).canManage
+      const plan = await resolveClientPlanCached(actor.tenantId)
+      showClients = plan.canManage
+      showUpgrade = plan.lookupKey !== TOP_PLAN_LOOKUP_KEY
     } catch (error) {
       console.error("client plan unavailable", error)
     }
@@ -142,6 +149,7 @@ export default async function ProductLayout({
           name={session.user.name}
           email={session.user.email}
           showClients={showClients}
+          showUpgrade={showUpgrade}
           isClient={isClient}
           signOutAction={signOutAction}
         />
