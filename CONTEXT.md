@@ -162,11 +162,11 @@ Un enlace vencido o ya usado no es un error del formulario: es una pantalla prop
 
 ### Verificacion de correo
 
-El alta con password manda un correo que pide confirmar la direccion. La sesion se abre igual, pero **una cuenta en el [Plan Free] no entra al producto hasta confirmar**: ver [Gate de correo del Free]. Una cuenta con suscripcion de pago `active` entra sin confirmar.
+El alta con password manda un correo que pide confirmar la direccion. La sesion se abre igual y **la cuenta entra al producto sin confirmar**: mientras `email_verified` sea `false`, toda cuenta (Free, de pago o cliente) ve una **barra de verificacion** fija, sin boton de cerrar, debajo del header y encima de la franja de cuota, con un link para reenviar el correo. Lo que si le queda cerrado a una cuenta del [Plan Free] sin confirmar es conectar redes: ver [Gate de correo del Free].
 Ademas habilita vincular un proveedor social a esa cuenta ([Cuenta vinculada]). Una cuenta sin confirmar no se vincula, y esa es la puerta que cierra el robo de cuenta por registro anticipado.
 Un alta por Google no manda este correo: Google ya dice que el buzon es suyo, y la cuenta nace con `email_verified = true`.
 Completar una [Recuperacion de password] tambien confirma el correo, porque el enlace probo el buzon igual de bien.
-El [Enlace de verificacion] aterriza en `/pending` (es su `callbackURL`), que ya hace lo correcto para todos: a quien tiene acceso y ya no necesita confirmar lo manda a `/connections`, a una cuenta del Free sin confirmar le pide confirmar, y a una cuenta en lista de espera le muestra la espera, con el bloque de confirmacion arriba si su correo sigue sin confirmar. Si el enlace vencio, `/pending` lo dice y ofrece reenviar. Una cuenta que paga y no confirmo no pasa por `/pending`: confirma y reenvia desde `Settings` ([Cuenta vinculada]).
+El [Enlace de verificacion] aterriza en `/connections?verify=1` (su `callbackURL`): confirmado, la barra se vuelve una franja verde de "correo confirmado" por esa carga; si el enlace vencio, la libreria agrega `&error=` y la barra lo dice junto al reenvio. `/pending` ya no pide confirmar: solo es la pantalla del [Gate de acceso], y a una cuenta aprobada que cae ahi (enlaces viejos con `callbackURL=/pending`) la manda a `/connections` con su `?error=`. `Settings` conserva su propio reenvio ([Cuenta vinculada]).
 `email_verified` se lee **vivo** contra la base (`lib/auth/email-verified.ts`), nunca de la [Sesion] ni de su cache, por la misma doctrina que el [Gate de acceso]: la libreria lo trae en `session.user`, pero ese cache dura cinco minutos y le seguiria diciendo "sin confirmar" a quien acaba de confirmar.
 
 ### Enlace de verificacion
@@ -550,7 +550,7 @@ El aviso no sale por correo en esta entrega: el [Canal de correo] existe, pero e
 
 ### Gate de correo del Free
 
-Es el **segundo** gate, detras del [Gate de acceso], y reemplaza al viejo gate de suscripcion (ADR 0022). Una cuenta del [Plan Free] sin el correo confirmado ([Verificacion de correo]) aterriza en `/pending`, que le pide confirmar; al confirmar entra al producto. Aplica al dueño en el layout de `(product)` y al conectar redes (`email_unverified` en el connect gate). Una suscripcion de pago `active` lo salta. La API y los webhooks entrantes no lo miran: los limitan la cuota y el cupo de conexiones. Se lee vivo contra la base (`lib/billing/free-plan-gate.ts`), nunca de la [Sesion].
+Es el **segundo** gate, detras del [Gate de acceso], y reemplaza al viejo gate de suscripcion (ADR 0022). **Ya no bloquea la entrada al producto**: una cuenta del [Plan Free] sin el correo confirmado ([Verificacion de correo]) navega normal, pero **no conecta redes** hasta confirmar. Aplica al dueño en el connect gate (`email_unverified`, que rebota a `/connections`), y `/connections` dibuja los "Conectar…" deshabilitados con la leyenda "Confirma tu correo para conectar". Una suscripcion de pago `active` lo salta; un cliente no pasa por el. La API y los webhooks entrantes no lo miran: los limitan la cuota y el cupo de conexiones. Se lee vivo contra la base (`lib/billing/free-plan-gate.ts`), nunca de la [Sesion].
 Ya no hay muro de pago: un tenant sin suscripcion no rebota a `/billing`, no recibe `403 no active subscription` y sus entrantes se persisten. `/billing` es la pagina de upgrade.
 Un cliente sigue dependiendo del padre: si el padre no tiene suscripcion de pago `active`, el cliente ve la cuenta restringida sin CTA de pago.
 

@@ -6,6 +6,7 @@ import { APIError } from "better-auth/api"
 
 import { getDictionary, localePath, type Locale } from "@/content/i18n"
 import { getAuth } from "@/lib/auth/auth"
+import { VERIFY_EMAIL_CALLBACK_URL } from "@/lib/auth/email-verified"
 import { isGoogleEnabled } from "@/lib/auth/google"
 import { allowAuthAttempt } from "@/lib/auth/rate-limit"
 import { getSession } from "@/lib/auth/session"
@@ -124,17 +125,16 @@ export async function registerAction(
     // así que ya no existe el estado intermedio «cuenta creada, sesión no».
     // `name` es obligatorio para la librería.
     //
-    // `callbackURL: "/pending"` es a donde aterriza el [Enlace de verificacion]
-    // que este alta manda (`sendOnSignUp`, ver `lib/auth/auth.ts`). Es la única
-    // ruta que ya hace lo correcto para todos: a quien tiene acceso lo rebota a
-    // `/connections` y a quien no le muestra la espera. Si el enlace venció, la
-    // librería vuelve a esta misma ruta con `?error=`, y `/pending` lo lee.
+    // `callbackURL` es a donde aterriza el [Enlace de verificacion] que este
+    // alta manda (`sendOnSignUp`, ver `lib/auth/auth.ts`): el producto, porque
+    // la verificación ya no bloquea la entrada. Si el enlace venció, la
+    // librería vuelve ahí con `&error=`, y la barra de verificación lo lee.
     const result = await getAuth().api.signUpEmail({
       body: {
         name: name.value,
         email: input.value.email,
         password: input.value.password,
-        callbackURL: "/pending",
+        callbackURL: VERIFY_EMAIL_CALLBACK_URL,
       },
       headers: await headers(),
     })
@@ -396,10 +396,9 @@ export async function resendVerificationEmailAction(
   if (!EMAIL_RE.test(email)) return { sent: true }
 
   try {
-    // El mismo `callbackURL` que el alta: el [Enlace de verificacion] aterriza
-    // en `/pending`, que decide por todos (ver `registerAction`).
+    // El mismo `callbackURL` que el alta (ver `registerAction`).
     await getAuth().api.sendVerificationEmail({
-      body: { email, callbackURL: "/pending" },
+      body: { email, callbackURL: VERIFY_EMAIL_CALLBACK_URL },
       // Con `headers` la librería ve la sesión (si la hay) y el idioma del
       // correo sale de la cookie `lang` de esta request
       // (`lib/auth/email-locale.ts`).

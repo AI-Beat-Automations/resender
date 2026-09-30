@@ -5,6 +5,7 @@ import { ConnectInstagramButton } from "@/features/connect-meta/ui/connect-insta
 import { ConnectWhatsAppButton } from "@/features/connect-whatsapp/ui/connect-whatsapp-button"
 import {
   listTenantPagesCached,
+  needsEmailVerificationCached,
   resolveChannelAccessCached,
 } from "@/features/connections/queries"
 import { resolveActorCached } from "@/features/clients/queries"
@@ -30,12 +31,15 @@ export default async function ConnectionsHeader() {
   if (resolution.kind !== "actor") {
     return <ConsoleHeader crumbs={crumbs} t={t} />
   }
-  const { tenantId, clientAccountId } = resolution.actor
+  const { tenantId, clientAccountId, userId } = resolution.actor
 
-  const [pages, access] = await Promise.all([
+  const [pages, access, blocked] = await Promise.all([
     listTenantPagesCached(tenantId, clientAccountId),
     resolveChannelAccessCached(tenantId),
+    // El cliente no pasa por este gate (`resolveConnectGate`).
+    clientAccountId ? false : needsEmailVerificationCached(userId),
   ])
+  const blockedReason = blocked ? t.emailVerification.connectBlocked : undefined
   if (pages.length === 0) return <ConsoleHeader crumbs={crumbs} t={t} />
 
   return (
@@ -49,16 +53,21 @@ export default async function ConnectionsHeader() {
             variant="outline"
             size="default"
             icon={<Plus aria-hidden />}
+            blockedReason={blockedReason}
           />
           {offersChannel("instagram", access) && (
             <ConnectInstagramButton
               label={t.connections.connectInstagram}
               size="default"
               icon={<Plus aria-hidden />}
+              blockedReason={blockedReason}
             />
           )}
           {offersChannel("whatsapp", access) && (
-            <ConnectWhatsAppButton layout="header" />
+            <ConnectWhatsAppButton
+              layout="header"
+              blockedReason={blockedReason}
+            />
           )}
         </>
       }

@@ -14,7 +14,6 @@ import {
   AccessShell,
 } from "@/features/auth/ui/access-shell"
 import { isEmailVerified } from "@/lib/auth/email-verified"
-import { needsEmailVerification } from "@/lib/billing/free-plan-gate"
 import { classifyVerificationError } from "@/lib/auth/oauth-errors"
 import { resolveProductAccess } from "@/lib/auth/waitlist"
 import { getAppI18n } from "@/lib/i18n/app-dict"
@@ -26,9 +25,9 @@ import { Button } from "@/components/ui/button"
 // acceso a la cookie de idioma.
 export const metadata = privatePageMetadata("Lista de espera")
 
-// Aterrizaje de las dos cuentas que no entran al producto: la que no confirmó
-// su correo (gate del plan Free, ADR 0022) y la bloqueada por el gate de
-// acceso. Desde la 0024
+// Aterrizaje de la cuenta bloqueada por el gate de acceso. La que no confirmó
+// su correo ya no llega aquí: entra al producto con la barra de verificación.
+// Desde la 0024
 // ninguna cuenta nace en `waitlisted = true`, así que solo llega aquí una
 // cuenta cerrada a mano por SQL (la 0019 la había vuelto default). Es la pantalla
 // que la ADR 0007 había borrado, de vuelta en `/pending` porque `/waitlist` ya
@@ -36,7 +35,7 @@ export const metadata = privatePageMetadata("Lista de espera")
 // persona ya dio, así que mandarla ahí la dejaba pidiendo lo que ya tiene.
 //
 // Vive fuera del grupo `(product)` a propósito: ese layout rebota aquí a las
-// cuentas en lista de espera o sin correo confirmado, así que esta página no puede ir envuelta por él.
+// cuentas en lista de espera, así que esta página no puede ir envuelta por él.
 type PendingPageProps = {
   searchParams: Promise<{ error?: string }>
 }
@@ -64,16 +63,15 @@ export default async function PendingPage({ searchParams }: PendingPageProps) {
   const verified = await isEmailVerified(session.user.id)
   const linkExpired = classifyVerificationError(params.error) === "link_expired"
 
-  // Cuenta aprobada: el único gate que le queda es el correo (ADR 0022). Con
-  // el correo confirmado entra al producto en su plan; sin confirmar, esta
-  // pantalla le pide solo eso, sin el mensaje de la lista de espera.
-  if (
-    access === "allowed" &&
-    (verified || !(await needsEmailVerification(session.user.id)))
-  ) {
-    redirect("/connections")
+  // Cuenta aprobada: la verificación ya no bloquea la entrada, así que va al
+  // producto, donde la barra de verificación le pide confirmar. Los enlaces
+  // que ya viajan con `callbackURL=/pending` (viven 24 horas) siguen
+  // aterrizando aquí: se reenvían con su `?error=` para que la barra lo diga.
+  if (access === "allowed") {
+    const query = new URLSearchParams({ verify: "1" })
+    if (params.error) query.set("error", params.error)
+    redirect(`/connections?${query}`)
   }
-  const verifyGate = access === "allowed"
 
   async function signOutAction() {
     "use server"
@@ -119,31 +117,11 @@ export default async function PendingPage({ searchParams }: PendingPageProps) {
         distinctId={session.user.id}
         email={session.user.email}
       />
-      {verifyGate ? (
-        // Gate de correo del plan Free: la cuenta ya tiene plan, solo falta
-        // confirmar el correo. El enlace del correo aterriza aquí mismo y la
-        // redirección de arriba la manda al producto.
-        <AccessCard className="max-w-130 p-7.5">
-          <span className="flex size-11 items-center justify-center rounded-full bg-primary-soft text-primary-soft-foreground">
-            <MailCheck className="size-5" aria-hidden />
-          </span>
-          <AccessEyebrow label={t.accessPending.verifyGate.eyebrow} />
-          <h1 className="mt-1.5 font-heading text-[22px] font-bold tracking-tight">
-            {t.accessPending.verifyGate.title}
-          </h1>
-          <p className="mt-2.5 text-[14.5px]/[1.6] text-muted-foreground">
-            {fmt(t.accessPending.verifyGate.body, {
-              email: session.user.email,
-            })}
-          </p>
-          {verifyBlock}
-        </AccessCard>
-      ) : (
         <AccessCard className="max-w-130 p-7.5">
           {/* Bloque de confirmación **por encima** del mensaje de aprobación y
             solo si el correo no está confirmado. En la lista de espera
-            confirmar no da acceso: al aprobarla, el gate de correo del plan
-            Free (arriba) es el que lo pide. */}
+            confirmar no da acceso: al aprobarla, entra al producto y la barra
+            de verificación sigue pidiéndolo. */}
           {!verified ? (
             <div className="mb-6 rounded-lg border border-border bg-surface-sunken px-4 py-3.5">
               <p className="flex items-center gap-2 text-[14px] font-semibold">
@@ -197,7 +175,6 @@ export default async function PendingPage({ searchParams }: PendingPageProps) {
             {t.accessPending.helpAfter}
           </p>
         </AccessCard>
-      )}
     </AccessShell>
   )
 }

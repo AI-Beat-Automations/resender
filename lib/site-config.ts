@@ -31,6 +31,9 @@ export const STATIC_CONTENT_UPDATED_AT = "2026-09-10"
 // entrada en lugar de dejar un link muerto en todas las páginas del sitio.
 export const DISCORD_INVITE_URL: string | null = "https://discord.gg/kKWUejyjVj"
 
+// Invitación de «¿Necesitas ayuda?» en el sidebar de la consola.
+export const SUPPORT_DISCORD_URL = "https://discord.gg/RgDpWj9Ey"
+
 // URL absoluta de una ruta interna. La home queda SIN barra final, que es como
 // Next resuelve `alternates.canonical: "/"` contra `metadataBase`. Canonical,
 // sitemap, hreflang y JSON-LD tienen que coincidir carácter por carácter: una

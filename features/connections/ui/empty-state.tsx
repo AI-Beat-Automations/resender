@@ -12,10 +12,13 @@ import type { AppDict } from "@/content/i18n/app"
 export function ConnectionsEmptyState({
   offersInstagram,
   offersWhatsapp,
+  blockedReason,
   t,
 }: {
   offersInstagram: boolean
   offersWhatsapp: boolean
+  /** Los tres CTA deshabilitados, con su porqué (Free sin correo confirmado). */
+  blockedReason?: string
   t: AppDict
 }) {
   const steps = [
@@ -41,6 +44,7 @@ export function ConnectionsEmptyState({
             variant="outline"
             size="default"
             className="mt-auto h-[34px] w-full"
+            blockedReason={blockedReason}
           />
         </ChannelCard>
 
@@ -57,6 +61,7 @@ export function ConnectionsEmptyState({
               label={t.connections.connectInstagram}
               size="default"
               className="mt-auto h-[34px] w-full"
+              blockedReason={blockedReason}
             />
           </ChannelCard>
         )}
@@ -68,7 +73,10 @@ export function ConnectionsEmptyState({
             body={t.connections.empty.whatsappBody}
           >
             <div className="mt-auto">
-              <ConnectWhatsAppButton layout="card" />
+              <ConnectWhatsAppButton
+                layout="card"
+                blockedReason={blockedReason}
+              />
             </div>
           </ChannelCard>
         )}
