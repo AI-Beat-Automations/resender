@@ -9,6 +9,7 @@ import { ConnectionsEmptyState } from "@/features/connections/ui/empty-state"
 import { ConsolePage } from "@/features/shell/ui/console-page"
 import {
   listTenantPagesCached,
+  needsEmailVerificationCached,
   resolveChannelAccessCached,
 } from "@/features/connections/queries"
 import { getSession } from "@/lib/auth/session"
@@ -155,6 +156,13 @@ export default async function ConnectionsPage({
     : CLOSED_CHANNEL_ACCESS
   const offersInstagram = offersChannel("instagram", access)
   const offersWhatsapp = offersChannel("whatsapp", access)
+  // Free sin correo confirmado: el connect gate le cierra las redes. Los
+  // «Conectar…» se dibujan deshabilitados y la leyenda dice por qué; el
+  // reenvío vive en la barra de verificación del layout.
+  const connectBlocked =
+    actor && !clientAccountId
+      ? await needsEmailVerificationCached(actor.userId)
+      : false
 
   const sortedPages = [...tenantPages].sort(
     (left, right) => cardRank(left) - cardRank(right)
@@ -199,6 +207,13 @@ export default async function ConnectionsPage({
           )}
         </div>
       </header>
+
+      {connectBlocked && (
+        <Alert variant="warning">
+          <TriangleAlert />
+          <AlertContent>{t.emailVerification.connectBlocked}</AlertContent>
+        </Alert>
+      )}
 
       {meta === "connected" && (
         <ConnectedNotice
@@ -260,6 +275,9 @@ export default async function ConnectionsPage({
           <ConnectionsEmptyState
             offersInstagram={offersInstagram}
             offersWhatsapp={offersWhatsapp}
+            blockedReason={
+              connectBlocked ? t.emailVerification.connectBlocked : undefined
+            }
             t={t}
           />
         ) : (

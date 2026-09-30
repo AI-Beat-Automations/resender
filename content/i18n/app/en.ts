@@ -3,6 +3,7 @@ import type { AppDict } from "./dictionary"
 import * as common from "./sections/common"
 import * as shell from "./sections/shell"
 import * as quota from "./sections/quota"
+import * as emailVerification from "./sections/email-verification"
 import * as channels from "./sections/channels"
 import * as connections from "./sections/connections"
 import * as connectionCard from "./sections/connection-card"
@@ -36,6 +37,7 @@ export const en: AppDict = {
   common: common.en,
   shell: shell.en,
   quota: quota.en,
+  emailVerification: emailVerification.en,
   channels: channels.en,
   connections: connections.en,
   connectionCard: connectionCard.en,

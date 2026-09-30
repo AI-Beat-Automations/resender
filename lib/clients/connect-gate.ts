@@ -23,8 +23,9 @@ export type ConnectGate =
   /** El padre está en la lista de espera. */
   | { kind: "waitlisted" }
   /**
-   * El padre no confirmó su correo: `/pending`, que le pide confirmarlo. Sin
-   * suscripción ya no se rebota a nadie: está en el plan Free (ADR 0022).
+   * El padre está en el Free sin confirmar su correo: vuelve a `/connections`,
+   * donde la barra de verificación le ofrece reenviarlo. Sin suscripción ya no
+   * se rebota a nadie: está en el plan Free (ADR 0022).
    */
   | { kind: "email_unverified" }
   /**
@@ -65,7 +66,7 @@ export const CONNECT_GATE_REDIRECT: Record<
 > = {
   not_authenticated: "/login",
   waitlisted: "/pending",
-  email_unverified: "/pending",
+  email_unverified: "/connections",
   client_restricted: "/connections",
 }
 

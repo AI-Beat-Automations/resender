@@ -33,3 +33,10 @@ export async function isEmailVerified(userId: string): Promise<boolean> {
 
   return decideEmailVerified(row)
 }
+
+// A dónde aterriza el [Enlace de verificacion] (el `callbackURL` del alta y
+// del reenvío). Desde que la verificación ya no bloquea la entrada, es el
+// producto y no `/pending`: `verify=1` es la marca para la franja verde de
+// «confirmado», y si el enlace no sirve la librería le agrega `&error=…`, que
+// la barra de verificación lee.
+export const VERIFY_EMAIL_CALLBACK_URL = "/connections?verify=1"

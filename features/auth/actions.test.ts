@@ -99,7 +99,7 @@ describe("registerAction", () => {
 
     expect(mocks.signUpEmail).toHaveBeenCalledWith(
       expect.objectContaining({
-        body: expect.objectContaining({ callbackURL: "/pending" }),
+        body: expect.objectContaining({ callbackURL: "/connections?verify=1" }),
       })
     )
   })
@@ -215,7 +215,7 @@ describe("resendVerificationEmailAction", () => {
     await resendVerificationEmailAction({}, form({ email: "ada@x.com" }))
 
     expect(mocks.sendVerificationEmail).toHaveBeenCalledWith({
-      body: { email: "ada@x.com", callbackURL: "/pending" },
+      body: { email: "ada@x.com", callbackURL: "/connections?verify=1" },
       headers: expect.any(Headers),
     })
   })
@@ -231,7 +231,7 @@ describe("resendVerificationEmailAction", () => {
 
     expect(mocks.sendVerificationEmail).toHaveBeenCalledWith(
       expect.objectContaining({
-        body: { email: "sesion@x.com", callbackURL: "/pending" },
+        body: { email: "sesion@x.com", callbackURL: "/connections?verify=1" },
       })
     )
   })
