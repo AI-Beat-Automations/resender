@@ -1,3 +1,5 @@
+import Link from "next/link"
+
 import { SiteHeader } from "@/components/site-header"
 import { SiteFooter } from "@/components/site-footer"
 import { SiteBackground } from "@/components/site-background"
@@ -16,7 +18,7 @@ import {
   schemaGraph,
   softwareApplicationSchema,
 } from "@/lib/schema"
-import { getDictionary, type Locale } from "@/content/i18n"
+import { getDictionary, localePath, type Locale } from "@/content/i18n"
 import { SITE_NAME } from "@/lib/site-config"
 
 // Página de precios compartida por `/pricing` (ES) y `/en/pricing` (EN).
@@ -61,7 +63,13 @@ export function PricingView({ lang }: { lang: Locale }) {
               <p key={paragraph}>{paragraph}</p>
             ))}
             <p className="rounded-xl border border-border bg-muted/40 px-5 py-4 text-sm leading-7">
-              {dict.pricing.metaNote}
+              {dict.pricing.metaNote}{" "}
+              <Link
+                href={localePath("/whatsapp-cost-calculator", lang)}
+                className="font-medium text-foreground underline underline-offset-4"
+              >
+                {dict.whatsappCostPromo.cta}
+              </Link>
             </p>
           </div>
         </Section>
