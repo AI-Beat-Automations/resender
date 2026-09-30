@@ -32,6 +32,16 @@ export function PricingPreview({ lang }: { lang: Locale }) {
           </Link>
         </Button>
       </div>
+      {/* Lo de Meta se cobra aparte del plan: el aviso lleva al estimador. */}
+      <p className="mt-6 text-center text-sm text-muted-foreground">
+        {dict.whatsappCostPromo.text}{" "}
+        <Link
+          href={localePath("/whatsapp-cost-calculator", lang)}
+          className="font-medium text-foreground underline underline-offset-4"
+        >
+          {dict.whatsappCostPromo.cta}
+        </Link>
+      </p>
     </Section>
   )
 }

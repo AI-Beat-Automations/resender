@@ -13,6 +13,12 @@ const LOCALIZED_ROUTES = [
   { path: "/", priority: 1, changeFrequency: "weekly" as const },
   { path: "/pricing", priority: 0.9, changeFrequency: "monthly" as const },
   { path: "/vs-manychat", priority: 0.9, changeFrequency: "monthly" as const },
+  // Cambia cuando Meta publica otro rate card (lib/meta/whatsapp-rate-card.ts).
+  {
+    path: "/whatsapp-cost-calculator",
+    priority: 0.8,
+    changeFrequency: "monthly" as const,
+  },
   { path: "/blog", priority: 0.7, changeFrequency: "weekly" as const },
   // Captación secundaria: no vende el producto ni lo explica entero, así que va
   // por debajo de /pricing y /vs-manychat. Su copy es fijo y solo cambia el día

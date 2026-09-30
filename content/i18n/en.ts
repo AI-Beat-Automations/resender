@@ -386,6 +386,154 @@ export const en: Dict = {
     cta: "Get started",
   },
 
+  whatsappCost: {
+    kicker: "whatsapp · meta",
+    title: "How much Meta will charge you for WhatsApp",
+    subtitle:
+      "Starting October 1, 2026, Meta also charges for service messages. Learn what is charged, what stays free, and estimate your monthly bill.",
+    heroCta: "Calculate my cost",
+    changes: {
+      title: "What changed on October 1",
+      items: [
+        {
+          title: "1,000 free service messages",
+          body: "Each WhatsApp number gets 1,000 free service replies per month. The allowance resets every month and does not roll over.",
+        },
+        {
+          title: "After that, every message is charged",
+          body: "Past the allowance, Meta charges every delivered service message at the rate of the recipient's country. It costs the same as a utility message.",
+        },
+        {
+          title: "No volume discounts",
+          body: "Utility and authentication get volume tiers; service does not. Sending more does not lower the price of each reply.",
+        },
+        {
+          title: "What you receive stays free",
+          body: "Messages your customers send you are not charged. Only what you send and gets delivered is.",
+        },
+      ],
+    },
+    types: {
+      kicker: "categories",
+      title: "The three message types",
+      subtitle:
+        "Meta charges by message category. Here is how each one looks for the same store.",
+      business: "Aurora Store",
+      perMessage: "{price} per message",
+      afterFree: "1,000 free per month, then {price}",
+      priceFor: "Prices in {market}",
+      items: [
+        {
+          category: "marketing",
+          label: "Marketing",
+          kind: "Template",
+          body: "Promotions, offers and news that you start. They need an approved template and are charged from the first send. It is the most expensive category.",
+          chat: [
+            {
+              from: "out",
+              text: "Hi Laura! 🎉 This weekend you get 20% off the entire winter collection.",
+              buttons: ["See collection", "Not interested"],
+            },
+          ],
+          time: "10:02",
+        },
+        {
+          category: "utility",
+          label: "Utility",
+          kind: "Template",
+          body: "Updates about something the customer already did: order confirmation, shipping, appointment or payment. They also need a template and are charged from the first send, but cost less than marketing.",
+          chat: [
+            {
+              from: "out",
+              text: "Your order #4821 is on its way 📦 It arrives Thursday between 9:00 and 14:00.",
+              buttons: ["Track order"],
+            },
+          ],
+          time: "16:40",
+        },
+        {
+          category: "service",
+          label: "Service",
+          kind: "Your bot's reply",
+          body: "Replies to a customer who wrote to you, within 24 hours of their last message. No template needed. This is what your bot or AI agent sends through Resender, and it is the category with the free allowance.",
+          chat: [
+            { from: "in", text: "Hi, do you have the blue jacket in size M?" },
+            {
+              from: "out",
+              text: "Hi! Yes, we have 3 left in size M. Want us to hold one for you?",
+            },
+          ],
+          time: "19:15",
+        },
+      ],
+    },
+    calculator: {
+      kicker: "estimator",
+      title: "Estimate your Meta bill",
+      subtitle:
+        "Pick your customers' country and how many messages you send per month. The estimate assumes a single WhatsApp number.",
+      marketLabel: "Your customers' country",
+      volumesLabel: "Messages you send per month",
+      categories: {
+        marketing: "Marketing",
+        utility: "Utility",
+        service: "Service",
+      },
+      hints: {
+        marketing: "Promotions and campaigns with a template",
+        utility: "Order, appointment and payment updates",
+        service: "Your bot's replies to people who wrote to you",
+      },
+      resultTitle: "Estimated cost",
+      freeApplied: "{free} free",
+      billedLine: "{billed} × {price}",
+      total: "Monthly total",
+      perMonth: "/mo",
+      disclaimer:
+        "Informational estimate in USD using Meta's rates effective {date}. Meta bills in your WhatsApp Business account's currency, and its invoice is the official source.",
+      disclaimerLink: "See Meta's official rates",
+    },
+    faq: {
+      title: "Frequently asked questions",
+      items: [
+        {
+          q: "Does Resender charge me for these messages?",
+          a: "No. Meta bills each charged message directly to the card on your WhatsApp Business account. Resender does not collect that charge or add a margin, and your plan price is separate.",
+        },
+        {
+          q: "Which rate applies if my customers are in several countries?",
+          a: "Meta charges by the country code of the recipient's number. If your customers are spread out, estimate each country separately and add them up.",
+        },
+        {
+          q: "Are messages from ads charged too?",
+          a: "Conversations that start from a Click-to-WhatsApp ad or your Facebook Page's button get a 72-hour window where every message is free, templates included.",
+        },
+        {
+          q: "Is any service message still free?",
+          a: "Yes: emoji reactions to a message are not charged.",
+        },
+        {
+          q: "What happens if I have no payment method with Meta?",
+          a: "Without a card on your WhatsApp Business account, Meta may stop delivering the messages it charges for.",
+        },
+      ],
+    },
+    cta: {
+      title: "Answer WhatsApp from your own code",
+      subtitle:
+        "Resender delivers every message to your webhook and you reply with a POST. See the plans.",
+      cta: "See plans",
+    },
+    metaTitle: "WhatsApp API cost calculator (Meta 2026 rates)",
+    metaDescription:
+      "Calculate what Meta will charge you for WhatsApp from October 1, 2026: marketing, utility and service messages by country, with 1,000 free service messages per month.",
+  },
+
+  whatsappCostPromo: {
+    text: "On top of your plan, Meta charges for some WhatsApp messages.",
+    cta: "Calculate what Meta will charge you",
+  },
+
   blog: {
     metaTitle: "Blog: integrating Facebook Messenger and Instagram via API",
     metaDescription:
@@ -594,6 +742,7 @@ export const en: Dict = {
     links: {
       pricing: "Pricing",
       vsManychat: "vs ManyChat",
+      whatsappCost: "WhatsApp calculator",
       blog: "Blog",
       docs: "Docs",
       privacy: "Privacy",
@@ -664,6 +813,11 @@ export const en: Dict = {
         label: "Resender vs ManyChat",
         detail:
           "Price and scope compared against ManyChat, and which one fits which case.",
+      },
+      whatsappCost: {
+        label: "WhatsApp cost calculator",
+        detail:
+          "How Meta charges marketing, utility and service messages from October 1, 2026, with a monthly bill estimator by country.",
       },
       blog: {
         label: "Blog",

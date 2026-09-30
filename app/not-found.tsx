@@ -25,6 +25,10 @@ export default function NotFound() {
     { href: "/", label: "Inicio" },
     { href: "/pricing", label: dict.footer.links.pricing },
     { href: "/vs-manychat", label: dict.footer.links.vsManychat },
+    {
+      href: "/whatsapp-cost-calculator",
+      label: dict.footer.links.whatsappCost,
+    },
     { href: "/blog", label: dict.footer.links.blog },
   ]
 
