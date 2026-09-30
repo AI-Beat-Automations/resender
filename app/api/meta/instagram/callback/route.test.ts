@@ -205,7 +205,7 @@ describe("GET /api/meta/instagram/callback", () => {
 
   // El orden de los gates (ADR 0010, 0011 y 0022): el correo confirmado
   // primero, después el permiso de canal y recién al final el cupo. Un dueño
-  // sin correo confirmado va a /pending aunque además le falte el permiso y
+  // sin correo confirmado vuelve a /connections aunque le falte el permiso y
   // esté en el tope; que el cupo no se consulte fija que el orden no se dé
   // vuelta.
   it("checks the email gate before the channel permission and the plan cap", async () => {
@@ -215,7 +215,7 @@ describe("GET /api/meta/instagram/callback", () => {
 
     const response = await GET(callbackRequest())
 
-    expect(response.headers.get("location")).toContain("/pending")
+    expect(response.headers.get("location")).toContain("/connections")
     expect(mocks.resolveInstagramAccess).not.toHaveBeenCalled()
     expect(mocks.countActivePages).not.toHaveBeenCalled()
   })

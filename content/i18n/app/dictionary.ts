@@ -24,6 +24,7 @@
 import type { CommonDict } from "./sections/common"
 import type { ShellDict } from "./sections/shell"
 import type { QuotaDict } from "./sections/quota"
+import type { EmailVerificationDict } from "./sections/email-verification"
 import type { ChannelsDict } from "./sections/channels"
 import type { ConnectionsDict } from "./sections/connections"
 import type { ConnectionCardDict } from "./sections/connection-card"
@@ -61,6 +62,7 @@ export type AppDict = {
   common: CommonDict
   shell: ShellDict
   quota: QuotaDict
+  emailVerification: EmailVerificationDict
   channels: ChannelsDict
   connections: ConnectionsDict
   connectionCard: ConnectionCardDict

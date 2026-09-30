@@ -14,13 +14,34 @@ export function ConnectFacebookButton({
   size = "lg",
   icon,
   className,
+  blockedReason,
 }: {
   label?: string
   variant?: "default" | "outline"
   size?: "default" | "lg"
   icon?: ReactNode
   className?: string
+  /**
+   * Por qué no se puede conectar todavía (el Free sin correo confirmado). El
+   * botón se dibuja deshabilitado, sin ir al endpoint, que igual lo rechazaría.
+   */
+  blockedReason?: string
 }) {
+  if (blockedReason) {
+    return (
+      <Button
+        size={size}
+        variant={variant}
+        className={className}
+        disabled
+        title={blockedReason}
+      >
+        {icon}
+        {label}
+      </Button>
+    )
+  }
+
   return (
     <Button asChild size={size} variant={variant} className={className}>
       <a href="/api/meta/start">

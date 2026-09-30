@@ -117,8 +117,11 @@ export type ConnectWhatsAppLayout = "stack" | "card" | "header"
 
 export function ConnectWhatsAppButton({
   layout = "stack",
+  blockedReason,
 }: {
   layout?: ConnectWhatsAppLayout
+  /** Igual que en `ConnectFacebookButton`: deshabilitado y con su porqué. */
+  blockedReason?: string
 } = {}) {
   const posthog = usePostHog()
   const router = useRouter()
@@ -480,7 +483,8 @@ export function ConnectWhatsAppButton({
   // vienen los desenlaces del propio flujo.
   const message = configError ?? sdkError ?? nonceError ?? actionError ?? notice
 
-  const disabled = !CONFIGURED || !sdkReady || !nonce || submitting
+  const disabled =
+    Boolean(blockedReason) || !CONFIGURED || !sdkReady || !nonce || submitting
 
   // Meta cobra aparte y factura a la tarjeta de la WABA (ADR 0023). Va antes
   // del clic en la tarjeta y en el alta a pantalla completa; en el header no
@@ -533,7 +537,9 @@ export function ConnectWhatsAppButton({
           // Un botón deshabilitado sin explicación es indistinguible de uno
           // roto.
           title={
-            configError ?? (sdkReady ? undefined : t.whatsappSignup.preparing)
+            blockedReason ??
+            configError ??
+            (sdkReady ? undefined : t.whatsappSignup.preparing)
           }
           aria-describedby={
             layout === "stack" ? "whatsapp-entry-description" : undefined

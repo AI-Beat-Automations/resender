@@ -1,3 +1,4 @@
+import { Suspense } from "react"
 import { redirect } from "next/navigation"
 
 import { getSession, signOut } from "@/lib/auth/session"
@@ -6,6 +7,7 @@ import {
   QuotaNoticeBar,
   type QuotaNoticeView,
 } from "@/features/billing/ui/quota-notice-bar"
+import { EmailVerificationBar } from "@/features/auth/ui/email-verification-bar"
 import { ClientRestrictedScreen } from "@/features/clients/ui/client-restricted-screen"
 import { AppSidebar } from "@/features/shell/ui/app-sidebar"
 import { AppI18nProvider } from "@/content/i18n/app/provider"
@@ -13,6 +15,7 @@ import { getAppI18n } from "@/lib/i18n/app-dict"
 import { resolveProductAccess } from "@/lib/auth/waitlist"
 import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
 import type { TenantEntitlement } from "@/lib/billing/entitlements"
+import { isEmailVerified } from "@/lib/auth/email-verified"
 import { needsEmailVerification } from "@/lib/billing/free-plan-gate"
 import { hasActiveSubscription } from "@/lib/billing/subscription"
 import { isClientActor } from "@/lib/clients/actor"
@@ -92,11 +95,14 @@ export default async function ProductLayout({
   } else {
     const access = await resolveProductAccess(actor.userId)
     if (access === "waitlisted") redirect("/pending")
-    // Sin muro de pago (ADR 0022): quien no paga está en el plan Free. Lo
-    // único que se le pide es el correo confirmado, y `/pending` es donde se
-    // le pide.
-    if (await needsEmailVerification(actor.userId)) redirect("/pending")
   }
+
+  // [Verificacion de correo], leída viva. Ya no rebota a `/pending`: la cuenta
+  // sin confirmar entra y la barra se lo recuerda. Al Free sin confirmar el
+  // connect gate le sigue cerrando las redes, y la barra dice eso.
+  const verified = await isEmailVerified(session.user.id)
+  const connectBlocked =
+    !verified && !isClient && (await needsEmailVerification(actor.userId))
 
   // El aviso no debe poder tirar el dashboard: si el entitlement no se puede
   // resolver, la barra simplemente no aparece (los gates del hot path siguen
@@ -143,7 +149,16 @@ export default async function ProductLayout({
           {/* Header de 52px (mock `1e`): breadcrumb + acciones de la ruta. */}
           {header}
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-            {/* La franja de cuota va debajo del header, al ancho de la columna. */}
+            {/* Las franjas (verificación y cuota) van debajo del header, al ancho
+              de la columna, apiladas. */}
+            {/* `useSearchParams` pide su frontera de Suspense. */}
+            <Suspense fallback={null}>
+              <EmailVerificationBar
+                verified={verified}
+                email={session.user.email}
+                connectBlocked={connectBlocked}
+              />
+            </Suspense>
             <QuotaNoticeBar notice={notice} t={t} />
             {/* El padding de página lo pone cada pantalla con `ConsolePage`:
               Inbox va a sangre completa (ADR 0018) y el resto lo pide. */}
