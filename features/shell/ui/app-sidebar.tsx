@@ -12,16 +12,19 @@ import {
   MessageSquareText,
   Settings,
   Users,
+  Zap,
   type LucideIcon,
 } from "lucide-react"
 
 import { BrandLogo } from "@/components/brand-logo"
+import { DiscordIcon } from "@/components/icons/discord-icon"
 import { SignOutForm } from "@/components/sign-out-form"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { useAppDict } from "@/content/i18n/app/provider"
 import { productNavItems, type NavKey } from "@/features/shell/nav-items"
 import { accountInitials } from "@/lib/account/initials"
 import { Button } from "@/components/ui/button"
+import { SUPPORT_DISCORD_URL } from "@/lib/site-config"
 import { cn } from "@/lib/utils"
 
 // Shell del producto (ADR 0005): sidebar fijo de 240 px que reemplaza al header
@@ -44,6 +47,7 @@ export function AppSidebar({
   name,
   email,
   showClients,
+  showUpgrade,
   isClient,
   signOutAction,
 }: {
@@ -52,6 +56,8 @@ export function AppSidebar({
   email: string
   /** Plan Pro o Business (issue #154): dibuja «Clientes». */
   showClients: boolean
+  /** Padre fuera de Business: dibuja «Mejora tu plan». */
+  showUpgrade: boolean
   /** El actor es un cliente (issue #154): consola reducida. */
   isClient: boolean
   signOutAction: () => Promise<void>
@@ -110,6 +116,36 @@ export function AppSidebar({
       </nav>
 
       <div className="mt-auto flex flex-col gap-3">
+        {/* Ayuda y upgrade, arriba del tema. El upgrade nunca va para un
+            cliente: su plan es el del padre. */}
+        <div className="flex flex-col gap-0.5 border-t border-sidebar-border pt-3">
+          <a
+            href={SUPPORT_DISCORD_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={FOOTER_LINK}
+          >
+            <DiscordIcon
+              className="size-4 text-[var(--text-subtle)]"
+              aria-hidden
+            />
+            <span className="flex-1">{t.needHelp}</span>
+            <ArrowUpRight
+              className="size-[13px] text-[var(--text-subtle)]"
+              aria-hidden
+            />
+          </a>
+          {showUpgrade && !isClient ? (
+            <Link
+              href="/settings?tab=suscripcion"
+              className={cn(FOOTER_LINK, "font-medium text-foreground")}
+            >
+              <Zap className="size-4 text-primary" aria-hidden />
+              <span className="flex-1">{t.upgradePlan}</span>
+            </Link>
+          ) : null}
+        </div>
+
         <div className="flex items-center justify-between px-2.5">
           <span className="font-mono text-[11px] text-[var(--text-subtle)]">
             {t.theme}
@@ -148,6 +184,9 @@ export function AppSidebar({
     </aside>
   )
 }
+
+const FOOTER_LINK =
+  "flex items-center gap-2.5 rounded-[var(--radius-md)] px-2.5 py-[9px] text-sm text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
 
 // Coincidencia por segmento: `/connections` marca `/connections/select`, pero
 // `/connections-x` no, y `/inbox` solo marca lo suyo.

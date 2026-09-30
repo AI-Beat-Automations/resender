@@ -59,8 +59,8 @@ import {
   updateClientMaxAction,
 } from "./actions"
 
-const PRO = { canManage: true, maxPages: 5 }
-const STARTER = { canManage: false, maxPages: 2 }
+const PRO = { canManage: true, maxPages: 5, lookupKey: "pro_monthly" }
+const STARTER = { canManage: false, maxPages: 2, lookupKey: "starter_monthly" }
 
 const client = {
   id: "client-1",

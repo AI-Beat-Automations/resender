@@ -49,6 +49,9 @@ export const PLANS: Plan[] = [
   },
 ]
 
+// El plan más alto del catálogo: quien lo tiene no ve «Mejora tu plan».
+export const TOP_PLAN_LOOKUP_KEY: PlanLookupKey = "business_monthly"
+
 // Plan Free (ADR 0022): no existe en Stripe ni tiene fila en `subscriptions`.
 // Es el plan **derivado** de cualquier tenant sin suscripción de pago
 // `active` — recién registrado, cancelado, `past_due` o `unpaid` —. Va aparte
