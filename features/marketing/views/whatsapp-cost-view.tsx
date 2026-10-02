@@ -80,7 +80,6 @@ export function WhatsappCostView({ lang }: { lang: Locale }) {
         </Section>
 
         <FaqSection
-          tone="muted-solid"
           title={whatsappCost.faq.title}
           items={whatsappCost.faq.items}
         />

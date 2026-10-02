@@ -20,7 +20,7 @@ export function FaqSection({
   kicker?: string
   title: string
   items: ReadonlyArray<FaqItem>
-  tone?: "base" | "muted" | "muted-solid"
+  tone?: "base" | "muted"
 }) {
   return (
     <Section id={id} tone={tone}>
