@@ -67,6 +67,35 @@ function formatters(lang: Locale) {
   }
 }
 
+// Select de país compartido: los dos del estimador (tipos de mensaje y
+// calculadora) leen y escriben el mismo estado.
+function MarketSelect({
+  id,
+  value,
+  onChange,
+  lang,
+}: {
+  id: string
+  value: string
+  onChange: (id: string) => void
+  lang: Locale
+}) {
+  return (
+    <select
+      id={id}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
+    >
+      {META_MARKET_RATES.map((option) => (
+        <option key={option.id} value={option.id}>
+          {option.flag} {option.name[lang]}
+        </option>
+      ))}
+    </select>
+  )
+}
+
 export function WhatsappCostEstimator({
   lang,
   copy,
@@ -91,15 +120,23 @@ export function WhatsappCostEstimator({
 
   return (
     <>
-      <Section tone="muted">
+      <Section tone="muted-solid">
         <SectionHeading
           kicker={types.kicker}
           title={types.title}
           subtitle={types.subtitle}
         />
-        <p className="mt-4 text-center text-sm text-muted-foreground">
-          {types.priceFor.replace("{market}", market.name[lang])}
-        </p>
+        <div className="mx-auto mt-6 flex max-w-xs flex-col gap-2">
+          <Label htmlFor="types-market" className="justify-center">
+            {types.priceFor}
+          </Label>
+          <MarketSelect
+            id="types-market"
+            value={marketId}
+            onChange={setMarketId}
+            lang={lang}
+          />
+        </div>
         <div className="mt-12 grid gap-10 lg:grid-cols-3">
           {types.items.map((item) => (
             <div key={item.category} className="flex flex-col gap-5">
@@ -136,18 +173,12 @@ export function WhatsappCostEstimator({
             <CardContent className="space-y-6">
               <div className="space-y-2">
                 <Label htmlFor="market">{calculator.marketLabel}</Label>
-                <select
+                <MarketSelect
                   id="market"
                   value={marketId}
-                  onChange={(event) => setMarketId(event.target.value)}
-                  className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
-                >
-                  {META_MARKET_RATES.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.name[lang]}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setMarketId}
+                  lang={lang}
+                />
               </div>
               <fieldset className="space-y-4">
                 <legend className="mb-4 text-sm font-medium">
@@ -186,7 +217,7 @@ export function WhatsappCostEstimator({
           <Card className="ring-2 ring-primary">
             <CardContent className="flex h-full flex-col">
               <h3 className="text-sm font-medium text-muted-foreground">
-                {calculator.resultTitle} · {market.name[lang]}
+                {calculator.resultTitle} · {market.flag} {market.name[lang]}
               </h3>
               <dl className="mt-4 divide-y divide-border">
                 {CATEGORIES.map((category) => {

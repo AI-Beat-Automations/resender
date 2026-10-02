@@ -421,7 +421,7 @@ export const en: Dict = {
       business: "Aurora Store",
       perMessage: "{price} per message",
       afterFree: "1,000 free per month, then {price}",
-      priceFor: "Prices in {market}",
+      priceFor: "Prices for",
       items: [
         {
           category: "marketing",

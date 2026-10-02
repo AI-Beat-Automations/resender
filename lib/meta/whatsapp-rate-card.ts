@@ -16,6 +16,8 @@ export type MetaMessageCategory = "marketing" | "utility" | "service"
 
 export type MetaMarketRate = {
   id: string
+  /** Bandera del país; las regiones «Resto de …» usan un globo. */
+  flag: string
   name: { es: string; en: string }
 } & Record<MetaMessageCategory, number>
 
@@ -28,6 +30,7 @@ export type MetaMarketRate = {
 export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   {
     id: "argentina",
+    flag: "🇦🇷",
     name: { es: "Argentina", en: "Argentina" },
     marketing: 0.0618,
     utility: 0.026,
@@ -35,6 +38,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "bangladesh",
+    flag: "🇧🇩",
     name: { es: "Bangladés", en: "Bangladesh" },
     marketing: 0.0732,
     utility: 0.0037,
@@ -42,6 +46,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "brazil",
+    flag: "🇧🇷",
     name: { es: "Brasil", en: "Brazil" },
     marketing: 0.0625,
     utility: 0.0068,
@@ -49,6 +54,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "chile",
+    flag: "🇨🇱",
     name: { es: "Chile", en: "Chile" },
     marketing: 0.0889,
     utility: 0.02,
@@ -56,6 +62,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "colombia",
+    flag: "🇨🇴",
     name: { es: "Colombia", en: "Colombia" },
     marketing: 0.0125,
     utility: 0.0008,
@@ -63,6 +70,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "egypt",
+    flag: "🇪🇬",
     name: { es: "Egipto", en: "Egypt" },
     marketing: 0.0644,
     utility: 0.0036,
@@ -70,6 +78,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "france",
+    flag: "🇫🇷",
     name: { es: "Francia", en: "France" },
     marketing: 0.0859,
     utility: 0.03,
@@ -77,6 +86,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "germany",
+    flag: "🇩🇪",
     name: { es: "Alemania", en: "Germany" },
     marketing: 0.1365,
     utility: 0.055,
@@ -84,6 +94,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "hong-kong",
+    flag: "🇭🇰",
     name: { es: "Hong Kong", en: "Hong Kong" },
     marketing: 0.0732,
     utility: 0.026,
@@ -91,6 +102,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "hungary",
+    flag: "🇭🇺",
     name: { es: "Hungría", en: "Hungary" },
     marketing: 0.086,
     utility: 0.035,
@@ -98,6 +110,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "india",
+    flag: "🇮🇳",
     name: { es: "India", en: "India" },
     marketing: 0.0118,
     utility: 0.0014,
@@ -105,6 +118,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "indonesia",
+    flag: "🇮🇩",
     name: { es: "Indonesia", en: "Indonesia" },
     marketing: 0.0411,
     utility: 0.025,
@@ -112,6 +126,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "iraq",
+    flag: "🇮🇶",
     name: { es: "Irak", en: "Iraq" },
     marketing: 0.0341,
     utility: 0.0079,
@@ -119,6 +134,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "israel",
+    flag: "🇮🇱",
     name: { es: "Israel", en: "Israel" },
     marketing: 0.0353,
     utility: 0.0053,
@@ -126,6 +142,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "italy",
+    flag: "🇮🇹",
     name: { es: "Italia", en: "Italy" },
     marketing: 0.0795,
     utility: 0.03,
@@ -133,6 +150,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "kazakhstan",
+    flag: "🇰🇿",
     name: { es: "Kazajistán", en: "Kazakhstan" },
     marketing: 0.0604,
     utility: 0.018,
@@ -140,6 +158,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "kuwait",
+    flag: "🇰🇼",
     name: { es: "Kuwait", en: "Kuwait" },
     marketing: 0.0792,
     utility: 0.044,
@@ -147,6 +166,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "malaysia",
+    flag: "🇲🇾",
     name: { es: "Malasia", en: "Malaysia" },
     marketing: 0.086,
     utility: 0.014,
@@ -154,6 +174,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "mexico",
+    flag: "🇲🇽",
     name: { es: "México", en: "Mexico" },
     marketing: 0.0397,
     utility: 0.0085,
@@ -161,6 +182,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "morocco",
+    flag: "🇲🇦",
     name: { es: "Marruecos", en: "Morocco" },
     marketing: 0.0414,
     utility: 0.023,
@@ -168,6 +190,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "netherlands",
+    flag: "🇳🇱",
     name: { es: "Países Bajos", en: "Netherlands" },
     marketing: 0.1597,
     utility: 0.05,
@@ -175,6 +198,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "nepal",
+    flag: "🇳🇵",
     name: { es: "Nepal", en: "Nepal" },
     marketing: 0.0732,
     utility: 0.0034,
@@ -182,6 +206,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "nigeria",
+    flag: "🇳🇬",
     name: { es: "Nigeria", en: "Nigeria" },
     marketing: 0.0516,
     utility: 0.0067,
@@ -189,6 +214,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "oman",
+    flag: "🇴🇲",
     name: { es: "Omán", en: "Oman" },
     marketing: 0.0341,
     utility: 0.0247,
@@ -196,6 +222,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "pakistan",
+    flag: "🇵🇰",
     name: { es: "Pakistán", en: "Pakistan" },
     marketing: 0.0473,
     utility: 0.015,
@@ -203,6 +230,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "peru",
+    flag: "🇵🇪",
     name: { es: "Perú", en: "Peru" },
     marketing: 0.0703,
     utility: 0.03,
@@ -210,6 +238,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "poland",
+    flag: "🇵🇱",
     name: { es: "Polonia", en: "Poland" },
     marketing: 0.0366,
     utility: 0.0122,
@@ -217,6 +246,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "qatar",
+    flag: "🇶🇦",
     name: { es: "Catar", en: "Qatar" },
     marketing: 0.0341,
     utility: 0.012,
@@ -224,6 +254,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "romania",
+    flag: "🇷🇴",
     name: { es: "Rumania", en: "Romania" },
     marketing: 0.086,
     utility: 0.029,
@@ -231,6 +262,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "russia",
+    flag: "🇷🇺",
     name: { es: "Rusia", en: "Russia" },
     marketing: 0.0802,
     utility: 0.04,
@@ -238,6 +270,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "saudi-arabia",
+    flag: "🇸🇦",
     name: { es: "Arabia Saudita", en: "Saudi Arabia" },
     marketing: 0.0576,
     utility: 0.0107,
@@ -245,6 +278,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "singapore",
+    flag: "🇸🇬",
     name: { es: "Singapur", en: "Singapore" },
     marketing: 0.0732,
     utility: 0.016,
@@ -252,6 +286,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "south-africa",
+    flag: "🇿🇦",
     name: { es: "Sudáfrica", en: "South Africa" },
     marketing: 0.0379,
     utility: 0.0095,
@@ -259,6 +294,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "spain",
+    flag: "🇪🇸",
     name: { es: "España", en: "Spain" },
     marketing: 0.0707,
     utility: 0.02,
@@ -266,6 +302,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "sri-lanka",
+    flag: "🇱🇰",
     name: { es: "Sri Lanka", en: "Sri Lanka" },
     marketing: 0.0732,
     utility: 0.002,
@@ -273,6 +310,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "turkey",
+    flag: "🇹🇷",
     name: { es: "Turquía", en: "Turkey" },
     marketing: 0.0109,
     utility: 0.0009,
@@ -280,6 +318,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "ukraine",
+    flag: "🇺🇦",
     name: { es: "Ucrania", en: "Ukraine" },
     marketing: 0.086,
     utility: 0.0298,
@@ -287,6 +326,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "united-arab-emirates",
+    flag: "🇦🇪",
     name: { es: "Emiratos Árabes Unidos", en: "United Arab Emirates" },
     marketing: 0.0576,
     utility: 0.0157,
@@ -294,6 +334,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "united-kingdom",
+    flag: "🇬🇧",
     name: { es: "Reino Unido", en: "United Kingdom" },
     marketing: 0.0635,
     utility: 0.022,
@@ -301,6 +342,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "north-america",
+    flag: "🌎",
     name: { es: "Norteamérica (EE. UU. y Canadá)", en: "North America (US & Canada)" },
     marketing: 0.025,
     utility: 0.0034,
@@ -308,6 +350,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "rest-of-africa",
+    flag: "🌍",
     name: { es: "Resto de África", en: "Rest of Africa" },
     marketing: 0.0225,
     utility: 0.004,
@@ -315,6 +358,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "rest-of-asia-pacific",
+    flag: "🌏",
     name: { es: "Resto de Asia-Pacífico", en: "Rest of Asia Pacific" },
     marketing: 0.0842,
     utility: 0.0113,
@@ -322,6 +366,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "rest-of-central-eastern-europe",
+    flag: "🌍",
     name: { es: "Resto de Europa Central y del Este", en: "Rest of Central & Eastern Europe" },
     marketing: 0.086,
     utility: 0.0212,
@@ -329,6 +374,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "rest-of-latin-america",
+    flag: "🌎",
     name: { es: "Resto de Latinoamérica", en: "Rest of Latin America" },
     marketing: 0.074,
     utility: 0.0113,
@@ -336,6 +382,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "rest-of-middle-east",
+    flag: "🌍",
     name: { es: "Resto de Medio Oriente", en: "Rest of Middle East" },
     marketing: 0.0392,
     utility: 0.0091,
@@ -343,6 +390,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "rest-of-western-europe",
+    flag: "🌍",
     name: { es: "Resto de Europa Occidental", en: "Rest of Western Europe" },
     marketing: 0.0592,
     utility: 0.0171,
@@ -350,6 +398,7 @@ export const META_MARKET_RATES: readonly MetaMarketRate[] = [
   },
   {
     id: "other",
+    flag: "🌐",
     name: { es: "Otros", en: "Other" },
     marketing: 0.0604,
     utility: 0.0077,
