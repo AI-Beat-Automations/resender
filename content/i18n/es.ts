@@ -432,7 +432,7 @@ export const es: Dict = {
       business: "Tienda Aurora",
       perMessage: "{price} por mensaje",
       afterFree: "1.000 gratis al mes, luego {price}",
-      priceFor: "Precios en {market}",
+      priceFor: "Precios para",
       items: [
         {
           category: "marketing",

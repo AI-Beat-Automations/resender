@@ -59,7 +59,12 @@ export function WhatsappCostView({ lang }: { lang: Locale }) {
             </Button>
           </div>
 
-          <div className="mx-auto mt-20 max-w-4xl">
+        </Section>
+
+        <WhatsappCostEstimator lang={lang} copy={whatsappCost} />
+
+        <Section>
+          <div className="mx-auto max-w-4xl">
             <h2 className="text-center text-2xl font-bold tracking-tight">
               {whatsappCost.changes.title}
             </h2>
@@ -74,10 +79,8 @@ export function WhatsappCostView({ lang }: { lang: Locale }) {
           </div>
         </Section>
 
-        <WhatsappCostEstimator lang={lang} copy={whatsappCost} />
-
         <FaqSection
-          tone="muted"
+          tone="muted-solid"
           title={whatsappCost.faq.title}
           items={whatsappCost.faq.items}
         />
