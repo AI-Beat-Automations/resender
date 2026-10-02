@@ -10,7 +10,7 @@ export function Section({
   children,
 }: {
   id?: string
-  tone?: "base" | "muted" | "muted-solid"
+  tone?: "base" | "muted"
   className?: string
   children: React.ReactNode
 }) {
@@ -20,9 +20,6 @@ export function Section({
       className={cn(
         "scroll-mt-20",
         tone === "muted" && "bg-muted/40",
-        // Misma superficie que «muted» pero opaca: tapa la grilla del fondo.
-        tone === "muted-solid" &&
-          "bg-[color-mix(in_oklab,var(--muted)_40%,var(--background))]",
         className
       )}
     >
