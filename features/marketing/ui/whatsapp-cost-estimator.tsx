@@ -120,7 +120,7 @@ export function WhatsappCostEstimator({
 
   return (
     <>
-      <Section tone="muted-solid">
+      <Section>
         <SectionHeading
           kicker={types.kicker}
           title={types.title}
