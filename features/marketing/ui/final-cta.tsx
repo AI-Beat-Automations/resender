@@ -20,8 +20,7 @@ export function FinalCta({
   title: string
   subtitle: string
   cta: string
-  // Ruta (sin idioma) del botón. Por defecto el registro; el estimador de
-  // WhatsApp manda a /pricing porque su visitante todavía no eligió plan.
+  // Ruta (sin idioma) del botón. Por defecto el registro.
   href?: string
   // Camino secundario opcional debajo del botón: hoy solo la landing lo usa,
   // con el formulario de la lista de espera (ADR 0007). El CTA primario sigue

@@ -403,6 +403,10 @@ export const es: Dict = {
     subtitle:
       "Desde el 1 de octubre de 2026 Meta cobra también los mensajes de servicio. Entiende qué se cobra, qué sigue gratis y estima tu factura mensual.",
     heroCta: "Calcular mi costo",
+    heroSoon: {
+      text: "Resender + WhatsApp: próximamente",
+      cta: "Avísame",
+    },
     changes: {
       title: "Qué cambió el 1 de octubre",
       items: [
@@ -530,10 +534,15 @@ export const es: Dict = {
       ],
     },
     cta: {
-      title: "Responde WhatsApp desde tu propio código",
+      badge: "WhatsApp · próximamente",
+      title: "WhatsApp todavía no llega a Resender",
       subtitle:
-        "Resender te entrega cada mensaje en tu webhook y respondes con un POST. Mira los planes.",
-      cta: "Ver planes",
+        "Ya sabes cuánto te cobrará Meta. Déjanos tu correo y te avisamos el día que puedas conectar tu número y responder WhatsApp desde tu webhook.",
+      formTitle: "Avísame cuando llegue WhatsApp",
+      formSubtitle:
+        "Te escribimos cuando WhatsApp esté disponible y con otras novedades del producto. Nada más: ni newsletter semanal ni seguimiento comercial.",
+      fallback: "¿Atiendes por Messenger o Instagram? Eso ya funciona hoy.",
+      fallbackCta: "Ver planes",
     },
     metaTitle: "Calculadora de costos de WhatsApp API (tarifas de Meta 2026)",
     metaDescription:
@@ -710,7 +719,7 @@ export const es: Dict = {
       title: "Un solo webhook para todos tus canales.",
       titleAccent: "Developer-first.",
       subtitle:
-        "Hoy Resender funciona con Facebook Messenger e Instagram, y WhatsApp ya está en acceso anticipado. Deja tu correo y te avisamos de las novedades del producto.",
+        "Hoy Resender funciona con Facebook Messenger e Instagram, y WhatsApp llega pronto. Deja tu correo y te avisamos cuando esté disponible, junto con las demás novedades del producto.",
       breadcrumb: "Lista de espera",
       registerTitle: "¿Ya atiendes por Messenger o Instagram?",
       registerBody:

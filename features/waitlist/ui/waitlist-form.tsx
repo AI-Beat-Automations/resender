@@ -27,6 +27,10 @@ type WaitlistFormProps = {
   lang: Locale
   source: WaitlistSource
   action: WaitlistAction
+  // Encabezado propio de la tarjeta. Por defecto el genérico del diccionario;
+  // el estimador de WhatsApp lo cambia para dejar claro qué se está esperando.
+  title?: string
+  subtitle?: string
   className?: string
 }
 
@@ -40,6 +44,8 @@ export function WaitlistForm({
   lang,
   source,
   action,
+  title,
+  subtitle,
   className,
 }: WaitlistFormProps) {
   const [state, formAction, pending] = useActionState(action, {})
@@ -67,7 +73,7 @@ export function WaitlistForm({
         className
       )}
     >
-      <p className="font-heading text-lg font-bold tracking-tight">{t.title}</p>
+      <p className="font-heading text-lg font-bold tracking-tight">{title ?? t.title}</p>
 
       {state.success ? (
         // Tras el alta el formulario desaparece: dejarlo pintado invitaría a
@@ -80,7 +86,7 @@ export function WaitlistForm({
       ) : (
         <>
           <p className="mt-1.5 text-[13.5px]/[1.6] text-muted-foreground">
-            {t.subtitle}
+            {subtitle ?? t.subtitle}
           </p>
           <form
             action={formAction}

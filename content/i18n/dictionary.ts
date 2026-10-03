@@ -163,6 +163,9 @@ export type Dict = {
     title: string
     subtitle: string
     heroCta: string
+    // Aviso chico bajo el CTA del hero: WhatsApp todavía no está en Resender y
+    // el link baja a la lista de espera del cierre (`#waitlist`).
+    heroSoon: { text: string; cta: string }
     changes: { title: string; items: { title: string; body: string }[] }
     types: {
       kicker: string
@@ -191,7 +194,18 @@ export type Dict = {
       disclaimerLink: string
     }
     faq: { title: string; items: FaqItem[] }
-    cta: { title: string; subtitle: string; cta: string }
+    // Cierre de la página: WhatsApp todavía no está disponible en Resender,
+    // así que la acción principal es la lista de espera y los planes quedan
+    // como salida para quien ya atiende por Messenger o Instagram.
+    cta: {
+      badge: string
+      title: string
+      subtitle: string
+      formTitle: string
+      formSubtitle: string
+      fallback: string
+      fallbackCta: string
+    }
     metaTitle: string
     metaDescription: string
   }
