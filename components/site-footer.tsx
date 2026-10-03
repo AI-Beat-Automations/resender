@@ -34,6 +34,11 @@ export function SiteFooter({ lang }: { lang: Locale }) {
           external: false,
         },
         {
+          href: localePath("/whatsapp-cost-calculator", lang),
+          label: dict.footer.links.whatsappCost,
+          external: false,
+        },
+        {
           href: localePath("/blog", lang),
           label: dict.footer.links.blog,
           external: false,

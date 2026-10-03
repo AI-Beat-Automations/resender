@@ -44,6 +44,16 @@ export type ComparisonRow = {
 
 // Una entrada del índice de /llms.txt. Se renderiza como el spec de llmstxt.org
 // manda: `- [label](url): detail`.
+// Una de las tres categorías en /whatsapp-cost-calculator, con el mockup de
+// chat que la ilustra: burbujas del cliente (`in`) y del negocio (`out`).
+export type WhatsappCostTypeItem = {
+  category: "marketing" | "utility" | "service"
+  label: string
+  kind: string
+  body: string
+  chat: { from: "in" | "out"; text: string; buttons?: string[] }[]
+  time: string
+}
 export type LlmsEntry = { label: string; detail: string }
 
 export type Dict = {
@@ -144,6 +154,63 @@ export type Dict = {
   }
   pricingFaq: { kicker: string; title: string; items: FaqItem[] }
   pricingCta: { title: string; subtitle: string; cta: string }
+  // Página /whatsapp-cost-calculator: explica el cobro de Meta por mensaje y
+  // estima la factura mensual. Los precios salen de `lib/meta/whatsapp-rate-card`;
+  // acá solo va el copy. `{price}`, `{free}`, `{billed}` y `{date}` se
+  // reemplazan al renderizar.
+  whatsappCost: {
+    kicker: string
+    title: string
+    subtitle: string
+    heroCta: string
+    // Aviso chico bajo el CTA del hero: WhatsApp todavía no está en Resender y
+    // el link baja a la lista de espera del cierre (`#waitlist`).
+    heroSoon: { text: string; cta: string }
+    changes: { title: string; items: { title: string; body: string }[] }
+    types: {
+      kicker: string
+      title: string
+      subtitle: string
+      business: string
+      items: WhatsappCostTypeItem[]
+      perMessage: string
+      afterFree: string
+      priceFor: string
+    }
+    calculator: {
+      kicker: string
+      title: string
+      subtitle: string
+      marketLabel: string
+      volumesLabel: string
+      categories: Record<"marketing" | "utility" | "service", string>
+      hints: Record<"marketing" | "utility" | "service", string>
+      resultTitle: string
+      freeApplied: string
+      billedLine: string
+      total: string
+      perMonth: string
+      disclaimer: string
+      disclaimerLink: string
+    }
+    faq: { title: string; items: FaqItem[] }
+    // Cierre de la página: WhatsApp todavía no está disponible en Resender,
+    // así que la acción principal es la lista de espera y los planes quedan
+    // como salida para quien ya atiende por Messenger o Instagram.
+    cta: {
+      badge: string
+      title: string
+      subtitle: string
+      formTitle: string
+      formSubtitle: string
+      fallback: string
+      fallbackCta: string
+    }
+    metaTitle: string
+    metaDescription: string
+  }
+  // Aviso que lleva al estimador desde /pricing y la landing.
+  whatsappCostPromo: { text: string; cta: string }
   blog: {
     metaTitle: string
     metaDescription: string
@@ -374,6 +441,7 @@ export type Dict = {
     links: {
       pricing: string
       vsManychat: string
+      whatsappCost: string
       blog: string
       docs: string
       privacy: string
@@ -428,6 +496,7 @@ export type Dict = {
       home: LlmsEntry
       pricing: LlmsEntry
       vsManychat: LlmsEntry
+      whatsappCost: LlmsEntry
       blog: LlmsEntry
       docs: LlmsEntry
       privacy: LlmsEntry
@@ -474,6 +543,7 @@ export function localeFromPathname(pathname: string): Locale {
 const LOCALIZED_ROUTES = [
   "/pricing",
   "/vs-manychat",
+  "/whatsapp-cost-calculator",
   "/blog",
   "/login",
   "/register",

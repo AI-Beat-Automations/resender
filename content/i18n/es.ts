@@ -397,6 +397,163 @@ export const es: Dict = {
     cta: "Empieza",
   },
 
+  whatsappCost: {
+    kicker: "whatsapp · meta",
+    title: "Cuánto te cobrará Meta por WhatsApp",
+    subtitle:
+      "Desde el 1 de octubre de 2026 Meta cobra también los mensajes de servicio. Entiende qué se cobra, qué sigue gratis y estima tu factura mensual.",
+    heroCta: "Calcular mi costo",
+    heroSoon: {
+      text: "Resender + WhatsApp: próximamente",
+      cta: "Avísame",
+    },
+    changes: {
+      title: "Qué cambió el 1 de octubre",
+      items: [
+        {
+          title: "1.000 mensajes de servicio gratis",
+          body: "Cada número de WhatsApp tiene 1.000 respuestas de servicio gratis al mes. El cupo se reinicia cada mes y no se acumula.",
+        },
+        {
+          title: "Después, se cobra cada mensaje",
+          body: "Pasado el cupo, Meta cobra cada mensaje de servicio entregado, con la tarifa del país de quien lo recibe. Cuesta lo mismo que un mensaje de utilidad.",
+        },
+        {
+          title: "Sin descuentos por volumen",
+          body: "Utilidad y autenticación tienen descuentos por volumen; servicio no. Mandar más no baja el precio de cada respuesta.",
+        },
+        {
+          title: "Lo que recibes sigue gratis",
+          body: "Los mensajes que te escriben tus clientes no se cobran. Solo se cobra lo que tú envías y se entrega.",
+        },
+      ],
+    },
+    types: {
+      kicker: "categorías",
+      title: "Los tres tipos de mensaje",
+      subtitle:
+        "Meta cobra según la categoría del mensaje. Así se ve cada una en una misma tienda.",
+      business: "Tienda Aurora",
+      perMessage: "{price} por mensaje",
+      afterFree: "1.000 gratis al mes, luego {price}",
+      priceFor: "Precios para",
+      items: [
+        {
+          category: "marketing",
+          label: "Marketing",
+          kind: "Plantilla",
+          body: "Promociones, ofertas y novedades que tú inicias. Necesitan una plantilla aprobada y se cobran desde el primer envío. Es la categoría más cara.",
+          chat: [
+            {
+              from: "out",
+              text: "¡Hola Laura! 🎉 Este fin de semana tienes 20 % de descuento en toda la colección de invierno.",
+              buttons: ["Ver colección", "No me interesa"],
+            },
+          ],
+          time: "10:02",
+        },
+        {
+          category: "utility",
+          label: "Utilidad",
+          kind: "Plantilla",
+          body: "Avisos sobre algo que el cliente ya hizo: confirmación de pedido, envío, cita o pago. También van con plantilla y se cobran desde el primer envío, pero cuestan menos que marketing.",
+          chat: [
+            {
+              from: "out",
+              text: "Tu pedido #4821 ya va en camino 📦 Llega el jueves entre 9:00 y 14:00.",
+              buttons: ["Rastrear pedido"],
+            },
+          ],
+          time: "16:40",
+        },
+        {
+          category: "service",
+          label: "Servicio",
+          kind: "Respuesta de tu bot",
+          body: "Las respuestas a un cliente que te escribió, dentro de las 24 horas desde su último mensaje. No necesitan plantilla. Es lo que responde tu bot o tu agente de IA con Resender, y es la categoría que tiene el cupo gratis.",
+          chat: [
+            { from: "in", text: "Hola, ¿tienen la chaqueta azul en talla M?" },
+            {
+              from: "out",
+              text: "¡Hola! Sí, nos quedan 3 en talla M. ¿Quieres que te la apartemos?",
+            },
+          ],
+          time: "19:15",
+        },
+      ],
+    },
+    calculator: {
+      kicker: "estimador",
+      title: "Estima tu factura de Meta",
+      subtitle:
+        "Elige el país de tus clientes y cuántos mensajes envías al mes. El cálculo supone un solo número de WhatsApp.",
+      marketLabel: "País de tus clientes",
+      volumesLabel: "Mensajes que envías al mes",
+      categories: {
+        marketing: "Marketing",
+        utility: "Utilidad",
+        service: "Servicio",
+      },
+      hints: {
+        marketing: "Promociones y campañas con plantilla",
+        utility: "Avisos de pedidos, citas y pagos",
+        service: "Respuestas de tu bot a quien te escribió",
+      },
+      resultTitle: "Costo estimado",
+      freeApplied: "{free} gratis",
+      billedLine: "{billed} × {price}",
+      total: "Total al mes",
+      perMonth: "/mes",
+      disclaimer:
+        "Estimación informativa en USD con las tarifas de Meta vigentes desde el {date}. Meta factura en la moneda de tu cuenta de WhatsApp Business y su factura es la fuente oficial.",
+      disclaimerLink: "Ver tarifas oficiales de Meta",
+    },
+    faq: {
+      title: "Preguntas frecuentes",
+      items: [
+        {
+          q: "¿Resender me cobra estos mensajes?",
+          a: "No. Meta le factura cada mensaje cobrado directo a la tarjeta que registraste en tu cuenta de WhatsApp Business. Resender no cobra ese cargo ni le pone margen, y el precio de tu plan es independiente.",
+        },
+        {
+          q: "¿Qué tarifa se usa si mis clientes están en varios países?",
+          a: "Meta cobra según el prefijo del número de quien recibe el mensaje. Si tus clientes están repartidos, calcula cada país por separado y suma.",
+        },
+        {
+          q: "¿Los mensajes que llegan por anuncios también se cobran?",
+          a: "Las conversaciones que empiezan desde un anuncio Click-to-WhatsApp o desde el botón de tu página de Facebook tienen 72 horas en las que todos los mensajes son gratis, incluidas las plantillas.",
+        },
+        {
+          q: "¿Hay algún mensaje de servicio que siga siendo gratis?",
+          a: "Sí: las reacciones con emoji a un mensaje no se cobran.",
+        },
+        {
+          q: "¿Qué pasa si no tengo método de pago en Meta?",
+          a: "Sin una tarjeta registrada en tu cuenta de WhatsApp Business, Meta puede dejar de entregar los mensajes que se cobran.",
+        },
+      ],
+    },
+    cta: {
+      badge: "WhatsApp · próximamente",
+      title: "WhatsApp todavía no llega a Resender",
+      subtitle:
+        "Ya sabes cuánto te cobrará Meta. Déjanos tu correo y te avisamos el día que puedas conectar tu número y responder WhatsApp desde tu webhook.",
+      formTitle: "Avísame cuando llegue WhatsApp",
+      formSubtitle:
+        "Te escribimos cuando WhatsApp esté disponible y con otras novedades del producto. Nada más: ni newsletter semanal ni seguimiento comercial.",
+      fallback: "¿Atiendes por Messenger o Instagram? Eso ya funciona hoy.",
+      fallbackCta: "Ver planes",
+    },
+    metaTitle: "Calculadora de costos de WhatsApp API (tarifas de Meta 2026)",
+    metaDescription:
+      "Calcula cuánto te cobrará Meta por WhatsApp desde el 1 de octubre de 2026: mensajes de marketing, utilidad y servicio por país, con los 1.000 de servicio gratis al mes.",
+  },
+
+  whatsappCostPromo: {
+    text: "Además del plan, Meta cobra algunos mensajes de WhatsApp.",
+    cta: "Calcula cuánto te cobrará Meta",
+  },
+
   blog: {
     metaTitle: "Blog: integrar Facebook Messenger e Instagram por API",
     metaDescription:
@@ -562,7 +719,7 @@ export const es: Dict = {
       title: "Un solo webhook para todos tus canales.",
       titleAccent: "Developer-first.",
       subtitle:
-        "Hoy Resender funciona con Facebook Messenger e Instagram, y WhatsApp ya está en acceso anticipado. Deja tu correo y te avisamos de las novedades del producto.",
+        "Hoy Resender funciona con Facebook Messenger e Instagram, y WhatsApp llega pronto. Deja tu correo y te avisamos cuando esté disponible, junto con las demás novedades del producto.",
       breadcrumb: "Lista de espera",
       registerTitle: "¿Ya atiendes por Messenger o Instagram?",
       registerBody:
@@ -615,6 +772,7 @@ export const es: Dict = {
     links: {
       pricing: "Precios",
       vsManychat: "vs ManyChat",
+      whatsappCost: "Calculadora de WhatsApp",
       blog: "Blog",
       docs: "Docs",
       privacy: "Privacidad",
@@ -685,6 +843,11 @@ export const es: Dict = {
         label: "Resender vs ManyChat",
         detail:
           "Comparación de precio y alcance contra ManyChat, y en qué casos conviene cada uno.",
+      },
+      whatsappCost: {
+        label: "Calculadora de costos de WhatsApp",
+        detail:
+          "Cómo cobra Meta los mensajes de marketing, utilidad y servicio desde el 1 de octubre de 2026, con estimador de la factura mensual por país.",
       },
       blog: {
         label: "Blog",

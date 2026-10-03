@@ -10,6 +10,7 @@ export type {
   Step,
   Plan,
   ComparisonRow,
+  WhatsappCostTypeItem,
 } from "./dictionary"
 
 export {

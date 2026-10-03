@@ -14,7 +14,12 @@ export const HEARD_FROM_KEYS = [
 ] as const
 export type HeardFrom = (typeof HEARD_FROM_KEYS)[number]
 
-export const WAITLIST_SOURCES = ["landing", "waitlist_page"] as const
+// Replica el check de `waitlist_signups.source` (migraciones 0012 y 0034).
+export const WAITLIST_SOURCES = [
+  "landing",
+  "waitlist_page",
+  "whatsapp_cost_calculator",
+] as const
 export type WaitlistSource = (typeof WAITLIST_SOURCES)[number]
 
 export const HEARD_FROM_OTHER_MAX_LENGTH = 120

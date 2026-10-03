@@ -13,12 +13,15 @@ export function FinalCta({
   title,
   subtitle,
   cta,
+  href = "/register",
   secondary,
 }: {
   lang: Locale
   title: string
   subtitle: string
   cta: string
+  // Ruta (sin idioma) del botón. Por defecto el registro.
+  href?: string
   // Camino secundario opcional debajo del botón: hoy solo la landing lo usa,
   // con el formulario de la lista de espera (ADR 0007). El CTA primario sigue
   // siendo «Empieza», así que esto va después, separado por una línea, y quien
@@ -38,7 +41,7 @@ export function FinalCta({
         <div className="mt-8">
           <Button asChild size="lg">
             {/* TODO: Stripe — por ahora el CTA va al registro existente. */}
-            <Link href={localePath("/register", lang)}>{cta}</Link>
+            <Link href={localePath(href, lang)}>{cta}</Link>
           </Button>
         </div>
         {secondary ? (

@@ -2,6 +2,10 @@ import "server-only"
 
 import { getPublishedPosts, formatDate, type BlogPost } from "@/lib/blog"
 import {
+  META_MARKET_RATES,
+  META_RATE_CARD_EFFECTIVE_DATE,
+} from "@/lib/meta/whatsapp-rate-card"
+import {
   DOCS_URL,
   SITE_NAME,
   STATIC_CONTENT_UPDATED_AT,
@@ -116,6 +120,11 @@ export function buildLlmsTxt(lang: Locale): string {
         entries.vsManychat.label,
         url("/vs-manychat", lang),
         entries.vsManychat.detail
+      ),
+      item(
+        entries.whatsappCost.label,
+        url("/whatsapp-cost-calculator", lang),
+        entries.whatsappCost.detail
       ),
     ]),
 
@@ -273,6 +282,44 @@ function renderVsManychat(dict: Dict, lang: Locale): string {
   ])
 }
 
+// La tabla va completa: es el dato que un asistente necesita para responder
+// "cuánto cuesta WhatsApp en X" sin abrir la calculadora.
+function renderWhatsappCost(dict: Dict, lang: Locale): string {
+  const { whatsappCost } = dict
+  const { categories } = whatsappCost.calculator
+  const table = list([
+    `| ${whatsappCost.calculator.marketLabel} | ${categories.marketing} | ${categories.utility} | ${categories.service} |`,
+    "| --- | --- | --- | --- |",
+    ...META_MARKET_RATES.map(
+      (m) =>
+        `| ${m.name[lang]} | $${m.marketing} | $${m.utility} | $${m.service} |`
+    ),
+  ])
+
+  return page(whatsappCost.metaTitle, "/whatsapp-cost-calculator", lang, [
+    whatsappCost.subtitle,
+    join([
+      `### ${whatsappCost.changes.title}`,
+      list(
+        whatsappCost.changes.items.map((c) => `- **${c.title}**: ${c.body}`)
+      ),
+    ]),
+    join([
+      `### ${whatsappCost.types.title}`,
+      list(
+        whatsappCost.types.items.map(
+          (t) => `- **${t.label}** (${t.kind}): ${t.body}`
+        )
+      ),
+    ]),
+    join([
+      `### ${whatsappCost.calculator.title} (USD, ${META_RATE_CARD_EFFECTIVE_DATE})`,
+      table,
+    ]),
+    faqBlock(whatsappCost.faq.title, whatsappCost.faq.items),
+  ])
+}
+
 function renderPost(post: BlogPost, lang: Locale): string {
   const dict = getDictionary(lang)
   const { sourceLabel, publishedLabel } = dict.llms.fullFile
@@ -305,6 +352,7 @@ export function buildLlmsFullTxt(lang: Locale): string {
     renderLanding(dict, lang),
     renderPricing(dict, lang),
     renderVsManychat(dict, lang),
+    renderWhatsappCost(dict, lang),
     blogIndex,
     ...posts.map((post) => renderPost(post, lang)),
   ]
