@@ -1476,3 +1476,33 @@ describe("migración 0033: eventos de plantilla como sujeto de entrega", () => {
     )
   })
 })
+
+describe("migración 0034: el estimador como origen de la waitlist", () => {
+  async function insertSignup(email: string, source: string) {
+    return db.query(
+      `insert into waitlist_signups (
+         email, source, heard_from, consent_at, consent_version
+       )
+       values ($1, $2, 'tiktok', now(), '2026-08')`,
+      [email, source]
+    )
+  }
+
+  it("acepta el estimador y los dos orígenes de antes", async () => {
+    await expect(
+      insertSignup("calc@example.com", "whatsapp_cost_calculator")
+    ).resolves.toBeTruthy()
+    await expect(
+      insertSignup("landing@example.com", "landing")
+    ).resolves.toBeTruthy()
+    await expect(
+      insertSignup("page@example.com", "waitlist_page")
+    ).resolves.toBeTruthy()
+  })
+
+  it("sigue rechazando un origen fuera del catálogo", async () => {
+    await expect(
+      insertSignup("ad@example.com", "instagram-ad")
+    ).rejects.toThrow(/waitlist_signups_source_check/)
+  })
+})

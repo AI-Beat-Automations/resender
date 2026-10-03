@@ -132,6 +132,9 @@ describe("waitlist source normalization", () => {
   it("keeps the known sources", () => {
     expect(normalizeWaitlistSource("landing")).toBe("landing")
     expect(normalizeWaitlistSource("waitlist_page")).toBe("waitlist_page")
+    expect(normalizeWaitlistSource("whatsapp_cost_calculator")).toBe(
+      "whatsapp_cost_calculator"
+    )
   })
 
   it("falls back to landing on an unknown value", () => {

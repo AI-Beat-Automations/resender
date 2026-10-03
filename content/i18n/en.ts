@@ -392,6 +392,10 @@ export const en: Dict = {
     subtitle:
       "Starting October 1, 2026, Meta also charges for service messages. Learn what is charged, what stays free, and estimate your monthly bill.",
     heroCta: "Calculate my cost",
+    heroSoon: {
+      text: "Resender + WhatsApp: coming soon",
+      cta: "Notify me",
+    },
     changes: {
       title: "What changed on October 1",
       items: [
@@ -519,10 +523,15 @@ export const en: Dict = {
       ],
     },
     cta: {
-      title: "Answer WhatsApp from your own code",
+      badge: "WhatsApp · coming soon",
+      title: "WhatsApp isn't on Resender yet",
       subtitle:
-        "Resender delivers every message to your webhook and you reply with a POST. See the plans.",
-      cta: "See plans",
+        "Now you know what Meta will charge. Leave your email and we'll let you know the day you can connect your number and answer WhatsApp from your webhook.",
+      formTitle: "Tell me when WhatsApp lands",
+      formSubtitle:
+        "We'll write when WhatsApp is available and with other product news. That's it: no weekly newsletter, no sales follow-ups.",
+      fallback: "Already on Messenger or Instagram? That works today.",
+      fallbackCta: "See plans",
     },
     metaTitle: "WhatsApp API cost calculator (Meta 2026 rates)",
     metaDescription:
@@ -692,7 +701,7 @@ export const en: Dict = {
       title: "One webhook for every channel.",
       titleAccent: "Developer-first.",
       subtitle:
-        "Today Resender works with Facebook Messenger and Instagram, and WhatsApp is already in early access. Leave your email and we'll keep you posted on product news.",
+        "Today Resender works with Facebook Messenger and Instagram, and WhatsApp is coming soon. Leave your email and we'll let you know when it's available, along with other product news.",
       breadcrumb: "Waitlist",
       registerTitle: "Already on Messenger or Instagram?",
       registerBody:

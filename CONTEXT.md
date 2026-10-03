@@ -63,7 +63,7 @@ El formulario pide dos cosas, y las dos son obligatorias:
 - `email`.
 - `heard_from`: como conocio Resender. Seleccion **unica** entre `tiktok`, `instagram`, `x`, `youtube`, `linkedin`, `event` y `other`; con `other`, el texto libre `heard_from_other` tambien es obligatorio (~120 caracteres). Se guardan **claves, nunca etiquetas traducidas**: el label rompe el `group by` en un sitio bilingue.
 
-`source` lo escribe el servidor, no el usuario: vale `landing` o `waitlist_page` y registra **la ruta** donde se completo el formulario. No se lee ningun `?ref=`, asi que se distingue landing de pagina pero nunca un evento de otro. `heard_from = 'event'` dice que vino de un evento presencial, jamas de cual.
+`source` lo escribe el servidor, no el usuario: vale `landing`, `waitlist_page` o `whatsapp_cost_calculator` y registra **la ruta** donde se completo el formulario. No se lee ningun `?ref=`, asi que se distingue una ruta de otra pero nunca un evento de otro. `heard_from = 'event'` dice que vino de un evento presencial, jamas de cual.
 
 ### Consentimiento de la lista de espera
 

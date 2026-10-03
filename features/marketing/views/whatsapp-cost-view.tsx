@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { ArrowRight } from "lucide-react"
 
 import { SiteHeader } from "@/components/site-header"
 import { SiteFooter } from "@/components/site-footer"
@@ -9,7 +10,10 @@ import { Button } from "@/components/ui/button"
 import { Section, SectionHeading } from "@/features/marketing/ui/section"
 import { WhatsappCostEstimator } from "@/features/marketing/ui/whatsapp-cost-estimator"
 import { FaqSection } from "@/features/marketing/ui/faq-section"
-import { FinalCta } from "@/features/marketing/ui/final-cta"
+import {
+  ComingSoonDot,
+  WhatsappWaitlistCta,
+} from "@/features/marketing/ui/whatsapp-waitlist-cta"
 import {
   baseGraph,
   breadcrumbSchema,
@@ -21,8 +25,9 @@ import { getDictionary, type Locale } from "@/content/i18n"
 
 // Estimador público de lo que Meta cobra por WhatsApp, compartido por
 // `/whatsapp-cost-calculator` (ES) y `/en/whatsapp-cost-calculator`. Solo
-// informa el cargo de Meta: Resender no lo cobra (ADR 0023), por eso el CTA
-// final va a /pricing y el resultado nunca suma el plan.
+// informa el cargo de Meta: Resender no lo cobra (ADR 0023), por eso el
+// resultado nunca suma el plan. WhatsApp todavía no está disponible, así que el
+// cierre es la lista de espera y no un CTA de compra.
 export function WhatsappCostView({ lang }: { lang: Locale }) {
   const dict = getDictionary(lang)
   const { whatsappCost } = dict
@@ -58,7 +63,23 @@ export function WhatsappCostView({ lang }: { lang: Locale }) {
               <Link href="#calculator">{whatsappCost.heroCta}</Link>
             </Button>
           </div>
-
+          {/* WhatsApp todavía no está en Resender: se avisa desde el hero y no
+              recién en el cierre, para que nadie lea la página como si ya
+              pudiera conectar su número. */}
+          <p className="mt-6 text-center">
+            <Link
+              href="#waitlist"
+              className="inline-flex items-center gap-2 rounded-full border border-border bg-background/80 px-3 py-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ComingSoonDot />
+              {whatsappCost.heroSoon.text}
+              <span aria-hidden>·</span>
+              <span className="inline-flex items-center gap-1 font-medium text-foreground">
+                {whatsappCost.heroSoon.cta}
+                <ArrowRight className="size-3.5" aria-hidden />
+              </span>
+            </Link>
+          </p>
         </Section>
 
         <WhatsappCostEstimator lang={lang} copy={whatsappCost} />
@@ -84,13 +105,7 @@ export function WhatsappCostView({ lang }: { lang: Locale }) {
           items={whatsappCost.faq.items}
         />
 
-        <FinalCta
-          lang={lang}
-          title={whatsappCost.cta.title}
-          subtitle={whatsappCost.cta.subtitle}
-          cta={whatsappCost.cta.cta}
-          href="/pricing"
-        />
+        <WhatsappWaitlistCta lang={lang} copy={whatsappCost.cta} />
       </main>
       <SiteFooter lang={lang} />
     </div>
