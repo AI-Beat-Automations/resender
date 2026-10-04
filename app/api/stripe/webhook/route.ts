@@ -1,6 +1,12 @@
 import { type NextRequest } from "next/server"
 import type Stripe from "stripe"
 
+import {
+  captureCheckoutCompleted,
+  captureInvoiceEvent,
+  captureSubscriptionEvent,
+  invoiceTenantHint,
+} from "@/lib/analytics/stripe-events"
 import { getStripe } from "@/lib/billing/stripe"
 import {
   getTenantIdByStripeCustomerId,
@@ -10,7 +16,6 @@ import {
   setStripeCustomerId,
   upsertSubscription,
 } from "@/lib/billing/subscription"
-import { posthog } from "@/lib/posthog"
 
 // Replica el estado de las suscripciones de Stripe en Postgres. Espejo del
 // webhook de Meta: firma verificada sobre el body crudo antes de parsear.
@@ -55,7 +60,7 @@ export async function POST(request: NextRequest) {
 async function handleEvent(event: Stripe.Event) {
   switch (event.type) {
     case "checkout.session.completed":
-      await linkCustomerToTenant(event.data.object)
+      await linkCustomerToTenant(event.data.object, event)
       break
     case "customer.subscription.created":
     case "customer.subscription.updated":
@@ -64,25 +69,56 @@ async function handleEvent(event: Stripe.Event) {
       // upsert cierra el acceso sin lógica especial por tipo de evento.
       await applySubscriptionSnapshot(event)
       break
+    // Solo analítica: el estado de la suscripción lo deciden los tres de
+    // arriba, así que estas dos no tocan la base.
+    case "invoice.paid":
+    case "invoice.payment_failed":
+      await trackInvoice(event, event.data.object)
+      break
   }
+}
+
+// La analítica nunca hace fallar el webhook: un 500 haría que Stripe reintente
+// un evento que la base ya aplicó. Se pierde el evento de PostHog y queda la
+// línea en el log.
+async function trackSafely(event: Stripe.Event, track: () => Promise<void>) {
+  try {
+    await track()
+  } catch (error) {
+    console.warn("stripe webhook analytics failed", event.type, error)
+  }
+}
+
+async function trackInvoice(event: Stripe.Event, invoice: Stripe.Invoice) {
+  await trackSafely(event, async () => {
+    const hint = invoiceTenantHint(invoice)
+    const customerId = stripeId(invoice.customer)
+    const tenantId = resolveTenantId({
+      metadataTenantId: hint,
+      customerTenantId:
+        !hint?.trim() && customerId
+          ? await getTenantIdByStripeCustomerId(customerId)
+          : null,
+    })
+    if (!tenantId) return
+    await captureInvoiceEvent(tenantId, invoice, event)
+  })
 }
 
 // El vínculo customer↔tenant se crea normalmente en `startCheckout`; esto es
 // una red de seguridad idempotente por si la escritura local falló.
-async function linkCustomerToTenant(session: Stripe.Checkout.Session) {
+async function linkCustomerToTenant(
+  session: Stripe.Checkout.Session,
+  event: Stripe.Event
+) {
   const tenantId = session.metadata?.tenantId?.trim()
   const customerId = stripeId(session.customer)
   if (!tenantId || !customerId) return
   await setStripeCustomerId(tenantId, customerId)
 
-  if (posthog) {
-    posthog.capture({
-      distinctId: tenantId,
-      event: "checkout completed",
-      properties: { stripe_customer_id: customerId },
-    })
-    await posthog.flush()
-  }
+  await trackSafely(event, () =>
+    captureCheckoutCompleted(tenantId, session, event)
+  )
 }
 
 async function applySubscriptionSnapshot(event: Stripe.Event) {
@@ -122,36 +158,9 @@ async function applySubscriptionSnapshot(event: Stripe.Event) {
     await cancelSupersededSubscription(tenantId, supersededSubscriptionId)
   }
 
-  if (posthog) {
-    const isCanceled = subscription.status === "canceled"
-    const isNew = event.type === "customer.subscription.created"
-    if (isNew || isCanceled) {
-      const properties = {
-        stripe_subscription_id: subscription.id,
-        status: subscription.status,
-        price_lookup_key: item?.price.lookup_key ?? item?.price.id ?? "unknown",
-      }
-      // Dos capture con nombre literal en vez de un ternario en `event`: los
-      // nombres dinámicos no se pueden verificar estáticamente ni cruzar con la
-      // taxonomía de PostHog. El orden (cancelado primero) preserva la
-      // precedencia original: un `created` que ya llega cancelado sigue
-      // contando como cancelación.
-      if (isCanceled) {
-        posthog.capture({
-          distinctId: tenantId,
-          event: "subscription canceled",
-          properties,
-        })
-      } else {
-        posthog.capture({
-          distinctId: tenantId,
-          event: "subscription started",
-          properties,
-        })
-      }
-      await posthog.flush()
-    }
-  }
+  await trackSafely(event, () =>
+    captureSubscriptionEvent(tenantId, subscription, event)
+  )
 }
 
 // Dos Checkouts completados en paralelo dejan al tenant con dos suscripciones

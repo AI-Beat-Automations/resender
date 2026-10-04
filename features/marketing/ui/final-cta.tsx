@@ -1,5 +1,4 @@
-import Link from "next/link"
-
+import { TrackedLink } from "@/components/tracked-link"
 import { Button } from "@/components/ui/button"
 
 import { localePath, type Locale } from "@/content/i18n"
@@ -14,6 +13,7 @@ export function FinalCta({
   subtitle,
   cta,
   href = "/register",
+  location,
   secondary,
 }: {
   lang: Locale
@@ -22,6 +22,8 @@ export function FinalCta({
   cta: string
   // Ruta (sin idioma) del botón. Por defecto el registro.
   href?: string
+  // Dónde está el CTA, para `signup cta clicked` (`pricing`, `vs_manychat`…).
+  location: string
   // Camino secundario opcional debajo del botón: hoy solo la landing lo usa,
   // con el formulario de la lista de espera (ADR 0007). El CTA primario sigue
   // siendo «Empieza», así que esto va después, separado por una línea, y quien
@@ -41,7 +43,13 @@ export function FinalCta({
         <div className="mt-8">
           <Button asChild size="lg">
             {/* TODO: Stripe — por ahora el CTA va al registro existente. */}
-            <Link href={localePath(href, lang)}>{cta}</Link>
+            <TrackedLink
+              href={localePath(href, lang)}
+              event="signup cta clicked"
+              properties={{ location }}
+            >
+              {cta}
+            </TrackedLink>
           </Button>
         </div>
         {secondary ? (

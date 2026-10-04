@@ -2,6 +2,7 @@ import Link from "next/link"
 
 import { CookieSettingsLink } from "@/components/cookie-settings-link"
 import { SiteLogo } from "@/components/site-logo"
+import { TrackedLink } from "@/components/tracked-link"
 import {
   DISCORD_INVITE_URL,
   DOCS_URL,
@@ -92,7 +93,20 @@ export function SiteFooter({ lang }: { lang: Locale }) {
               <h3 className="mb-3 text-sm font-semibold">{column.title}</h3>
               <ul className="space-y-2 text-sm text-background/70">
                 {column.links.map((link) =>
-                  link.external ? (
+                  link.href === DOCS_URL ? (
+                    <li key={link.href}>
+                      <TrackedLink
+                        href={link.href}
+                        event="docs link clicked"
+                        properties={{ location: "footer" }}
+                        className="transition-colors hover:text-background"
+                        target="_blank"
+                        rel="noreferrer noopener"
+                      >
+                        {link.label}
+                      </TrackedLink>
+                    </li>
+                  ) : link.external ? (
                     <li key={link.href}>
                       <a
                         href={link.href}

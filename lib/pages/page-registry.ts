@@ -275,6 +275,24 @@ export async function countActivePages(tenantId: string): Promise<number> {
   return row?.count ?? 0
 }
 
+// Solo para analítica (`connections_count` e `is_first_connection` en
+// PostHog). `total` cuenta también las desconectadas: una fila nunca se borra
+// al desconectar, así que `total = 0` es «nunca conectó nada».
+export async function countTenantConnections(
+  tenantId: string
+): Promise<{ active: number; total: number }> {
+  const sql = getSql()
+  const [row] = await sql<{ active: number; total: number }[]>`
+    select
+      count(*) filter (where status = 'active')::int as active,
+      count(*)::int as total
+    from connected_pages
+    where tenant_id = ${tenantId}
+  `
+
+  return { active: row?.active ?? 0, total: row?.total ?? 0 }
+}
+
 // Las conexiones `active` de **un cliente** (issue #154, ticket 3): lo que se
 // compara contra su tope en `client-limits`. Es un contador aparte y no un
 // parámetro de `countActivePages` a propósito: el conteo global del tenant

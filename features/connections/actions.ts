@@ -5,6 +5,10 @@ import { revalidatePath } from "next/cache"
 import { getAppDict } from "@/lib/i18n/app-dict"
 import { resolveActionActor } from "@/lib/clients/action-actor"
 import {
+  activeConnectionsCount,
+  connectionEventProperties,
+} from "@/lib/analytics/connections"
+import {
   disconnectPage,
   getActivePageWithTokenByConnectionId,
   ensureWebhookSigningSecret,
@@ -165,12 +169,19 @@ export async function disconnectPageAction(
 
   if (posthog) {
     posthog.capture({
-      distinctId: actor.userId,
+      // El tenant, como en los eventos de conexión: `connections_count` es una
+      // sola cifra por cuenta aunque desconecte un [Cliente].
+      distinctId: actor.tenantId,
       event: "page disconnected",
       properties: {
-        connection_id: connectionId,
         page_id: disconnected.metaPageId,
         page_name: disconnected.name,
+        ...connectionEventProperties({
+          channel: disconnected.channel,
+          connectionId,
+          clientId: disconnected.clientAccountId,
+          connectionsCount: await activeConnectionsCount(actor.tenantId),
+        }),
       },
     })
     await posthog.flush()

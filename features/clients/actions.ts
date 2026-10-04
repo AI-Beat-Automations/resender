@@ -187,6 +187,9 @@ export async function createClientAction(
         client_account_id: client.id,
         max_connections: client.maxConnections,
         invitation_sent: sent,
+        // Crear el primer cliente es lo que activa el modo agencia; no se
+        // apaga al borrar clientes, porque mide adopción y no estado.
+        $set: { agency_mode: true },
       },
     })
     await posthog.flush()

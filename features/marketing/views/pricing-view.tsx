@@ -53,7 +53,7 @@ export function PricingView({ lang }: { lang: Locale }) {
             subtitle={dict.pricing.subtitle}
           />
           <div className="mt-16">
-            <PlanCards lang={lang} />
+            <PlanCards lang={lang} location="pricing" />
           </div>
           <div className="mt-6">
             <EnterpriseCta lang={lang} />
@@ -87,6 +87,7 @@ export function PricingView({ lang }: { lang: Locale }) {
           title={dict.pricingCta.title}
           subtitle={dict.pricingCta.subtitle}
           cta={dict.pricingCta.cta}
+          location="pricing"
         />
       </main>
       <SiteFooter lang={lang} />

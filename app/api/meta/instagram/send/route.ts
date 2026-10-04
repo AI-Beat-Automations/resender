@@ -1,6 +1,11 @@
 import { type NextRequest } from "next/server"
 
 import {
+  captureUsageThreshold,
+  messageEventProperties,
+  quotaContextOf,
+} from "@/lib/analytics/usage"
+import {
   API_KEY_RATE_LIMIT_RETRY_AFTER_SECONDS,
   allowApiKeyRequest,
 } from "@/lib/auth/api-key-rate-limit"
@@ -161,7 +166,9 @@ async function handle(request: NextRequest, capture: ApiLogCapture) {
   // período agotada o con más conexiones de las que permite el plan, la cuenta
   // queda restringida y no envía por ninguna de sus conexiones —Instagram
   // incluido desde la ADR 0011—.
-  const { block, periodStart } = await getTenantEntitlement(apiKey.tenantId)
+  const entitlement = await getTenantEntitlement(apiKey.tenantId)
+  const { block, periodStart } = entitlement
+  const quota = quotaContextOf(entitlement)
   // Un período sin resolver siempre viene acompañado de `block` (el módulo
   // puro es fail-closed); comprobar ambos es lo que estrecha el tipo de
   // `periodStart` hasta el incremento del contador, sin recurrir a `!`.
@@ -382,7 +389,8 @@ async function handle(request: NextRequest, capture: ApiLogCapture) {
   // Meta ya entregó.
   if (metaResult.ok) {
     try {
-      await incrementUsage(apiKey.tenantId, periodStart)
+      const usage = await incrementUsage(apiKey.tenantId, periodStart)
+      captureUsageThreshold(apiKey.tenantId, usage, quota)
     } catch (error) {
       log({
         entrypoint: "route",
@@ -405,6 +413,7 @@ async function handle(request: NextRequest, capture: ApiLogCapture) {
       message_id: message.id,
       conversation_id: conversation.id,
       page_id: page.metaPageId,
+      ...messageEventProperties(page, quota),
       channel: "instagram",
       status: message.status,
       meta_ok: metaResult.ok,

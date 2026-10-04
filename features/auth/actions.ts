@@ -153,12 +153,14 @@ export async function registerAction(
     throw error
   }
 
+  // `user registered` ya salió del hook `user.create.after` de
+  // `lib/auth/auth.ts`, que cubre también el alta con Google; acá solo queda
+  // atar el email a la persona.
   if (posthog && created) {
     posthog.identify({
       distinctId: created.id,
       properties: { $set: { email: created.email } },
     })
-    posthog.capture({ distinctId: created.id, event: "user registered" })
     await posthog.flush()
   }
 

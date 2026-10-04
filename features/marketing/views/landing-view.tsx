@@ -43,6 +43,7 @@ export function LandingView({ lang }: { lang: Locale }) {
           title={dict.finalCta.title}
           subtitle={dict.finalCta.subtitle}
           cta={dict.finalCta.cta}
+          location="landing_final"
           // La lista de espera se fusiona en el cierre existente en vez de
           // ocupar una sección propia debajo de los precios (ADR 0007): un
           // solo momento de decisión, con «Empieza» arriba como acción

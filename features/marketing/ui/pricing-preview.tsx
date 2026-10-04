@@ -18,7 +18,7 @@ export function PricingPreview({ lang }: { lang: Locale }) {
         subtitle={dict.pricingPreview.subtitle}
       />
       <div className="mt-16">
-        <PlanCards lang={lang} />
+        <PlanCards lang={lang} location="landing" />
       </div>
       {/* La misma banda «a medida» de /pricing: quien supera Business tiene
           que encontrar el correo sin salir de la landing. */}

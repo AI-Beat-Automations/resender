@@ -6,6 +6,7 @@ import { LoaderCircle, TriangleAlert } from "lucide-react"
 
 import type { AuthFormState } from "@/features/auth/actions"
 import { getDictionary, localePath, type Locale } from "@/content/i18n"
+import { TrackedLink } from "@/components/tracked-link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -127,12 +128,25 @@ export function AuthForm({ action, mode, lang }: AuthFormProps) {
       </form>
       <p className="mt-4 text-center text-[13.5px] text-muted-foreground">
         {isLogin ? t.noAccount : t.haveAccount}{" "}
-        <Link
-          href={localePath(isLogin ? "/register" : "/login", lang)}
-          className="font-medium text-foreground underline-offset-4 hover:underline"
-        >
-          {isLogin ? t.signUp : t.signInAction}
-        </Link>
+        {isLogin ? (
+          // Es el camino del navbar: no tiene CTA de registro propio, solo
+          // «Iniciar sesión», y desde acá se llega a crear la cuenta.
+          <TrackedLink
+            href={localePath("/register", lang)}
+            event="signup cta clicked"
+            properties={{ location: "login" }}
+            className="font-medium text-foreground underline-offset-4 hover:underline"
+          >
+            {t.signUp}
+          </TrackedLink>
+        ) : (
+          <Link
+            href={localePath("/login", lang)}
+            className="font-medium text-foreground underline-offset-4 hover:underline"
+          >
+            {t.signInAction}
+          </Link>
+        )}
       </p>
     </>
   )
