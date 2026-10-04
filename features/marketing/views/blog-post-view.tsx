@@ -9,6 +9,7 @@ import rehypeSlug from "rehype-slug"
 import type { Highlighter } from "shiki"
 
 import { Badge } from "@/components/ui/badge"
+import { TrackedLink } from "@/components/tracked-link"
 import { Button } from "@/components/ui/button"
 
 import { SiteHeader } from "@/components/site-header"
@@ -162,9 +163,13 @@ export async function BlogPostView({
                 {dict.blog.reading.subtitle}
               </p>
               <Button asChild className="mt-4">
-                <Link href={localePath("/register", lang)}>
+                <TrackedLink
+                  href={localePath("/register", lang)}
+                  event="signup cta clicked"
+                  properties={{ location: "blog" }}
+                >
                   {dict.blog.reading.cta}
-                </Link>
+                </TrackedLink>
               </Button>
             </div>
           </div>

@@ -1,5 +1,6 @@
 import Link from "next/link"
 
+import { TrackedLink } from "@/components/tracked-link"
 import { Button } from "@/components/ui/button"
 
 import { FlowMock } from "@/features/marketing/ui/flow-mock"
@@ -32,9 +33,13 @@ export function Hero({ lang }: { lang: Locale }) {
           <div className="mt-8 flex flex-wrap gap-3">
             <Button asChild size="lg">
               {/* TODO: Stripe — por ahora el CTA va al registro existente. */}
-              <Link href={localePath("/register", lang)}>
+              <TrackedLink
+                href={localePath("/register", lang)}
+                event="signup cta clicked"
+                properties={{ location: "hero" }}
+              >
                 {dict.hero.ctaPrimary}
-              </Link>
+              </TrackedLink>
             </Button>
             <Button asChild size="lg" variant="outline">
               <Link href="#how-it-works">{dict.hero.ctaSecondary}</Link>

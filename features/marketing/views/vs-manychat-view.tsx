@@ -86,6 +86,7 @@ export function VsManychatView({ lang }: { lang: Locale }) {
           title={vsManychat.cta.title}
           subtitle={vsManychat.cta.subtitle}
           cta={vsManychat.cta.cta}
+          location="vs_manychat"
         />
       </main>
       <SiteFooter lang={lang} />

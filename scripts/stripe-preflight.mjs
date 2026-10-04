@@ -35,6 +35,10 @@ const REQUIRED_EVENTS = [
   "customer.subscription.created",
   "customer.subscription.updated",
   "customer.subscription.deleted",
+  // Solo analítica (`invoice paid` / `payment failed` en PostHog): no cambian
+  // el estado de la suscripción, que sigue saliendo de los tres de arriba.
+  "invoice.paid",
+  "invoice.payment_failed",
 ]
 
 // En `main` el webhook lo atiende el Worker `web`. Tras el cutover de la fase 2

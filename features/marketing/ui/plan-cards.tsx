@@ -1,6 +1,6 @@
-import Link from "next/link"
 import { Check } from "lucide-react"
 
+import { TrackedLink } from "@/components/tracked-link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -20,9 +20,12 @@ import { getDictionary, localePath, type Locale } from "@/content/i18n"
 export function PlanCards({
   lang,
   showFeatures = true,
+  location,
 }: {
   lang: Locale
   showFeatures?: boolean
+  // Dónde se dibujan las cards, para `pricing plan clicked`.
+  location: "pricing" | "landing"
 }) {
   const dict = getDictionary(lang)
 
@@ -73,7 +76,14 @@ export function PlanCards({
             >
               {/* Todos los CTA van al registro: la cuenta nace en el plan Free
                   (ADR 0022) y sube de plan desde adentro. */}
-              <Link href={localePath("/register", lang)}>{plan.cta}</Link>
+              <TrackedLink
+                href={localePath("/register", lang)}
+                event={["pricing plan clicked", "signup cta clicked"]}
+                // El nombre del plan es el mismo en los dos idiomas.
+                properties={{ plan: plan.name.toLowerCase(), location }}
+              >
+                {plan.cta}
+              </TrackedLink>
             </Button>
           </CardFooter>
         </Card>

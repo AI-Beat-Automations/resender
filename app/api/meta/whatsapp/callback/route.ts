@@ -3,6 +3,11 @@ import { revalidatePath } from "next/cache"
 import { cookies } from "next/headers"
 import { NextResponse, type NextRequest } from "next/server"
 
+import {
+  activeConnectionsCount,
+  connectionEventProperties,
+  hadAnyConnection,
+} from "@/lib/analytics/connections"
 import { getSession } from "@/lib/auth/session"
 import { resolveWhatsappAccess } from "@/lib/auth/channel-access"
 import { resolveTenantPlanLimits } from "@/lib/billing/entitlements"
@@ -264,6 +269,7 @@ export async function POST(request: NextRequest) {
     throw error
   }
 
+  const hadConnection = await hadAnyConnection(tenantId)
   const outcome = await runWhatsappSignup(
     {
       begin: beginWhatsappSignup,
@@ -393,7 +399,6 @@ export async function POST(request: NextRequest) {
       distinctId: tenantId,
       event: "whatsapp number connected",
       properties: {
-        connection_id: page.id,
         phone_number_id: page.metaPageId,
         waba_id: page.wabaId,
         onboarding_mode: outcome.mode,
@@ -401,6 +406,13 @@ export async function POST(request: NextRequest) {
         // tenía», que es lo que decide si hay que mostrárselo.
         pin_generated: outcome.pinGenerated,
         history_sync: outcome.historySync,
+        ...connectionEventProperties({
+          channel: "whatsapp",
+          connectionId: page.id,
+          clientId: actor.clientAccountId,
+          isFirstConnection: !hadConnection,
+          connectionsCount: await activeConnectionsCount(tenantId),
+        }),
       },
     })
     await posthog.flush()

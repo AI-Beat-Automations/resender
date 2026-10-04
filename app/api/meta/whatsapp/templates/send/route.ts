@@ -1,5 +1,9 @@
 import { type NextRequest } from "next/server"
 
+import {
+  captureUsageThreshold,
+  messageEventProperties,
+} from "@/lib/analytics/usage"
 import { incrementUsage } from "@/lib/billing/usage-counter"
 import {
   getOutboundMessageByIdempotencyKey,
@@ -85,7 +89,7 @@ async function handle(request: NextRequest, capture: ApiLogCapture) {
   // idempotente: los mismos de `/whatsapp/send`.
   const gates = await runWhatsappSendGates(request, trace)
   if (!gates.ok) return gates.response
-  const { apiKey, periodStart, idempotencyKey } = gates
+  const { apiKey, periodStart, quota, idempotencyKey } = gates
 
   let body: unknown
   try {
@@ -304,7 +308,8 @@ async function handle(request: NextRequest, capture: ApiLogCapture) {
   // no puede hacer fallar un mensaje que Meta ya entregó.
   if (metaResult.ok) {
     try {
-      await incrementUsage(apiKey.tenantId, periodStart)
+      const usage = await incrementUsage(apiKey.tenantId, periodStart)
+      captureUsageThreshold(apiKey.tenantId, usage, quota)
     } catch (error) {
       log({
         entrypoint: "route",
@@ -327,6 +332,7 @@ async function handle(request: NextRequest, capture: ApiLogCapture) {
       message_id: message.id,
       conversation_id: conversation.id,
       page_id: page.metaPageId,
+      ...messageEventProperties(page, quota),
       channel: "whatsapp",
       status: message.status,
       meta_ok: metaResult.ok,

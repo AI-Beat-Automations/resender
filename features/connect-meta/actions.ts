@@ -3,6 +3,11 @@
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 
+import {
+  activeConnectionsCount,
+  connectionEventProperties,
+  hadAnyConnection,
+} from "@/lib/analytics/connections"
 import { getSession } from "@/lib/auth/session"
 import type { Actor } from "@/lib/clients/actor"
 import {
@@ -163,6 +168,8 @@ async function connectSelectedPages(
     return authorized ? [authorized] : []
   })
 
+  const hadConnection = await hadAnyConnection(tenantId)
+
   try {
     assertSecretEncryptionConfigured()
     await subscribePagesToWebhook(selected)
@@ -182,11 +189,23 @@ async function connectSelectedPages(
     }
 
     if (posthog) {
-      for (const page of connectedPages) {
+      const connectionsCount = await activeConnectionsCount(tenantId)
+      for (const [index, page] of connectedPages.entries()) {
         posthog.capture({
           distinctId: tenantId,
           event: "page connected",
-          properties: { page_id: page.metaPageId, page_name: page.name },
+          properties: {
+            page_id: page.metaPageId,
+            page_name: page.name,
+            ...connectionEventProperties({
+              channel: "messenger",
+              connectionId: page.id,
+              clientId: actor.clientAccountId,
+              // Una selección de varias Páginas: solo la primera estrena.
+              isFirstConnection: !hadConnection && index === 0,
+              connectionsCount,
+            }),
+          },
         })
       }
       await posthog.flush()

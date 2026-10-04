@@ -6,6 +6,7 @@ import {
   authenticateApiKey,
   type AuthenticatedApiKey,
 } from "@/lib/auth/api-keys"
+import { quotaContextOf, type QuotaContext } from "@/lib/analytics/usage"
 import { resolveWhatsappAccess } from "@/lib/auth/channel-access"
 import { isUserWaitlisted } from "@/lib/auth/waitlist"
 import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
@@ -37,6 +38,7 @@ export type WhatsappSendGatesResult =
       periodStart: NonNullable<
         Awaited<ReturnType<typeof getTenantEntitlement>>["periodStart"]
       >
+      quota: QuotaContext
       idempotencyKey: string
     }
   | { ok: false; response: Response }
@@ -82,7 +84,7 @@ export async function runWhatsappSendGates(
   // el permiso.
   const access = await checkWhatsappAccountAccess(apiKey.tenantId, trace)
   if (!access.ok) return access
-  const { periodStart } = access
+  const { periodStart, quota } = access
 
   // ---- 5. Replay idempotente ----------------------------------------------
   // No llama a Meta ni inserta, así que devolver el resultado ya almacenado es
@@ -101,7 +103,7 @@ export async function runWhatsappSendGates(
     )
   }
 
-  return { ok: true, apiKey, periodStart, idempotencyKey }
+  return { ok: true, apiKey, periodStart, quota, idempotencyKey }
 }
 
 export type WhatsappApiGatesResult =
@@ -179,6 +181,7 @@ type AccountAccessResult =
       periodStart: NonNullable<
         Awaited<ReturnType<typeof getTenantEntitlement>>["periodStart"]
       >
+      quota: QuotaContext
     }
   | { ok: false; response: Response }
 
@@ -222,7 +225,8 @@ async function checkWhatsappAccountAccess(
   // ADR 0003: con la cuota del período agotada o con más conexiones de las que
   // permite el plan, la cuenta queda restringida y no envía por ninguna de sus
   // conexiones, de cualquier canal.
-  const { block, periodStart } = await getTenantEntitlement(tenantId)
+  const entitlement = await getTenantEntitlement(tenantId)
+  const { block, periodStart } = entitlement
   // Un período sin resolver siempre viene acompañado de `block` (el módulo puro
   // es fail-closed); comprobar ambos es lo que estrecha el tipo de `periodStart`
   // hasta el incremento del contador, sin recurrir a `!`.
@@ -244,7 +248,7 @@ async function checkWhatsappAccountAccess(
     )
   }
 
-  return { ok: true, periodStart }
+  return { ok: true, periodStart, quota: quotaContextOf(entitlement) }
 }
 
 // También la usa la ruta cuando pierde la carrera del índice único de la
