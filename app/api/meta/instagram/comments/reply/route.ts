@@ -1,5 +1,9 @@
 import { type NextRequest } from "next/server"
 
+import {
+  captureUsageThreshold,
+  quotaContextOf,
+} from "@/lib/analytics/usage"
 import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
 import { incrementUsage } from "@/lib/billing/usage-counter"
 import {
@@ -90,7 +94,9 @@ async function handle(request: NextRequest, capture: ApiLogCapture) {
   // después del replay, que no llama a Meta ni inserta. Con la cuota agotada o
   // con más conexiones de las que permite el plan, la cuenta queda restringida
   // y tampoco responde comentarios (ADR 0011).
-  const { block, periodStart } = await getTenantEntitlement(tenantId)
+  const entitlement = await getTenantEntitlement(tenantId)
+  const { block, periodStart } = entitlement
+  const quota = quotaContextOf(entitlement)
   // Un período sin resolver siempre viene acompañado de `block` (el módulo puro
   // es fail-closed); comprobar ambos es lo que estrecha el tipo de
   // `periodStart` hasta el incremento del contador, sin recurrir a `!`.
@@ -237,7 +243,8 @@ async function handle(request: NextRequest, capture: ApiLogCapture) {
   // respuesta que Meta ya publicó.
   if (metaResult.ok) {
     try {
-      await incrementUsage(tenantId, periodStart)
+      const usage = await incrementUsage(tenantId, periodStart)
+      captureUsageThreshold(tenantId, usage, quota)
     } catch (error) {
       log({
         entrypoint: "route",

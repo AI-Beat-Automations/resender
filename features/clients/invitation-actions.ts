@@ -17,6 +17,7 @@ import {
 } from "@/lib/clients/invitations"
 import { getAppDict } from "@/lib/i18n/app-dict"
 import { describeError, log, type LogReason } from "@/lib/observability/logger"
+import { captureUserRegistered } from "@/lib/analytics/user-registered"
 import { posthog } from "@/lib/posthog"
 
 // Aceptar la [Invitacion de cliente] desde `/invitacion/[token]` (issue #154,
@@ -105,11 +106,20 @@ export async function acceptInvitationAction(
     clientAccountId: result.clientAccountId,
   })
 
-  if (posthog) {
-    posthog.identify({
-      distinctId: result.userId,
-      properties: { $set: { email: result.email } },
+  // `acceptInvitation` inserta el user a mano, sin pasar por el hook
+  // `user.create.after` de Better Auth: el alta se cuenta acá.
+  try {
+    await captureUserRegistered({
+      userId: result.userId,
+      email: result.email,
+      method: "email",
+      isInvitedClient: true,
     })
+  } catch (error) {
+    console.warn("posthog user registered failed", error)
+  }
+
+  if (posthog) {
     posthog.capture({
       distinctId: result.userId,
       event: "client accepted invitation",

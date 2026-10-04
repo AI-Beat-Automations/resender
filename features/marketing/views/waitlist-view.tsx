@@ -1,4 +1,3 @@
-import Link from "next/link"
 
 import { SiteHeader } from "@/components/site-header"
 import { SiteFooter } from "@/components/site-footer"
@@ -12,6 +11,7 @@ import { WaitlistForm } from "@/features/waitlist/ui/waitlist-form"
 import { baseGraph, breadcrumbSchema, schemaGraph } from "@/lib/schema"
 import { getDictionary, localePath, type Locale } from "@/content/i18n"
 import { SITE_NAME } from "@/lib/site-config"
+import { TrackedLink } from "@/components/tracked-link"
 import { Button } from "@/components/ui/button"
 
 // Página pública de la lista de espera, compartida por `/waitlist` (ES) y
@@ -97,7 +97,13 @@ export function WaitlistView({ lang }: { lang: Locale }) {
               </p>
             </div>
             <Button asChild size="lg" variant="outline" className="sm:shrink-0">
-              <Link href={localePath("/register", lang)}>{t.registerCta}</Link>
+              <TrackedLink
+                href={localePath("/register", lang)}
+                event="signup cta clicked"
+                properties={{ location: "waitlist" }}
+              >
+                {t.registerCta}
+              </TrackedLink>
             </Button>
           </div>
         </Section>

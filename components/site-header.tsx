@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/sheet"
 
 import { SiteLogo } from "@/components/site-logo"
+import { TrackedLink } from "@/components/tracked-link"
 import { LanguageToggle } from "@/components/language-toggle"
 import { DOCS_URL } from "@/lib/site-config"
 import { getDictionary, localePath, type Locale } from "@/content/i18n"
@@ -45,7 +46,7 @@ export function SiteHeader({ lang }: { lang: Locale }) {
         <nav className="hidden items-center gap-1 md:flex">
           {navLinks.map((link) => (
             <Button key={link.href} asChild variant="ghost" size="sm">
-              <Link href={link.href}>{link.label}</Link>
+              <NavLink href={link.href} label={link.label} />
             </Button>
           ))}
         </nav>
@@ -78,7 +79,7 @@ export function SiteHeader({ lang }: { lang: Locale }) {
                     className="justify-start"
                     onClick={() => setOpen(false)}
                   >
-                    <Link href={link.href}>{link.label}</Link>
+                    <NavLink href={link.href} label={link.label} />
                   </Button>
                 ))}
                 <div className="mt-4 flex flex-col gap-2">
@@ -92,5 +93,34 @@ export function SiteHeader({ lang }: { lang: Locale }) {
         </div>
       </div>
     </header>
+  )
+}
+
+// El link a docs sale del dominio: se cuenta como `docs link clicked`. Recibe
+// del `Slot` de `Button` los mismos props que un `Link`.
+function NavLink({
+  href,
+  label,
+  ...props
+}: Omit<React.ComponentProps<typeof Link>, "href"> & {
+  href: string
+  label: string
+}) {
+  if (href !== DOCS_URL) {
+    return (
+      <Link href={href} {...props}>
+        {label}
+      </Link>
+    )
+  }
+  return (
+    <TrackedLink
+      href={href}
+      event="docs link clicked"
+      properties={{ location: "navbar" }}
+      {...props}
+    >
+      {label}
+    </TrackedLink>
   )
 }

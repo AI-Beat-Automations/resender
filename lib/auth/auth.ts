@@ -7,6 +7,10 @@ import { nextCookies } from "better-auth/next-js"
 import { NeonDialect } from "kysely-neon"
 
 import { localeFromPathname, localePath, type Locale } from "@/content/i18n"
+import {
+  captureUserRegistered,
+  signupMethodOf,
+} from "@/lib/analytics/user-registered"
 import { notifyAccountLinked } from "@/lib/auth/account-linked-notice"
 import { resolveEmailLocale } from "@/lib/auth/email-locale"
 import { socialProviders } from "@/lib/auth/google"
@@ -430,8 +434,21 @@ function createAuth() {
     databaseHooks: {
       user: {
         create: {
-          after: async (_user, ctx) => {
+          after: async (user, ctx) => {
             markXRegistration(ctx)
+            // Único punto común del alta por correo y por Google. Igual que
+            // el aviso de [Cuenta vinculada], nunca lanza: un PostHog caído
+            // no puede dejar a nadie afuera de un alta que ya se escribió.
+            try {
+              await captureUserRegistered({
+                userId: user.id,
+                email: user.email,
+                method: signupMethodOf(ctx),
+                isInvitedClient: false,
+              })
+            } catch (error) {
+              console.warn("posthog user registered failed", error)
+            }
           },
         },
       },

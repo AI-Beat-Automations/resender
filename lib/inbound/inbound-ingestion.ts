@@ -2,6 +2,11 @@ import {
   resolveInstagramAccess,
   resolveWhatsappAccess,
 } from "@/lib/auth/channel-access"
+import {
+  captureUsageThreshold,
+  messageEventProperties,
+  quotaContextOf,
+} from "@/lib/analytics/usage"
 import { getTenantEntitlement } from "@/lib/billing/entitlement-status"
 import {
   countsTowardQuota,
@@ -626,7 +631,12 @@ async function ingestInboundEvents(
       countsTowardQuota({ kind: "inbound", persisted: true })
     ) {
       try {
-        await incrementUsage(page.tenantId, periodStart)
+        const usage = await incrementUsage(page.tenantId, periodStart)
+        captureUsageThreshold(
+          page.tenantId,
+          usage,
+          quotaContextOf(entitlement)
+        )
       } catch (error) {
         log({
           entrypoint: "route",
@@ -655,6 +665,7 @@ async function ingestInboundEvents(
         conversation_id: conversation.id,
         page_id: page.metaPageId,
         channel,
+        ...messageEventProperties(page, quotaContextOf(entitlement)),
         event_type: event.eventType,
         // Distingue el eco de la Business App de un entrante del cliente sin
         // tener que cruzar la fila: son dos hechos comerciales distintos.
@@ -979,7 +990,12 @@ async function ingestInstagramComments(
       countsTowardQuota({ kind: "inbound", persisted: true })
     ) {
       try {
-        await incrementUsage(page.tenantId, periodStart)
+        const usage = await incrementUsage(page.tenantId, periodStart)
+        captureUsageThreshold(
+          page.tenantId,
+          usage,
+          quotaContextOf(entitlement)
+        )
       } catch (error) {
         log({
           entrypoint: "route",

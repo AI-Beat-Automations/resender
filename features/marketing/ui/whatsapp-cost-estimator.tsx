@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { usePostHog } from "posthog-js/react"
 
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
@@ -20,6 +21,7 @@ import {
   findMarket,
   type MetaMessageCategory,
 } from "@/lib/meta/whatsapp-rate-card"
+import { isPostHogEnabled } from "@/lib/posthog-client"
 import type { Dict, Locale } from "@/content/i18n"
 
 // Las secciones interactivas de /whatsapp-cost-calculator: los tres tipos de
@@ -39,6 +41,10 @@ const INITIAL_VOLUMES: MonthlyVolumes = {
   utility: 1000,
   service: 3000,
 }
+
+// El resultado se recalcula en cada tecla: `calculator used` sale cuando la
+// persona deja de tocar los campos, no por cada dígito.
+const CALCULATOR_EVENT_DELAY_MS = 1500
 
 function formatters(lang: Locale) {
   // es-AR y no es-419: agrupa miles con punto («2.000»), igual que el copy.
@@ -108,6 +114,32 @@ export function WhatsappCostEstimator({
 
   const market = findMarket(marketId)
   const estimate = estimateMetaCost(volumes, market)
+
+  // Solo después de que la persona cambió algo: los valores de ejemplo con
+  // los que abre la página no son un uso de la calculadora.
+  // Se compara por identidad con el estado inicial y no con un ref de «primer
+  // render», que el doble montaje de StrictMode dispararía en dev.
+  const posthog = usePostHog()
+  useEffect(() => {
+    if (marketId === DEFAULT_MARKET_ID && volumes === INITIAL_VOLUMES) return
+    if (!isPostHogEnabled) return
+    const timer = setTimeout(() => {
+      posthog.capture("calculator used", {
+        country: marketId,
+        messages_per_month: CATEGORIES.reduce(
+          (sum, category) => sum + (volumes[category] || 0),
+          0
+        ),
+        marketing_messages: volumes.marketing,
+        utility_messages: volumes.utility,
+        service_messages: volumes.service,
+        estimated_cost_usd: Math.round(estimate.total * 100) / 100,
+      })
+    }, CALCULATOR_EVENT_DELAY_MS)
+    return () => clearTimeout(timer)
+    // `estimate` se deriva de `marketId` y `volumes` en cada render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [posthog, marketId, volumes])
   const format = formatters(lang)
   const { types, calculator } = copy
 

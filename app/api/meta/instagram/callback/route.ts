@@ -1,5 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server"
 
+import {
+  activeConnectionsCount,
+  connectionEventProperties,
+  hadAnyConnection,
+} from "@/lib/analytics/connections"
 import { getSession } from "@/lib/auth/session"
 import { resolveInstagramAccess } from "@/lib/auth/channel-access"
 import { resolveTenantPlanLimits } from "@/lib/billing/entitlements"
@@ -213,6 +218,7 @@ export async function GET(request: NextRequest) {
     await subscribeInstagramWebhook(token.accessToken)
 
     step = "persist"
+    const hadConnection = await hadAnyConnection(tenantId)
     const account = await connectInstagramAccount(
       tenantId,
       {
@@ -227,12 +233,20 @@ export async function GET(request: NextRequest) {
 
     if (posthog) {
       posthog.capture({
-        distinctId: session.user.id,
+        // El tenant y no el user de la sesión: si conecta un [Cliente], la
+        // conexión ocupa un slot del plan de su padre.
+        distinctId: tenantId,
         event: "instagram account connected",
         properties: {
-          connection_id: account.id,
           ig_user_id: account.metaPageId,
           username: account.username,
+          ...connectionEventProperties({
+            channel: "instagram",
+            connectionId: account.id,
+            clientId: actor.clientAccountId,
+            isFirstConnection: !hadConnection,
+            connectionsCount: await activeConnectionsCount(tenantId),
+          }),
         },
       })
       await posthog.flush()

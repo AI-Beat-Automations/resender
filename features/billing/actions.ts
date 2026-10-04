@@ -68,7 +68,9 @@ export async function startCheckout(lookupKey: string): Promise<void> {
     line_items: [{ price: price.id, quantity: 1 }],
     // Promo codes / coupons from the Stripe Dashboard (Live or Test).
     allow_promotion_codes: true,
-    metadata: { tenantId: session.user.id },
+    // `priceLookupKey` es solo para analítica: el webhook no trae los line
+    // items y `checkout completed` lo reporta como `plan`.
+    metadata: { tenantId: session.user.id, priceLookupKey: lookupKey },
     subscription_data: { metadata: { tenantId: session.user.id } },
     success_url: `${appUrl}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${appUrl}/billing`,

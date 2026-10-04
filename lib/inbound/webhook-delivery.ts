@@ -132,6 +132,15 @@ export async function enqueueDelivery(input: {
       requestId: context.requestId ?? null,
       requestBody: input.payload,
     })
+    await captureWebhookDeliveryFailed(input.payload.tenant.id, {
+      reason: "invalid_url",
+      http_status: null,
+      latency_ms: 0,
+      channel: context.channel ?? null,
+      connection_id: context.connectionId ?? null,
+      attempt: 1,
+      will_retry: false,
+    })
     await captureDeliveryFailed(input.payload.tenant.id, input.subject, {
       reason: deliveryError,
     })
@@ -489,6 +498,8 @@ export async function deliverJob(input: {
   const body = JSON.stringify(claimed.payload)
   const startedAt = Date.now()
   let responseBody: string | null = null
+  // Motivo para PostHog cuando no hubo respuesta HTTP que clasificar.
+  let networkFailure: WebhookFailureReason = "connection_error"
   try {
     if (!claimed.webhookUrl) throw new Error("webhookUrl not configured")
     const response = await (input.fetcher ?? fetch)(claimed.webhookUrl, {
@@ -517,10 +528,16 @@ export async function deliverJob(input: {
     responseBody = await readResponseBodyCapped(response)
   } catch (error) {
     const message = describeError(error)
-    outcome =
+    const invalidUrl =
       message.includes("not configured") || message.includes("must use https")
-        ? { kind: "permanent", statusCode: null, error: message }
-        : { kind: "retry", statusCode: null, error: message }
+    outcome = invalidUrl
+      ? { kind: "permanent", statusCode: null, error: message }
+      : { kind: "retry", statusCode: null, error: message }
+    networkFailure = invalidUrl
+      ? "invalid_url"
+      : error instanceof Error && error.name === "TimeoutError"
+        ? "timeout"
+        : "connection_error"
   }
 
   const durationMs = Date.now() - startedAt
@@ -592,6 +609,18 @@ export async function deliverJob(input: {
     requestBody: body,
     responseBody,
   })
+
+  if (outcome.kind !== "success") {
+    await captureWebhookDeliveryFailed(claimed.tenantId, {
+      reason: outcome.statusCode === null ? networkFailure : "http_error",
+      http_status: outcome.statusCode,
+      latency_ms: durationMs,
+      channel: claimed.channel,
+      connection_id: claimed.connectionId,
+      attempt: claimed.attemptCount,
+      will_retry: outcome.kind === "retry",
+    })
+  }
 
   if (outcome.kind === "permanent") {
     await captureDeliveryFailed(claimed.tenantId, subjectOf(claimed), {
@@ -754,6 +783,37 @@ function subjectOf(job: JobRecord): DeliverySubject | null {
 function subjectFields(job: JobRecord) {
   const subject = subjectOf(job)
   return subject ? { subject: subject.kind, subjectId: subject.id } : {}
+}
+
+type WebhookFailureReason =
+  | "timeout"
+  | "http_error"
+  | "connection_error"
+  | "invalid_url"
+
+// `webhook delivery failed`: **cada intento** fallido contra el endpoint del
+// tenant, con `will_retry` para separar los que todavía tienen reintentos por
+// delante. `message delivery failed` (abajo) sigue siendo el cierre definitivo
+// de una entrega, uno por sujeto.
+async function captureWebhookDeliveryFailed(
+  tenantId: string,
+  properties: {
+    reason: WebhookFailureReason
+    http_status: number | null
+    latency_ms: number
+    channel: string | null
+    connection_id: string | null
+    attempt: number
+    will_retry: boolean
+  }
+) {
+  if (!posthog) return
+  posthog.capture({
+    distinctId: tenantId,
+    event: "webhook delivery failed",
+    properties,
+  })
+  await posthog.flush()
 }
 
 async function captureDeliveryFailed(
