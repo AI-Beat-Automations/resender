@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
   log: vi.fn(),
   markPageTokenInvalid: vi.fn(),
   resolveInstagramAccess: vi.fn(),
-  sendInstagramTextMessage: vi.fn(),
+  sendInstagramMessage: vi.fn(),
   upsertConversation: vi.fn(),
 }))
 
@@ -58,11 +58,11 @@ vi.mock("@/lib/pages/page-registry", () => ({
 }))
 
 // El cliente de Graph entero: si el gate se cayera, este espía es el que lo
-// delata. Solo `sendInstagramTextMessage` sale a la red; el resto son puras y
+// delata. Solo `sendInstagramMessage` sale a la red; el resto son puras y
 // se dejan con su comportamiento real para no falsear el largo del texto.
 vi.mock("@/lib/outbound/instagram-send", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/outbound/instagram-send")>()),
-  sendInstagramTextMessage: mocks.sendInstagramTextMessage,
+  sendInstagramMessage: mocks.sendInstagramMessage,
 }))
 
 vi.mock("@/lib/observability/logger", async (importOriginal) => ({
@@ -133,7 +133,7 @@ describe("POST /api/meta/instagram/send", () => {
         status: input.status,
       })
     )
-    mocks.sendInstagramTextMessage.mockResolvedValue({
+    mocks.sendInstagramMessage.mockResolvedValue({
       ok: true,
       status: 200,
       data: { recipient_id: "igsid-1", message_id: "mid-1" },
@@ -153,7 +153,7 @@ describe("POST /api/meta/instagram/send", () => {
     expect(response.headers.get("retry-after")).toBe("60")
     expect(mocks.allowApiKeyRequest).toHaveBeenCalledWith("key-1")
     expect(mocks.isUserWaitlisted).not.toHaveBeenCalled()
-    expect(mocks.sendInstagramTextMessage).not.toHaveBeenCalled()
+    expect(mocks.sendInstagramMessage).not.toHaveBeenCalled()
   })
 
   // ADR 0011: Instagram entra a facturación, así que la cuenta restringida
@@ -175,7 +175,7 @@ describe("POST /api/meta/instagram/send", () => {
       error: "quota_exceeded",
       message: "sin cuota",
     })
-    expect(mocks.sendInstagramTextMessage).not.toHaveBeenCalled()
+    expect(mocks.sendInstagramMessage).not.toHaveBeenCalled()
   })
 
   // El contrato hacia afuera de la verificación de API key: 401 con `error:
@@ -190,7 +190,7 @@ describe("POST /api/meta/instagram/send", () => {
 
     expect(response.status).toBe(401)
     await expect(response.json()).resolves.toEqual({ error: "unauthorized" })
-    expect(mocks.sendInstagramTextMessage).not.toHaveBeenCalled()
+    expect(mocks.sendInstagramMessage).not.toHaveBeenCalled()
   })
 
   // El gate de la ADR 0010: sin permiso de canal, la request muere en el worker
@@ -204,7 +204,7 @@ describe("POST /api/meta/instagram/send", () => {
     await expect(response.json()).resolves.toEqual({
       error: "instagram channel is not enabled",
     })
-    expect(mocks.sendInstagramTextMessage).not.toHaveBeenCalled()
+    expect(mocks.sendInstagramMessage).not.toHaveBeenCalled()
   })
 
   // El replay idempotente contesta 200 sin tocar Meta, así que si el gate
@@ -218,33 +218,47 @@ describe("POST /api/meta/instagram/send", () => {
     )
 
     expect(response.status).toBe(403)
-    expect(mocks.sendInstagramTextMessage).not.toHaveBeenCalled()
+    expect(mocks.sendInstagramMessage).not.toHaveBeenCalled()
   })
 
-  // Los adjuntos son solo de Messenger por ahora: un body de adjunto válido
-  // muere con código estable después del parser y Graph no ve nada.
-  it("rejects attachments with a stable code before calling Meta", async () => {
+  // Mismo contrato de adjunto que Messenger: el parser lo valida, Graph recibe
+  // el sobre `{ attachment }` y se persiste sin texto, con el adjunto aparte.
+  it("sends an attachment and persists it without text", async () => {
+    mocks.getConversationById.mockResolvedValue({
+      id: "6f0e5a2c-8a5e-4a3d-9c2b-1f2e3d4c5b6a",
+      connectedPageId: "conn-ig",
+      contactId: "igsid-1",
+    })
+    mocks.getActivePageWithTokenByConnectionId.mockResolvedValue(instagramPage)
+    const attachment = { type: "file", url: "https://cdn.example.com/a.pdf" }
+
+    const response = await POST(sendByConversation({ attachment }))
+
+    expect(response.status).toBe(200)
+    expect(mocks.sendInstagramMessage).toHaveBeenCalledWith({
+      accessToken: "ig-token-1",
+      recipientId: "igsid-1",
+      message: { attachment },
+    })
+    expect(mocks.insertOutboundMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "", attachment, status: "sent" })
+    )
+  })
+
+  // Los errores de forma del adjunto salen del parser compartido, con el mismo
+  // código que en Messenger, y Graph no ve nada.
+  it("rejects a non-https attachment URL before calling Meta", async () => {
     const response = await POST(
-      new Request("https://resender.test/api/meta/instagram/send", {
-        method: "POST",
-        headers: { authorization: "Bearer rk_test" },
-        body: JSON.stringify({
-          pageId: "ig-1",
-          recipientId: "igsid-1",
-          attachment: {
-            type: "image",
-            url: "https://cdn.example.com/foto.png",
-          },
-        }),
-      }) as unknown as NextRequest
+      sendByConversation({
+        attachment: { type: "image", url: "http://cdn.example.com/a.png" },
+      })
     )
 
     expect(response.status).toBe(400)
-    await expect(response.json()).resolves.toEqual({
-      code: "attachment_unsupported_channel",
-      error: "attachments are not supported on Instagram yet",
+    await expect(response.json()).resolves.toMatchObject({
+      code: "attachment_url_invalid",
     })
-    expect(mocks.sendInstagramTextMessage).not.toHaveBeenCalled()
+    expect(mocks.sendInstagramMessage).not.toHaveBeenCalled()
   })
 
   // Fail closed y en el orden canónico: el permiso de canal ni se consulta si
@@ -278,10 +292,10 @@ describe("POST /api/meta/instagram/send", () => {
     expect(response.status).toBe(200)
     expect(mocks.getActivePageWithTokenForTenant).not.toHaveBeenCalled()
     expect(mocks.upsertConversation).not.toHaveBeenCalled()
-    expect(mocks.sendInstagramTextMessage).toHaveBeenCalledWith({
+    expect(mocks.sendInstagramMessage).toHaveBeenCalledWith({
       accessToken: "ig-token-1",
       recipientId: "igsid-1",
-      text: "hola",
+      message: { text: "hola" },
     })
     expect(mocks.insertOutboundMessage).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -324,7 +338,7 @@ describe("POST /api/meta/instagram/send", () => {
       code: "conversation_channel_mismatch",
       error: "conversation belongs to messenger; use /api/meta/send",
     })
-    expect(mocks.sendInstagramTextMessage).not.toHaveBeenCalled()
+    expect(mocks.sendInstagramMessage).not.toHaveBeenCalled()
     expect(mocks.insertOutboundMessage).not.toHaveBeenCalled()
   })
 
@@ -337,7 +351,7 @@ describe("POST /api/meta/instagram/send", () => {
     await expect(response.json()).resolves.toEqual({
       error: "conversation not found",
     })
-    expect(mocks.sendInstagramTextMessage).not.toHaveBeenCalled()
+    expect(mocks.sendInstagramMessage).not.toHaveBeenCalled()
   })
 
   // El par de siempre sigue igual: búsqueda por `meta_page_id` en el canal de
@@ -358,10 +372,10 @@ describe("POST /api/meta/instagram/send", () => {
       "ig-1",
       "instagram"
     )
-    expect(mocks.sendInstagramTextMessage).toHaveBeenCalledWith({
+    expect(mocks.sendInstagramMessage).toHaveBeenCalledWith({
       accessToken: "ig-token-1",
       recipientId: "igsid-1",
-      text: "hola",
+      message: { text: "hola" },
     })
   })
 })
