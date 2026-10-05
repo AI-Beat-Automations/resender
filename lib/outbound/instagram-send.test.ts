@@ -5,7 +5,7 @@ import {
   explainInstagramError,
   instagramTextByteLength,
   INSTAGRAM_TEXT_MAX_BYTES,
-  sendInstagramTextMessage,
+  sendInstagramMessage,
 } from "./instagram-send"
 import { explainMetaError } from "./meta-send"
 
@@ -103,10 +103,10 @@ describe("envío de un DM de Instagram", () => {
         new Response(JSON.stringify({ message_id: "mid-1" }), { status: 200 })
       )
 
-    const result = await sendInstagramTextMessage({
+    const result = await sendInstagramMessage({
       accessToken: "ig-token",
       recipientId: "igsid-1",
-      text: "hola",
+      message: { text: "hola" },
     })
 
     expect(result.ok).toBe(true)
@@ -135,10 +135,10 @@ describe("envío de un DM de Instagram", () => {
       new Response(JSON.stringify(graphError(10, 2534022)), { status: 400 })
     )
 
-    const result = await sendInstagramTextMessage({
+    const result = await sendInstagramMessage({
       accessToken: "ig-token",
       recipientId: "igsid-1",
-      text: "hola",
+      message: { text: "hola" },
     })
 
     expect(result.ok).toBe(false)
@@ -147,13 +147,65 @@ describe("envío de un DM de Instagram", () => {
     expect(result.reason).toContain("24-hour window is closed")
   })
 
+  it("manda un adjunto con el mismo sobre que Messenger", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message_id: "mid-2" }), { status: 200 })
+      )
+
+    const result = await sendInstagramMessage({
+      accessToken: "ig-token",
+      recipientId: "igsid-1",
+      message: {
+        attachment: { type: "file", url: "https://cdn.example.com/a.pdf" },
+      },
+    })
+
+    expect(result.ok).toBe(true)
+    const body = JSON.parse(String(fetchMock.mock.calls[0]![1]?.body))
+    expect(body).toEqual({
+      recipient: { id: "igsid-1" },
+      message: {
+        attachment: {
+          type: "file",
+          payload: { url: "https://cdn.example.com/a.pdf" },
+        },
+      },
+    })
+    expect(body).not.toHaveProperty("messaging_type")
+  })
+
+  // Sin subcode documentado para adjuntos en Instagram, el `100` de un envío
+  // con adjunto nombra también la URL y el formato; el de un texto no.
+  it("nombra la URL del adjunto ante un 100 solo si se mandó un adjunto", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify(graphError(100)), { status: 400 })
+    )
+
+    const result = await sendInstagramMessage({
+      accessToken: "ig-token",
+      recipientId: "igsid-1",
+      message: {
+        attachment: { type: "image", url: "https://cdn.example.com/a.jpg" },
+      },
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.reason).toContain("attachment URL")
+    expect(result.code).toBeNull()
+    expect(explainInstagramError(graphError(100))).not.toContain(
+      "attachment URL"
+    )
+  })
+
   it("convierte un fallo de red en un 502 con motivo accionable", async () => {
     vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new Error("timeout"))
 
-    const result = await sendInstagramTextMessage({
+    const result = await sendInstagramMessage({
       accessToken: "ig-token",
       recipientId: "igsid-1",
-      text: "hola",
+      message: { text: "hola" },
     })
 
     expect(result).toMatchObject({
