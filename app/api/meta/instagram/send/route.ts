@@ -25,7 +25,7 @@ import {
   instagramTextByteLength,
   INSTAGRAM_TEXT_MAX_BYTES,
   isMetaExpiredTokenError,
-  sendInstagramTextMessage,
+  sendInstagramMessage,
 } from "@/lib/outbound/instagram-send"
 import { resolveSendTarget } from "@/lib/outbound/resolve-send-target"
 import {
@@ -44,9 +44,10 @@ import {
 import { markPageTokenInvalid } from "@/lib/pages/page-registry"
 import { captureDeferred } from "@/lib/posthog"
 
-// Envía un mensaje directo por Instagram.
+// Envía un mensaje directo por Instagram: texto o un adjunto por URL, nunca
+// ambos.
 // Body: { conversationId } | { pageId, recipientId, conversationId? }, más
-// { reply } (ADR 0019).
+// { reply } | { attachment } (ADR 0019).
 // Header opcional `Idempotency-Key`: si se repite, se devuelve el resultado
 // almacenado sin reenviar a Meta.
 //
@@ -222,29 +223,15 @@ async function handle(request: NextRequest, capture: ApiLogCapture) {
     )
   }
 
-  // Los adjuntos son solo de Messenger por ahora: acá se cortan antes de
-  // tocar Graph, con un código estable para que el cliente distinga «canal
-  // equivocado» de «body roto». Este return es además el que estrecha la
-  // unión del parser: de acá en adelante `reply` es string, no null.
-  if (input.value.attachment) {
-    return trace.drop(
-      "invalid_request",
-      Response.json(
-        {
-          code: "attachment_unsupported_channel",
-          error: "attachments are not supported on Instagram yet",
-        },
-        { status: 400 }
-      ),
-      { errorCode: "attachment_unsupported_channel" }
-    )
-  }
-
   // Se valida el largo antes de llamar a Meta: el rechazo de Instagram por
   // pasarse no dice cuánto sobró, y un 400 nuestro con el número exacto evita
   // que el cliente tenga que adivinar. Se cuenta en bytes UTF-8 y no en
   // caracteres porque así lo mide Instagram — en español la diferencia es real.
-  if (exceedsInstagramTextLimit(input.value.reply)) {
+  // Con adjunto no hay texto que medir.
+  if (
+    input.value.reply !== null &&
+    exceedsInstagramTextLimit(input.value.reply)
+  ) {
     return trace.drop(
       "reply_too_long",
       Response.json(
@@ -292,11 +279,14 @@ async function handle(request: NextRequest, capture: ApiLogCapture) {
 
   const sentAt = new Date()
   // Sin `pageId`: el endpoint de Instagram es `/me/messages` y la cuenta sale
-  // del token.
-  const metaResult = await sendInstagramTextMessage({
+  // del token. La unión discriminada del parser garantiza exactamente uno de
+  // texto o adjunto.
+  const metaResult = await sendInstagramMessage({
     accessToken: pageAccessToken,
     recipientId: conversation.contactId,
-    text: input.value.reply,
+    message: input.value.attachment
+      ? { attachment: input.value.attachment }
+      : { text: input.value.reply },
   })
   const metaDurationMs = Date.now() - sentAt.getTime()
 
@@ -335,7 +325,10 @@ async function handle(request: NextRequest, capture: ApiLogCapture) {
       conversationId: conversation.id,
       connectedPageId: page.id,
       contactId: conversation.contactId,
-      text: input.value.reply,
+      // Para un adjunto no hay texto: se persiste "" y el contenido queda en
+      // attachment_type/attachment_url.
+      text: input.value.reply ?? "",
+      attachment: input.value.attachment,
       status: metaResult.ok ? "sent" : "failed",
       metaMessageId: extractMetaMessageId(metaResult.data),
       idempotencyKey,
@@ -367,7 +360,11 @@ async function handle(request: NextRequest, capture: ApiLogCapture) {
     subjectId: message.id,
     providerId: extractMetaMessageId(metaResult.data) ?? undefined,
     contactId: conversation.contactId,
-    textLength: instagramTextByteLength(input.value.reply),
+    // Del adjunto se loguea solo el tipo, nunca la URL: puede ser firmada y
+    // llevar credenciales en la query. Del texto, el largo en bytes.
+    ...(input.value.attachment
+      ? { attachmentType: input.value.attachment.type }
+      : { textLength: instagramTextByteLength(input.value.reply) }),
     status: metaResult.status,
     durationMs: metaDurationMs,
   }

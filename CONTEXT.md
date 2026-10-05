@@ -304,7 +304,7 @@ Tres superficies, tres límites, y dos unidades distintas:
 
 Resender traduce el sobre de error de Graph a un mensaje accionable. Hay **tres catálogos** —Messenger, DM de Instagram y comentario de Instagram— y no uno solo: los códigos coinciden pero lo que el usuario tiene que hacer es distinto, y ese es el punto entero de traducir un error. Un `10` es la ventana de 24 h en un DM y un permiso faltante en una respuesta pública, que no tiene ventana; un `190` es "revocaron permisos, reconectá la Página" en Messenger y "el token venció solo, reconectá la cuenta" en Instagram.
 Los tres motivos que no dependen de qué se estaba enviando —token vencido, rate limit, bloqueo por política— viven una sola vez y se comparten, para que no se separen con el tiempo.
-En Messenger, un [Adjunto de salida] suma dos traducciones propias: formato no permitido (`546`) y URL inalcanzable para Meta (`100` / `2018047`). El resto de fallos de adjunto cae en el mensaje genérico.
+En Messenger, un [Adjunto de salida] suma dos traducciones propias: formato no permitido (`546`) y URL inalcanzable para Meta (`100` / `2018047`). El resto de fallos de adjunto cae en el mensaje genérico. En un DM de Instagram Meta no documenta subcodes de adjunto, así que no hay código estable: un `100` con adjunto se traduce nombrando a la vez el IGSID y la URL/formato del adjunto.
 
 ### Instagram dentro de facturacion
 
@@ -345,7 +345,7 @@ La API externa de salida usa API key opaca por header `Authorization: Bearer ...
 `POST /api/meta/send` recibe exactamente uno de `reply` (texto) o un [Adjunto de salida], y acepta **dos formas** de destino: `conversationId` solo (el `conversation.id` del push; Resender resuelve página, token y contacto), o `pageId` + `recipientId` para iniciar una conversación. Si vienen los tres, deben coincidir o es `400`. Un `conversationId` desconocido para el tenant es `404`; uno que pertenece a otro canal que el de la ruta es `400`.
 Los mensajes salientes se persisten tanto en exito como en fallo, usando `status` para distinguir el resultado del envio.
 Instagram no agrega un campo `channel` al endpoint de Messenger: usa **rutas propias**, que son las de Facebook con `/instagram` insertado: `POST /api/meta/instagram/send` (DM, mismo body que Messenger, donde `pageId` es el IG id de la cuenta), `POST /api/meta/instagram/comments/reply` (respuesta pública) y `POST /api/meta/instagram/comments/private-reply` (DM al que comentó).
-El body de un DM de Instagram es el mismo que el de Messenger, pero un [Adjunto de salida] se rechaza: ese canal todavía no los acepta.
+El body de un DM de Instagram es el mismo que el de Messenger, [Adjunto de salida] incluido.
 Las tres rutas de salida de Instagram comparten la API key del tenant, el header `Idempotency-Key` y la persistencia en éxito y en fallo.
 
 ### Adjunto
@@ -355,7 +355,7 @@ La fila de `messages` admite texto, adjunto, o los dos: el XOR vale solo al _env
 
 ### Adjunto de salida
 
-Un [Reply] cuyo contenido no es texto sino un archivo de tipo `image`, `video`, `audio` o `file`. Se entrega como URL pública `https` que Meta descarga; Resender no sube, no hospeda y no descarga la URL para validarla ni para el preview. Es mutuamente excluyente con el texto del reply: un request lleva uno o el otro. El [Límite de texto por superficie] no aplica. En la bitácora se guarda el tipo y la URL, no un texto. Instagram aún no acepta adjuntos.
+Un [Reply] cuyo contenido no es texto sino un archivo de tipo `image`, `video`, `audio` o `file`. Se entrega como URL pública `https` que Meta descarga; Resender no sube, no hospeda y no descarga la URL para validarla ni para el preview. Es mutuamente excluyente con el texto del reply: un request lleva uno o el otro. El [Límite de texto por superficie] no aplica. En la bitácora se guarda el tipo y la URL, no un texto. Vale en Messenger y en DM de Instagram; Instagram además limita imagen a png/jpeg de 8 MB, audio/video a 25 MB y `file` a PDF de 25 MB, límites que valida Meta y no Resender.
 
 ### Semantica visual de Inbox
 

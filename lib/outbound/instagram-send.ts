@@ -4,6 +4,7 @@ import {
   extractMetaErrorSubcode,
   type MetaSendResult,
 } from "./meta-send"
+import type { OutboundAttachment } from "./send-request"
 
 // Envío de mensajes directos por **Instagram API con Instagram Login**.
 //
@@ -32,12 +33,26 @@ export function exceedsInstagramTextLimit(text: string): boolean {
   return instagramTextByteLength(text) > INSTAGRAM_TEXT_MAX_BYTES
 }
 
-export async function sendInstagramTextMessage(input: {
+export async function sendInstagramMessage(input: {
   accessToken: string
   recipientId: string
-  text: string
+  message: { text: string } | { attachment: OutboundAttachment }
 }): Promise<MetaSendResult> {
+  const isAttachment = "attachment" in input.message
   try {
+    // Mismo sobre que Messenger: `{ text }` o
+    // `{ attachment: { type, payload: { url } } }`. Meta descarga el archivo
+    // desde la URL; nosotros nunca subimos bytes.
+    const message =
+      "text" in input.message
+        ? { text: input.message.text }
+        : {
+            attachment: {
+              type: input.message.attachment.type,
+              payload: { url: input.message.attachment.url },
+            },
+          }
+
     const response = await fetch(`${GRAPH}/me/messages`, {
       method: "POST",
       headers: {
@@ -47,7 +62,7 @@ export async function sendInstagramTextMessage(input: {
       signal: AbortSignal.timeout(10000),
       body: JSON.stringify({
         recipient: { id: input.recipientId },
-        message: { text: input.text },
+        message,
       }),
     })
 
@@ -60,7 +75,12 @@ export async function sendInstagramTextMessage(input: {
       error: response.ok
         ? null
         : (metaError ?? `Meta returned HTTP ${response.status}`),
-      reason: response.ok ? null : explainInstagramError(data),
+      reason: response.ok
+        ? null
+        : explainInstagramError(data, { attachment: isAttachment }),
+      // Sin código estable de adjunto: Meta no documenta para Instagram los
+      // subcodes de «no pude descargar la URL» o «formato rechazado», y
+      // reusar los de Messenger sería adivinar.
       code: null,
     }
   } catch (error) {
@@ -95,7 +115,10 @@ export const INSTAGRAM_RATE_LIMIT_REASON =
 export const INSTAGRAM_BLOCKED_REASON =
   "The account is temporarily blocked from taking this action due to a policy violation on Meta's side."
 
-export function explainInstagramError(data: unknown): string | null {
+export function explainInstagramError(
+  data: unknown,
+  context: { attachment: boolean } = { attachment: false }
+): string | null {
   const code = extractMetaErrorCode(data)
   if (code === null) return null
   const subcode = extractMetaErrorSubcode(data)
@@ -117,6 +140,13 @@ export function explainInstagramError(data: unknown): string | null {
 
   if (code === 551) {
     return "This person isn't available: they may have blocked the account, deleted the conversation, or deactivated it."
+  }
+  // Con un adjunto, el `100` también es el rechazo típico de una URL que Meta
+  // no pudo descargar o de un formato/tamaño fuera de lo que acepta Instagram.
+  // Sin subcode documentado no se puede separar del IGSID equivocado, así que
+  // el motivo nombra las dos cosas en vez de mandar a revisar solo una.
+  if (code === 100 && context.attachment) {
+    return "Instagram rejected the request: check that the recipient ID is an IGSID from a conversation with this account, and that the attachment URL is publicly reachable over https with a format and size Instagram accepts for this attachment.type (image: png/jpeg up to 8 MB; audio, video and file: up to 25 MB; file must be a PDF)."
   }
   if (code === 100) {
     return "Instagram rejected the request: check that the recipient ID is an IGSID from a conversation with this account."
